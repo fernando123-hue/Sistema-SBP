@@ -1,22 +1,22 @@
 # Donos por área. Todo PR pede revisão de quem entende a parte tocada.
-# Substitua os handles pelos usuários reais do GitHub antes de publicar o repo.
+# Ao entrar mais gente no projeto, distribua as áreas em vez de concentrar.
 
-*                               @fernando
+*                               @fernando123-hue
 
 # O motor de distribuição é o núcleo de valor: nenhuma mudança entra sem
 # revisão explícita. Uma alteração errada aqui repete o defeito da planilha.
-/src/core/distribuicao/         @fernando
-/src/core/tipos.ts              @fernando
+/src/core/distribuicao/         @fernando123-hue
+/src/core/tipos.ts              @fernando123-hue
 
 # Segurança: prompt injection, validação de anexo, ambiente.
-/src/core/seguranca/            @fernando
-/src/servidor/ambiente.ts       @fernando
+/src/core/seguranca/            @fernando123-hue
+/src/servidor/ambiente.ts       @fernando123-hue
 
 # Modelo de dados e migrações.
-/prisma/                        @fernando
+/prisma/                        @fernando123-hue
 
 # Documentos de domínio: mudar aqui é mudar a regra de negócio.
-/docs/                          @fernando
+/docs/                          @fernando123-hue
 
 # Infraestrutura de engenharia.
-/.github/                       @fernando
+/.github/                       @fernando123-hue
