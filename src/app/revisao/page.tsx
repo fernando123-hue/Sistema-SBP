@@ -42,6 +42,7 @@ const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutr
   duplicata_suspeita: { texto: 'possível duplicata', tom: 'atencao' },
   anomalia: { texto: 'anomalia', tom: 'alerta' },
   conteudo_suspeito: { texto: 'conteúdo suspeito', tom: 'alerta' },
+  desdobramento: { texto: 'e-mail gerou vários itens', tom: 'atencao' },
 }
 
 /**

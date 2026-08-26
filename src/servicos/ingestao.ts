@@ -254,11 +254,21 @@ async function criarItens(
   let aprovados = 0
   let paraRevisao = 0
 
+  // Uma consulta para todas as categorias do lote, não uma por item. Um e-mail
+  // de liga com 30 ligantes fazia 30 buscas da MESMA categoria, dentro da
+  // transação, segurando lock de escrita à toa.
+  const codigos = [...new Set(interpretacao.itens.map((item) => item.categoriaCodigo))]
+  const categorias = new Map(
+    (
+      await tx.categoria.findMany({
+        where: { codigo: { in: codigos } },
+        select: { id: true, codigo: true, limiarConfianca: true },
+      })
+    ).map((categoria) => [categoria.codigo, categoria]),
+  )
+
   for (const [posicao, extraido] of interpretacao.itens.entries()) {
-    const categoria = await tx.categoria.findUnique({
-      where: { codigo: extraido.categoriaCodigo },
-      select: { id: true, limiarConfianca: true },
-    })
+    const categoria = categorias.get(extraido.categoriaCodigo)
     if (!categoria) continue
 
     const motivo = decidirRevisao(
@@ -267,6 +277,14 @@ async function criarItens(
       extraido.camposAusentes.length > 0,
       interpretacao.conteudoSuspeito,
       contexto.anexosRejeitados > 0,
+      // Desdobramento SEMPRE passa por humano.
+      //
+      // A decisão A1 e o requisito RF-04 dizem que a IA PROPÕE o desdobramento
+      // e ele é revisável. Na prática, um item de lista sempre tinha nome
+      // preenchido, logo zero campo ausente, logo confiança acima do limiar —
+      // e N unidades de carga entravam aprovadas sem ninguém olhar. Uma
+      // assinatura numerada no rodapé viraria três itens de trabalho.
+      interpretacao.itens.length > 1,
     )
 
     const item = await tx.item.create({
@@ -322,9 +340,11 @@ function decidirRevisao(
   temCampoAusente: boolean,
   conteudoSuspeito: boolean,
   anexoRejeitado: boolean,
+  houveDesdobramento: boolean,
 ): MotivoRevisao | null {
   if (conteudoSuspeito) return 'conteudo_suspeito'
   if (anexoRejeitado) return 'anomalia'
+  if (houveDesdobramento) return 'desdobramento'
   if (confianca < limiar) return 'baixa_confianca'
   if (temCampoAusente) return 'campo_ausente'
   return null

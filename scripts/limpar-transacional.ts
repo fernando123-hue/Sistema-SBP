@@ -26,6 +26,7 @@ async function principal(): Promise<void> {
     atribuicoes: (await banco.atribuicao.deleteMany()).count,
     revisoes: (await banco.revisao.deleteMany()).count,
     rodadas: (await banco.rodadaDistribuicao.deleteMany()).count,
+    travas: (await banco.travaDeDistribuicao.deleteMany()).count,
     itens: (await banco.item.deleteMany()).count,
     emails: (await banco.email.deleteMany()).count,
     saldosCarga: (await banco.saldoCarga.deleteMany()).count,

@@ -16,6 +16,27 @@ export abstract class ErroDominio extends Error {
   }
 }
 
+/**
+ * Violação de regra de negócio causada pelo uso, não por defeito do sistema.
+ *
+ * "Só o responsável ativo pode concluir", "transferência exige justificativa",
+ * "revisão já resolvida". A mensagem é escrita PARA o usuário e chega inteira
+ * até a tela.
+ *
+ * Sem esta classe, esses casos eram `new Error(...)` puro — que a camada HTTP
+ * não reconhece e trata como falha do servidor: o usuário via "Erro interno" em
+ * vez do motivo real, e cada erro de uso normal era registrado em nível `erro`
+ * como se fosse defeito, poluindo a observabilidade.
+ */
+export class ErroDeNegocio extends ErroDominio {
+  readonly codigo: string
+
+  constructor(mensagem: string, codigo = 'REGRA_DE_NEGOCIO') {
+    super(mensagem)
+    this.codigo = codigo
+  }
+}
+
 /** Nunca distribuir para ninguém. Silenciar isto é como o trabalho some hoje. */
 export class SemElegiveisError extends ErroDominio {
   readonly codigo = 'SEM_ELEGIVEIS'

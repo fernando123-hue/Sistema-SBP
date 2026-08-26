@@ -1,7 +1,7 @@
 import { ALGORITMO_VERSAO, distribuir } from '../core/distribuicao/motor'
 import { serializar, type PedidoDistribuicao } from '../core/esquemas'
 import type { Categoria, Elegivel, ResultadoRodada } from '../core/tipos'
-import { inicioDoMes } from '../core/util/datas'
+import { fimDoDia, inicioDoDia, inicioDoMes } from '../core/util/datas'
 import { somar } from '../core/util/numero'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import {
@@ -64,15 +64,21 @@ export async function planejarCategoria(
   // Corte temporal: a fila do dia é "aprovado E já recebido até o fim deste
   // dia". O backlog de ontem entra; o e-mail que só chega depois de amanhã,
   // não. Sem este corte, distribuir a data de hoje varreria o futuro inteiro.
-  const fimDoDia = new Date(`${data}T23:59:59.999Z`)
+  //
+  // O fim do dia é no FUSO DA OPERAÇÃO. Com `Z`, um e-mail das 22h em Brasília
+  // (01h UTC do dia seguinte) ficava de fora da própria data em que chegou.
+  const limite = fimDoDia(data)
 
   const itens = await banco.item.findMany({
     where: {
       categoriaId: categoria.id,
-      status: 'aprovado',
+      // `devolvido` entra junto com `aprovado`: um item devolvido volta ao pool
+      // e é redistribuído na próxima rodada, com o crédito já atualizado.
+      // O status separado mantém visível no painel que houve devolução.
+      status: { in: ['aprovado', 'devolvido'] },
       OR: [
-        { email: { recebidoEm: { lte: fimDoDia } } },
-        { emailId: null, criadoEm: { lte: fimDoDia } },
+        { email: { recebidoEm: { lte: limite } } },
+        { emailId: null, criadoEm: { lte: limite } },
       ],
     },
     orderBy: [{ criadoEm: 'asc' }, { id: 'asc' }],
@@ -164,6 +170,17 @@ export async function confirmar(
   })
 
   const relatorio = await banco.$transaction(async (tx) => {
+    // Serializa o dia ANTES de qualquer leitura de crédito. Duas confirmações
+    // concorrentes de categorias diferentes leriam o crédito global uma da
+    // outra ainda não gravado e decidiriam o desempate com dado obsoleto —
+    // sem erro, sem exceção, só um rateio injusto. Ver o comentário de
+    // `TravaDeDistribuicao` no schema.
+    await tx.travaDeDistribuicao.upsert({
+      where: { data: pedido.data },
+      create: { data: pedido.data, execucoes: 1 },
+      update: { execucoes: { increment: 1 } },
+    })
+
     // Replaneja DENTRO da transação: o estado pode ter mudado entre a prévia
     // que o operador viu e o clique em confirmar. Mesma função da prévia.
     const planos = await planejar(tx, pedido)
@@ -337,7 +354,12 @@ async function atualizarSaldos(
     },
     update: {
       recebido: { increment: entrada.recebido },
-      cotaJusta: entrada.cotaJusta,
+      // `cotaJusta` ACUMULA, igual a `recebido`. Sobrescrevendo, num dia com
+      // duas rodadas da mesma categoria a linha passava a comparar a cota da
+      // segunda rodada com o recebido do dia inteiro — número silenciosamente
+      // errado, do tipo que um relatório lê três meses depois.
+      // `creditoAcumulado` é diferente: vem absoluto do motor, não é delta.
+      cotaJusta: { increment: entrada.cotaJusta },
       creditoAcumulado: entrada.creditoCategoria,
     },
   })
@@ -410,8 +432,10 @@ async function carregarElegiveis(
     where: {
       categoriaId,
       podeReceber: true,
-      vigenciaInicio: { lte: new Date(`${data}T23:59:59.999Z`) },
-      OR: [{ vigenciaFim: null }, { vigenciaFim: { gte: new Date(`${data}T00:00:00.000Z`) } }],
+      // Fronteiras no fuso da operação: uma habilitação que termina hoje vale
+      // o dia inteiro de hoje, não até as 21h.
+      vigenciaInicio: { lte: fimDoDia(data) },
+      OR: [{ vigenciaFim: null }, { vigenciaFim: { gte: inicioDoDia(data) } }],
       colaborador: { ativo: true },
     },
     select: { colaboradorId: true },

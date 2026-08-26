@@ -64,6 +64,8 @@ export const MotivoRevisaoSchema = z.enum([
   'duplicata_suspeita',
   'anomalia',
   'conteudo_suspeito',
+  /** A IA desdobrou um e-mail em vários itens. Quantidade de carga é decisão humana. */
+  'desdobramento',
 ])
 export type MotivoRevisao = z.infer<typeof MotivoRevisaoSchema>
 
@@ -150,7 +152,22 @@ export const EscalaEntradaSchema = z.object({
   data: DataIsoSchema,
   colaboradorId: z.string().min(1),
   disponivel: z.boolean(),
-  capacidadeRelativa: z.number().positive().max(2).default(1),
+  /**
+   * TRAVADO EM 1 até o motor de fato usar este campo.
+   *
+   * O campo atravessava o sistema inteiro — schema aceitava 0..2, o serviço
+   * gravava, a auditoria registrava — e o motor NUNCA o lia. Alguém marcaria
+   * meio período com `0.5`, veria o valor na tela, e a pessoa receberia a cota
+   * cheia. É exatamente o defeito do `Mov. Extra` da planilha: um número que se
+   * digita e o sistema descarta.
+   *
+   * Melhor recusar do que aceitar em silêncio. Quando o motor passar a ponderar
+   * por capacidade, este limite sai junto com a implementação.
+   */
+  capacidadeRelativa: z
+    .literal(1)
+    .default(1)
+    .describe('Capacidade parcial ainda não é aplicada pelo motor de distribuição.'),
   observacao: z.string().max(500).nullable().default(null),
 })
 
@@ -177,6 +194,16 @@ export const ResolucaoRevisaoSchema = z.object({
   campos: z.record(z.string().max(60), z.string().max(2000)).default({}),
   aprovar: z.boolean().default(true),
 })
+
+/** Forma do `Item.payload`. Usada ao reler o que a IA extraiu. */
+export const PayloadDoItemSchema = z.object({
+  campos: z.record(z.string().max(60), z.string().max(2000)).default({}),
+  camposAusentes: z.array(z.string().max(60)).default([]),
+  ligaMencionada: z.string().max(200).nullable().default(null),
+  observacao: z.string().max(1000).nullable().default(null),
+  revisadoPorHumano: z.boolean().default(false),
+})
+export type PayloadDoItem = z.infer<typeof PayloadDoItemSchema>
 
 // ─── Utilitário de serialização ──────────────────────────────
 

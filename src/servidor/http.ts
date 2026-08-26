@@ -75,6 +75,11 @@ export async function rota(handler: () => Promise<Response>): Promise<Response> 
     }
 
     // Daqui para baixo é falha do servidor: registra tudo, devolve quase nada.
+    //
+    // SEM EXCEÇÃO, nem para erro de domínio. `ConservacaoVioladaError` carrega
+    // a alocação inteira na mensagem — o id de cada colega da rodada. Havia um
+    // ramo especial que devolvia essa mensagem ao cliente, então justamente o
+    // caso mais grave (defeito do motor de conservação) era o mais falante.
     const correlacaoId = novaCorrelacao()
     registrarLog('erro', 'falha não tratada em rota', {
       correlacaoId,
@@ -82,16 +87,25 @@ export async function rota(handler: () => Promise<Response>): Promise<Response> 
       pilha: erro instanceof Error ? erro.stack : undefined,
     })
 
-    if (status === 500 && erro instanceof ErroDominio) {
-      return responderErro(mensagemDoErro(erro), 500, correlacaoId)
-    }
-
     return responderErro(
       'Erro interno. O identificador abaixo permite rastrear a falha no log.',
       500,
       correlacaoId,
     )
   }
+}
+
+/**
+ * Origem da requisição, para chavear o limite de taxa.
+ *
+ * Uma chave FIXA numa rota pré-autenticação é um DoS de graça: bastava alguém
+ * estourar o balde global de `/api/sessao` para deixar a equipe inteira sem
+ * conseguir entrar. A chave tem de separar quem chama.
+ */
+export function origemDaRequisicao(requisicao: Request): string {
+  const encaminhado = requisicao.headers.get('x-forwarded-for')
+  if (encaminhado) return encaminhado.split(',')[0]!.trim().slice(0, 64)
+  return requisicao.headers.get('x-real-ip')?.slice(0, 64) ?? 'desconhecida'
 }
 
 /** Aplica limite de taxa e devolve a resposta de recusa, ou `null` se liberado. */

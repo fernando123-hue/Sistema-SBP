@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
+import { hojeIso } from '../../core/util/datas'
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
   Aviso,
@@ -51,9 +52,9 @@ interface Resumo {
   linhas: LinhaDaPrevia[]
 }
 
-function hoje(): string {
-  return new Date().toISOString().slice(0, 10)
-}
+// `hojeIso` vem do núcleo puro (pode ser importado no cliente) e resolve no
+// fuso da operação. Com `toISOString()`, a tela abria em amanhã depois das 21h.
+const hoje = hojeIso
 
 const CRITERIO: Record<string, { texto: string; explicacao: string }> = {
   resto_maior: {

@@ -16,6 +16,16 @@ interface Janela {
 
 const janelas = new Map<string, Janela>()
 
+/**
+ * Acima deste tamanho, uma limpeza oportunista roda antes de inserir.
+ *
+ * Hoje o espaço de chaves é raso (poucos colaboradores × poucas rotas), então o
+ * mapa nunca chega perto disto. A trava existe para o dia em que alguma chave
+ * passar a incluir algo ilimitado — IP de visitante, remetente de e-mail — e o
+ * mapa virar vazamento de verdade num processo de vida longa.
+ */
+const TETO_DE_CHAVES = 1000
+
 export interface ResultadoDoLimite {
   permitido: boolean
   restante: number
@@ -31,6 +41,10 @@ export function verificarLimite(
   const janela = janelas.get(chave)
 
   if (!janela || janela.reiniciaEm <= agora) {
+    // Limpeza oportunista: sem isto, `limparJanelasExpiradas` nunca rodaria —
+    // a função existia sem nenhum chamador.
+    if (janelas.size >= TETO_DE_CHAVES) limparJanelasExpiradas()
+
     janelas.set(chave, { contagem: 1, reiniciaEm: agora + janelaSegundos * 1000 })
     return { permitido: true, restante: maximo - 1, reiniciaEmSegundos: janelaSegundos }
   }

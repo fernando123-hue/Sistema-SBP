@@ -1,4 +1,5 @@
 import { DataIsoSchema, EscalaEntradaSchema } from '../core/esquemas'
+import { fimDoDia, inicioDoDia } from '../core/util/datas'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import { novaCorrelacao } from '../servidor/observabilidade'
 import type { Banco } from '../servidor/prisma'
@@ -32,8 +33,8 @@ export async function obterEscala(banco: Banco, data: string): Promise<LinhaDaEs
       habilitacoes: {
         where: {
           podeReceber: true,
-          vigenciaInicio: { lte: new Date(`${data}T23:59:59.999Z`) },
-          OR: [{ vigenciaFim: null }, { vigenciaFim: { gte: new Date(`${data}T00:00:00.000Z`) } }],
+          vigenciaInicio: { lte: fimDoDia(data) },
+          OR: [{ vigenciaFim: null }, { vigenciaFim: { gte: inicioDoDia(data) } }],
         },
         include: { categoria: { select: { codigo: true } } },
       },

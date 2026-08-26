@@ -1,4 +1,10 @@
-import { ResolucaoRevisaoSchema, serializar } from '../core/esquemas'
+import { ErroDeNegocio } from '../core/erros'
+import {
+  PayloadDoItemSchema,
+  ResolucaoRevisaoSchema,
+  desserializar,
+  serializar,
+} from '../core/esquemas'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import { novaCorrelacao } from '../servidor/observabilidade'
 import type { Banco, Transacao } from '../servidor/prisma'
@@ -16,7 +22,7 @@ async function exigirColaborador(tx: Transacao, colaboradorId: string): Promise<
     select: { id: true },
   })
   if (!existe) {
-    throw new Error(
+    throw new ErroDeNegocio(
       `Colaborador "${colaboradorId}" não existe. A resolução de revisão precisa de um usuário real.`,
     )
   }
@@ -83,8 +89,8 @@ export async function resolver(
       include: { item: true },
     })
 
-    if (!revisao) throw new Error(`Revisão "${dados.revisaoId}" não encontrada.`)
-    if (revisao.resolvidoEm) throw new Error(`Revisão "${dados.revisaoId}" já foi resolvida.`)
+    if (!revisao) throw new ErroDeNegocio(`Revisão "${dados.revisaoId}" não encontrada.`)
+    if (revisao.resolvidoEm) throw new ErroDeNegocio(`Revisão "${dados.revisaoId}" já foi resolvida.`)
 
     await exigirColaborador(tx, ator.colaboradorId)
 
@@ -92,7 +98,7 @@ export async function resolver(
       where: { codigo: dados.categoriaCodigo },
       select: { id: true },
     })
-    if (!categoria) throw new Error(`Categoria "${dados.categoriaCodigo}" não existe.`)
+    if (!categoria) throw new ErroDeNegocio(`Categoria "${dados.categoriaCodigo}" não existe.`)
 
     const antes = {
       categoriaId: revisao.item.categoriaId,
@@ -100,12 +106,32 @@ export async function resolver(
       status: revisao.item.status,
     }
 
+    // MESCLA, não sobrescreve.
+    //
+    // Gravar `{ campos: dados.campos }` apagava tudo que a IA extraiu — nome,
+    // CPF, CRM, campos ausentes, liga mencionada. Como a tela envia os campos
+    // vazios quando o operador não mexe neles, aprovar uma revisão deixava o
+    // item com MENOS informação do que antes de ser revisado, e o dataset de
+    // melhoria nascia vazio justamente na dimensão que mais importa.
+    const payloadAnterior = desserializar(revisao.item.payload, PayloadDoItemSchema, {
+      campos: {},
+      camposAusentes: [],
+      ligaMencionada: null,
+      observacao: null,
+      revisadoPorHumano: false,
+    })
+    const payloadFinal = {
+      ...payloadAnterior,
+      campos: { ...payloadAnterior.campos, ...dados.campos },
+      revisadoPorHumano: true,
+    }
+
     const item = await tx.item.update({
       where: { id: revisao.itemId },
       data: {
         categoriaId: categoria.id,
         titulo: dados.titulo,
-        payload: serializar({ campos: dados.campos, revisadoPorHumano: true }),
+        payload: serializar(payloadFinal),
         // Aprovado por humano entra na próxima rodada. Recusado sai da fila
         // sem sumir do banco — cancelado é estado, não exclusão.
         status: dados.aprovar ? 'aprovado' : 'cancelado',
@@ -141,8 +167,11 @@ export async function resolver(
 }
 
 /**
- * Aprovação em massa dos itens que a IA já classificou com confiança suficiente.
- * Existe para a simulação e para o modo "confio no modelo nesta categoria".
+ * Aprovação em massa das exceções ROTINEIRAS.
+ *
+ * Cobre só `baixa_confianca` e `campo_ausente`. Conteúdo suspeito, anexo
+ * rejeitado e desdobramento continuam exigindo decisão item a item — são
+ * justamente os casos em que a revisão humana existe para alguma coisa.
  */
 export async function aprovarTodosPendentes(
   banco: Banco,
@@ -155,8 +184,15 @@ export async function aprovarTodosPendentes(
   return banco.$transaction(async (tx) => {
     await exigirColaborador(tx, usuario)
 
+    // NUNCA aprova em massa o que a segurança sinalizou. A docstring dizia
+    // "itens que a IA já classificou com confiança suficiente", mas o filtro
+    // era `resolvidoEm: null` — sem restrição nenhuma. Isso aprovava, de uma
+    // vez, e-mails com tentativa de prompt injection e anexos rejeitados.
     const pendentes = await tx.revisao.findMany({
-      where: { resolvidoEm: null },
+      where: {
+        resolvidoEm: null,
+        motivo: { in: ['baixa_confianca', 'campo_ausente'] },
+      },
       select: { id: true, itemId: true },
     })
 

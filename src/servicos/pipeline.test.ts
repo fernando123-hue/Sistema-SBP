@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { IaMock } from '../adapters/ia-mock'
 import { IngestaoMock } from '../adapters/ingestao-mock'
-import { sequenciaDeDatas } from '../core/util/datas'
+import { fimDoDia, sequenciaDeDatas } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
-import { DATA_BASE, limparTudo, semearBase } from '../testes/apoio'
+import { DATA_BASE, aprovarTudoNoBanco, limparTudo, semearBase } from '../testes/apoio'
 import { confirmar, previa } from './distribuicao'
-import { concluir, minhaFila, transferir } from './fila'
+import { concluir, devolver, minhaFila, transferir } from './fila'
 import { sincronizar } from './ingestao'
 import { conferirConservacao, porCategoria } from './painel'
 import { aprovarTodosPendentes, listarPendentes } from './revisao'
@@ -39,7 +39,7 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 30)
 
     await sincronizar(deps(datas, 31), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
 
     for (const data of datas) {
       await confirmar(banco, { data, categorias: [] }, base.operador)
@@ -69,7 +69,7 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 20)
 
     await sincronizar(deps(datas, 99), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
 
     for (const data of datas) {
       await confirmar(banco, { data, categorias: [] }, base.operador)
@@ -96,7 +96,7 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 20)
 
     await sincronizar(deps(datas, 99), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
 
     for (const data of datas) {
       await confirmar(banco, { data, categorias: [] }, base.operador)
@@ -126,7 +126,7 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 5)
 
     await sincronizar(deps(datas, 5), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
 
     // Distribui só o primeiro dia.
     await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
@@ -136,7 +136,7 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
       include: { email: { select: { recebidoEm: true } } },
     })
 
-    const limite = new Date(`${datas[0]!}T23:59:59.999Z`)
+    const limite = fimDoDia(datas[0]!)
     for (const item of distribuidos) {
       expect(item.email!.recebidoEm.getTime()).toBeLessThanOrEqual(limite.getTime())
     }
@@ -195,6 +195,44 @@ describe('segurança — conteúdo não confiável', () => {
     expect(await banco.atribuicao.count()).toBe(0)
   })
 
+  it('aprovação em massa NÃO libera conteúdo suspeito nem desdobramento', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+
+    await sincronizar(deps(datas, 7, true), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
+
+    // O atalho de conveniência cobre só as exceções rotineiras. Antes, o filtro
+    // era `resolvidoEm: null` — sem restrição — e liberava de uma vez tudo que
+    // a defesa tinha acabado de segurar.
+    const restantes = await listarPendentes(banco, 500)
+    const motivos = new Set(restantes.map((item) => item.motivo))
+
+    expect(motivos.has('conteudo_suspeito')).toBe(true)
+    expect(motivos.has('baixa_confianca')).toBe(false)
+    expect(motivos.has('campo_ausente')).toBe(false)
+  })
+
+  it('desdobramento em N itens sempre passa por olho humano', async () => {
+    const base = await semearBase(banco, { totalDeDias: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 2)
+
+    await sincronizar(deps(datas), base.operador)
+
+    // A quantidade de carga é decisão humana. Um item de lista sempre tinha
+    // nome preenchido, logo confiança alta, logo entrava aprovado sem ninguém
+    // ver — e uma assinatura numerada no rodapé viraria 3 unidades de trabalho.
+    const desdobrados = (await listarPendentes(banco, 500)).filter(
+      (item) => item.motivo === 'desdobramento',
+    )
+    expect(desdobrados.length).toBeGreaterThan(0)
+
+    for (const pendente of desdobrados) {
+      const item = await banco.item.findUniqueOrThrow({ where: { id: pendente.itemId } })
+      expect(item.status).toBe('aguardando_revisao')
+    }
+  })
+
   it('anexo com travessia de diretório é normalizado e registrado', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     const datas = sequenciaDeDatas(DATA_BASE, 1)
@@ -217,7 +255,7 @@ describe('invariantes de atribuição', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
     await sincronizar(deps(datas), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
     await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
 
     const existente = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
@@ -241,7 +279,7 @@ describe('invariantes de atribuição', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
     await sincronizar(deps(datas), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
     await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
 
     const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
@@ -257,7 +295,7 @@ describe('invariantes de atribuição', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
     await sincronizar(deps(datas), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
     await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
 
     const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
@@ -281,7 +319,7 @@ describe('invariantes de atribuição', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
     await sincronizar(deps(datas), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
     await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
 
     const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
@@ -306,7 +344,7 @@ describe('invariantes de atribuição', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
     await sincronizar(deps(datas), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
     await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
 
     const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
@@ -361,7 +399,7 @@ describe('falha explícita em vez de trabalho perdido', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
     await sincronizar(deps(datas), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
 
     // Ninguém disponível — o cenário que na planilha some com 16 itens de LIGA.
     await banco.escala.updateMany({ where: { data: datas[0]! }, data: { disponivel: false } })
@@ -379,13 +417,199 @@ describe('falha explícita em vez de trabalho perdido', () => {
   })
 })
 
+describe('devolução ao pool (AT-07)', () => {
+  it('item devolvido perde o dono, muda de status e volta na próxima rodada', async () => {
+    const base = await semearBase(banco, { totalDeDias: 2, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 2)
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTudoNoBanco(banco)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
+
+    const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
+    const dono = base.colaboradores.find((pessoa) => pessoa.id === atribuicao.colaboradorId)!
+
+    await expect(
+      devolver(banco, { itemId: atribuicao.itemId, justificativa: 'x' }, dono.ator),
+    ).rejects.toThrow(/justificativa/i)
+
+    await devolver(
+      banco,
+      { itemId: atribuicao.itemId, justificativa: 'Não é da minha alçada.' },
+      dono.ator,
+    )
+
+    const item = await banco.item.findUniqueOrThrow({ where: { id: atribuicao.itemId } })
+    expect(item.status).toBe('devolvido')
+
+    // Sem dono: é isso que significa "voltar ao pool".
+    expect(await banco.atribuicao.count({ where: { itemId: item.id, ativa: true } })).toBe(0)
+
+    // A atribuição encerrada guarda o motivo e a justificativa.
+    const encerrada = await banco.atribuicao.findFirstOrThrow({
+      where: { itemId: item.id, ativa: null },
+    })
+    expect(encerrada.motivo).toBe('devolucao')
+    expect(encerrada.justificativa).toContain('alçada')
+
+    // E o item volta a ser distribuído — o ponto todo da devolução.
+    await confirmar(banco, { data: datas[1]!, categorias: [] }, base.operador)
+    const depois = await banco.item.findUniqueOrThrow({ where: { id: atribuicao.itemId } })
+    expect(depois.status).toBe('distribuido')
+    expect(await banco.atribuicao.count({ where: { itemId: item.id, ativa: true } })).toBe(1)
+  })
+
+  it('colaborador não devolve item de um colega', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTudoNoBanco(banco)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
+
+    const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
+    const outro = base.colaboradores.find((pessoa) => pessoa.id !== atribuicao.colaboradorId)!
+
+    await expect(
+      devolver(banco, { itemId: atribuicao.itemId, justificativa: 'Quero soltar este.' }, outro.ator),
+    ).rejects.toThrow(/não pode executar/i)
+  })
+})
+
+describe('vigência de habilitação', () => {
+  it('a habilitação vale até o último dia, e não vale no dia seguinte', async () => {
+    const base = await semearBase(banco, { totalDeDias: 3, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 3)
+    const ultimoDia = datas[1]!
+
+    // Nenhum teste criava habilitação com fim: a fronteira estava escrita mas
+    // nunca exercitada. Trocar `gte` por `gt` passaria despercebido.
+    const saindo = base.colaboradores[0]!
+    await banco.habilitacao.updateMany({
+      where: { colaboradorId: saindo.id },
+      data: { vigenciaFim: fimDoDia(ultimoDia) },
+    })
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTudoNoBanco(banco)
+
+    const noUltimoDia = await previa(banco, { data: ultimoDia, categorias: [] }, base.operador)
+    const elegiveisNoUltimoDia = noUltimoDia.planos.flatMap(
+      (plano) => plano.resultado?.ordemDesempate ?? [],
+    )
+    expect(elegiveisNoUltimoDia).toContain(saindo.id)
+
+    const depois = await previa(banco, { data: datas[2]!, categorias: [] }, base.operador)
+    const elegiveisDepois = depois.planos.flatMap((plano) => plano.resultado?.ordemDesempate ?? [])
+    expect(elegiveisDepois).not.toContain(saindo.id)
+  })
+
+  it('colaborador desativado sai do rateio mas mantém o histórico', async () => {
+    const base = await semearBase(banco, { totalDeDias: 2, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 2)
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTudoNoBanco(banco)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
+
+    const saindo = base.colaboradores[0]!
+    const atribuidosAntes = await banco.atribuicao.count({
+      where: { colaboradorId: saindo.id, ativa: true },
+    })
+    expect(atribuidosAntes).toBeGreaterThan(0)
+
+    await banco.colaborador.update({ where: { id: saindo.id }, data: { ativo: false } })
+
+    const depois = await previa(banco, { data: datas[1]!, categorias: [] }, base.operador)
+    const elegiveis = depois.planos.flatMap((plano) => plano.resultado?.ordemDesempate ?? [])
+    expect(elegiveis).not.toContain(saindo.id)
+
+    // Nada foi apagado: o que ele já tinha continua atribuído a ele.
+    expect(await banco.atribuicao.count({ where: { colaboradorId: saindo.id, ativa: true } })).toBe(
+      atribuidosAntes,
+    )
+  })
+})
+
+describe('conservação detecta divergência de verdade', () => {
+  it('uma rodada com contagem adulterada é reportada', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTudoNoBanco(banco)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
+
+    expect((await conferirConservacao(banco, { desde: DATA_BASE })).divergentes).toEqual([])
+
+    // Corrompe deliberadamente: sem este teste, inverter o `!==` do filtro
+    // faria a verificação parar de detectar QUALQUER coisa em silêncio — e o
+    // critério de aceitação nº 1 do projeto viraria decoração.
+    const rodada = await banco.rodadaDistribuicao.findFirstOrThrow()
+    await banco.rodadaDistribuicao.update({
+      where: { id: rodada.id },
+      data: { quantidadeEntrada: rodada.quantidadeEntrada + 5 },
+    })
+
+    const conferencia = await conferirConservacao(banco, { desde: DATA_BASE })
+    expect(conferencia.divergentes).toHaveLength(1)
+    expect(conferencia.divergentes[0]!.rodadaId).toBe(rodada.id)
+  })
+})
+
+describe('item de origem manual, sem e-mail', () => {
+  it('entra na distribuição como qualquer outro', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+    const categoria = await banco.categoria.findFirstOrThrow({ where: { codigo: 'LIGA' } })
+
+    const manual = await banco.item.create({
+      data: {
+        categoriaId: categoria.id,
+        titulo: 'Pedido registrado por telefone',
+        status: 'aprovado',
+        confianca: 1,
+      },
+    })
+
+    await confirmar(banco, { data: datas[0]!, categorias: ['LIGA'] }, base.operador)
+
+    const depois = await banco.item.findUniqueOrThrow({ where: { id: manual.id } })
+    expect(depois.status).toBe('distribuido')
+  })
+})
+
+describe('categoria fora do rateio', () => {
+  it('itens de INADIMP nunca são distribuídos, e isso não é perda', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+    const categoria = await banco.categoria.findFirstOrThrow({ where: { codigo: 'INADIMP' } })
+
+    const item = await banco.item.create({
+      data: {
+        categoriaId: categoria.id,
+        titulo: 'Associado inadimplente',
+        status: 'aprovado',
+        confianca: 1,
+      },
+    })
+
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
+
+    // Continua aprovado: sai do rateio automático, mas não some.
+    const depois = await banco.item.findUniqueOrThrow({ where: { id: item.id } })
+    expect(depois.status).toBe('aprovado')
+    expect(await banco.atribuicao.count({ where: { itemId: item.id } })).toBe(0)
+  })
+})
+
 describe('auditoria da rodada', () => {
   it('grava o snapshot completo dos elegíveis, não só quem venceu', async () => {
     const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 3 })
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
     await sincronizar(deps(datas), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
     await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
 
     const rodada = await banco.rodadaDistribuicao.findFirstOrThrow({
@@ -418,7 +642,7 @@ describe('auditoria da rodada', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
     await sincronizar(deps(datas), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
     await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
 
     const rodada = await banco.rodadaDistribuicao.findFirstOrThrow()
@@ -433,7 +657,7 @@ describe('painel derivado', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 2)
 
     await sincronizar(deps(datas), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
     for (const data of datas) {
       await confirmar(banco, { data, categorias: [] }, base.operador)
     }
@@ -457,7 +681,7 @@ describe('painel derivado', () => {
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
     await sincronizar(deps(datas), base.operador)
-    await aprovarTodosPendentes(banco, base.operador)
+    await aprovarTudoNoBanco(banco)
 
     const pedido = { data: datas[0]!, categorias: [] }
     const antes = await previa(banco, pedido, base.operador)

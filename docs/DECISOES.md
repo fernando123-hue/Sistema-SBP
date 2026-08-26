@@ -228,6 +228,74 @@ Tornar o repositório público para ganhar esses recursos seria expor dados de p
 
 ---
 
+## H. Auditoria completa — 26/08/2026
+
+Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segurança, banco de dados, performance, qualidade de código, testes, regras de negócio e telas. O que segue é o resultado consolidado.
+
+### H.1 Corrigido nesta auditoria
+
+| # | Achado | Gravidade | Correção |
+|---|---|---|---|
+| H-01 | **Fuso horário.** A chave temporal do sistema era UTC (`toISOString`). Com a operação em Brasília (UTC−3), a partir das 21h `hojeIso()` devolvia amanhã: a tela abria na data errada, a ingestão datava itens de amanhã, e um e-mail das 22h caía fora do corte do próprio dia em que chegou | 🔴 | `FUSO_HORARIO` + `inicioDoDia`/`fimDoDia` em `core/util/datas.ts`. Todas as fronteiras de dia passaram a ser locais |
+| H-02 | **Conservação com falso positivo.** `conferirConservacao` contava atribuições encerradas. Como transferir cria a nova sem apagar a anterior — de propósito, para o histórico ser imutável — qualquer transferência marcava a rodada como divergente | 🔴 | Conta só `ativa: true` |
+| H-03 | **Pendência negativa.** `pendentes = atribuidos − concluidos` misturava atribuições ativas agora com execuções desde sempre. Transferir um item já concluído produzia pendência negativa — o defeito `E.9` da planilha reconstruído | 🔴 | Pendente é **contado**, não subtraído |
+| H-04 | **A IA decidia quantidade sem revisão.** `RF-04` e `AT-06` prometem que o desdobramento de 1 e-mail em N itens é revisável. Na prática, item de lista sempre tinha nome preenchido → confiança acima do limiar → entrava aprovado. Uma assinatura numerada no rodapé viraria 3 unidades de carga | 🔴 | Motivo `desdobramento`: `itens.length > 1` sempre vai para revisão humana |
+| H-05 | **Aprovar revisão apagava os campos extraídos.** O serviço gravava `{ campos: dados.campos }` por cima; a tela envia vazio quando o operador não mexe. O item ficava com menos informação do que antes de ser revisado, e o dataset de melhoria nascia vazio | 🔴 | Mescla com o payload anterior via `PayloadDoItemSchema` |
+| H-06 | **Concorrência na distribuição.** Duas confirmações do mesmo dia liam o crédito global uma da outra ainda não gravado e decidiam o desempate com dado obsoleto. Sem erro, sem exceção — só rateio injusto | 🔴 | `TravaDeDistribuicao`: uma linha por dia, `update` dentro da transação. Portável entre SQLite e PostgreSQL |
+| H-07 | **Vazamento em erro 500.** Havia um ramo especial que devolvia a mensagem de `ErroDominio` ao cliente. `ConservacaoVioladaError` carrega a alocação inteira — o id de cada colega da rodada. O caso mais grave era o mais falante | 🔴 | Todo erro 500 devolve mensagem genérica + id de correlação. Sem exceção |
+| H-08 | **Limite de taxa global no login.** A chave era a string fixa `'sessao:entrar'`, compartilhada por todos. 21 requisições de qualquer pessoa, sem autenticação, travavam a entrada da equipe inteira | 🔴 | Chave por origem (`x-forwarded-for`) |
+| H-09 | **Erro de negócio virava 500 genérico.** `fila.ts` e `revisao.ts` lançavam `Error` puro, que a camada HTTP trata como falha do servidor. O usuário via "Erro interno" em vez de "Só o responsável ativo pode concluir", e cada erro de uso poluía o log como se fosse defeito | 🟠 | Classe `ErroDeNegocio`, mapeada para 422 |
+| H-10 | **Aprovação em massa furava a defesa.** O filtro era `resolvidoEm: null` — sem restrição. Aprovava de uma vez e-mails com prompt injection e anexos rejeitados | 🟠 | Cobre só `baixa_confianca` e `campo_ausente` |
+| H-11 | **`capacidadeRelativa` aceito e ignorado.** O campo atravessava schema, serviço, banco e auditoria — e o motor nunca o lia. Marcar meio período com `0.5` e receber a cota cheia é o defeito `E.4` da planilha reconstruído | 🟠 | Travado em `1` no schema até o motor usá-lo. Falha alto em vez de aceitar em silêncio |
+| H-12 | **`IA_ADAPTER` validado e nunca consultado.** Configurar `"anthropic"` passava na validação, exigia a chave de API, e continuava rodando o mock em silêncio | 🟠 | `adapters/fabrica.ts`. Pedir adapter não implementado falha dizendo o que falta |
+| H-13 | **`cotaJusta` sobrescrita.** Num dia com duas rodadas da mesma categoria, a linha comparava a cota da segunda rodada com o recebido do dia inteiro | 🟠 | Passou a acumular por incremento |
+| H-14 | **`AT-07` documentado e não implementado.** `Item.status` nunca virava `devolvido`; `transferir` com motivo `devolucao` apenas reatribuía a alguém escolhido a dedo | 🟠 | `devolver()` devolve ao pool sem dono; o item volta na próxima rodada |
+| H-15 | **`redigir()` rasa e `EventoProcessamento.detalhe` sem redação** | 🟠 | Redação recursiva, aplicada também ao `detalhe` |
+| H-16 | **Contraste ilegível no tema escuro.** O botão `principal` usava `text-white` fixo; com o acento claro do tema escuro media **2,43:1**. É o botão de Confirmar, Concluir e Aprovar — o mais apertado do sistema | 🔴 | Token `--color-sobre-acento`. Tons `atencao`, `ok` e `alerta` também recalibrados |
+| H-17 | **`/api/rodadas/[id]` sem checagem de papel.** Qualquer colaborador autenticado lia o crédito e o volume recebido de todos os colegas | 🟠 | `exigirPapel(operador, gestor)` |
+| H-18 | **Vazamento de memória latente** no limitador de taxa: `limparJanelasExpiradas` existia sem nenhum chamador | 🟡 | Limpeza oportunista ao passar de 1000 chaves |
+| H-19 | **`conferirConservacao` sem recorte temporal** — crescia com o tempo de vida do sistema e rodava a cada carga do painel | 🟡 | Janela de 90 dias por padrão |
+| H-20 | **`criarItens` buscava a mesma categoria por item** — um e-mail com 30 ligantes fazia 30 buscas idênticas dentro da transação | 🟡 | Uma consulta por lote |
+| H-21 | **`onDelete` perigoso.** `Item.emailId` era `SetNull` (um expurgo futuro apagaria a origem e confundiria com item manual); `SaldoCarga`/`SaldoCargaGlobal` eram `Cascade` sobre `Colaborador` (apagar uma pessoa levaria junto a prova de quanto ela recebeu) | 🟠 | Ambos para `Restrict` |
+| H-22 | **Layout acessava Prisma direto** e repetia a consulta que `atorAtual` já fazia | 🟡 | `perfilAtual()` — uma consulta, pela camada de sessão |
+| H-23 | **Cabeçalhos de segurança incompletos** | 🟡 | CSP e HSTS adicionados |
+| H-24 | **Regex de injeção contornável por paráfrase** | 🟠 | Três padrões novos; política explícita de preferir falso positivo |
+
+**Testes: 70 → 96.** Toda correção acima que muda comportamento tem teste. Novos arquivos: `src/servidor/sessao.test.ts` (assinatura HMAC, adulteração, expiração, papéis, limite de taxa). Novos cenários no pipeline: devolução ao pool, vigência de habilitação, colaborador desativado, item de origem manual, categoria fora do rateio, detecção real de divergência de conservação, retenção do desdobramento.
+
+### H.2 Registrado como dívida — *antes da próxima etapa*
+
+| # | Item | Por que não agora |
+|---|---|---|
+| H-D1 | Tela de Revisão não deixa ajustar o N do desdobramento nem editar campos | A retenção já está no lugar (H-04); falta o controle na tela. **É o próximo passo natural** |
+| H-D2 | `RegraDistribuicao` modelado e nunca lido — `RF-32` (configuração sem deploy) não existe | Os defaults estão corretos; o caminho de escrita é trabalho próprio |
+| H-D3 | Taxa de acerto da IA não é calculada em lugar nenhum — critério de aceitação nº 5 não é mensurável | Depende de H-D1 para ter dado de qualidade |
+| H-D4 | `INADIMP`/`ISENTO` sem caminho de criação manual (`POST /api/itens`) | Categorias semeadas mas inalcançáveis hoje |
+| H-D5 | Painel sem recorte de data (`?de=&ate=` da Spec) e com definição própria de "pendente" | Vai divergir da planilha na rodada paralela |
+| H-D6 | Escopo do livro-razão global antes de a frente `TÍTULOS` entrar | Acrescentar escopo a um razão já acumulado exige recomputar histórico |
+| H-D7 | Contratos de API duplicados à mão nas telas — já divergiram (`emAndamento` sumiu; `Date` vs. string) | O legado vai consumir sem esquema contra o qual programar |
+| H-D8 | N+1 em `carregarElegiveis` e `painel.porPessoa` | Irrelevante com 4–7 pessoas; vira problema com equipe grande ou PostgreSQL remoto |
+| H-D9 | Rodada com `Q = 0` não é registrada, contrariando a Spec | Responderia "por que não houve distribuição de LIGA no dia 12?" |
+| H-D10 | Rodada compensatória (correção de lançamento) não existe como conceito | Acrescentar a coluna depois exige backfill |
+| H-D11 | `duplicata_suspeita` no enum e na tela, nunca produzido | `RF-07` não implementado |
+| H-D12 | Sem versionamento de caminho na API (`/v1/`) | Barato agora, caro depois de o legado plugar |
+| H-D13 | Ao migrar para PostgreSQL: `CHECK` nos domínios fechados, `jsonb` nas colunas JSON, isolamento de transação, runbook de migração de dados | O momento certo é a migração, com a tabela pequena |
+
+### H.3 Adequado como está
+
+Motor puro e sua cobertura de testes · `Ator` como tipo marcado · snapshot completo da rodada · dupla trava de conservação · `@@unique([itemId, ativa])` · ingestão idempotente · `String` + Zod em vez de enum nativo · organização de `src/servidor/` · ausência de virtualização nas listas · `groupBy` do painel · singleton do Prisma.
+
+### H.4 Precisa de decisão do dono do negócio
+
+Nenhuma resposta foi inventada. As quatro estão em `ESTADO.md`:
+
+1. **Dono único** — categoria com dono fixo é *sempre a mesma pessoa*, ou apenas lote não fragmentado? Hoje o código entrega 100% a quem estiver mais credor, o que é rodízio, não dono fixo.
+2. **Etapa 6 da operação** — o colaborador trabalha pela tela ou continua pela pasta de e-mail? Define se o `IngestaoPort` precisa escrever na caixa. Sem isso, a equipe fica com duas filas na rodada paralela.
+3. **Itens mais antigos** — vão para quem está mais credor, ou são espalhados? Tem consequência de prazo.
+4. **"Período" do desempate** — hoje é o mês corrente, o que reintroduz a fronteira mensal que `RN-11` manda eliminar. Janela deslizante?
+
+---
+
 ## F. Riscos registrados
 
 - **LGPD** — dados de associados e estudantes. Retenção, controle de acesso, log. Fora do escopo da V1, obrigatório antes de dado real.

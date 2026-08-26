@@ -1,4 +1,8 @@
+import { deslocarDias, hojeIso } from '../core/util/datas'
 import type { Banco } from '../servidor/prisma'
+
+/** Janela padrão da conferência de conservação exibida no painel. */
+export const JANELA_PADRAO_DE_DIAS = 90
 
 /**
  * Painel.
@@ -78,10 +82,24 @@ export async function porPessoa(banco: Banco): Promise<LinhaPorPessoa[]> {
   const linhas: LinhaPorPessoa[] = []
 
   for (const colaborador of colaboradores) {
-    const [atribuidos, concluidos, saldo] = await Promise.all([
+    const [atribuidos, concluidos, pendentes, saldo] = await Promise.all([
       banco.atribuicao.count({ where: { colaboradorId: colaborador.id, ativa: true } }),
       banco.execucao.count({
         where: { colaboradorId: colaborador.id, resultado: 'concluido' },
+      }),
+      // Pendente é CONTADO, não subtraído.
+      //
+      // Era `atribuidos - concluidos`, misturando dois universos: atribuições
+      // ativas AGORA menos execuções DESDE SEMPRE. Bastava transferir um item
+      // já concluído para a pessoa ficar com pendência negativa — que é
+      // exatamente o defeito E.9 da planilha ("Realizado maior que o recebido,
+      // fisicamente impossível") reconstruído dentro do substituto.
+      banco.atribuicao.count({
+        where: {
+          colaboradorId: colaborador.id,
+          ativa: true,
+          item: { status: { in: ['distribuido', 'em_andamento'] } },
+        },
       }),
       banco.saldoCargaGlobal.findFirst({
         where: { colaboradorId: colaborador.id },
@@ -95,7 +113,7 @@ export async function porPessoa(banco: Banco): Promise<LinhaPorPessoa[]> {
       nome: colaborador.nome,
       atribuidos,
       concluidos,
-      pendentes: atribuidos - concluidos,
+      pendentes,
       creditoGlobal: saldo?.creditoGlobal ?? 0,
     })
   }
@@ -112,9 +130,31 @@ export async function porPessoa(banco: Banco): Promise<LinhaPorPessoa[]> {
  */
 export async function conferirConservacao(
   banco: Banco,
-): Promise<{ rodadas: number; divergentes: { rodadaId: string; entrada: number; gravado: number }[] }> {
+  opcoes: { desde?: string } = {},
+): Promise<{
+  rodadas: number
+  desde: string
+  divergentes: { rodadaId: string; entrada: number; gravado: number }[]
+}> {
+  // Recorte temporal obrigatório. Sem ele, a query cresce com o TEMPO DE VIDA
+  // do sistema — e roda a cada carregamento do painel, que é a tela mais
+  // visitada. Nenhuma tela deve precisar ler a tabela inteira desde a fundação
+  // para responder "está tudo certo?". Conferência histórica completa é
+  // relatório sob demanda, não parte do carregamento síncrono.
+  const desde = opcoes.desde ?? deslocarDias(hojeIso(), -JANELA_PADRAO_DE_DIAS)
+
   const rodadas = await banco.rodadaDistribuicao.findMany({
-    select: { id: true, quantidadeEntrada: true, _count: { select: { atribuicoes: true } } },
+    where: { data: { gte: desde } },
+    select: {
+      id: true,
+      quantidadeEntrada: true,
+      // SÓ as atribuições ATIVAS. Contando todas, uma transferência — que cria
+      // a nova sem apagar a anterior, de propósito, para o histórico ficar
+      // imutável — somava +1 e marcava a rodada como divergente. O indicador
+      // que prova o valor do sistema acusava erro justamente quando o sistema
+      // funcionava como projetado.
+      _count: { select: { atribuicoes: { where: { ativa: true } } } },
+    },
   })
 
   const divergentes = rodadas
@@ -125,5 +165,5 @@ export async function conferirConservacao(
       gravado: rodada._count.atribuicoes,
     }))
 
-  return { rodadas: rodadas.length, divergentes }
+  return { rodadas: rodadas.length, desde, divergentes }
 }

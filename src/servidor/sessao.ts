@@ -94,8 +94,20 @@ export const OPCOES_DO_COOKIE = {
   maxAge: VALIDADE_SEGUNDOS,
 } as const
 
-/** Ator da requisição atual, ou `null` quando não há sessão válida. */
-export async function atorAtual(): Promise<Ator | null> {
+export interface PerfilAtual {
+  ator: Ator
+  nome: string
+  papel: Papel
+}
+
+/**
+ * Perfil completo da requisição atual.
+ *
+ * Uma única consulta traz identidade E nome. Antes, o layout raiz consultava
+ * `colaborador` por conta própria — pulando a camada de serviço e repetindo a
+ * mesma leitura que `atorAtual` já fazia, duas vezes por navegação.
+ */
+export async function perfilAtual(): Promise<PerfilAtual | null> {
   const armazem = await cookies()
   const conteudo = lerCookie(armazem.get(NOME_DO_COOKIE)?.value)
   if (!conteudo) return null
@@ -104,11 +116,21 @@ export async function atorAtual(): Promise<Ator | null> {
   // efeito imediato, sem esperar o cookie expirar.
   const colaborador = await obterPrisma().colaborador.findUnique({
     where: { id: conteudo.colaboradorId },
-    select: { id: true, papel: true, ativo: true },
+    select: { id: true, nome: true, papel: true, ativo: true },
   })
   if (!colaborador?.ativo) return null
 
-  return atorDaSessao({ colaboradorId: colaborador.id, papel: colaborador.papel })
+  const papel = PapelSchema.parse(colaborador.papel)
+  return {
+    ator: atorDaSessao({ colaboradorId: colaborador.id, papel }),
+    nome: colaborador.nome,
+    papel,
+  }
+}
+
+/** Ator da requisição atual, ou `null` quando não há sessão válida. */
+export async function atorAtual(): Promise<Ator | null> {
+  return (await perfilAtual())?.ator ?? null
 }
 
 export class SemSessaoError extends Error {

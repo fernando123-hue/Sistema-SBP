@@ -154,7 +154,11 @@ model Item {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  email       Email?       @relation(fields: [emailId], references: [id], onDelete: SetNull)
+  /// `Restrict`, não `SetNull`: com `SetNull`, um expurgo futuro de e-mails
+  /// antigos apagaria o vínculo e o item perderia remetente e assunto. Pior,
+  /// `emailId = null` já significa "origem manual" no filtro de
+  /// `planejarCategoria` — as duas situações ficariam indistinguíveis.
+  email       Email?       @relation(fields: [emailId], references: [id], onDelete: Restrict)
   categoria   Categoria    @relation(fields: [categoriaId], references: [id])
   liga        Liga?        @relation(fields: [ligaId], references: [id], onDelete: SetNull)
   atribuicoes Atribuicao[]
@@ -169,6 +173,24 @@ model Item {
 // ─────────────────────────────────────────────────────────────
 // Distribuição
 // ─────────────────────────────────────────────────────────────
+
+/// Serializa as distribuições de um mesmo dia.
+///
+/// Sem isto, duas chamadas concorrentes de `confirmar` para categorias
+/// diferentes do mesmo dia leem o crédito global uma da outra ainda não
+/// gravado, e decidem o desempate com dado obsoleto. A soma persistida
+/// continua correta (o crédito é somado por incremento), mas o RATEIO fica
+/// injusto — a mesma pessoa pode ser favorecida duas vezes. Erro silencioso,
+/// sem exceção, exatamente o tipo que este sistema existe para eliminar.
+///
+/// O `update` desta linha dentro da transação toma lock de linha no PostgreSQL
+/// e serializa a escrita no SQLite. Portável, uma linha por dia.
+model TravaDeDistribuicao {
+  data         String   @id
+  /// Quantas vezes o dia foi distribuído. Útil por si só na auditoria.
+  execucoes    Int      @default(0)
+  atualizadoEm DateTime @updatedAt
+}
 
 /// Snapshot imutável de uma decisão do motor. Auditoria completa por construção.
 model RodadaDistribuicao {
@@ -255,8 +277,12 @@ model SaldoCarga {
   cotaJusta        Float  @default(0)
   creditoAcumulado Float  @default(0)
 
-  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
-  categoria   Categoria   @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+  /// `Restrict` nos dois lados: o livro-razão de crédito é histórico de
+  /// auditoria. Apagar um colaborador não pode apagar em cascata a prova de
+  /// quanto ele recebeu em rodadas passadas. O sistema desativa pessoas
+  /// (`Colaborador.ativo`), nunca as remove.
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Restrict)
+  categoria   Categoria   @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
 
   @@unique([colaboradorId, categoriaId, data])
   @@index([categoriaId, data])
@@ -269,7 +295,7 @@ model SaldoCargaGlobal {
   recebidoPonderado  Float  @default(0)
   creditoGlobal      Float  @default(0)
 
-  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Restrict)
 
   @@unique([colaboradorId, data])
 }

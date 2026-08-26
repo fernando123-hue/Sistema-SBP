@@ -23,13 +23,23 @@
   --color-acento: oklch(0.48 0.11 235);
   --color-acento-claro: oklch(0.94 0.03 235);
   --color-acento-escuro: oklch(0.38 0.1 235);
+  /*
+    Cor do TEXTO sobre o acento.
+    Existe porque o botão principal usava `text-white` fixo: no tema escuro o
+    acento clareia e o branco sobre ele media 2,43:1 — muito abaixo do mínimo
+    de 4,5:1. Era o botão mais apertado do sistema (Confirmar, Concluir,
+    Aprovar) e ficava quase ilegível à noite, justo no celular.
+  */
+  --color-sobre-acento: oklch(0.99 0.005 235);
 
   /* Semânticas. Cada uma tem um sentido só, em todo o sistema. */
-  --color-ok: oklch(0.55 0.13 155);
+  --color-ok: oklch(0.45 0.12 155);
   --color-ok-claro: oklch(0.95 0.04 155);
-  --color-atencao: oklch(0.68 0.14 75);
+  /* Escurecido de 0.68 para 0.5: sobre o fundo claro media 2,57:1 — a cor
+     feita para chamar atenção era a menos legível do sistema. */
+  --color-atencao: oklch(0.5 0.12 75);
   --color-atencao-claro: oklch(0.96 0.05 75);
-  --color-alerta: oklch(0.55 0.19 25);
+  --color-alerta: oklch(0.5 0.19 25);
   --color-alerta-claro: oklch(0.95 0.04 25);
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -41,8 +51,8 @@
 @media (prefers-color-scheme: dark) {
   @theme {
     --color-tinta: oklch(0.95 0.005 250);
-    --color-tinta-suave: oklch(0.75 0.015 250);
-    --color-tinta-fraca: oklch(0.58 0.015 250);
+    --color-tinta-suave: oklch(0.78 0.015 250);
+    --color-tinta-fraca: oklch(0.68 0.015 250);
 
     --color-papel: oklch(0.22 0.012 250);
     --color-papel-fundo: oklch(0.17 0.012 250);
@@ -52,12 +62,14 @@
     --color-acento: oklch(0.72 0.11 235);
     --color-acento-claro: oklch(0.3 0.05 235);
     --color-acento-escuro: oklch(0.82 0.1 235);
+    /* No escuro o acento é claro, então o texto sobre ele tem de ser escuro. */
+    --color-sobre-acento: oklch(0.18 0.02 250);
 
-    --color-ok: oklch(0.72 0.13 155);
+    --color-ok: oklch(0.78 0.13 155);
     --color-ok-claro: oklch(0.28 0.05 155);
-    --color-atencao: oklch(0.8 0.13 75);
+    --color-atencao: oklch(0.85 0.13 75);
     --color-atencao-claro: oklch(0.3 0.05 75);
-    --color-alerta: oklch(0.7 0.16 25);
+    --color-alerta: oklch(0.78 0.16 25);
     --color-alerta-claro: oklch(0.3 0.06 25);
   }
 }

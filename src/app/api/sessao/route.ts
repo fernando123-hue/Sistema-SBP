@@ -2,7 +2,14 @@ import { cookies } from 'next/headers'
 import { z } from 'zod'
 
 import { atorAtual, montarCookie, OPCOES_DO_COOKIE } from '../../../servidor/sessao'
-import { corpoJson, limitar, responder, responderErro, rota } from '../../../servidor/http'
+import {
+  corpoJson,
+  limitar,
+  origemDaRequisicao,
+  responder,
+  responderErro,
+  rota,
+} from '../../../servidor/http'
 import { obterPrisma } from '../../../servidor/prisma'
 import { PapelSchema } from '../../../core/esquemas'
 
@@ -35,7 +42,10 @@ export async function GET(): Promise<Response> {
 
 export async function POST(requisicao: Request): Promise<Response> {
   return rota(async () => {
-    const recusa = limitar('sessao:entrar', 20, 60)
+    // Chave POR ORIGEM. Uma chave fixa aqui era um DoS trivial: 21 requisições
+    // de qualquer pessoa, sem autenticação, travavam a entrada da equipe
+    // inteira até a janela reiniciar.
+    const recusa = limitar(`sessao:entrar:${origemDaRequisicao(requisicao)}`, 20, 60)
     if (recusa) return recusa
 
     const dados = EntrarSchema.parse(await corpoJson(requisicao))

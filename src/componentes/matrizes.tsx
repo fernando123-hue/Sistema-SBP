@@ -126,7 +126,9 @@ export function SeloDeStatus({ status }: { status: string }) {
 type VarianteDoBotao = 'principal' | 'secundario' | 'discreto' | 'perigo'
 
 const VARIANTES: Record<VarianteDoBotao, string> = {
-  principal: 'bg-acento text-white hover:bg-acento-escuro border-transparent',
+  // `text-sobre-acento`, não `text-white`: no tema escuro o acento clareia e o
+  // branco ficava em 2,43:1 — ilegível justo no botão mais usado do sistema.
+  principal: 'bg-acento text-sobre-acento hover:bg-acento-escuro border-transparent',
   secundario: 'bg-papel text-tinta hover:bg-papel-fundo border-borda-forte',
   discreto: 'bg-transparent text-tinta-suave hover:text-tinta hover:bg-papel-fundo border-transparent',
   perigo: 'bg-papel text-alerta hover:bg-alerta-claro border-alerta/40',

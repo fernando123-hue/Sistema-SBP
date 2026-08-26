@@ -19,6 +19,7 @@ export async function limparTudo(banco: Banco): Promise<void> {
   await banco.atribuicao.deleteMany()
   await banco.revisao.deleteMany()
   await banco.rodadaDistribuicao.deleteMany()
+  await banco.travaDeDistribuicao.deleteMany()
   await banco.item.deleteMany()
   await banco.email.deleteMany()
   await banco.saldoCarga.deleteMany()
@@ -30,6 +31,31 @@ export async function limparTudo(banco: Banco): Promise<void> {
   await banco.colaborador.deleteMany()
   await banco.regraDistribuicao.deleteMany()
   await banco.categoria.deleteMany()
+}
+
+/**
+ * Aprova TODAS as revisões pendentes, direto no banco.
+ *
+ * Só para teste. `aprovarTodosPendentes` do serviço recusa, de propósito,
+ * conteúdo suspeito, anexo rejeitado e desdobramento — e é isso que a maioria
+ * dos cenários precisa pular para chegar na distribuição. Fazer o atalho aqui,
+ * explicitamente, é mais honesto do que afrouxar a regra de produção.
+ */
+export async function aprovarTudoNoBanco(banco: Banco): Promise<number> {
+  const pendentes = await banco.revisao.findMany({
+    where: { resolvidoEm: null },
+    select: { id: true, itemId: true },
+  })
+
+  for (const pendente of pendentes) {
+    await banco.item.update({ where: { id: pendente.itemId }, data: { status: 'aprovado' } })
+    await banco.revisao.update({
+      where: { id: pendente.id },
+      data: { resolvidoEm: new Date() },
+    })
+  }
+
+  return pendentes.length
 }
 
 export interface BaseSemeada {

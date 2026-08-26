@@ -1,3 +1,4 @@
+import { ErroDeNegocio } from '../core/erros'
 import { ehOProprio, exigirPapel, type Ator } from '../servidor/ator'
 import { novaCorrelacao } from '../servidor/observabilidade'
 import type { Banco } from '../servidor/prisma'
@@ -85,9 +86,9 @@ export async function concluir(
       include: { item: true },
     })
 
-    if (!atribuicao) throw new Error(`Item "${entrada.itemId}" não tem responsável ativo.`)
+    if (!atribuicao) throw new ErroDeNegocio(`Item "${entrada.itemId}" não tem responsável ativo.`)
     if (!ehOProprio(ator, atribuicao.colaboradorId)) {
-      throw new Error('Só o responsável ativo pode concluir o item. Use transferência.')
+      throw new ErroDeNegocio('Só o responsável ativo pode concluir o item. Use transferência.')
     }
     if (atribuicao.item.status === 'concluido') return
 
@@ -131,12 +132,11 @@ export async function transferir(
     itemId: string
     paraColaboradorId: string
     justificativa: string
-    motivo?: 'transferencia' | 'devolucao'
   },
   ator: Ator,
 ): Promise<void> {
   if (entrada.justificativa.trim().length < 5) {
-    throw new Error('Transferência exige justificativa.')
+    throw new ErroDeNegocio('Transferência exige justificativa.')
   }
 
   const correlacaoId = novaCorrelacao()
@@ -145,7 +145,7 @@ export async function transferir(
     const atual = await tx.atribuicao.findFirst({
       where: { itemId: entrada.itemId, ativa: true },
     })
-    if (!atual) throw new Error(`Item "${entrada.itemId}" não tem responsável ativo.`)
+    if (!atual) throw new ErroDeNegocio(`Item "${entrada.itemId}" não tem responsável ativo.`)
 
     // Ou você é o dono atual (devolvendo/pedindo ajuda), ou você coordena a
     // operação. Um colaborador não puxa para si o item de um colega.
@@ -167,7 +167,7 @@ export async function transferir(
         itemId: entrada.itemId,
         colaboradorId: entrada.paraColaboradorId,
         rodadaId: atual.rodadaId,
-        motivo: entrada.motivo ?? 'transferencia',
+        motivo: 'transferencia',
         justificativa: entrada.justificativa,
         atribuidoPor: ator.colaboradorId,
         ativa: true,
@@ -177,9 +177,72 @@ export async function transferir(
     await auditar(tx, {
       entidade: 'Atribuicao',
       entidadeId: entrada.itemId,
-      acao: entrada.motivo ?? 'transferencia',
+      acao: 'transferencia',
       antes: { colaboradorId: atual.colaboradorId },
       depois: { colaboradorId: entrada.paraColaboradorId, justificativa: entrada.justificativa },
+      usuario: ator.colaboradorId,
+      correlacaoId,
+    })
+  })
+}
+
+/**
+ * Devolve um item ao pool (AT-07).
+ *
+ * Diferente de `transferir`: aqui o item não vai para uma pessoa escolhida a
+ * dedo — ele volta a não ter dono e entra na PRÓXIMA rodada da categoria, onde
+ * o motor decide de novo com o crédito atualizado. É o caminho para "não é
+ * comigo" e "preciso de ajuda" sem que ninguém escolha quem vai pagar a conta.
+ *
+ * O crédito NÃO é estornado: quem recebeu na rodada continua tendo recebido.
+ * Sem isso, devolver viraria ferramenta de manipular a própria carga.
+ */
+export async function devolver(
+  banco: Banco,
+  entrada: { itemId: string; justificativa: string },
+  ator: Ator,
+): Promise<void> {
+  if (entrada.justificativa.trim().length < 5) {
+    throw new ErroDeNegocio('Devolução exige justificativa.')
+  }
+
+  const correlacaoId = novaCorrelacao()
+
+  await banco.$transaction(async (tx) => {
+    const atual = await tx.atribuicao.findFirst({
+      where: { itemId: entrada.itemId, ativa: true },
+      include: { item: { select: { status: true } } },
+    })
+    if (!atual) throw new ErroDeNegocio(`Item "${entrada.itemId}" não tem responsável ativo.`)
+
+    if (!ehOProprio(ator, atual.colaboradorId)) {
+      exigirPapel(ator, 'devolver item de outra pessoa', 'operador', 'gestor')
+    }
+    if (atual.item.status === 'concluido') {
+      throw new ErroDeNegocio('Item já concluído não pode ser devolvido.')
+    }
+
+    // Encerra a atribuição registrando o motivo e a justificativa. `ativa: null`
+    // libera o índice único e deixa o item sem dono — que é o estado correto de
+    // quem está esperando redistribuição.
+    await tx.atribuicao.update({
+      where: { id: atual.id },
+      data: {
+        ativa: null,
+        encerradoEm: new Date(),
+        motivo: 'devolucao',
+        justificativa: entrada.justificativa,
+      },
+    })
+
+    await tx.item.update({ where: { id: entrada.itemId }, data: { status: 'devolvido' } })
+
+    await auditar(tx, {
+      entidade: 'Item',
+      entidadeId: entrada.itemId,
+      acao: 'devolvido',
+      antes: { status: atual.item.status, colaboradorId: atual.colaboradorId },
+      depois: { status: 'devolvido', justificativa: entrada.justificativa },
       usuario: ator.colaboradorId,
       correlacaoId,
     })

@@ -108,15 +108,20 @@ Toda saída de IA passa por `InterpretacaoSchema` (Zod). Uma resposta que não v
 
 | Documento | Responde |
 |---|---|
+| **[Estado](docs/ESTADO.md)** | **comece por aqui** — o que está pronto, onde parei, próximo passo |
 | [Briefing](docs/01-BRIEFING.md) | por quê — problema medido, objetivos, contexto |
 | [PRD](docs/02-PRD.md) | o quê — requisitos, invariantes, aceitação |
 | [Spec](docs/03-SPEC.md) | como — camadas, dados, motor, API, telas |
-| [Decisões](docs/DECISOES.md) | correções aos documentos de origem, hipóteses, pendências |
+| [Decisões](docs/DECISOES.md) | correções, hipóteses, pendências e a auditoria completa (§ H) |
 
 `DECISOES.md` é a fonte da verdade sobre o que foi **assumido** e o que foi **confirmado**. Nenhuma hipótese vira regra silenciosamente.
 
 ## Estado atual
 
-Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · IA mock determinística · fila de revisão · distribuição transacional com conservação garantida · fila individual · painel derivado · auditoria e observabilidade · **API REST completa** · **5 telas funcionando** · sessão por cookie assinado · limite de taxa nas rotas caras.
+Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · IA mock determinística · fila de revisão · distribuição transacional com conservação garantida · fila individual com devolução ao pool · painel derivado · auditoria e observabilidade · API REST completa · 5 telas funcionando · sessão por cookie assinado · limite de taxa · **auditoria completa com 24 correções aplicadas** (`DECISOES.md § H`).
 
-A seguir: adapter Anthropic real · autenticação com senha (hoje é provisória — ver `DECISOES.md § AT-08`) · exportação para o sistema legado · Storybook das matrizes.
+**96 testes passando.**
+
+A seguir, em ordem: ajuste do desdobramento na tela de Revisão · autenticação com senha (hoje é provisória — `DECISOES.md § AT-08`) · adapter Anthropic real · exportação para o sistema legado.
+
+Retomando o trabalho em outra máquina? Leia [docs/ESTADO.md](docs/ESTADO.md).
