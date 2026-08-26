@@ -212,6 +212,20 @@ Revisão de segurança e de código sobre o commit `b87e230`. Corrigidos ou regi
 | D4 | **Isolamento de transação ao migrar para PostgreSQL** | Hoje a serialização vem do lock de arquivo do SQLite. Com Postgres e múltiplas conexões, revisar o nível de isolamento em `SaldoCarga`/`SaldoCargaGlobal` |
 | D5 | **LGPD: retenção, log de leitura, minimização** | Nenhum model tem TTL; existe log de mutação (`LogAuditoria`) mas não de acesso; `Item.payload` aceita qualquer par chave/valor que a IA extrair. Obrigatório antes de dado real entrar — ver § F |
 
+### Limites do plano do GitHub
+
+O repositório é **privado** porque contém nomes reais da equipe do cliente e a análise dos defeitos internos da operação. Três recursos de segurança do GitHub exigem plano pago em repositório privado e foram recusados pela API:
+
+| Recurso | Erro | Mitigação atual |
+|---|---|---|
+| **Branch protection / rulesets** | `403 Upgrade to GitHub Pro or make this repository public` | Disciplina de branch e PR por convenção. Sem trava do servidor |
+| **Secret scanning + push protection** | `422 Secret scanning is not available for this repository` | `gitleaks` roda como job do CI a cada push e PR |
+| **Code scanning (upload do CodeQL)** | `Code scanning is not enabled for this repository` | Workflow mantido, gatilhos desarmados (`workflow_dispatch`). A análise em si funciona — só o upload é bloqueado |
+
+Tornar o repositório público para ganhar esses recursos seria expor dados de pessoas reais: troca ruim. As opções reais são GitHub Pro, ou o plano Team quando o cliente entrar como organização.
+
+**Ao mudar de plano:** criar o ruleset de `main` (PR obrigatório, CODEOWNERS, checks do CI), ligar secret scanning com push protection, e descomentar os gatilhos em `.github/workflows/codeql.yml`.
+
 ---
 
 ## F. Riscos registrados

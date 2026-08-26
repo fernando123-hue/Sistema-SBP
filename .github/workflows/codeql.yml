@@ -1,13 +1,27 @@
 name: CodeQL
 
+# DESARMADO DE PROPÓSITO — só roda por acionamento manual.
+#
+# A análise funciona (varreu os 35 arquivos TypeScript sem erro), mas o UPLOAD
+# do resultado exige "code scanning", que o GitHub só oferece em repositório
+# público ou com Advanced Security. Neste repositório privado no plano free, o
+# passo final falha sempre — e um workflow eternamente vermelho ensina a equipe
+# a ignorar vermelho, que é pior do que não ter o workflow.
+#
+# PARA REATIVAR quando o repositório for público ou o plano permitir:
+# descomente os gatilhos abaixo. Nada mais precisa mudar.
+#
+# on:
+#   push:
+#     branches: [main]
+#   pull_request:
+#     branches: [main]
+#   schedule:
+#     # Segunda-feira, 06:00 UTC. Pega CVE nova em código que ninguém tocou.
+#     - cron: '0 6 * * 1'
+
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    # Segunda-feira, 06:00 UTC. Pega CVE nova em código que ninguém tocou.
-    - cron: '0 6 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
