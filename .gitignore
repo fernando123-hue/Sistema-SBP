@@ -20,5 +20,9 @@ prisma/*.db
 # Cliente Prisma gerado — reconstruído por `prisma generate`
 src/generated/
 
+# Cache incremental do TypeScript. Artefato de build: muda a cada typecheck e
+# sujava o diff de todo commit.
+*.tsbuildinfo
+
 .DS_Store
 Thumbs.db
