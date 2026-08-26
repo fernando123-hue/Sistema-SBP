@@ -38,9 +38,10 @@ jobs:
       - name: Gerar cliente Prisma
         run: npx prisma generate
 
+      # Pega o caso clássico: alguém edita o schema e esquece de gerar a
+      # migração. `--exit-code` devolve 2 quando há diferença, quebrando o build.
       - name: Verificar que o schema e as migrações estão em sincronia
-        run: npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --exit-code
-        continue-on-error: false
+        run: npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --exit-code
 
       - name: Typecheck
         run: npm run typecheck
