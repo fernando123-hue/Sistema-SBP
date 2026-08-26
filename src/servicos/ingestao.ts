@@ -10,6 +10,7 @@ import { validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
 import { paraDataIso } from '../core/util/datas'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
+import { ATOR_SISTEMA, exigirPapel, type Ator } from '../servidor/ator'
 import type { Banco, Transacao } from '../servidor/prisma'
 import {
   mensagemDoErro,
@@ -48,8 +49,10 @@ export interface ResumoIngestao {
 
 export async function sincronizar(
   deps: DependenciasIngestao,
-  usuario = 'sistema',
+  ator: Ator = ATOR_SISTEMA,
 ): Promise<ResumoIngestao> {
+  exigirPapel(ator, 'sincronizar ingestão', 'operador', 'gestor')
+  const usuario = ator.colaboradorId
   const correlacaoId = novaCorrelacao()
   const inicio = Date.now()
 
@@ -90,12 +93,29 @@ export async function sincronizar(
       }
 
       const resultado = await processarUm(deps, email, correlacaoId, usuario)
+
+      // A checagem de existência acima é só economia de chamada de IA. Duas
+      // sincronizações concorrentes podem passar por ela antes de qualquer uma
+      // gravar; quem chega depois descobre dentro da transação e conta como
+      // duplicado — não como falha.
+      if (resultado === null) {
+        resumo.duplicados += 1
+        continue
+      }
+
       resumo.novos += 1
       resumo.itensCriados += resultado.criados
       resumo.itensAprovados += resultado.aprovados
       resumo.itensParaRevisao += resultado.paraRevisao
       resumo.anexosRejeitados += resultado.anexosRejeitados
     } catch (erro) {
+      // Violação de unicidade é corrida perdida, não defeito: o outro processo
+      // já gravou o mesmo e-mail. Contar como falha produziria alerta enganoso.
+      if (ehViolacaoDeUnicidade(erro)) {
+        resumo.duplicados += 1
+        continue
+      }
+
       resumo.falhas += 1
       registrarLog('erro', 'falha ao processar e-mail', {
         correlacaoId,
@@ -133,12 +153,23 @@ interface ResultadoDeUm {
   anexosRejeitados: number
 }
 
+/** `P2002` é o código do Prisma para violação de constraint única. */
+function ehViolacaoDeUnicidade(erro: unknown): boolean {
+  return (
+    typeof erro === 'object' &&
+    erro !== null &&
+    'code' in erro &&
+    (erro as { code?: unknown }).code === 'P2002'
+  )
+}
+
+/** Devolve `null` quando o e-mail já havia sido processado por outra execução. */
 async function processarUm(
   deps: DependenciasIngestao,
   email: EmailBruto,
   correlacaoId: string,
   usuario: string,
-): Promise<ResultadoDeUm> {
+): Promise<ResultadoDeUm | null> {
   // A interpretação roda FORA da transação: chamada de modelo é lenta e não
   // deve segurar lock de banco. Se falhar, nada foi gravado.
   const interpretacao = await deps.ia.interpretar(email)
@@ -150,6 +181,14 @@ async function processarUm(
   const anexosRejeitados = anexosAvaliados.filter((anexo) => !anexo.veredicto.aceito).length
 
   return deps.banco.$transaction(async (tx) => {
+    // Segunda checagem, agora DENTRO da transação: fecha a janela entre a
+    // verificação de existência e a gravação.
+    const jaProcessado = await tx.email.findUnique({
+      where: { messageId: email.messageId },
+      select: { processadoEm: true },
+    })
+    if (jaProcessado?.processadoEm) return null
+
     const registro = await tx.email.upsert({
       where: { messageId: email.messageId },
       create: {

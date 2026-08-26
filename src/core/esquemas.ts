@@ -154,11 +154,19 @@ export const EscalaEntradaSchema = z.object({
   observacao: z.string().max(500).nullable().default(null),
 })
 
+/**
+ * NENHUM esquema de entrada carrega "quem fez".
+ *
+ * A identidade do autor vem de `Ator`, resolvido da sessão autenticada, nunca
+ * do corpo da requisição. Se `executadoPor` ou `resolvidoPor` estivessem aqui,
+ * uma rota HTTP poderia repassar o valor enviado pelo cliente direto para o
+ * `LogAuditoria` — e a trilha que deveria provar "quem fez o quê" viraria
+ * campo livre preenchido por quem chamou.
+ */
 export const PedidoDistribuicaoSchema = z.object({
   data: DataIsoSchema,
   /** Vazio = todas as categorias com itens aprovados no dia. */
   categorias: z.array(CategoriaCodigoSchema).default([]),
-  executadoPor: z.string().min(1),
 })
 export type PedidoDistribuicao = z.infer<typeof PedidoDistribuicaoSchema>
 
@@ -168,7 +176,6 @@ export const ResolucaoRevisaoSchema = z.object({
   titulo: z.string().min(1).max(300),
   campos: z.record(z.string().max(60), z.string().max(2000)).default({}),
   aprovar: z.boolean().default(true),
-  resolvidoPor: z.string().min(1),
 })
 
 // ─── Utilitário de serialização ──────────────────────────────

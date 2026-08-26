@@ -3,6 +3,7 @@ import { serializar, type PedidoDistribuicao } from '../core/esquemas'
 import type { Categoria, Elegivel, ResultadoRodada } from '../core/tipos'
 import { inicioDoMes } from '../core/util/datas'
 import { somar } from '../core/util/numero'
+import { exigirPapel, type Ator } from '../servidor/ator'
 import {
   mensagemDoErro,
   novaCorrelacao,
@@ -19,8 +20,7 @@ import { auditarLote } from './auditoria'
  * acontecem três coisas: carregar o estado, chamar o motor, gravar em transação.
  *
  * `previa` e `confirmar` chamam EXATAMENTE a mesma função de planejamento —
- * o que o operador vê na tela é literalmente o que vai ser gravado. Nenhuma
- * chance de a prévia e a gravação divergirem.
+ * o que o operador vê na tela é literalmente o que vai ser gravado.
  */
 
 export interface PlanoCategoria {
@@ -42,11 +42,65 @@ export interface RelatorioDistribuicao {
 // ─── Planejamento (sem efeito colateral) ─────────────────────
 
 /**
- * Monta o plano do dia sem gravar nada.
+ * Ajuste em memória do crédito global entre categorias da mesma rodada.
+ * Chave: colaboradorId. Valor: delta acumulado pelas categorias já planejadas.
+ */
+export type AjusteDeCredito = Map<string, number>
+
+/**
+ * Planeja UMA categoria.
  *
- * O backlog entra sozinho: a fila é "tudo que está aprovado e ainda não foi
- * distribuído", não "o que chegou hoje". Isso encerra RN-10 e RN-11 — os dois
- * carry-overs que hoje são redigitação manual e quebram em ~10% dos dias.
+ * `ajusteGlobal` carrega o efeito das categorias já planejadas nesta mesma
+ * rodada. Sem ele, a segunda categoria decidiria o desempate com o crédito
+ * global anterior à primeira — e favoreceria a mesma pessoa duas vezes seguidas
+ * quando o critério secundário desempata.
+ */
+export async function planejarCategoria(
+  banco: Banco | Transacao,
+  categoria: Categoria,
+  data: string,
+  ajusteGlobal: AjusteDeCredito = new Map(),
+): Promise<PlanoCategoria | null> {
+  // Corte temporal: a fila do dia é "aprovado E já recebido até o fim deste
+  // dia". O backlog de ontem entra; o e-mail que só chega depois de amanhã,
+  // não. Sem este corte, distribuir a data de hoje varreria o futuro inteiro.
+  const fimDoDia = new Date(`${data}T23:59:59.999Z`)
+
+  const itens = await banco.item.findMany({
+    where: {
+      categoriaId: categoria.id,
+      status: 'aprovado',
+      OR: [
+        { email: { recebidoEm: { lte: fimDoDia } } },
+        { emailId: null, criadoEm: { lte: fimDoDia } },
+      ],
+    },
+    orderBy: [{ criadoEm: 'asc' }, { id: 'asc' }],
+    select: { id: true },
+  })
+
+  if (itens.length === 0) return null
+
+  const elegiveis = await carregarElegiveis(banco, categoria.id, data, ajusteGlobal)
+  const base = { categoria, quantidade: itens.length, itensIds: itens.map((item) => item.id) }
+
+  try {
+    const resultado = distribuir({ data, categoria, quantidade: itens.length, elegiveis })
+    return { ...base, resultado, erro: null }
+  } catch (erro) {
+    // Falha explícita, nunca silenciosa. Sem elegível, o trabalho FICA na fila
+    // — que é o oposto do que a planilha faz quando perde 16 itens de LIGA.
+    return { ...base, resultado: null, erro: mensagemDoErro(erro) }
+  }
+}
+
+/**
+ * Planeja o dia inteiro, simulando a sequência sem gravar nada.
+ *
+ * O efeito de cada categoria sobre o crédito global é acumulado em memória e
+ * repassado à próxima. Assim `previa` e `confirmar` produzem exatamente a mesma
+ * alocação — a promessa de que o operador vê o que será gravado — E o desempate
+ * respeita a ordem sequencial correta.
  */
 export async function planejar(
   banco: Banco | Transacao,
@@ -54,47 +108,19 @@ export async function planejar(
 ): Promise<PlanoCategoria[]> {
   const categorias = await carregarCategorias(banco, pedido.categorias)
   const planos: PlanoCategoria[] = []
-
-  // Corte temporal: a fila do dia é "aprovado E já recebido até o fim deste
-  // dia". O backlog de ontem entra; o e-mail que só chega depois de amanhã,
-  // não. Sem este corte, distribuir a data de hoje varreria o futuro inteiro.
-  const fimDoDia = new Date(`${pedido.data}T23:59:59.999Z`)
+  const ajusteGlobal: AjusteDeCredito = new Map()
 
   for (const categoria of categorias) {
-    const itens = await banco.item.findMany({
-      where: {
-        categoriaId: categoria.id,
-        status: 'aprovado',
-        OR: [
-          { email: { recebidoEm: { lte: fimDoDia } } },
-          { emailId: null, criadoEm: { lte: fimDoDia } },
-        ],
-      },
-      orderBy: [{ criadoEm: 'asc' }, { id: 'asc' }],
-      select: { id: true },
-    })
+    const plano = await planejarCategoria(banco, categoria, pedido.data, ajusteGlobal)
+    if (!plano) continue
+    planos.push(plano)
+    if (!plano.resultado) continue
 
-    if (itens.length === 0) continue
-
-    const elegiveis = await carregarElegiveis(banco, categoria.id, pedido.data)
-    const base = {
-      categoria,
-      quantidade: itens.length,
-      itensIds: itens.map((item) => item.id),
-    }
-
-    try {
-      const resultado = distribuir({
-        data: pedido.data,
-        categoria,
-        quantidade: itens.length,
-        elegiveis,
-      })
-      planos.push({ ...base, resultado, erro: null })
-    } catch (erro) {
-      // Falha explícita, nunca silenciosa. Sem elegível, o trabalho FICA na fila
-      // — que é o oposto do que a planilha faz quando perde 16 itens de LIGA.
-      planos.push({ ...base, resultado: null, erro: mensagemDoErro(erro) })
+    for (const colaboradorId of plano.resultado.ordemDesempate) {
+      const delta =
+        (plano.resultado.creditoGlobalDepois[colaboradorId] ?? 0) -
+        (plano.resultado.creditoGlobalAntes[colaboradorId] ?? 0)
+      ajusteGlobal.set(colaboradorId, (ajusteGlobal.get(colaboradorId) ?? 0) + delta)
     }
   }
 
@@ -104,7 +130,9 @@ export async function planejar(
 export async function previa(
   banco: Banco,
   pedido: PedidoDistribuicao,
+  ator: Ator,
 ): Promise<RelatorioDistribuicao> {
+  exigirPapel(ator, 'ver prévia da distribuição', 'operador', 'gestor')
   const planos = await planejar(banco, pedido)
 
   return {
@@ -121,7 +149,10 @@ export async function previa(
 export async function confirmar(
   banco: Banco,
   pedido: PedidoDistribuicao,
+  ator: Ator,
 ): Promise<RelatorioDistribuicao> {
+  exigirPapel(ator, 'confirmar distribuição', 'operador', 'gestor')
+
   const correlacaoId = novaCorrelacao()
   const inicio = Date.now()
 
@@ -134,14 +165,14 @@ export async function confirmar(
 
   const relatorio = await banco.$transaction(async (tx) => {
     // Replaneja DENTRO da transação: o estado pode ter mudado entre a prévia
-    // que o operador viu e o clique em confirmar.
+    // que o operador viu e o clique em confirmar. Mesma função da prévia.
     const planos = await planejar(tx, pedido)
     let rodadasGravadas = 0
     let totalDistribuido = 0
 
     for (const plano of planos) {
       if (!plano.resultado) continue
-      await gravarRodada(tx, plano, pedido, correlacaoId)
+      await gravarRodada(tx, plano, pedido.data, ator, correlacaoId)
       rodadasGravadas += 1
       totalDistribuido += plano.quantidade
     }
@@ -179,14 +210,15 @@ export async function confirmar(
 async function gravarRodada(
   tx: Transacao,
   plano: PlanoCategoria,
-  pedido: PedidoDistribuicao,
+  data: string,
+  ator: Ator,
   correlacaoId: string,
 ): Promise<void> {
   const resultado = plano.resultado!
 
   const rodada = await tx.rodadaDistribuicao.create({
     data: {
-      data: pedido.data,
+      data,
       categoriaId: plano.categoria.id,
       quantidadeEntrada: resultado.quantidadeEntrada,
       algoritmoVersao: ALGORITMO_VERSAO,
@@ -194,12 +226,14 @@ async function gravarRodada(
       base: resultado.base,
       resto: resultado.resto,
       cotaJusta: resultado.cotaJusta,
-      elegiveis: serializar(resultado.ordemDesempate),
+      // Snapshot COMPLETO dos elegíveis: crédito, recebido no período e no dia
+      // de cada candidato. É o que responde "por que ela levou a sobra?".
+      elegiveis: serializar(resultado.elegiveis),
       ordemDesempate: serializar(resultado.ordemDesempate),
       alocacao: serializar(resultado.alocacao),
       creditoAntes: serializar(resultado.creditoCategoriaAntes),
       creditoDepois: serializar(resultado.creditoCategoriaDepois),
-      executadoPor: pedido.executadoPor,
+      executadoPor: ator.colaboradorId,
       correlacaoId,
     },
   })
@@ -221,7 +255,7 @@ async function gravarRodada(
           colaboradorId,
           rodadaId: rodada.id,
           motivo: 'algoritmo',
-          atribuidoPor: pedido.executadoPor,
+          atribuidoPor: ator.colaboradorId,
           ativa: true,
         },
       })
@@ -232,15 +266,11 @@ async function gravarRodada(
     await atualizarSaldos(tx, {
       colaboradorId,
       categoriaId: plano.categoria.id,
-      data: pedido.data,
+      data,
       recebido: cota,
       pesoCategoria: plano.categoria.peso,
       cotaJusta: resultado.cotaJusta,
       creditoCategoria: resultado.creditoCategoriaDepois[colaboradorId] ?? 0,
-      // O crédito GLOBAL soma o delta em vez de gravar o valor absoluto.
-      // Numa mesma confirmação, várias categorias escrevem na MESMA linha de
-      // SaldoCargaGlobal; todas leram o estado anterior à transação, então
-      // gravar o absoluto faria a última categoria apagar o efeito das outras.
       creditoGlobalAnterior: resultado.creditoGlobalAntes[colaboradorId] ?? 0,
       deltaCreditoGlobal:
         (resultado.creditoGlobalDepois[colaboradorId] ?? 0) -
@@ -269,7 +299,7 @@ async function gravarRodada(
         recebido: resultado.alocacao[colaboradorId] ?? 0,
         credito: resultado.creditoCategoriaDepois[colaboradorId],
       },
-      usuario: pedido.executadoPor,
+      usuario: ator.colaboradorId,
       correlacaoId,
     })),
   )
@@ -364,11 +394,17 @@ async function carregarCategorias(
  *
  * Isto encerra RN-02, a fragilidade estrutural nº 1 da planilha: hoje, mudar
  * quem está de plantão exige EDITAR FÓRMULA. Aqui é linha de tabela.
+ *
+ * DÍVIDA CONHECIDA: 4 consultas por colaborador escalado. Com a equipe real
+ * (4 a 7 pessoas, 2 a 3 de plantão) são dezenas de consultas por rodada, o que
+ * é irrelevante. Vira problema com equipe grande; a correção é uma consulta
+ * com `IN` e agregação em memória. Registrado em DECISOES.md § G.
  */
 async function carregarElegiveis(
   banco: Banco | Transacao,
   categoriaId: string,
   data: string,
+  ajusteGlobal: AjusteDeCredito = new Map(),
 ): Promise<Elegivel[]> {
   const habilitacoes = await banco.habilitacao.findMany({
     where: {
@@ -427,7 +463,10 @@ async function carregarElegiveis(
     elegiveis.push({
       colaboradorId: escala.colaboradorId,
       creditoCategoria: saldoCategoria?.creditoAcumulado ?? 0,
-      creditoGlobal: saldoGlobal?.creditoGlobal ?? 0,
+      // Estado do banco + o que as categorias anteriores desta mesma rodada
+      // já consumiram (ainda não gravado).
+      creditoGlobal:
+        (saldoGlobal?.creditoGlobal ?? 0) + (ajusteGlobal.get(escala.colaboradorId) ?? 0),
       recebidoPeriodo: doMes._sum.recebido ?? 0,
       recebidoDia: doDia?.recebido ?? 0,
       capacidadeRelativa: escala.capacidadeRelativa,

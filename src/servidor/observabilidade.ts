@@ -33,10 +33,26 @@ const CHAVES_SENSIVEIS = new Set([
   'corpo',
 ])
 
-function redigir(contexto: Record<string, unknown>): Record<string, unknown> {
+const PROFUNDIDADE_MAXIMA = 6
+
+/**
+ * Redação recursiva.
+ *
+ * A primeira versão só olhava o nível superior do objeto: `{ corpo }` era
+ * redigido, mas `{ email: { corpo } }` passava direto para o stdout. Como esta
+ * função é o único portão entre PII e o log, ela tem de descer na estrutura.
+ */
+function redigir(valor: unknown, profundidade = 0): unknown {
+  if (profundidade > PROFUNDIDADE_MAXIMA) return '[profundo demais]'
+  if (valor === null || typeof valor !== 'object') return valor
+  if (valor instanceof Date) return valor.toISOString()
+  if (Array.isArray(valor)) return valor.map((item) => redigir(item, profundidade + 1))
+
   const saida: Record<string, unknown> = {}
-  for (const [chave, valor] of Object.entries(contexto)) {
-    saida[chave] = CHAVES_SENSIVEIS.has(chave.toLowerCase()) ? '[redigido]' : valor
+  for (const [chave, conteudo] of Object.entries(valor as Record<string, unknown>)) {
+    saida[chave] = CHAVES_SENSIVEIS.has(chave.toLowerCase())
+      ? '[redigido]'
+      : redigir(conteudo, profundidade + 1)
   }
   return saida
 }
@@ -54,7 +70,7 @@ export function registrarLog(
     nivel,
     mensagem,
     instante: new Date().toISOString(),
-    ...redigir(contexto),
+    ...(redigir(contexto) as Record<string, unknown>),
   })
 
   if (nivel === 'erro') process.stderr.write(`${linha}\n`)
@@ -79,7 +95,10 @@ export async function registrarEvento(banco: Transacao, evento: EventoEntrada): 
       situacao: evento.situacao,
       referencia: evento.referencia ?? null,
       mensagem: evento.mensagem ?? null,
-      detalhe: evento.detalhe === undefined ? null : serializar(evento.detalhe),
+      // `detalhe` também passa por redação. Hoje só recebe contagens agregadas,
+      // mas o campo é gravado no banco sem TTL: um chamador futuro que passasse
+      // o payload de um item deixaria CPF e corpo de e-mail em texto puro.
+      detalhe: evento.detalhe === undefined ? null : serializar(redigir(evento.detalhe)),
       duracaoMs: evento.duracaoMs ?? null,
     },
   })

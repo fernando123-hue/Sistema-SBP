@@ -87,6 +87,15 @@ export interface ResultadoRodada {
   cotaJusta: number
   /** Ordem aplicada, do primeiro a receber o resto ao último. Determinística. */
   ordemDesempate: ColaboradorId[]
+  /**
+   * Estado COMPLETO de cada elegível no instante da decisão, já ordenado.
+   *
+   * Sem isto, a rodada guarda quem venceu mas não POR QUE venceu: os critérios
+   * b, c e d do desempate (crédito global, recebido no período, recebido no dia)
+   * ficariam irrecuperáveis, e a tela de auditoria não conseguiria reconstruir
+   * a decisão passo a passo. Um item do PRD promete exatamente isso.
+   */
+  elegiveis: Elegivel[]
   alocacao: Record<ColaboradorId, number>
   creditoCategoriaAntes: Record<ColaboradorId, number>
   creditoCategoriaDepois: Record<ColaboradorId, number>

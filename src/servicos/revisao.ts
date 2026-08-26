@@ -1,4 +1,5 @@
 import { ResolucaoRevisaoSchema, serializar } from '../core/esquemas'
+import { exigirPapel, type Ator } from '../servidor/ator'
 import { novaCorrelacao } from '../servidor/observabilidade'
 import type { Banco, Transacao } from '../servidor/prisma'
 import { auditar } from './auditoria'
@@ -67,7 +68,12 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<ItemE
   }))
 }
 
-export async function resolver(banco: Banco, entrada: unknown): Promise<{ itemId: string }> {
+export async function resolver(
+  banco: Banco,
+  entrada: unknown,
+  ator: Ator,
+): Promise<{ itemId: string }> {
+  exigirPapel(ator, 'resolver revisão', 'operador', 'gestor')
   const dados = ResolucaoRevisaoSchema.parse(entrada)
   const correlacaoId = novaCorrelacao()
 
@@ -80,7 +86,7 @@ export async function resolver(banco: Banco, entrada: unknown): Promise<{ itemId
     if (!revisao) throw new Error(`Revisão "${dados.revisaoId}" não encontrada.`)
     if (revisao.resolvidoEm) throw new Error(`Revisão "${dados.revisaoId}" já foi resolvida.`)
 
-    await exigirColaborador(tx, dados.resolvidoPor)
+    await exigirColaborador(tx, ator.colaboradorId)
 
     const categoria = await tx.categoria.findUnique({
       where: { codigo: dados.categoriaCodigo },
@@ -115,7 +121,7 @@ export async function resolver(banco: Banco, entrada: unknown): Promise<{ itemId
           campos: dados.campos,
           aprovado: dados.aprovar,
         }),
-        resolvidoPor: dados.resolvidoPor,
+        resolvidoPor: ator.colaboradorId,
         resolvidoEm: new Date(),
       },
     })
@@ -126,7 +132,7 @@ export async function resolver(banco: Banco, entrada: unknown): Promise<{ itemId
       acao: dados.aprovar ? 'revisao_aprovada' : 'revisao_recusada',
       antes,
       depois: { categoriaId: categoria.id, titulo: item.titulo, status: item.status },
-      usuario: dados.resolvidoPor,
+      usuario: ator.colaboradorId,
       correlacaoId,
     })
 
@@ -140,8 +146,10 @@ export async function resolver(banco: Banco, entrada: unknown): Promise<{ itemId
  */
 export async function aprovarTodosPendentes(
   banco: Banco,
-  usuario: string,
+  ator: Ator,
 ): Promise<{ aprovados: number }> {
+  exigirPapel(ator, 'aprovar revisões em massa', 'operador', 'gestor')
+  const usuario = ator.colaboradorId
   const correlacaoId = novaCorrelacao()
 
   return banco.$transaction(async (tx) => {

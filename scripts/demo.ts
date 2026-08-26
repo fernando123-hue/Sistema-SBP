@@ -16,6 +16,7 @@
 import { IaMock } from '../src/adapters/ia-mock'
 import { IngestaoMock } from '../src/adapters/ingestao-mock'
 import { sequenciaDeDatas } from '../src/core/util/datas'
+import { atorDaSessao } from '../src/servidor/ator'
 import { obterPrisma } from '../src/servidor/prisma'
 import { confirmar, previa } from '../src/servicos/distribuicao'
 import { concluir, minhaFila } from '../src/servicos/fila'
@@ -38,12 +39,15 @@ async function principal(): Promise<void> {
   const banco = obterPrisma()
   const datas = sequenciaDeDatas(DATA_INICIAL, DIAS)
 
-  const operador = await banco.colaborador.findFirst({ where: { papel: 'operador' } })
-  if (!operador) {
+  const registro = await banco.colaborador.findFirst({ where: { papel: 'operador' } })
+  if (!registro) {
     linha('Banco sem operador. Rode `npm run db:seed` antes da demo.')
     process.exitCode = 1
     return
   }
+
+  // Em produção isto vem da sessão autenticada, nunca do corpo da requisição.
+  const operador = atorDaSessao({ colaboradorId: registro.id, papel: registro.papel })
 
   const criarDeps = () => ({
     banco,
@@ -52,7 +56,7 @@ async function principal(): Promise<void> {
   })
 
   titulo('1. INGESTAO + INTERPRETACAO')
-  const resumo = await sincronizar(criarDeps(), operador.id)
+  const resumo = await sincronizar(criarDeps(), operador)
   linha(
     `recebidos ${resumo.recebidos} | novos ${resumo.novos} | duplicados ${resumo.duplicados}\n` +
       `itens criados ${resumo.itensCriados} (aprovados ${resumo.itensAprovados}, ` +
@@ -64,7 +68,7 @@ async function principal(): Promise<void> {
   )
 
   titulo('2. IDEMPOTENCIA - a mesma sincronizacao, de novo')
-  const repetido = await sincronizar(criarDeps(), operador.id)
+  const repetido = await sincronizar(criarDeps(), operador)
   linha(`recebidos ${repetido.recebidos} | novos ${repetido.novos} | duplicados ${repetido.duplicados}`)
   linha(
     repetido.itensCriados === 0
@@ -89,19 +93,19 @@ async function principal(): Promise<void> {
     )
   }
 
-  const aprovacao = await aprovarTodosPendentes(banco, operador.id)
+  const aprovacao = await aprovarTodosPendentes(banco, operador)
   linha(`\n${aprovacao.aprovados} revisoes resolvidas pelo operador.`)
 
   titulo('4. DISTRIBUICAO')
   let totalDistribuido = 0
 
   for (const data of datas) {
-    const pedido = { data, categorias: [], executadoPor: operador.id }
+    const pedido = { data, categorias: [] }
 
-    const antes = await previa(banco, pedido)
+    const antes = await previa(banco, pedido, operador)
     if (antes.planos.length === 0) continue
 
-    const relatorio = await confirmar(banco, pedido)
+    const relatorio = await confirmar(banco, pedido, operador)
     totalDistribuido += relatorio.totalDistribuido
 
     linha(`\n${data}`)
@@ -138,7 +142,8 @@ async function principal(): Promise<void> {
   const primeiro = equipe[0]
 
   if (primeiro) {
-    const fila = await minhaFila(banco, primeiro.id)
+    const atorDoColaborador = atorDaSessao({ colaboradorId: primeiro.id, papel: primeiro.papel })
+    const fila = await minhaFila(banco, primeiro.id, atorDoColaborador)
     linha(`${primeiro.nome}: ${fila.length} itens na fila`)
     for (const item of fila.slice(0, 3)) {
       linha(`   [${item.categoriaCodigo}] ${item.titulo.slice(0, 46)} - de ${item.remetente ?? 'n/d'}`)
@@ -146,7 +151,7 @@ async function principal(): Promise<void> {
 
     const aConcluir = fila.slice(0, 5)
     for (const item of aConcluir) {
-      await concluir(banco, { itemId: item.itemId, colaboradorId: primeiro.id })
+      await concluir(banco, { itemId: item.itemId }, atorDoColaborador)
     }
     linha(`\n${aConcluir.length} itens concluidos - com carimbo, sem digitar quantidade nenhuma.`)
   }

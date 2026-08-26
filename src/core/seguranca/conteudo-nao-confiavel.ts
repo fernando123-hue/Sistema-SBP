@@ -70,6 +70,24 @@ const PADROES_INJECAO: readonly { nome: string; expressao: RegExp }[] = [
     nome: 'ordem_de_prioridade',
     expressao: /\b(prioridade m[áa]xima|urgent[íi]ssimo|ignore a fila|fure a fila|pule a revis[ãa]o)\b/i,
   },
+  // Os três padrões abaixo nasceram de uma revisão que mostrou como paráfrase
+  // contorna a lista original. Aqui a política é deliberadamente permissiva com
+  // falso positivo: o custo de uma revisão humana a mais é baixo; o custo de um
+  // item forjado entrar aprovado é alto.
+  {
+    nome: 'mencao_a_confianca',
+    expressao: /\b(confian[çc]a|confidence|score)\b[^.\n]{0,30}\b(m[áa]xima?|1[.,]0|100%|alta|total)\b/i,
+  },
+  {
+    nome: 'mencao_a_revisao',
+    expressao:
+      /\b(sem|dispensa[r]?|n[ãa]o (?:precisa|necessita)|skip|bypass)\b[^.\n]{0,30}\b(revis[ãa]o|valida[çc][ãa]o|confirma[çc][ãa]o|aprova[çc][ãa]o)\b/i,
+  },
+  {
+    nome: 'ordem_de_classificacao',
+    expressao:
+      /\b(classifique|classificar|marque|marcar|considere|trate)\b[^.\n]{0,40}\b(como|categoria)\b/i,
+  },
 ]
 
 export interface AnaliseDeConteudo {
@@ -141,6 +159,27 @@ const CODIGO_ESPACO = 32
 const CODIGO_DEL = 127
 
 /**
+ * Caracteres invisíveis de formatação Unicode.
+ *
+ * `U+202E` (RIGHT-TO-LEFT OVERRIDE) e vizinhos invertem a renderização do
+ * texto: um anexo pode se chamar `laudo‮fdp.exe` e aparecer para o revisor
+ * como `laudo.pdf`. A allowlist de extensão não se engana — ela opera sobre a
+ * string lógica —, mas o nome exibido na tela de Revisão e na auditoria sim.
+ * Removemos para que o que o humano lê seja o que o sistema avaliou.
+ */
+const FAIXAS_DE_FORMATACAO: readonly (readonly [number, number])[] = [
+  [0x200b, 0x200f],
+  [0x202a, 0x202e],
+  [0x2060, 0x2064],
+  [0x2066, 0x2069],
+  [0xfeff, 0xfeff],
+]
+
+function ehFormatacaoInvisivel(codigo: number): boolean {
+  return FAIXAS_DE_FORMATACAO.some(([inicio, fim]) => codigo >= inicio && codigo <= fim)
+}
+
+/**
  * Remove caracteres de controle (0–31 e DEL) sem usar regex.
  *
  * Deliberadamente escrito com comparação de code point: escrever a classe de
@@ -150,7 +189,9 @@ function removerCaracteresDeControle(texto: string): string {
   let saida = ''
   for (const caractere of texto) {
     const codigo = caractere.codePointAt(0) ?? 0
-    if (codigo >= CODIGO_ESPACO && codigo !== CODIGO_DEL) saida += caractere
+    const aceitavel =
+      codigo >= CODIGO_ESPACO && codigo !== CODIGO_DEL && !ehFormatacaoInvisivel(codigo)
+    if (aceitavel) saida += caractere
   }
   return saida
 }

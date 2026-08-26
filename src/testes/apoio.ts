@@ -1,10 +1,17 @@
 import { CATEGORIAS_CADASTRO } from '../core/config'
+import type { Papel } from '../core/esquemas'
 import { sequenciaDeDatas } from '../core/util/datas'
+import { atorDaSessao, type Ator } from '../servidor/ator'
 import type { Banco } from '../servidor/prisma'
 
 /** Apoio aos testes de integração. Dados 100% sintéticos. */
 
 export const DATA_BASE = '2026-09-01'
+
+/** Ator de teste. Equivale ao que a camada de sessão produzirá em produção. */
+export function atorDeTeste(colaboradorId: string, papel: Papel): Ator {
+  return atorDaSessao({ colaboradorId, papel })
+}
 
 export async function limparTudo(banco: Banco): Promise<void> {
   // Filhos antes dos pais, respeitando as chaves estrangeiras.
@@ -27,7 +34,8 @@ export async function limparTudo(banco: Banco): Promise<void> {
 
 export interface BaseSemeada {
   operadorId: string
-  colaboradores: { id: string; nome: string }[]
+  operador: Ator
+  colaboradores: { id: string; nome: string; ator: Ator }[]
   datas: string[]
 }
 
@@ -67,7 +75,7 @@ export async function semearBase(
     data: { nome: 'Operadora de Teste', email: 'operador@teste.local', papel: 'operador' },
   })
 
-  const colaboradores: { id: string; nome: string }[] = []
+  const colaboradores: { id: string; nome: string; ator: Ator }[] = []
 
   for (let indice = 0; indice < pessoasDePlantao; indice += 1) {
     const pessoa = await banco.colaborador.create({
@@ -79,7 +87,11 @@ export async function semearBase(
         papel: 'colaborador',
       },
     })
-    colaboradores.push({ id: pessoa.id, nome: pessoa.nome })
+    colaboradores.push({
+      id: pessoa.id,
+      nome: pessoa.nome,
+      ator: atorDeTeste(pessoa.id, 'colaborador'),
+    })
 
     for (const categoria of categorias) {
       await banco.habilitacao.create({
@@ -92,5 +104,10 @@ export async function semearBase(
     }
   }
 
-  return { operadorId: operador.id, colaboradores, datas }
+  return {
+    operadorId: operador.id,
+    operador: atorDeTeste(operador.id, 'operador'),
+    colaboradores,
+    datas,
+  }
 }

@@ -1,3 +1,4 @@
+import { ehOProprio, exigirPapel, type Ator } from '../servidor/ator'
 import { novaCorrelacao } from '../servidor/observabilidade'
 import type { Banco } from '../servidor/prisma'
 import { auditar } from './auditoria'
@@ -26,7 +27,21 @@ export interface ItemDaFila {
   atribuidoEm: Date
 }
 
-export async function minhaFila(banco: Banco, colaboradorId: string): Promise<ItemDaFila[]> {
+/**
+ * Fila de UMA pessoa.
+ *
+ * Cada um vê a própria fila. Operador e gestor veem a de qualquer um — é o que
+ * permite acompanhar a operação e remanejar carga.
+ */
+export async function minhaFila(
+  banco: Banco,
+  colaboradorId: string,
+  ator: Ator,
+): Promise<ItemDaFila[]> {
+  if (!ehOProprio(ator, colaboradorId)) {
+    exigirPapel(ator, 'ver a fila de outra pessoa', 'operador', 'gestor')
+  }
+
   const atribuicoes = await banco.atribuicao.findMany({
     where: {
       colaboradorId,
@@ -50,9 +65,17 @@ export async function minhaFila(banco: Banco, colaboradorId: string): Promise<It
   }))
 }
 
+/**
+ * Concluir é ato pessoal: quem conclui é sempre o `Ator` autenticado.
+ *
+ * Antes, `colaboradorId` vinha por parâmetro — o que deixava a autorização e a
+ * auditoria à mercê de quem chamasse. Agora não há como declarar ter concluído
+ * o trabalho de outra pessoa.
+ */
 export async function concluir(
   banco: Banco,
-  entrada: { itemId: string; colaboradorId: string; observacao?: string },
+  entrada: { itemId: string; observacao?: string },
+  ator: Ator,
 ): Promise<void> {
   const correlacaoId = novaCorrelacao()
 
@@ -63,7 +86,7 @@ export async function concluir(
     })
 
     if (!atribuicao) throw new Error(`Item "${entrada.itemId}" não tem responsável ativo.`)
-    if (atribuicao.colaboradorId !== entrada.colaboradorId) {
+    if (!ehOProprio(ator, atribuicao.colaboradorId)) {
       throw new Error('Só o responsável ativo pode concluir o item. Use transferência.')
     }
     if (atribuicao.item.status === 'concluido') return
@@ -71,7 +94,7 @@ export async function concluir(
     await tx.execucao.create({
       data: {
         itemId: entrada.itemId,
-        colaboradorId: entrada.colaboradorId,
+        colaboradorId: ator.colaboradorId,
         concluidoEm: new Date(),
         resultado: 'concluido',
         observacao: entrada.observacao ?? null,
@@ -85,8 +108,8 @@ export async function concluir(
       entidadeId: entrada.itemId,
       acao: 'concluido',
       antes: { status: atribuicao.item.status },
-      depois: { status: 'concluido', por: entrada.colaboradorId },
-      usuario: entrada.colaboradorId,
+      depois: { status: 'concluido', por: ator.colaboradorId },
+      usuario: ator.colaboradorId,
       correlacaoId,
     })
   })
@@ -108,9 +131,9 @@ export async function transferir(
     itemId: string
     paraColaboradorId: string
     justificativa: string
-    executadoPor: string
     motivo?: 'transferencia' | 'devolucao'
   },
+  ator: Ator,
 ): Promise<void> {
   if (entrada.justificativa.trim().length < 5) {
     throw new Error('Transferência exige justificativa.')
@@ -123,6 +146,13 @@ export async function transferir(
       where: { itemId: entrada.itemId, ativa: true },
     })
     if (!atual) throw new Error(`Item "${entrada.itemId}" não tem responsável ativo.`)
+
+    // Ou você é o dono atual (devolvendo/pedindo ajuda), ou você coordena a
+    // operação. Um colaborador não puxa para si o item de um colega.
+    if (!ehOProprio(ator, atual.colaboradorId)) {
+      exigirPapel(ator, 'transferir item de outra pessoa', 'operador', 'gestor')
+    }
+
     if (atual.colaboradorId === entrada.paraColaboradorId) return
 
     // `ativa: null` libera o índice único `(itemId, ativa)` para a nova
@@ -139,7 +169,7 @@ export async function transferir(
         rodadaId: atual.rodadaId,
         motivo: entrada.motivo ?? 'transferencia',
         justificativa: entrada.justificativa,
-        atribuidoPor: entrada.executadoPor,
+        atribuidoPor: ator.colaboradorId,
         ativa: true,
       },
     })
@@ -150,7 +180,7 @@ export async function transferir(
       acao: entrada.motivo ?? 'transferencia',
       antes: { colaboradorId: atual.colaboradorId },
       depois: { colaboradorId: entrada.paraColaboradorId, justificativa: entrada.justificativa },
-      usuario: entrada.executadoPor,
+      usuario: ator.colaboradorId,
       correlacaoId,
     })
   })

@@ -127,7 +127,9 @@ export function distribuir(entrada: EntradaRodada): ResultadoRodada {
     base,
     resto,
     cotaJusta,
-    ordemDesempate: ordem.map((e) => e.colaboradorId),
+    ordemDesempate: ordem.map((elegivel) => elegivel.colaboradorId),
+    // Snapshot completo: é o que permite responder "por que ela levou a sobra?"
+    elegiveis: ordem.map((elegivel) => ({ ...elegivel })),
     alocacao,
     creditoCategoriaAntes,
     creditoCategoriaDepois,

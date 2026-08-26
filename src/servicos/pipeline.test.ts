@@ -38,11 +38,11 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
     const base = await semearBase(banco, { totalDeDias: 30, pessoasDePlantao: 3 })
     const datas = sequenciaDeDatas(DATA_BASE, 30)
 
-    await sincronizar(deps(datas, 31), base.operadorId)
-    await aprovarTodosPendentes(banco, base.operadorId)
+    await sincronizar(deps(datas, 31), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
 
     for (const data of datas) {
-      await confirmar(banco, { data, categorias: [], executadoPor: base.operadorId })
+      await confirmar(banco, { data, categorias: [] }, base.operador)
     }
 
     const conservacao = await conferirConservacao(banco)
@@ -68,11 +68,11 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
     })
     const datas = sequenciaDeDatas(DATA_BASE, 20)
 
-    await sincronizar(deps(datas, 99), base.operadorId)
-    await aprovarTodosPendentes(banco, base.operadorId)
+    await sincronizar(deps(datas, 99), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
 
     for (const data of datas) {
-      await confirmar(banco, { data, categorias: [], executadoPor: base.operadorId })
+      await confirmar(banco, { data, categorias: [] }, base.operador)
     }
 
     const saldos = await banco.saldoCarga.findMany({ select: { creditoAcumulado: true } })
@@ -95,11 +95,11 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
     })
     const datas = sequenciaDeDatas(DATA_BASE, 20)
 
-    await sincronizar(deps(datas, 99), base.operadorId)
-    await aprovarTodosPendentes(banco, base.operadorId)
+    await sincronizar(deps(datas, 99), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
 
     for (const data of datas) {
-      await confirmar(banco, { data, categorias: [], executadoPor: base.operadorId })
+      await confirmar(banco, { data, categorias: [] }, base.operador)
     }
 
     const saldos = await banco.saldoCarga.findMany({ select: { creditoAcumulado: true } })
@@ -125,11 +125,11 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
     const base = await semearBase(banco, { totalDeDias: 5, pessoasDePlantao: 2 })
     const datas = sequenciaDeDatas(DATA_BASE, 5)
 
-    await sincronizar(deps(datas, 5), base.operadorId)
-    await aprovarTodosPendentes(banco, base.operadorId)
+    await sincronizar(deps(datas, 5), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
 
     // Distribui só o primeiro dia.
-    await confirmar(banco, { data: datas[0]!, categorias: [], executadoPor: base.operadorId })
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
 
     const distribuidos = await banco.item.findMany({
       where: { status: 'distribuido' },
@@ -149,8 +149,8 @@ describe('idempotência', () => {
     const base = await semearBase(banco, { totalDeDias: 3 })
     const datas = sequenciaDeDatas(DATA_BASE, 3)
 
-    const primeira = await sincronizar(deps(datas), base.operadorId)
-    const segunda = await sincronizar(deps(datas), base.operadorId)
+    const primeira = await sincronizar(deps(datas), base.operador)
+    const segunda = await sincronizar(deps(datas), base.operador)
 
     expect(primeira.itensCriados).toBeGreaterThan(0)
     expect(segunda.novos).toBe(0)
@@ -165,7 +165,7 @@ describe('desdobramento — um e-mail pode gerar N itens (decisão A1)', () => {
     const base = await semearBase(banco, { totalDeDias: 3 })
     const datas = sequenciaDeDatas(DATA_BASE, 3)
 
-    const resumo = await sincronizar(deps(datas), base.operadorId)
+    const resumo = await sincronizar(deps(datas), base.operador)
     expect(resumo.itensCriados).toBeGreaterThan(resumo.recebidos)
 
     const comMuitosItens = await banco.email.findFirst({
@@ -182,7 +182,7 @@ describe('segurança — conteúdo não confiável', () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
-    await sincronizar(deps(datas, 7, true), base.operadorId)
+    await sincronizar(deps(datas, 7, true), base.operador)
 
     const pendentes = await listarPendentes(banco, 500)
     const suspeitos = pendentes.filter((item) => item.motivo === 'conteudo_suspeito')
@@ -199,7 +199,7 @@ describe('segurança — conteúdo não confiável', () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
-    await sincronizar(deps(datas, 7, true), base.operadorId)
+    await sincronizar(deps(datas, 7, true), base.operador)
 
     const email = await banco.email.findFirstOrThrow({
       where: { messageId: { contains: 'injecao' } },
@@ -216,9 +216,9 @@ describe('invariantes de atribuição', () => {
     const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
-    await sincronizar(deps(datas), base.operadorId)
-    await aprovarTodosPendentes(banco, base.operadorId)
-    await confirmar(banco, { data: datas[0]!, categorias: [], executadoPor: base.operadorId })
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
 
     const existente = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
 
@@ -240,25 +240,74 @@ describe('invariantes de atribuição', () => {
     const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
-    await sincronizar(deps(datas), base.operadorId)
-    await aprovarTodosPendentes(banco, base.operadorId)
-    await confirmar(banco, { data: datas[0]!, categorias: [], executadoPor: base.operadorId })
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
+
+    const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
+    const outro = base.colaboradores.find((pessoa) => pessoa.id !== atribuicao.colaboradorId)!
+
+    await expect(concluir(banco, { itemId: atribuicao.itemId }, outro.ator)).rejects.toThrow(
+      /responsável ativo/i,
+    )
+  })
+
+  it('colaborador não puxa para si o item de um colega', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
 
     const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
     const outro = base.colaboradores.find((pessoa) => pessoa.id !== atribuicao.colaboradorId)!
 
     await expect(
-      concluir(banco, { itemId: atribuicao.itemId, colaboradorId: outro.id }),
-    ).rejects.toThrow(/responsável ativo/i)
+      transferir(
+        banco,
+        {
+          itemId: atribuicao.itemId,
+          paraColaboradorId: outro.id,
+          justificativa: 'Quero pegar este item para mim.',
+        },
+        outro.ator,
+      ),
+    ).rejects.toThrow(/não pode executar/i)
+  })
+
+  it('a identidade do autor vem do ator, não do chamador — auditoria não é forjável', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
+
+    const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
+    const dono = base.colaboradores.find((pessoa) => pessoa.id === atribuicao.colaboradorId)!
+
+    await concluir(banco, { itemId: atribuicao.itemId }, dono.ator)
+
+    const registro = await banco.logAuditoria.findFirstOrThrow({
+      where: { entidadeId: atribuicao.itemId, acao: 'concluido' },
+    })
+    // O log grava quem o ator É, não quem a chamada disse ser.
+    expect(registro.usuario).toBe(dono.id)
+
+    const execucao = await banco.execucao.findFirstOrThrow({
+      where: { itemId: atribuicao.itemId },
+    })
+    expect(execucao.colaboradorId).toBe(dono.id)
   })
 
   it('transferência troca o dono, exige justificativa e não altera a rodada', async () => {
     const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
-    await sincronizar(deps(datas), base.operadorId)
-    await aprovarTodosPendentes(banco, base.operadorId)
-    await confirmar(banco, { data: datas[0]!, categorias: [], executadoPor: base.operadorId })
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
 
     const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
     const rodadaAntes = await banco.rodadaDistribuicao.findUniqueOrThrow({
@@ -267,20 +316,22 @@ describe('invariantes de atribuição', () => {
     const outro = base.colaboradores.find((pessoa) => pessoa.id !== atribuicao.colaboradorId)!
 
     await expect(
-      transferir(banco, {
-        itemId: atribuicao.itemId,
-        paraColaboradorId: outro.id,
-        justificativa: 'x',
-        executadoPor: base.operadorId,
-      }),
+      transferir(
+        banco,
+        { itemId: atribuicao.itemId, paraColaboradorId: outro.id, justificativa: 'x' },
+        base.operador,
+      ),
     ).rejects.toThrow(/justificativa/i)
 
-    await transferir(banco, {
-      itemId: atribuicao.itemId,
-      paraColaboradorId: outro.id,
-      justificativa: 'Colega de férias a partir de amanhã.',
-      executadoPor: base.operadorId,
-    })
+    await transferir(
+      banco,
+      {
+        itemId: atribuicao.itemId,
+        paraColaboradorId: outro.id,
+        justificativa: 'Colega de férias a partir de amanhã.',
+      },
+      base.operador,
+    )
 
     const ativas = await banco.atribuicao.findMany({
       where: { itemId: atribuicao.itemId, ativa: true },
@@ -309,18 +360,14 @@ describe('falha explícita em vez de trabalho perdido', () => {
     const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
-    await sincronizar(deps(datas), base.operadorId)
-    await aprovarTodosPendentes(banco, base.operadorId)
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
 
     // Ninguém disponível — o cenário que na planilha some com 16 itens de LIGA.
     await banco.escala.updateMany({ where: { data: datas[0]! }, data: { disponivel: false } })
 
     const aprovadosAntes = await banco.item.count({ where: { status: 'aprovado' } })
-    const relatorio = await confirmar(banco, {
-      data: datas[0]!,
-      categorias: [],
-      executadoPor: base.operadorId,
-    })
+    const relatorio = await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
 
     expect(relatorio.rodadasGravadas).toBe(0)
     expect(relatorio.planos.every((plano) => plano.erro !== null)).toBe(true)
@@ -332,25 +379,73 @@ describe('falha explícita em vez de trabalho perdido', () => {
   })
 })
 
+describe('auditoria da rodada', () => {
+  it('grava o snapshot completo dos elegíveis, não só quem venceu', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 3 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
+
+    const rodada = await banco.rodadaDistribuicao.findFirstOrThrow({
+      where: { criterio: 'resto_maior' },
+    })
+
+    const elegiveis = JSON.parse(rodada.elegiveis) as Record<string, unknown>[]
+    const ordem = JSON.parse(rodada.ordemDesempate) as string[]
+
+    // Os dois campos NÃO podem guardar a mesma coisa: `ordemDesempate` são ids,
+    // `elegiveis` é o estado que produziu essa ordem.
+    expect(rodada.elegiveis).not.toBe(rodada.ordemDesempate)
+    expect(elegiveis).toHaveLength(ordem.length)
+
+    // Sem estes campos é impossível responder "por que ela levou a sobra?".
+    for (const elegivel of elegiveis) {
+      expect(elegivel).toHaveProperty('colaboradorId')
+      expect(elegivel).toHaveProperty('creditoCategoria')
+      expect(elegivel).toHaveProperty('creditoGlobal')
+      expect(elegivel).toHaveProperty('recebidoPeriodo')
+      expect(elegivel).toHaveProperty('recebidoDia')
+    }
+
+    // A decisão é reconstituível: o primeiro da ordem é o primeiro do snapshot.
+    expect(elegiveis[0]!['colaboradorId']).toBe(ordem[0])
+  })
+
+  it('a rodada guarda quem disparou, e é o ator autenticado', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
+
+    const rodada = await banco.rodadaDistribuicao.findFirstOrThrow()
+    expect(rodada.executadoPor).toBe(base.operadorId)
+    expect(rodada.correlacaoId).toMatch(/^[0-9a-f-]{36}$/)
+  })
+})
+
 describe('painel derivado', () => {
   it('todo número do painel vem de agregação, e pendente cai ao concluir', async () => {
     const base = await semearBase(banco, { totalDeDias: 2, pessoasDePlantao: 2 })
     const datas = sequenciaDeDatas(DATA_BASE, 2)
 
-    await sincronizar(deps(datas), base.operadorId)
-    await aprovarTodosPendentes(banco, base.operadorId)
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
     for (const data of datas) {
-      await confirmar(banco, { data, categorias: [], executadoPor: base.operadorId })
+      await confirmar(banco, { data, categorias: [] }, base.operador)
     }
 
     const antes = await porCategoria(banco)
     const pendenteAntes = antes.reduce((total, linha) => total + linha.pendente, 0)
 
     const pessoa = base.colaboradores[0]!
-    const fila = await minhaFila(banco, pessoa.id)
+    const fila = await minhaFila(banco, pessoa.id, pessoa.ator)
     expect(fila.length).toBeGreaterThan(0)
 
-    await concluir(banco, { itemId: fila[0]!.itemId, colaboradorId: pessoa.id })
+    await concluir(banco, { itemId: fila[0]!.itemId }, pessoa.ator)
 
     const depois = await porCategoria(banco)
     const pendenteDepois = depois.reduce((total, linha) => total + linha.pendente, 0)
@@ -361,12 +456,12 @@ describe('painel derivado', () => {
     const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 3 })
     const datas = sequenciaDeDatas(DATA_BASE, 1)
 
-    await sincronizar(deps(datas), base.operadorId)
-    await aprovarTodosPendentes(banco, base.operadorId)
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTodosPendentes(banco, base.operador)
 
-    const pedido = { data: datas[0]!, categorias: [], executadoPor: base.operadorId }
-    const antes = await previa(banco, pedido)
-    const depois = await confirmar(banco, pedido)
+    const pedido = { data: datas[0]!, categorias: [] }
+    const antes = await previa(banco, pedido, base.operador)
+    const depois = await confirmar(banco, pedido, base.operador)
 
     const alocacaoDaPrevia = antes.planos.map((plano) => plano.resultado?.alocacao)
     const alocacaoGravada = depois.planos.map((plano) => plano.resultado?.alocacao)
