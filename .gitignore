@@ -1,0 +1,24 @@
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.log
+
+# Segredos — nunca comitar o .env real
+.env
+.env.*
+!.env.example
+
+# Banco local (SQLite). Dados sintéticos, mas fora do repositório.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+prisma/*.db
+
+# Cliente Prisma gerado — reconstruído por `prisma generate`
+src/generated/
+
+.DS_Store
+Thumbs.db

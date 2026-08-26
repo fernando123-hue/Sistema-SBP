@@ -1,0 +1,389 @@
+// Modelo de dados — Sistema de Distribuição de Demandas
+//
+// Provider: SQLite no protótipo, trocável para PostgreSQL alterando apenas a
+// linha `provider` abaixo. Por isso NÃO usamos `enum` nem `Json` nativos:
+// campos de domínio fechado são `String` validados por Zod em `src/core/esquemas.ts`,
+// e payloads estruturados são `String` com JSON serializado. Zod é a fonte da
+// verdade dos valores permitidos nos dois bancos — nada muda na migração.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// A URL vive em `prisma.config.ts` (exigência do Prisma 7) e o client recebe
+// um driver adapter. Trocar para PostgreSQL = mudar `provider` aqui e o adapter
+// em `src/servidor/prisma.ts`. Nenhum model muda.
+datasource db {
+  provider = "sqlite"
+}
+
+// ─────────────────────────────────────────────────────────────
+// Pessoas e elegibilidade
+// ─────────────────────────────────────────────────────────────
+
+model Colaborador {
+  id           String    @id @default(cuid())
+  nome         String
+  email        String    @unique
+  /// operador | colaborador | gestor — validado por PapelSchema
+  papel        String    @default("colaborador")
+  ativo        Boolean   @default(true)
+  dataEntrada  DateTime  @default(now())
+  dataSaida    DateTime?
+  senhaHash    String?
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+
+  habilitacoes     Habilitacao[]
+  escalas          Escala[]
+  atribuicoes      Atribuicao[]
+  execucoes        Execucao[]
+  saldosCarga      SaldoCarga[]
+  saldosGlobais    SaldoCargaGlobal[]
+  revisoesFeitas   Revisao[]
+
+  @@index([ativo])
+}
+
+model Categoria {
+  id     String @id @default(cuid())
+  /// Estável e imutável. O rótulo muda; o código, não.
+  codigo String @unique
+  rotulo String
+  /// CADASTRO | TITULOS
+  frente String
+  /// ASSOCIADO | LIGA — preserva a estrutura de E=SUM(B:D) e I=SUM(F:H)
+  grupo  String
+  ordem  Int    @default(0)
+
+  divisivel         Boolean @default(true)
+  peso              Float   @default(1)
+  limiarIndivisivel Int     @default(3)
+  limiarConfianca   Float   @default(0.85)
+  entraNoRateio     Boolean @default(true)
+  ativa             Boolean @default(true)
+
+  habilitacoes  Habilitacao[]
+  itens         Item[]
+  rodadas       RodadaDistribuicao[]
+  saldosCarga   SaldoCarga[]
+  regras        RegraDistribuicao[]
+
+  @@index([frente, grupo, ordem])
+}
+
+/// Elimina a fragilidade nº 1 da planilha: elegibilidade vira DADO, não fórmula.
+model Habilitacao {
+  id             String    @id @default(cuid())
+  colaboradorId  String
+  categoriaId    String
+  podeReceber    Boolean   @default(true)
+  vigenciaInicio DateTime  @default(now())
+  vigenciaFim    DateTime?
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+  categoria   Categoria   @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+
+  @@unique([colaboradorId, categoriaId, vigenciaInicio])
+  @@index([categoriaId, podeReceber])
+}
+
+/// Substitui a coluna `J`. Diz QUEM, não só quantos.
+model Escala {
+  id                 String  @id @default(cuid())
+  /// ISO date `YYYY-MM-DD`. Data real, não o `1..31` da planilha.
+  data               String
+  colaboradorId      String
+  disponivel         Boolean @default(true)
+  capacidadeRelativa Float   @default(1)
+  observacao         String?
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+
+  @@unique([data, colaboradorId])
+  @@index([data, disponivel])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Entrada: e-mail e item
+// ─────────────────────────────────────────────────────────────
+
+model Email {
+  id String @id @default(cuid())
+  /// Chave de idempotência. Reprocessar o mesmo e-mail nunca duplica trabalho.
+  messageId  String   @unique
+  remetente  String
+  assunto    String
+  corpo      String
+  /// JSON: [{ nome, tipoDeclarado, tamanho, hash }]
+  anexos     String   @default("[]")
+  /// mock | imap | graph | gmail | manual
+  origem     String   @default("mock")
+  recebidoEm DateTime
+  criadoEm   DateTime @default(now())
+
+  /// Resultado bruto da IA, para auditoria da interpretação.
+  modeloIa      String?
+  versaoPrompt  String?
+  processadoEm  DateTime?
+
+  itens Item[]
+
+  @@index([recebidoEm])
+  @@index([origem, processadoEm])
+}
+
+/// A entidade que a planilha não tem. Sai a contagem anônima, entra o item.
+model Item {
+  id          String  @id @default(cuid())
+  emailId     String?
+  categoriaId String
+  /// Posição dentro do desdobramento do e-mail (1 e-mail pode gerar N itens).
+  sequencia   Int     @default(1)
+  titulo      String
+  /// JSON validado por Zod. Campos extraídos pela IA.
+  payload     String  @default("{}")
+  confianca   Float   @default(0)
+  /// novo | aguardando_revisao | aprovado | distribuido | em_andamento | concluido | devolvido | cancelado
+  status      String  @default("novo")
+  ligaId      String?
+
+  modeloIa     String?
+  versaoPrompt String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  email       Email?       @relation(fields: [emailId], references: [id], onDelete: SetNull)
+  categoria   Categoria    @relation(fields: [categoriaId], references: [id])
+  liga        Liga?        @relation(fields: [ligaId], references: [id], onDelete: SetNull)
+  atribuicoes Atribuicao[]
+  execucoes   Execucao[]
+  revisoes    Revisao[]
+
+  @@unique([emailId, sequencia])
+  @@index([status, categoriaId])
+  @@index([categoriaId, status, criadoEm])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Distribuição
+// ─────────────────────────────────────────────────────────────
+
+/// Snapshot imutável de uma decisão do motor. Auditoria completa por construção.
+model RodadaDistribuicao {
+  id                String @id @default(cuid())
+  data              String
+  categoriaId       String
+  quantidadeEntrada Int
+  algoritmoVersao   String
+  /// sem_demanda | indivisivel | resto_maior
+  criterio          String
+  base              Int    @default(0)
+  resto             Int    @default(0)
+  cotaJusta         Float  @default(0)
+
+  /// JSON — tudo que é preciso para reproduzir a decisão passo a passo.
+  elegiveis      String
+  ordemDesempate String
+  alocacao       String
+  creditoAntes   String
+  creditoDepois  String
+
+  executadoEm  DateTime @default(now())
+  executadoPor String
+  /// Correlaciona com logs e eventos de processamento.
+  correlacaoId String
+
+  categoria   Categoria    @relation(fields: [categoriaId], references: [id])
+  atribuicoes Atribuicao[]
+
+  @@index([data, categoriaId])
+  @@index([correlacaoId])
+}
+
+model Atribuicao {
+  id            String  @id @default(cuid())
+  itemId        String
+  colaboradorId String
+  rodadaId      String?
+  /// algoritmo | manual | transferencia | devolucao
+  motivo        String
+  justificativa String?
+  atribuidoPor  String
+  /// `true` quando vigente, `null` quando encerrada.
+  /// O índice único abaixo usa a semântica de NULL distinto para garantir,
+  /// NO BANCO, que cada item tem no máximo um responsável ativo (invariante 3).
+  ativa         Boolean?
+  atribuidoEm   DateTime @default(now())
+  encerradoEm   DateTime?
+
+  item        Item                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  colaborador Colaborador         @relation(fields: [colaboradorId], references: [id])
+  rodada      RodadaDistribuicao? @relation(fields: [rodadaId], references: [id])
+
+  @@unique([itemId, ativa])
+  @@index([colaboradorId, ativa])
+  @@index([rodadaId])
+}
+
+/// Substitui o `Realizado` digitado. Evento com carimbo, não número declarado.
+model Execucao {
+  id            String    @id @default(cuid())
+  itemId        String
+  colaboradorId String
+  iniciadoEm    DateTime  @default(now())
+  concluidoEm   DateTime?
+  /// concluido | devolvido | cancelado
+  resultado     String?
+  observacao    String?
+
+  item        Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
+
+  @@index([colaboradorId, concluidoEm])
+  @@index([itemId])
+}
+
+/// O livro-razão do balanceamento. É o que a planilha não tem em lugar nenhum.
+model SaldoCarga {
+  id               String @id @default(cuid())
+  colaboradorId    String
+  categoriaId      String
+  data             String
+  recebido         Int    @default(0)
+  cotaJusta        Float  @default(0)
+  creditoAcumulado Float  @default(0)
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+  categoria   Categoria   @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+
+  @@unique([colaboradorId, categoriaId, data])
+  @@index([categoriaId, data])
+}
+
+model SaldoCargaGlobal {
+  id                 String @id @default(cuid())
+  colaboradorId      String
+  data               String
+  recebidoPonderado  Float  @default(0)
+  creditoGlobal      Float  @default(0)
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+
+  @@unique([colaboradorId, data])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Ligas
+// ─────────────────────────────────────────────────────────────
+
+model Liga {
+  id          String   @id @default(cuid())
+  nome        String
+  instituicao String?
+  uf          String?
+  status      String   @default("ativa")
+  criadoEm    DateTime @default(now())
+
+  ligantes Ligante[]
+  itens    Item[]
+
+  @@unique([nome, instituicao])
+}
+
+model Ligante {
+  id       String   @id @default(cuid())
+  ligaId   String
+  nome     String
+  email    String?
+  vinculo  String?
+  criadoEm DateTime @default(now())
+
+  liga Liga @relation(fields: [ligaId], references: [id], onDelete: Cascade)
+
+  @@index([ligaId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Configuração, revisão, auditoria, observabilidade
+// ─────────────────────────────────────────────────────────────
+
+/// Toda regra parametrizável vive aqui, com vigência. Nada de valor de negócio
+/// hardcoded no motor.
+model RegraDistribuicao {
+  id             String    @id @default(cuid())
+  categoriaId    String?
+  /// peso | limiar_indivisivel | limiar_confianca | criterio_desempate
+  tipo           String
+  /// JSON
+  parametros     String
+  vigenciaInicio DateTime  @default(now())
+  vigenciaFim    DateTime?
+  ativo          Boolean   @default(true)
+  criadoPor      String
+
+  categoria Categoria? @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+
+  @@index([tipo, ativo])
+}
+
+/// Fila de exceções da IA — e dataset de melhoria contínua.
+model Revisao {
+  id           String    @id @default(cuid())
+  itemId       String
+  /// baixa_confianca | campo_ausente | duplicata_suspeita | anomalia | conteudo_suspeito
+  motivo       String
+  campoIncerto String?
+  /// JSON
+  sugestaoIa   String
+  confianca    Float
+  /// JSON — o que o humano decidiu de fato
+  valorFinal   String?
+  resolvidoPor String?
+  resolvidoEm  DateTime?
+  criadoEm     DateTime  @default(now())
+
+  item      Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  revisor   Colaborador? @relation(fields: [resolvidoPor], references: [id])
+
+  @@index([resolvidoEm, motivo])
+  @@index([itemId])
+}
+
+/// Append-only. Quem fez, quando, o quê, valor antes e depois.
+model LogAuditoria {
+  id           String   @id @default(cuid())
+  entidade     String
+  entidadeId   String
+  acao         String
+  /// JSON
+  antes        String?
+  /// JSON
+  depois       String?
+  usuario      String
+  correlacaoId String?
+  timestamp    DateTime @default(now())
+
+  @@index([entidade, entidadeId])
+  @@index([timestamp])
+  @@index([correlacaoId])
+}
+
+/// Observabilidade: o que falhou, onde, quando, e se pode ser reprocessado.
+model EventoProcessamento {
+  id           String    @id @default(cuid())
+  correlacaoId String
+  etapa        String
+  /// iniciado | sucesso | falha | reprocessavel
+  situacao     String
+  referencia   String?
+  mensagem     String?
+  /// JSON
+  detalhe      String?
+  duracaoMs    Int?
+  criadoEm     DateTime  @default(now())
+
+  @@index([correlacaoId])
+  @@index([situacao, etapa])
+}

@@ -1,0 +1,32 @@
+{
+  "name": "sistema-sbp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sistema de distribuicao de demandas — substituto da planilha PRODUTIVIDADE 2026",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cobertura": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:limpar": "tsx scripts/limpar-transacional.ts",
+    "db:studio": "prisma studio",
+    "demo": "tsx scripts/demo.ts",
+    "verificar": "npm run typecheck && npm run test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^2.1.9",
+    "prisma": "^7.10.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "zod": "^4.4.3"
+  }
+}

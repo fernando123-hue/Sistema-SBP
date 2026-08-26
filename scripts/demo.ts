@@ -1,0 +1,182 @@
+/**
+ * Demonstração ponta a ponta.
+ *
+ * Roda o fluxo inteiro descrito no briefing, de verdade, sem nenhuma tela:
+ *
+ *   e-mails -> IA classifica e desdobra -> validação -> fila de revisão
+ *   -> revisão humana -> itens aprovados -> motor distribui -> histórico
+ *   -> fila individual -> execução -> painel -> conferência de conservação
+ *
+ * Serve como prova de que o núcleo funciona antes de existir uma linha de UI,
+ * e como roteiro de aceitação executável.
+ *
+ *   npm run demo
+ */
+
+import { IaMock } from '../src/adapters/ia-mock'
+import { IngestaoMock } from '../src/adapters/ingestao-mock'
+import { sequenciaDeDatas } from '../src/core/util/datas'
+import { obterPrisma } from '../src/servidor/prisma'
+import { confirmar, previa } from '../src/servicos/distribuicao'
+import { concluir, minhaFila } from '../src/servicos/fila'
+import { sincronizar } from '../src/servicos/ingestao'
+import { conferirConservacao, porCategoria, porPessoa } from '../src/servicos/painel'
+import { aprovarTodosPendentes, listarPendentes } from '../src/servicos/revisao'
+
+const DIAS = 5
+const DATA_INICIAL = '2026-09-01'
+
+function titulo(texto: string): void {
+  process.stdout.write(`\n${'='.repeat(74)}\n${texto}\n${'='.repeat(74)}\n`)
+}
+
+function linha(texto: string): void {
+  process.stdout.write(`${texto}\n`)
+}
+
+async function principal(): Promise<void> {
+  const banco = obterPrisma()
+  const datas = sequenciaDeDatas(DATA_INICIAL, DIAS)
+
+  const operador = await banco.colaborador.findFirst({ where: { papel: 'operador' } })
+  if (!operador) {
+    linha('Banco sem operador. Rode `npm run db:seed` antes da demo.')
+    process.exitCode = 1
+    return
+  }
+
+  const criarDeps = () => ({
+    banco,
+    ingestao: new IngestaoMock({ datas, semente: 2026, incluirMalicioso: true }),
+    ia: new IaMock(),
+  })
+
+  titulo('1. INGESTAO + INTERPRETACAO')
+  const resumo = await sincronizar(criarDeps(), operador.id)
+  linha(
+    `recebidos ${resumo.recebidos} | novos ${resumo.novos} | duplicados ${resumo.duplicados}\n` +
+      `itens criados ${resumo.itensCriados} (aprovados ${resumo.itensAprovados}, ` +
+      `revisao ${resumo.itensParaRevisao}) | anexos rejeitados ${resumo.anexosRejeitados}`,
+  )
+  linha(
+    `\nUm e-mail pode gerar N itens (decisao A1): ${resumo.recebidos} e-mails ` +
+      `viraram ${resumo.itensCriados} unidades de carga.`,
+  )
+
+  titulo('2. IDEMPOTENCIA - a mesma sincronizacao, de novo')
+  const repetido = await sincronizar(criarDeps(), operador.id)
+  linha(`recebidos ${repetido.recebidos} | novos ${repetido.novos} | duplicados ${repetido.duplicados}`)
+  linha(
+    repetido.itensCriados === 0
+      ? 'OK - nenhum item duplicado. Reprocessar e seguro.'
+      : `FALHA - ${repetido.itensCriados} itens duplicados.`,
+  )
+
+  titulo('3. FILA DE REVISAO')
+  const pendentes = await listarPendentes(banco, 500)
+  linha(`${pendentes.length} itens aguardando olho humano`)
+  for (const motivo of new Set(pendentes.map((item) => item.motivo))) {
+    linha(`   ${motivo}: ${pendentes.filter((item) => item.motivo === motivo).length}`)
+  }
+
+  const suspeitos = pendentes.filter((item) => item.motivo === 'conteudo_suspeito')
+  if (suspeitos.length > 0) {
+    linha(
+      `\nTentativa de prompt injection detectada e contida:\n` +
+        `   "${suspeitos[0]!.titulo}" - confianca ${suspeitos[0]!.confianca.toFixed(2)}\n` +
+        `   O e-mail mandava atribuir tudo a uma pessoa e pular a revisao.\n` +
+        `   Foi tratado como DADO: virou item comum e caiu na fila de revisao.`,
+    )
+  }
+
+  const aprovacao = await aprovarTodosPendentes(banco, operador.id)
+  linha(`\n${aprovacao.aprovados} revisoes resolvidas pelo operador.`)
+
+  titulo('4. DISTRIBUICAO')
+  let totalDistribuido = 0
+
+  for (const data of datas) {
+    const pedido = { data, categorias: [], executadoPor: operador.id }
+
+    const antes = await previa(banco, pedido)
+    if (antes.planos.length === 0) continue
+
+    const relatorio = await confirmar(banco, pedido)
+    totalDistribuido += relatorio.totalDistribuido
+
+    linha(`\n${data}`)
+    for (const plano of relatorio.planos) {
+      if (!plano.resultado) {
+        linha(`   ${plano.categoria.codigo.padEnd(15)} ${plano.quantidade} itens - ${plano.erro}`)
+        continue
+      }
+      const reparticao = plano.resultado.ordemDesempate
+        .map((id) => `${id.slice(-4)}=${plano.resultado!.alocacao[id]}`)
+        .join('  ')
+      linha(
+        `   ${plano.categoria.codigo.padEnd(15)} entrada ${String(plano.quantidade).padStart(3)} -> ` +
+          `${reparticao.padEnd(34)} [${plano.resultado.criterio}]`,
+      )
+    }
+  }
+  linha(`\ntotal distribuido: ${totalDistribuido}`)
+
+  titulo('5. CONSERVACAO - criterio de aceitacao no 1')
+  const conservacao = await conferirConservacao(banco)
+  linha(`rodadas gravadas: ${conservacao.rodadas}`)
+  linha(
+    conservacao.divergentes.length === 0
+      ? 'OK - soma distribuida == soma de entrada em 100% das rodadas. (Planilha: 71% dos dias.)'
+      : `FALHA - ${conservacao.divergentes.length} divergentes: ${JSON.stringify(conservacao.divergentes)}`,
+  )
+
+  titulo('6. FILA INDIVIDUAL + EXECUCAO')
+  const equipe = await banco.colaborador.findMany({
+    where: { papel: 'colaborador' },
+    orderBy: { nome: 'asc' },
+  })
+  const primeiro = equipe[0]
+
+  if (primeiro) {
+    const fila = await minhaFila(banco, primeiro.id)
+    linha(`${primeiro.nome}: ${fila.length} itens na fila`)
+    for (const item of fila.slice(0, 3)) {
+      linha(`   [${item.categoriaCodigo}] ${item.titulo.slice(0, 46)} - de ${item.remetente ?? 'n/d'}`)
+    }
+
+    const aConcluir = fila.slice(0, 5)
+    for (const item of aConcluir) {
+      await concluir(banco, { itemId: item.itemId, colaboradorId: primeiro.id })
+    }
+    linha(`\n${aConcluir.length} itens concluidos - com carimbo, sem digitar quantidade nenhuma.`)
+  }
+
+  titulo('7. PAINEL - nenhum numero digitavel')
+  linha('categoria         grupo       receb  revisao  aprov  distrib  concl   pend')
+  for (const item of await porCategoria(banco)) {
+    if (item.recebido === 0) continue
+    linha(
+      `${item.categoriaCodigo.padEnd(17)} ${item.grupo.padEnd(10)} ` +
+        `${String(item.recebido).padStart(6)} ${String(item.aguardandoRevisao).padStart(8)} ` +
+        `${String(item.aprovado).padStart(6)} ${String(item.distribuido).padStart(8)} ` +
+        `${String(item.concluido).padStart(6)} ${String(item.pendente).padStart(6)}`,
+    )
+  }
+
+  linha('\npessoa                        atribuidos  concluidos  pendentes   credito')
+  for (const pessoa of await porPessoa(banco)) {
+    if (pessoa.atribuidos === 0) continue
+    linha(
+      `${pessoa.nome.padEnd(29)} ${String(pessoa.atribuidos).padStart(10)} ` +
+        `${String(pessoa.concluidos).padStart(11)} ${String(pessoa.pendentes).padStart(10)} ` +
+        `${pessoa.creditoGlobal.toFixed(3).padStart(9)}`,
+    )
+  }
+
+  linha('\nCredito proximo de zero = carga equilibrada. E o livro-razao que a planilha nao tem.\n')
+}
+
+principal().catch((erro: unknown) => {
+  process.stderr.write(`${erro instanceof Error ? erro.stack : String(erro)}\n`)
+  process.exitCode = 1
+})

@@ -1,0 +1,22 @@
+# Donos por área. Todo PR pede revisão de quem entende a parte tocada.
+# Substitua os handles pelos usuários reais do GitHub antes de publicar o repo.
+
+*                               @fernando
+
+# O motor de distribuição é o núcleo de valor: nenhuma mudança entra sem
+# revisão explícita. Uma alteração errada aqui repete o defeito da planilha.
+/src/core/distribuicao/         @fernando
+/src/core/tipos.ts              @fernando
+
+# Segurança: prompt injection, validação de anexo, ambiente.
+/src/core/seguranca/            @fernando
+/src/servidor/ambiente.ts       @fernando
+
+# Modelo de dados e migrações.
+/prisma/                        @fernando
+
+# Documentos de domínio: mudar aqui é mudar a regra de negócio.
+/docs/                          @fernando
+
+# Infraestrutura de engenharia.
+/.github/                       @fernando
