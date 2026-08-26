@@ -24,10 +24,22 @@ cp .env.example .env
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
-npm run demo
+npm run dev
 ```
 
-`npm run demo` executa o fluxo inteiro de verdade, sem nenhuma tela: ingestão, classificação por IA, fila de revisão, distribuição, execução, painel e conferência de conservação.
+Abra `http://localhost:3000`, escolha a operadora **Ana Ribeiro Salgado**, clique em **Buscar e-mails**, marque o plantão e calcule a prévia.
+
+`npm run demo` roda o mesmo fluxo pelo terminal, sem tela: ingestão, classificação por IA, fila de revisão, distribuição, execução, painel e conferência de conservação.
+
+## Telas
+
+| Rota | O que faz |
+|---|---|
+| `/distribuicao` | Marca o plantão, mostra a prévia com crédito antes/depois, confirma a rodada |
+| `/revisao` | Fila das exceções da IA: sugestão + campos editáveis + aprovar ou descartar |
+| `/caixa` | Todos os itens com remetente, assunto, confiança e responsável |
+| `/fila` | Fila individual, mobile-first. Concluir item a item |
+| `/painel` | Recebido/distribuído/concluído/pendente. Zero campo digitável |
 
 ## Scripts
 
@@ -105,6 +117,6 @@ Toda saída de IA passa por `InterpretacaoSchema` (Zod). Uma resposta que não v
 
 ## Estado atual
 
-Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · IA mock determinística · fila de revisão · distribuição transacional com conservação garantida · fila individual · painel derivado · auditoria e observabilidade.
+Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · IA mock determinística · fila de revisão · distribuição transacional com conservação garantida · fila individual · painel derivado · auditoria e observabilidade · **API REST completa** · **5 telas funcionando** · sessão por cookie assinado · limite de taxa nas rotas caras.
 
-A seguir: API REST · telas (Next.js + shadcn/ui) · adapter Anthropic real · exportação para o sistema legado.
+A seguir: adapter Anthropic real · autenticação com senha (hoje é provisória — ver `DECISOES.md § AT-08`) · exportação para o sistema legado · Storybook das matrizes.

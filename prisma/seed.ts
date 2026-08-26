@@ -1,5 +1,5 @@
 import { CATEGORIAS_CADASTRO } from '../src/core/config'
-import { sequenciaDeDatas } from '../src/core/util/datas'
+import { deslocarDias, hojeIso, sequenciaDeDatas } from '../src/core/util/datas'
 import { obterPrisma } from '../src/servidor/prisma'
 
 /**
@@ -52,8 +52,16 @@ const EQUIPE = [
   },
 ] as const
 
-export const DATA_INICIAL = '2026-09-01'
-export const TOTAL_DE_DIAS = 30
+/**
+ * Janela de escala e vigência das habilitações.
+ *
+ * Ancorada em HOJE, não numa data fixa. Com data fixa no futuro, quem clonasse
+ * o projeto e abrisse a tela veria "3 de 5 disponíveis" e, ao mesmo tempo,
+ * "nenhum colaborador elegível" — porque a habilitação ainda não teria começado.
+ * Confuso e indistinguível de defeito.
+ */
+export const DATA_INICIAL = deslocarDias(hojeIso(), -7)
+export const TOTAL_DE_DIAS = 45
 
 async function principal(): Promise<void> {
   const banco = obterPrisma()
