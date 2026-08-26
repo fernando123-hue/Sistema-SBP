@@ -44,16 +44,22 @@ export async function limparTudo(banco: Banco): Promise<void> {
 export async function aprovarTudoNoBanco(banco: Banco): Promise<number> {
   const pendentes = await banco.revisao.findMany({
     where: { resolvidoEm: null },
-    select: { id: true, itemId: true },
+    select: { itemId: true },
   })
 
-  for (const pendente of pendentes) {
-    await banco.item.update({ where: { id: pendente.itemId }, data: { status: 'aprovado' } })
-    await banco.revisao.update({
-      where: { id: pendente.id },
-      data: { resolvidoEm: new Date() },
-    })
-  }
+  if (pendentes.length === 0) return 0
+
+  // Em lote, não em laço. Depois que o desdobramento passou a exigir revisão
+  // humana, uma simulação de 30 dias gera centenas de pendências — duas
+  // consultas por item faziam o teste estourar o tempo limite.
+  await banco.item.updateMany({
+    where: { id: { in: pendentes.map((pendente) => pendente.itemId) } },
+    data: { status: 'aprovado' },
+  })
+  await banco.revisao.updateMany({
+    where: { resolvidoEm: null },
+    data: { resolvidoEm: new Date() },
+  })
 
   return pendentes.length
 }

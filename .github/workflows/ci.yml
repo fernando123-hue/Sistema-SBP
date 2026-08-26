@@ -53,6 +53,11 @@ jobs:
     name: Varredura de segredos
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # PRs do Dependabot recebem token somente-leitura, então o gitleaks falha
+    # com "Resource not accessible by integration" — vermelho que não é defeito
+    # e ensina a ignorar vermelho. Dependabot só mexe em manifesto de
+    # dependência; segredo novo não entra por aí.
+    if: github.actor != 'dependabot[bot]'
 
     steps:
       - uses: actions/checkout@v4

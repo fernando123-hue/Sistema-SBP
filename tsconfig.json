@@ -31,7 +31,6 @@
       "node",
       "vitest/globals"
     ],
-    "baseUrl": ".",
     "paths": {
       "@/*": [
         "./src/*"

@@ -2,7 +2,7 @@
 
 > **Para continuar em outra máquina:** clone o repositório, siga o *Preparar o ambiente* abaixo e leia a seção *Onde parei*. Este arquivo é o ponto de entrada; ele diz o que já está pronto, o que ficou aberto e qual é o próximo passo.
 
-Última atualização: **26/08/2026**, após a auditoria completa com oito agentes especializados.
+Última atualização: **26/08/2026, à noite** — auditoria completa com oito agentes, mais uma rodada de higiene de CI.
 
 ---
 
@@ -68,6 +68,23 @@ As mais graves que foram corrigidas:
 7. **Vazamento em erro 500** — `ConservacaoVioladaError` devolvia a alocação inteira ao cliente.
 8. **Limite de taxa global no login** — 21 requisições de qualquer pessoa travavam a entrada da equipe inteira.
 9. **Contraste ilegível no tema escuro** — o botão mais usado do sistema media 2,43:1.
+
+---
+
+## Situação do CI e das dependências
+
+Três coisas que valem saber antes de abrir o repositório:
+
+**GitHub Actions está com a fila travada.** A execução do commit da auditoria ficou `queued` por mais de 6 horas e entrou num estado inconsistente — a API relata `queued`, o cancelamento responde `completed`. A causa provável é a cota de minutos do Actions em repositório privado no plano free. **A verificação local é a fonte da verdade** enquanto isso: `npm run verificar`.
+
+**Cinco PRs do Dependabot abertos** (#1, #2, #4, #5, #9). O #9 falhava no CI, e a investigação achou dois problemas reais — ambos corrigidos:
+
+- `TS5102: Option 'baseUrl' has been removed`. O `tsconfig.json` usava `baseUrl` junto com `paths`, e a versão nova do TypeScript removeu a opção. Isso travaria **qualquer** upgrade de TypeScript. `baseUrl` saiu; `paths` continua funcionando porque resolve relativo ao próprio `tsconfig.json`.
+- O job do gitleaks falhava com `Resource not accessible by integration` em todo PR do Dependabot, porque esses PRs recebem token somente-leitura. Era vermelho que não é defeito — o tipo que ensina a equipe a ignorar vermelho. O job agora pula quando o autor é o Dependabot.
+
+Com isso, os PRs de dependência devem passar. O merge continua sendo decisão sua.
+
+**A suíte estava perto de estourar o tempo limite.** Depois que o desdobramento passou a exigir revisão humana, a simulação de 30 dias gera centenas de pendências, e o helper de teste as aprovava uma a uma. Trocado por operação em lote: o arquivo caiu de 140s para ~50s. O `testTimeout` também subiu para 90s, para dar margem em máquina mais lenta.
 
 ---
 

@@ -12,7 +12,11 @@ export default defineConfig({
     globalSetup: ['./src/testes/preparar-banco.ts'],
     // Um banco SQLite compartilhado: arquivos de teste rodam em série.
     fileParallelism: false,
-    testTimeout: 30_000,
-    hookTimeout: 30_000,
+    // Margem folgada de propósito. A simulação de 30 dias grava centenas de
+    // linhas e cada teste limpa o banco antes de rodar; em máquina mais lenta
+    // que a de desenvolvimento isso passa de 30s e o teste falha por tempo,
+    // não por defeito — o pior tipo de vermelho, porque ensina a ignorar.
+    testTimeout: 90_000,
+    hookTimeout: 60_000,
   },
 })
