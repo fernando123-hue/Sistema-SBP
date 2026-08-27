@@ -281,7 +281,7 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 | H-D13 | Ao migrar para PostgreSQL: `CHECK` nos domínios fechados, `jsonb` nas colunas JSON, isolamento de transação, runbook de migração de dados | O momento certo é a migração, com a tabela pequena |
 | H-D14 | Sem tela de administração de acesso — o gestor define senha só por chamada de API | A rota existe e é conferida por papel; a tela é trabalho próprio e depende de decidir se cadastro de pessoa entra junto |
 | H-D16 | `X-Forwarded-For` aceito sem proxy confiável — variar o cabeçalho zera o limite de taxa por origem | A trava por conta não depende de IP, então força bruta continua contida; sobra consumo de CPU. Fixar exige saber qual proxy estará na frente. **Obrigatório antes de expor fora da rede local** |
-| H-D17 | Sem cadastro de colaborador pela tela — só o seed cria pessoa | Enquanto não houver tela de habilitação, alguém criado nasceria sem categoria: invisível para a distribuição, e de um jeito que ninguém percebe |
+| ~~H-D17~~ | ~~Sem cadastro de colaborador pela tela~~ | **RESOLVIDO em 27/08/2026** — cadastro e habilitação na tela de Acesso, entregues juntos. Seção *Cadastro de pessoa e habilitação* abaixo |
 | H-D18 | Agregados de métrica não são materializados | Nada é expurgado hoje, então nada se perde. Mas **a camada de agregados tem de vir antes da primeira política de retenção** — depois dela, o histórico anterior já terá ido embora |
 | H-D19 | Bytes de anexo sem criptografia em repouso e sem controle de acesso próprio | O diretório fica fora do repositório e não há rota que sirva arquivo. Antes de documento real de associado entrar: cifrar em repouso e decidir quem pode baixar o quê |
 
@@ -610,3 +610,62 @@ Corrigido para a janela padrão de 30 dias. `?dias=tudo` continua existindo na r
 ### Limite conhecido, registrado em vez de contornado
 
 `campos: {}` no `valorFinal` é ambíguo entre "o operador apagou tudo" e "o cliente não mandou o campo", porque o esquema de entrada tem `.default({})`. Contra a tela não há ambiguidade — ela sempre devolve o conjunto completo, inicializado com o que a IA extraiu. Um cliente de API que omitisse `campos` faria a revisão contar como corrigida. Distinguir os dois exigiria mudar o esquema de entrada, e hoje não existe esse cliente. Está anotado no código, no ponto exato.
+
+---
+
+## Cadastro de pessoa e habilitação (`H-D17`) — 27/08/2026
+
+Até aqui só o seed criava colaborador. Montar a equipe exigia acesso ao terminal e ao banco — o que quer dizer que, na prática, o gestor não montava equipe nenhuma.
+
+### Por que as duas coisas entraram juntas
+
+`H-D17` estava travado por um motivo registrado quando a tela de acesso nasceu: *"enquanto não houver tela de habilitação, alguém criado nasceria sem categoria — invisível para a distribuição, e de um jeito que ninguém percebe"*.
+
+Não é hipérbole. `obterEscala` filtra por `habilitacoes: { some: { podeReceber: true } }` — quem não tem nenhuma **não aparece na tela de plantão**. A pessoa existiria, teria senha, entraria no sistema, veria as telas, e nunca receberia trabalho. Sem erro, sem aviso, sem lugar onde olhar.
+
+Então cadastro e habilitação são a mesma entrega, e há um teste que documenta exatamente esse estado — não para provar que é raro, mas para provar que é detectável.
+
+### Sem categoria continua sendo possível, e agora é visível
+
+Proibir o cadastro sem categoria seria errado: gestor administra e não recebe rateio. Então o estado continua alcançável, mas deixou de ser silencioso em dois pontos:
+
+- **No formulário**, marcar papel diferente de `gestor` e nenhuma categoria acende um aviso dizendo que a pessoa entra no sistema e nunca recebe trabalho.
+- **Na lista**, quem está nesse estado ganha um selo em vermelho: *"sem categoria · não recebe nada"*.
+
+A regra é a de sempre: a decisão continua sendo do gestor, o que muda é que ele decide sabendo.
+
+### Desligar categoria nunca apaga a linha
+
+Tirar uma categoria de alguém desliga `podeReceber` na linha que já existe. Não apaga, e não mexe em `vigenciaFim`.
+
+O motivo de não apagar é o mesmo de sempre: o histórico de carga se apoia no registro de que aquela pessoa esteve habilitada.
+
+O motivo de usar `podeReceber` em vez de fechar a vigência é o **efeito imediato**. `vigenciaFim` é lida como dia inteiro inclusivo (uma habilitação que termina hoje vale hoje), então fechá-la hoje só faria efeito amanhã — e o gestor tira uma categoria justamente *antes* da distribuição do dia. Uma revogação que só vale amanhã chegaria tarde no único momento em que ela importa. Há teste para isso.
+
+### A lista enviada é o estado final, não um delta
+
+`POST /api/colaboradores/habilitacao` recebe o conjunto completo desejado; o que não estiver nele é desligado.
+
+Delta obrigaria a tela a conhecer o estado anterior para montar o pedido, e duas abas abertas ao mesmo tempo produziriam resultados diferentes conforme a ordem de envio. Com estado final, a última gravação vence e é exatamente o que o gestor viu na tela.
+
+### Tudo ou nada nas categorias
+
+Se um código pedido não existe ou está inativo, **nada** é gravado — nem a pessoa, no caso do cadastro. Aplicar só as válidas deixaria o gestor achando que gravou uma coisa e o banco com outra, que é a forma mais barata de produzir um trabalhador meio-invisível.
+
+### E-mail normalizado dos dois lados
+
+O cadastro normaliza o e-mail do mesmo jeito que a entrada (`CredenciaisSchema`): minúsculas, sem espaço nas pontas. Normalizar só de um lado criaria uma conta que existe e não abre — cadastrada como `Ana@Exemplo.test`, procurada no login como `ana@exemplo.test`.
+
+### E-mail repetido de alguém desligado manda reativar
+
+Cadastrar de novo partiria o histórico de carga em duas pessoas que são a mesma, e o crédito acumulado da primeira ficaria órfão. A mensagem diz isso, em vez de só recusar.
+
+### Rota nova de categorias
+
+`GET /api/categorias` existe para a tela ter o que oferecer. Poderia sair da constante `CATEGORIAS_CADASTRO`, que é a mesma fonte do seed — mas a tabela pode divergir dela (categoria desativada, rótulo ajustado), e oferecer ao gestor uma categoria que o banco não tem produziria erro na gravação. A tela pergunta ao banco o que existe de verdade.
+
+### Verificado na tela, ponta a ponta
+
+Cadastrei uma pessoa pela interface, com o papel e a categoria escolhidos ali. O aviso de "sem categoria" apareceu e sumiu ao marcar `Ligante`. A senha provisória apareceu uma vez. O e-mail foi gravado normalizado. A pessoa apareceu no plantão com a categoria certa, **entrou no sistema com a senha entregue** e caiu na troca obrigatória. Tirar a categoria a removeu do plantão na mesma hora. Sem rolagem horizontal a 375px.
+
+13 testes novos.

@@ -276,6 +276,39 @@ export const AtivacaoSchema = z.object({
   ativo: z.boolean(),
 })
 
+/**
+ * Gestor cadastrando alguém novo.
+ *
+ * O e-mail é normalizado do MESMO jeito que na entrada (`CredenciaisSchema`):
+ * minúsculas e sem espaço nas pontas. Cadastrar "Ana@Exemplo.test" e depois
+ * tentar entrar com "ana@exemplo.test" precisa funcionar — normalizar só de um
+ * lado cria uma conta que existe e não abre.
+ *
+ * `categorias` pode vir vazio, e isso é legítimo: gestor não recebe rateio.
+ * Mas quem trabalha na fila e nasce sem categoria fica INVISÍVEL para a
+ * distribuição, então a tela mostra esse estado em destaque em vez de deixar
+ * a pessoa sumir em silêncio.
+ */
+export const CadastroDeColaboradorSchema = z.object({
+  nome: z.string().min(1).max(255).trim(),
+  email: z.string().min(3).max(320).toLowerCase().trim(),
+  papel: PapelSchema,
+  categorias: z.array(CategoriaCodigoSchema).max(20).default([]),
+})
+
+/**
+ * Gestor definindo o que alguém pode receber.
+ *
+ * A lista é o estado FINAL desejado, não um delta: o que não estiver nela é
+ * desligado. Mandar delta faria a tela precisar saber o estado anterior para
+ * montar o pedido, e duas telas abertas ao mesmo tempo produziriam resultados
+ * diferentes dependendo da ordem de envio.
+ */
+export const HabilitacaoEntradaSchema = z.object({
+  colaboradorId: z.string().min(1),
+  categorias: z.array(CategoriaCodigoSchema).max(20),
+})
+
 /** Forma do `Item.payload`. Usada ao reler o que a IA extraiu. */
 export const PayloadDoItemSchema = z.object({
   campos: z.record(z.string().max(60), z.string().max(2000)).default({}),

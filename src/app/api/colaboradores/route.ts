@@ -1,4 +1,5 @@
-import { responder, rota } from '../../../servidor/http'
+import { criarColaborador } from '../../../servicos/colaboradores'
+import { corpoJson, responder, rota } from '../../../servidor/http'
 import { obterPrisma } from '../../../servidor/prisma'
 import { exigirAtor } from '../../../servidor/sessao'
 import { exigirPapel } from '../../../servidor/ator'
@@ -36,11 +37,37 @@ export async function GET(): Promise<Response> {
         senhaDefinidaEm: true,
         bloqueadoAte: true,
         tentativasFalhas: true,
+        // Sem isto, a tela não tem como mostrar quem está sem categoria — e
+        // quem está sem categoria some da distribuição sem nada acusar.
+        habilitacoes: {
+          where: { podeReceber: true },
+          select: { categoria: { select: { codigo: true } } },
+        },
       },
     })
 
     // O hash nunca sai daqui, em nenhuma forma. `senhaDefinidaEm` responde
     // "esta pessoa já tem acesso?" sem revelar nada sobre a senha em si.
-    return responder(colaboradores)
+    return responder(
+      colaboradores.map((colaborador) => ({
+        ...colaborador,
+        habilitacoes: undefined,
+        categorias: colaborador.habilitacoes.map((h) => h.categoria.codigo),
+      })),
+    )
+  })
+}
+
+/**
+ * Gestor cadastra alguém novo.
+ *
+ * Devolve a senha provisória em texto UMA vez, para ser entregue à pessoa.
+ * Ela não é gravada em lugar nenhum além do hash e não volta em consulta
+ * nenhuma depois disto.
+ */
+export async function POST(requisicao: Request): Promise<Response> {
+  return rota(async () => {
+    const ator = await exigirAtor()
+    return responder(await criarColaborador(obterPrisma(), await corpoJson(requisicao), ator))
   })
 }

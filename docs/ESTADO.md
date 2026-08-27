@@ -2,7 +2,7 @@
 
 > **Para continuar em outra máquina:** clone o repositório, siga o *Preparar o ambiente* abaixo e leia a seção *Onde parei*. Este arquivo é o ponto de entrada; ele diz o que já está pronto, o que ficou aberto e qual é o próximo passo.
 
-Última atualização: **27/08/2026** — taxa de acerto da IA (`H-D3`), precedida pela revisão do adapter e da ingestão, pelo complemento arquitetural, pelo adapter Anthropic e pela autenticação com senha.
+Última atualização: **27/08/2026** — cadastro de pessoa e habilitação pela tela (`H-D17`), precedido pela taxa de acerto da IA, pela revisão do adapter e da ingestão, e pela autenticação com senha.
 
 ---
 
@@ -25,7 +25,7 @@ Cole o valor em `SESSAO_SECRET`. Depois:
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
-npm run verificar    # typecheck + 187 testes
+npm run verificar    # typecheck + 200 testes
 npm run dev          # http://localhost:3000
 ```
 
@@ -52,16 +52,34 @@ Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela.
 | Fila individual | Concluir, transferir, devolver ao pool |
 | Painel | Agregação pura, zero campo digitável |
 | Qualidade da IA | Taxa de aceitação, cobertura e calibração da confiança. Critério de aceitação nº 5 passa a ser verificável |
-| API REST | 20 rotas, envelope único, limite de taxa, papéis |
+| Cadastro de equipe | Gestor cadastra pessoa e define o que ela pode receber, pela tela. Quem fica sem categoria aparece em destaque |
+| API REST | 23 rotas, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **187 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
+| Testes | **200 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
 
+**Entrou o cadastro de pessoa pela tela** (`H-D17`), junto com a habilitação. Detalhe em `DECISOES.md`, seção *Cadastro de pessoa e habilitação*.
+
+Até aqui só o seed criava colaborador — montar a equipe exigia terminal e banco, o que na prática significa que o gestor não montava equipe nenhuma.
+
+**As duas coisas entraram juntas porque separá-las produz gente invisível.** `obterEscala` filtra por quem tem habilitação, então alguém criado sem categoria não aparece na tela de plantão: existe, tem senha, entra no sistema, e nunca recebe trabalho. Sem erro, sem aviso, sem onde olhar.
+
+Cadastrar sem categoria continua possível — gestor administra e não recebe rateio —, mas deixou de ser silencioso: o formulário avisa na hora, e a lista marca quem está nesse estado com um selo vermelho *"sem categoria · não recebe nada"*.
+
+Tirar uma categoria **desliga a linha, nunca apaga** — o histórico de carga se apoia nela. E desliga com efeito imediato, não a partir de amanhã: o gestor tira a categoria justamente antes da distribuição do dia, e uma revogação que só valesse amanhã chegaria tarde no único momento em que importa.
+
+Verificado na tela ponta a ponta: cadastrei uma pessoa pela interface, o aviso de "sem categoria" apareceu e sumiu ao marcar `Ligante`, a senha provisória apareceu uma vez, **a pessoa entrou no sistema com essa senha** e caiu na troca obrigatória, apareceu no plantão com a categoria certa, e sumiu do plantão na hora em que tirei a categoria.
+
+Testes: 187 → **200**.
+
+---
+
+## O que veio antes
 **Entrou a taxa de acerto da IA** (`H-D3`) — o item 2 do roteiro, e o que destrava os outros. Detalhe em `DECISOES.md`, seção *Taxa de acerto da IA*.
 
 O critério de aceitação nº 5 pede "aceita sem correção ≥ 80%". Esse número não existia em lugar nenhum, e sem ele mexer no limiar de confiança era palpite. Nenhum dado novo precisou ser coletado: `Revisao` guarda `sugestaoIa` ao lado de `valorFinal` desde sempre — faltava a conta.
@@ -77,10 +95,6 @@ Verificado na tela com dado real do fluxo: 27 revisões resolvidas, 48% aceitas 
 O segundo: o painel pedia `?dias=tudo`, carregando todas as revisões desde a fundação na tela mais visitada do sistema — a proibição que `conferirConservacao` documenta no arquivo ao lado. Agora usa a janela de 30 dias, e a tela diz qual período está mostrando.
 
 Testes: 159 → **187**. Dezenove sobre o critério, puros; nove sobre a leitura contra banco real — um erro de leitura produziria um número plausível e falso, que é o pior resultado possível aqui.
-
----
-
-## O que veio antes
 
 **Uma revisão dirigida ao código ainda não mesclado encontrou quatro defeitos** — dois deles da categoria que este sistema existe para eliminar. Detalhe completo em `DECISOES.md`, seção *Revisão do adapter e da ingestão*.
 
@@ -177,7 +191,7 @@ Na ordem em que eu retomaria:
 1. **Rodar o adapter Anthropic contra a API real.** Com a chave no `.env`: `IA_ADAPTER=anthropic npm run ia:experimentar`. É a **única** parte do sistema que nunca foi exercitada de verdade — o resto tem teste ou foi conferido na tela. Compare a saída com a do mock, especialmente no caso de injeção.
 2. ~~**Taxa de acerto da IA** (`H-D3`)~~ — **feito em 27/08/2026.** A seção *Acerto da IA* no Painel responde o critério nº 5. Com o adapter real rodando, é o primeiro lugar para olhar: ela diz se a confiança do modelo separa acerto de erro, e portanto se faz sentido mexer no limiar.
 3. **Camada de agregados de métrica** (`H-D18`) — **antes** de qualquer política de retenção. Métrica só sobrevive a um expurgo se estiver materializada antes dele; depois, o histórico anterior já foi. Como nada é expurgado hoje, não há pressa, mas há ordem.
-4. **Cadastro de colaborador pela tela** (`H-D17`), junto com a tela de habilitação. Hoje só o seed cria pessoa; criar sem habilitação faria alguém nascer invisível para a distribuição.
+4. ~~**Cadastro de colaborador pela tela** (`H-D17`)~~ — **feito em 27/08/2026.** Cadastro e habilitação estão na tela de Acesso.
 5. Demais itens de `DECISOES.md § H.2` (H-D2 a H-D19). Dois têm gatilho claro: **H-D16** (`X-Forwarded-For` sem proxy confiável) é obrigatório antes de expor fora da rede local; **H-D19** (bytes de anexo sem criptografia em repouso) é obrigatório antes de documento real de associado entrar.
 
 ---
@@ -242,7 +256,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 187 testes |
+| `npm run verificar` | Typecheck + 200 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |
