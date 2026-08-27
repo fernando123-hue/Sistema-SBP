@@ -27,6 +27,14 @@ const AmbienteSchema = z.object({
   IA_MODELO: z.string().default('claude-sonnet-5'),
   ANTHROPIC_API_KEY: z.string().optional(),
   SESSAO_SECRET: z.string().optional(),
+  /**
+   * Onde os arquivos de anexo são guardados.
+   *
+   * Fora do repositório de propósito: são documentos de associado, não código.
+   * Ao migrar para nuvem, troca-se o adapter de armazenamento e esta variável
+   * deixa de ser usada.
+   */
+  ARMAZENAMENTO_DIR: z.string().default('./armazenamento'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 })
 

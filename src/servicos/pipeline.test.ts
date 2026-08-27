@@ -2,14 +2,16 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { IaMock } from '../adapters/ia-mock'
 import { IngestaoMock } from '../adapters/ingestao-mock'
+import type { ArmazenamentoPort } from '../ports/armazenamento'
 import { fimDoDia, sequenciaDeDatas } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, aprovarTudoNoBanco, limparTudo, semearBase } from '../testes/apoio'
+import { listarCaixa } from './caixa'
 import { confirmar, previa } from './distribuicao'
 import { concluir, devolver, minhaFila, transferir } from './fila'
 import { sincronizar } from './ingestao'
 import { conferirConservacao, porCategoria } from './painel'
-import { aprovarTodosPendentes, listarPendentes } from './revisao'
+import { aprovarTodosPendentes, listarPendentes, resolver } from './revisao'
 
 /**
  * Testes de integração do pipeline.
@@ -20,6 +22,33 @@ import { aprovarTodosPendentes, listarPendentes } from './revisao'
  */
 
 const banco = obterPrisma()
+
+/**
+ * Armazenamento em memória.
+ *
+ * O adapter de disco tem testes próprios contra o disco de verdade; aqui o que
+ * se verifica é a DECISÃO da ingestão — o que ela manda guardar e o que ela
+ * recusa antes de chegar perto do armazenamento.
+ */
+class ArmazenamentoEmMemoria implements ArmazenamentoPort {
+  readonly nome = 'memoria'
+  readonly guardados = new Map<string, Uint8Array>()
+  private proxima = 0
+
+  async guardar(bytes: Uint8Array, extensao: string): Promise<string> {
+    const chave = `memoria-${(this.proxima += 1)}${extensao}`
+    this.guardados.set(chave, bytes)
+    return chave
+  }
+
+  async ler(chave: string): Promise<Uint8Array | null> {
+    return this.guardados.get(chave) ?? null
+  }
+
+  async remover(chave: string): Promise<void> {
+    this.guardados.delete(chave)
+  }
+}
 
 function deps(datas: readonly string[], semente = 7, malicioso = false) {
   return {
@@ -175,6 +204,86 @@ describe('desdobramento — um e-mail pode gerar N itens (decisão A1)', () => {
     expect(comMuitosItens).not.toBeNull()
     expect(comMuitosItens!.itens.length).toBeGreaterThan(1)
   })
+
+  it('operador aumenta o N ao resolver — o N da IA é sugestão, não teto (AT-06)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 2)
+
+    await sincronizar(deps(datas), base.operador)
+
+    const pendente = (await listarPendentes(banco, 500)).find(
+      (item) => item.motivo === 'desdobramento',
+    )
+    expect(pendente).toBeDefined()
+
+    const itemAntes = await banco.item.findUniqueOrThrow({ where: { id: pendente!.itemId } })
+    const totalAntes = await banco.item.count({ where: { emailId: itemAntes.emailId } })
+
+    const resultado = await resolver(
+      banco,
+      {
+        revisaoId: pendente!.revisaoId,
+        categoriaCodigo: pendente!.categoriaCodigo,
+        titulo: pendente!.titulo,
+        campos: {},
+        aprovar: true,
+        itensExtras: [
+          { titulo: 'Ligante esquecido no rodapé 1', campos: { nome: 'Sintético Um' } },
+          { titulo: 'Ligante esquecido no rodapé 2', campos: { nome: 'Sintético Dois' } },
+        ],
+      },
+      base.operador,
+    )
+
+    expect(resultado.itensExtrasCriados).toHaveLength(2)
+
+    const totalDepois = await banco.item.count({ where: { emailId: itemAntes.emailId } })
+    expect(totalDepois).toBe(totalAntes + 2)
+
+    const extras = await banco.item.findMany({
+      where: { id: { in: resultado.itensExtrasCriados } },
+    })
+    for (const extra of extras) {
+      expect(extra.status).toBe('aprovado')
+      expect(extra.categoriaId).toBe(itemAntes.categoriaId)
+    }
+
+    // Carga nova entra normal na próxima distribuição — a conservação não é
+    // "quantidade que a IA extraiu do e-mail", é "quantidade aprovada agora".
+    await aprovarTudoNoBanco(banco)
+    for (const data of datas) {
+      await confirmar(banco, { data, categorias: [] }, base.operador)
+    }
+    const conservacao = await conferirConservacao(banco)
+    expect(conservacao.divergentes).toEqual([])
+  })
+
+  it('descartar uma revisão NÃO cria os itens extras — dividir só faz sentido junto de aprovar', async () => {
+    const base = await semearBase(banco, { totalDeDias: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 2)
+
+    await sincronizar(deps(datas), base.operador)
+
+    const pendente = (await listarPendentes(banco, 500)).find(
+      (item) => item.motivo === 'desdobramento',
+    )
+    expect(pendente).toBeDefined()
+
+    const resultado = await resolver(
+      banco,
+      {
+        revisaoId: pendente!.revisaoId,
+        categoriaCodigo: pendente!.categoriaCodigo,
+        titulo: pendente!.titulo,
+        campos: {},
+        aprovar: false,
+        itensExtras: [{ titulo: 'Não deveria existir', campos: {} }],
+      },
+      base.operador,
+    )
+
+    expect(resultado.itensExtrasCriados).toHaveLength(0)
+  })
 })
 
 describe('segurança — conteúdo não confiável', () => {
@@ -241,11 +350,165 @@ describe('segurança — conteúdo não confiável', () => {
 
     const email = await banco.email.findFirstOrThrow({
       where: { messageId: { contains: 'injecao' } },
+      include: { anexos: true },
     })
-    const anexos = JSON.parse(email.anexos) as { nome: string; aceito: boolean }[]
 
-    expect(anexos[0]!.nome).toBe('passwd.pdf')
-    expect(anexos[0]!.nome).not.toContain('..')
+    expect(email.anexos[0]!.nomeSeguro).toBe('passwd.pdf')
+    expect(email.anexos[0]!.nomeSeguro).not.toContain('..')
+  })
+
+  it('executável disfarçado de PDF é recusado, e seus bytes não vão para o disco', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+    const armazenamento = new ArmazenamentoEmMemoria()
+
+    await sincronizar({ ...deps(datas, 7, true), armazenamento }, base.operador)
+
+    const email = await banco.email.findFirstOrThrow({
+      where: { messageId: { contains: 'injecao' } },
+      include: { anexos: true },
+    })
+    const anexo = email.anexos[0]!
+
+    // O nome termina em `.pdf` e passa inteiro pela allowlist de extensão. Só a
+    // conferência dos bytes denuncia o executável.
+    expect(anexo.aceito).toBe(false)
+    expect(anexo.motivo).toContain('não corresponde')
+    // Não se armazena o que já se sabe que não devia ter chegado. O lote traz
+    // anexos legítimos junto, então o que se verifica é que NENHUM byte
+    // guardado é o do executável.
+    expect(anexo.chaveArmazenamento).toBeNull()
+    for (const bytes of armazenamento.guardados.values()) {
+      expect(Array.from(bytes.slice(0, 2))).not.toEqual([0x4d, 0x5a])
+    }
+  })
+
+  it('anexo legítimo é guardado, e a chave aponta para os bytes certos', async () => {
+    const base = await semearBase(banco, { totalDeDias: 3 })
+    const datas = sequenciaDeDatas(DATA_BASE, 3)
+    const armazenamento = new ArmazenamentoEmMemoria()
+
+    await sincronizar({ ...deps(datas), armazenamento }, base.operador)
+
+    const anexo = await banco.anexo.findFirstOrThrow({
+      where: { aceito: true, chaveArmazenamento: { not: null } },
+    })
+
+    expect(anexo.armazenadoEm).not.toBeNull()
+    const bytes = await armazenamento.ler(anexo.chaveArmazenamento!)
+    expect(bytes).not.toBeNull()
+    // `%PDF` — os bytes guardados são de fato o arquivo que chegou.
+    expect(Array.from(bytes!.slice(0, 4))).toEqual([0x25, 0x50, 0x44, 0x46])
+  })
+
+  it('sem armazenamento configurado, o metadado é gravado e a ausência dos bytes é declarada', async () => {
+    const base = await semearBase(banco, { totalDeDias: 3 })
+    const datas = sequenciaDeDatas(DATA_BASE, 3)
+
+    // Nem toda origem entrega o arquivo junto do e-mail. O sistema registra o
+    // que chegou e NÃO finge ter guardado o que não guardou.
+    await sincronizar(deps(datas), base.operador)
+
+    const anexos = await banco.anexo.findMany({ where: { aceito: true } })
+    expect(anexos.length).toBeGreaterThan(0)
+    for (const anexo of anexos) {
+      expect(anexo.chaveArmazenamento).toBeNull()
+      expect(anexo.armazenadoEm).toBeNull()
+    }
+  })
+})
+
+describe('retenção — conteúdo separado do histórico operacional', () => {
+  it('expurgar o conteúdo do e-mail não derruba item, carga nem conservação', async () => {
+    const base = await semearBase(banco, { totalDeDias: 3, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 3)
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTudoNoBanco(banco)
+    for (const data of datas) {
+      await confirmar(banco, { data, categorias: [] }, base.operador)
+    }
+
+    const itensAntes = await banco.item.count()
+    const atribuicoesAntes = await banco.atribuicao.count()
+    const conservacaoAntes = await conferirConservacao(banco)
+
+    // O expurgo que a política de retenção fará um dia: apaga o CONTEÚDO,
+    // preserva o metadado operacional. É a razão de as duas coisas viverem em
+    // linhas separadas.
+    await banco.emailConteudo.deleteMany()
+    await banco.email.updateMany({ data: { conteudoExpurgadoEm: new Date() } })
+
+    expect(await banco.item.count()).toBe(itensAntes)
+    expect(await banco.atribuicao.count()).toBe(atribuicoesAntes)
+
+    // O indicador que prova o valor do sistema continua reconstruível.
+    const conservacaoDepois = await conferirConservacao(banco)
+    expect(conservacaoDepois.rodadas).toBe(conservacaoAntes.rodadas)
+    expect(conservacaoDepois.divergentes).toEqual([])
+
+    // E a operação continua legível: a caixa perde remetente e assunto, nunca
+    // o item.
+    const caixa = await listarCaixa(banco, { limite: 5 })
+    expect(caixa.length).toBeGreaterThan(0)
+    expect(caixa[0]!.titulo.length).toBeGreaterThan(0)
+    expect(caixa[0]!.remetente).toBeNull()
+  })
+
+  it('o carimbo distingue "nunca teve conteúdo" de "foi expurgado"', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+    await sincronizar(deps(datas), base.operador)
+
+    const antes = await banco.email.findFirstOrThrow({ include: { conteudo: true } })
+    expect(antes.conteudo).not.toBeNull()
+    expect(antes.conteudoExpurgadoEm).toBeNull()
+
+    await banco.emailConteudo.delete({ where: { emailId: antes.id } })
+    await banco.email.update({
+      where: { id: antes.id },
+      data: { conteudoExpurgadoEm: new Date() },
+    })
+
+    // Sem o carimbo, um e-mail sem corpo seria ambíguo: falha de ingestão ou
+    // retenção aplicada? Ambiguidade silenciosa é o defeito que este sistema
+    // existe para eliminar.
+    const depois = await banco.email.findUniqueOrThrow({
+      where: { id: antes.id },
+      include: { conteudo: true },
+    })
+    expect(depois.conteudo).toBeNull()
+    expect(depois.conteudoExpurgadoEm).not.toBeNull()
+  })
+})
+
+describe('carga ponderada e escopo do livro-razão', () => {
+  it('grava contagem e carga lado a lado, e separa o razão por frente', async () => {
+    const base = await semearBase(banco, { totalDeDias: 2, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 2)
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTudoNoBanco(banco)
+    for (const data of datas) {
+      await confirmar(banco, { data, categorias: [] }, base.operador)
+    }
+
+    const saldos = await banco.saldoCarga.findMany({ where: { recebido: { gt: 0 } } })
+    expect(saldos.length).toBeGreaterThan(0)
+    for (const saldo of saldos) {
+      // Hoje o peso é 1, então os dois números coincidem. O que importa é que
+      // ambos são GRAVADOS: quando o peso passar a variar por item, `recebido`
+      // continua respondendo "quantos" e `recebidoPonderado`, "quanta carga".
+      expect(saldo.recebidoPonderado).toBeGreaterThan(0)
+    }
+
+    // Todo razão global nasce carimbado com a frente. Sem isso, `CADASTRO` e
+    // `TITULOS` somariam no mesmo saldo e o crédito perderia significado.
+    const globais = await banco.saldoCargaGlobal.findMany()
+    expect(globais.length).toBeGreaterThan(0)
+    for (const global of globais) {
+      expect(global.escopo).toBe('CADASTRO')
+    }
   })
 })
 

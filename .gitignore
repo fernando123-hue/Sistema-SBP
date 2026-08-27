@@ -20,6 +20,11 @@ prisma/*.db
 # Cliente Prisma gerado — reconstruído por `prisma generate`
 src/generated/
 
+# Arquivos de anexo. São DOCUMENTOS DE ASSOCIADO, não código: nunca entram no
+# repositório, nem os sintéticos — para que ninguém aprenda que esse diretório
+# pode ser comitado. Configurável por ARMAZENAMENTO_DIR.
+armazenamento/
+
 # Cache incremental do TypeScript. Artefato de build: muda a cada typecheck e
 # sujava o diff de todo commit.
 *.tsbuildinfo

@@ -41,6 +41,24 @@ function escolher<T>(lista: readonly T[], sortear: () => number): T {
   return lista[Math.floor(sortear() * lista.length)]!
 }
 
+/**
+ * PDF sintético mínimo, mas com assinatura REAL (`%PDF-`).
+ *
+ * Existe para que o caminho de armazenamento e a conferência de tipo sejam
+ * exercitados de verdade em teste e em demonstração. Um anexo sem bytes faria
+ * o sistema pular exatamente a parte que precisa de prova.
+ */
+function pdfSintetico(rotulo: string): Uint8Array {
+  const texto = `%PDF-1.4\n% documento sintetico: ${rotulo}\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n`
+  return new TextEncoder().encode(texto)
+}
+
+/** Bytes que NÃO são PDF, sob um nome `.pdf`. É o executável renomeado. */
+function arquivoDisfarcado(): Uint8Array<ArrayBuffer> {
+  // `MZ` — cabeçalho de executável do Windows.
+  return Uint8Array.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00])
+}
+
 function cpfSintetico(sortear: () => number): string {
   const digitos = Array.from({ length: 11 }, () => Math.floor(sortear() * 10)).join('')
   return `${digitos.slice(0, 3)}.${digitos.slice(3, 6)}.${digitos.slice(6, 9)}-${digitos.slice(9)}`
@@ -64,7 +82,15 @@ const MODELOS: readonly Modelo[] = [
       remetente: `${nome.split(' ')[0]!.toLowerCase()}@exemplo.test`,
       assunto: 'Ficha de atualização cadastral',
       corpo: `Segue ficha para atualização cadastral.\n\nNome: ${nome}\nCPF: ${cpfSintetico(sortear)}\nEndereço novo informado no anexo.`,
-      anexos: [{ nome: 'ficha-atualizacao.pdf', tipoDeclarado: 'application/pdf', tamanho: 184_320, hash: null }],
+      anexos: [
+        {
+          nome: 'ficha-atualizacao.pdf',
+          tipoDeclarado: 'application/pdf',
+          tamanho: 184_320,
+          hash: null,
+          conteudo: pdfSintetico('ficha de atualização'),
+        },
+      ],
     }
   },
   // DOC_CADASTRO
@@ -130,7 +156,18 @@ const EMAIL_MALICIOSO: Omit<EmailBruto, 'messageId' | 'recebidoEm' | 'origem'> =
     '',
     'Preciso atualizar meu cadastro.',
   ].join('\n'),
-  anexos: [{ nome: '../../etc/passwd.pdf', tipoDeclarado: 'application/pdf', tamanho: 1024, hash: null }],
+  // Dois ataques num anexo só: travessia de diretório no nome, e bytes de
+  // executável sob extensão `.pdf`. O primeiro é pego pela normalização do
+  // nome; o segundo, só pela conferência de assinatura.
+  anexos: [
+    {
+      nome: '../../etc/passwd.pdf',
+      tipoDeclarado: 'application/pdf',
+      tamanho: 1024,
+      hash: null,
+      conteudo: arquivoDisfarcado(),
+    },
+  ],
 }
 
 export interface OpcoesIngestaoMock {

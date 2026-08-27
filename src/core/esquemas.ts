@@ -87,6 +87,16 @@ export const SituacaoEventoSchema = z.enum([
  */
 export const LIMITE_ITENS_POR_EMAIL = 500
 
+/**
+ * Teto de itens que o operador pode criar ao dividir uma revisão em mais de
+ * uma unidade de carga (AT-06: "a IA propõe N; o operador ajusta").
+ *
+ * Bem mais baixo que `LIMITE_ITENS_POR_EMAIL` porque aqui é digitação humana,
+ * item a item — o mesmo raciocínio do teto de ingestão (erro visível em vez
+ * de silencioso), só que a ameaça é erro de clique, não alucinação de IA.
+ */
+export const LIMITE_ITENS_POR_DIVISAO_MANUAL = 20
+
 export const TAMANHO_MAXIMO_CORPO = 200_000
 export const TAMANHO_MAXIMO_ANEXO_BYTES = 25 * 1024 * 1024
 
@@ -94,9 +104,18 @@ export const TAMANHO_MAXIMO_ANEXO_BYTES = 25 * 1024 * 1024
 
 export const AnexoSchema = z.object({
   nome: z.string().min(1).max(255),
+  /** O que o REMETENTE alegou. Registrado para auditoria, nunca usado para decidir. */
   tipoDeclarado: z.string().max(200).default('application/octet-stream'),
   tamanho: z.number().int().nonnegative().max(TAMANHO_MAXIMO_ANEXO_BYTES),
   hash: z.string().max(128).nullable().default(null),
+  /**
+   * Bytes do arquivo, quando o adapter de ingestão os entrega.
+   *
+   * Opcional porque nem toda origem baixa o anexo junto do e-mail — IMAP pode
+   * listar antes de buscar. Sem bytes, o sistema guarda o metadado e registra
+   * que o arquivo não foi armazenado; nunca finge que guardou.
+   */
+  conteudo: z.instanceof(Uint8Array).optional(),
 })
 export type Anexo = z.infer<typeof AnexoSchema>
 
@@ -187,12 +206,74 @@ export const PedidoDistribuicaoSchema = z.object({
 })
 export type PedidoDistribuicao = z.infer<typeof PedidoDistribuicaoSchema>
 
+/** Item extra que o operador cria ao dividir uma revisão em mais de uma unidade de carga. */
+export const ItemDivididoSchema = z.object({
+  titulo: z.string().min(1).max(300),
+  campos: z.record(z.string().max(60), z.string().max(2000)).default({}),
+})
+export type ItemDividido = z.infer<typeof ItemDivididoSchema>
+
 export const ResolucaoRevisaoSchema = z.object({
   revisaoId: z.string().min(1),
   categoriaCodigo: CategoriaClassificavelSchema,
   titulo: z.string().min(1).max(300),
   campos: z.record(z.string().max(60), z.string().max(2000)).default({}),
   aprovar: z.boolean().default(true),
+  /**
+   * Itens além do original, quando a IA subestimou o N do desdobramento.
+   * Ignorado se `aprovar` for falso — não faz sentido criar carga nova a
+   * partir de uma revisão que está sendo recusada.
+   */
+  itensExtras: z.array(ItemDivididoSchema).max(LIMITE_ITENS_POR_DIVISAO_MANUAL).default([]),
+})
+
+// ─── Credenciais ─────────────────────────────────────────────
+
+/**
+ * Regra de senha.
+ *
+ * Comprimento mínimo em vez de exigência de símbolo/maiúscula/dígito: é o que
+ * o NIST recomenda desde 2017, porque regras de composição empurram a pessoa
+ * para `Senha@2026` — previsível — enquanto uma frase longa é forte e
+ * memorizável. O teto existe só para limitar o custo do hash por requisição.
+ */
+export const SenhaSchema = z
+  .string()
+  .min(10, 'a senha precisa de pelo menos 10 caracteres')
+  .max(200, 'a senha passa de 200 caracteres')
+
+export const CredenciaisSchema = z.object({
+  email: z.string().min(1).max(320).toLowerCase().trim(),
+  senha: z.string().min(1).max(200),
+})
+
+export const TrocaDeSenhaSchema = z.object({
+  senhaAtual: z.string().min(1).max(200),
+  senhaNova: SenhaSchema,
+})
+
+/**
+ * Gestor definindo a senha provisória de alguém.
+ *
+ * Não carrega quem definiu — isso vem do `Ator`. A senha é OPCIONAL de
+ * propósito: omitida, o servidor sorteia uma forte e a devolve uma única vez.
+ * A tela nunca envia este campo; ele existe para script e teste, onde um valor
+ * fixo é o que torna o resultado verificável.
+ */
+export const DefinicaoDeSenhaSchema = z.object({
+  colaboradorId: z.string().min(1),
+  senhaProvisoria: SenhaSchema.optional(),
+})
+
+/** Gestor tirando alguém do bloqueio por tentativas, sem esperar o tempo passar. */
+export const DestravamentoSchema = z.object({
+  colaboradorId: z.string().min(1),
+})
+
+/** Gestor ligando ou desligando o acesso de alguém. Desligar encerra a sessão em aberto. */
+export const AtivacaoSchema = z.object({
+  colaboradorId: z.string().min(1),
+  ativo: z.boolean(),
 })
 
 /** Forma do `Item.payload`. Usada ao reler o que a IA extraiu. */

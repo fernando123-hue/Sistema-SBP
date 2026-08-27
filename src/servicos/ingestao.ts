@@ -6,8 +6,10 @@ import {
   type Interpretacao,
   type MotivoRevisao,
 } from '../core/esquemas'
+import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
 import { paraDataIso } from '../core/util/datas'
+import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { ATOR_SISTEMA, exigirPapel, type Ator } from '../servidor/ator'
@@ -33,6 +35,14 @@ export interface DependenciasIngestao {
   banco: Banco
   ingestao: IngestaoPort
   ia: AiPort
+  /**
+   * Onde os bytes dos anexos são guardados.
+   *
+   * Opcional: sem ele, o sistema grava o metadado do anexo e NÃO guarda o
+   * arquivo — o que é registrado, nunca fingido. Um `chaveArmazenamento` nulo
+   * significa exatamente "os bytes não estão aqui".
+   */
+  armazenamento?: ArmazenamentoPort | undefined
 }
 
 export interface ResumoIngestao {
@@ -174,10 +184,38 @@ async function processarUm(
   // deve segurar lock de banco. Se falhar, nada foi gravado.
   const interpretacao = await deps.ia.interpretar(email)
 
-  const anexosAvaliados = email.anexos.map((anexo) => ({
-    ...anexo,
-    veredicto: validarAnexo(anexo.nome, anexo.tamanho, TAMANHO_MAXIMO_ANEXO_BYTES),
-  }))
+  const anexosAvaliados = await Promise.all(
+    email.anexos.map(async (anexo) => {
+      const veredicto = validarAnexo(anexo.nome, anexo.tamanho, TAMANHO_MAXIMO_ANEXO_BYTES)
+
+      // A allowlist de extensão só olha o NOME, que quem escreveu foi o
+      // remetente. Com os bytes em mãos, o tipo real é conferido — é o que
+      // separa um PDF de um executável chamado `laudo.pdf`.
+      if (veredicto.aceito && anexo.conteudo) {
+        const assinatura = conferirAssinatura(veredicto.nomeSeguro, anexo.conteudo)
+        if (assinatura.situacao === 'divergente') {
+          return {
+            ...anexo,
+            veredicto: { aceito: false, motivo: assinatura.motivo, nomeSeguro: veredicto.nomeSeguro },
+            chaveArmazenamento: null,
+          }
+        }
+      }
+
+      // Arquivo só é guardado depois de aceito. Rejeitado não entra no disco:
+      // não se armazena o que já se sabe que não devia ter chegado.
+      let chaveArmazenamento: string | null = null
+      if (veredicto.aceito && anexo.conteudo && deps.armazenamento) {
+        const ponto = veredicto.nomeSeguro.lastIndexOf('.')
+        chaveArmazenamento = await deps.armazenamento.guardar(
+          anexo.conteudo,
+          ponto === -1 ? '' : veredicto.nomeSeguro.slice(ponto),
+        )
+      }
+
+      return { ...anexo, veredicto, chaveArmazenamento }
+    }),
+  )
   const anexosRejeitados = anexosAvaliados.filter((anexo) => !anexo.veredicto.aceito).length
 
   return deps.banco.$transaction(async (tx) => {
@@ -189,27 +227,37 @@ async function processarUm(
     })
     if (jaProcessado?.processadoEm) return null
 
+    // Metadado e conteúdo nascem juntos, mas em linhas separadas: é o que
+    // permite, depois, expurgar o conteúdo pela retenção sem levar junto o
+    // histórico operacional que sustenta métrica, auditoria e conservação.
     const registro = await tx.email.upsert({
       where: { messageId: email.messageId },
       create: {
         messageId: email.messageId,
-        remetente: email.remetente,
-        assunto: email.assunto,
-        corpo: email.corpo,
-        anexos: serializar(
-          anexosAvaliados.map((anexo) => ({
-            nome: anexo.veredicto.nomeSeguro,
-            tipoDeclarado: anexo.tipoDeclarado,
-            tamanho: anexo.tamanho,
-            aceito: anexo.veredicto.aceito,
-            motivo: anexo.veredicto.motivo ?? null,
-          })),
-        ),
         origem: email.origem,
         recebidoEm: email.recebidoEm,
         modeloIa: interpretacao.modelo,
         versaoPrompt: interpretacao.versaoPrompt,
         processadoEm: new Date(),
+        conteudo: {
+          create: {
+            remetente: email.remetente,
+            assunto: email.assunto,
+            corpo: email.corpo,
+          },
+        },
+        anexos: {
+          create: anexosAvaliados.map((anexo) => ({
+            nomeSeguro: anexo.veredicto.nomeSeguro,
+            tipoDeclarado: anexo.tipoDeclarado,
+            tamanho: anexo.tamanho,
+            hash: anexo.hash,
+            aceito: anexo.veredicto.aceito,
+            motivo: anexo.veredicto.motivo ?? null,
+            chaveArmazenamento: anexo.chaveArmazenamento,
+            armazenadoEm: anexo.chaveArmazenamento ? new Date() : null,
+          })),
+        },
       },
       update: { processadoEm: new Date() },
     })

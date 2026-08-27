@@ -46,7 +46,15 @@ export async function listarCaixa(
     take: limite,
     include: {
       categoria: { select: { codigo: true, rotulo: true, grupo: true } },
-      email: { select: { remetente: true, assunto: true, recebidoEm: true, _count: { select: { itens: true } } } },
+      email: {
+        select: {
+          recebidoEm: true,
+          // Nulo quando a retenção já expurgou o conteúdo. O item continua
+          // inteiro: título, categoria, responsável e carga não dependem disto.
+          conteudo: { select: { remetente: true, assunto: true } },
+          _count: { select: { itens: true } },
+        },
+      },
       atribuicoes: {
         where: { ativa: true },
         select: { colaborador: { select: { nome: true } } },
@@ -62,8 +70,8 @@ export async function listarCaixa(
     grupo: item.categoria.grupo,
     status: item.status,
     confianca: item.confianca,
-    remetente: item.email?.remetente ?? null,
-    assunto: item.email?.assunto ?? null,
+    remetente: item.email?.conteudo?.remetente ?? null,
+    assunto: item.email?.conteudo?.assunto ?? null,
     recebidoEm: item.email?.recebidoEm ?? null,
     irmaos: item.email?._count.itens ?? 1,
     responsavel: item.atribuicoes[0]?.colaborador.nome ?? null,
