@@ -2,13 +2,7 @@ import { cookies } from 'next/headers'
 
 import { autenticar } from '../../../servicos/autenticacao'
 import { atorAtual, montarCookie, OPCOES_DO_COOKIE } from '../../../servidor/sessao'
-import {
-  corpoJson,
-  limitar,
-  origemDaRequisicao,
-  responder,
-  rota,
-} from '../../../servidor/http'
+import { corpoJson, limitarPorOrigem, responder, rota } from '../../../servidor/http'
 import { obterPrisma } from '../../../servidor/prisma'
 
 /**
@@ -45,7 +39,7 @@ export async function POST(requisicao: Request): Promise<Response> {
     // Chave POR ORIGEM. Uma chave fixa aqui era um DoS trivial: 21 requisições
     // de qualquer pessoa, sem autenticação, travavam a entrada da equipe
     // inteira até a janela reiniciar.
-    const recusa = limitar(`sessao:entrar:${origemDaRequisicao(requisicao)}`, 20, 60)
+    const recusa = limitarPorOrigem(requisicao, 'sessao:entrar', 20, 60)
     if (recusa) return recusa
 
     const entrada = await autenticar(obterPrisma(), await corpoJson(requisicao))

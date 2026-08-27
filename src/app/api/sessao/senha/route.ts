@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 
 import { trocarSenha } from '../../../../servicos/autenticacao'
-import { corpoJson, limitar, origemDaRequisicao, responder, rota } from '../../../../servidor/http'
+import { corpoJson, limitarPorOrigem, responder, rota } from '../../../../servidor/http'
 import { obterPrisma } from '../../../../servidor/prisma'
 import {
   OPCOES_DO_COOKIE,
@@ -27,7 +27,7 @@ export async function POST(requisicao: Request): Promise<Response> {
     // Confere a senha atual, então é oráculo de senha igual à entrada. O limite
     // por origem encarece a varredura; a trava que de fato segura é a de conta,
     // dentro do serviço.
-    const recusa = limitar(`sessao:senha:${origemDaRequisicao(requisicao)}`, 10, 60)
+    const recusa = limitarPorOrigem(requisicao, 'sessao:senha', 10, 60)
     if (recusa) return recusa
 
     const { senhaDefinidaEm } = await trocarSenha(obterPrisma(), await corpoJson(requisicao), ator)

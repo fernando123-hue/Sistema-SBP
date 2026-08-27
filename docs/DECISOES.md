@@ -280,9 +280,9 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 | H-D12 | Sem versionamento de caminho na API (`/v1/`) | Barato agora, caro depois de o legado plugar |
 | H-D13 | Ao migrar para PostgreSQL: `CHECK` nos domínios fechados, `jsonb` nas colunas JSON, isolamento de transação, runbook de migração de dados | O momento certo é a migração, com a tabela pequena |
 | H-D14 | Sem tela de administração de acesso — o gestor define senha só por chamada de API | A rota existe e é conferida por papel; a tela é trabalho próprio e depende de decidir se cadastro de pessoa entra junto |
-| H-D16 | `X-Forwarded-For` aceito sem proxy confiável — variar o cabeçalho zera o limite de taxa por origem | A trava por conta não depende de IP, então força bruta continua contida; sobra consumo de CPU. Fixar exige saber qual proxy estará na frente. **Obrigatório antes de expor fora da rede local** |
+| ~~H-D16~~ | ~~`X-Forwarded-For` aceito sem proxy confiável~~ | **RESOLVIDO em 27/08/2026** — `PROXIES_CONFIAVEIS` declara os saltos confiáveis; sem eles o código admite que não sabe a origem em vez de fingir. Seção *Origem da requisição e proxy confiável* abaixo. Publicar fora da rede local ainda exige ajustar o número |
 | ~~H-D17~~ | ~~Sem cadastro de colaborador pela tela~~ | **RESOLVIDO em 27/08/2026** — cadastro e habilitação na tela de Acesso, entregues juntos. Seção *Cadastro de pessoa e habilitação* abaixo |
-| H-D18 | Agregados de métrica não são materializados | Nada é expurgado hoje, então nada se perde. Mas **a camada de agregados tem de vir antes da primeira política de retenção** — depois dela, o histórico anterior já terá ido embora |
+| H-D18 | Agregados de métrica não são materializados | **Reclassificado em 27/08/2026.** Nenhuma métrica lê linha expurgável — todas saem de `Item`, `Atribuicao`, `SaldoCarga` e `Revisao`, e o invariante 11 proíbe apagar dado operacional. Deixou de ser pré-requisito da retenção; continua valendo por recorte histórico barato e por segurança contra uma retenção futura mais ampla |
 | H-D19 | Bytes de anexo sem criptografia em repouso e sem controle de acesso próprio | O diretório fica fora do repositório e não há rota que sirva arquivo. Antes de documento real de associado entrar: cifrar em repouso e decidir quem pode baixar o quê |
 
 ### H.3 Adequado como está
@@ -345,7 +345,7 @@ Três regras novas, custo zero e alto valor de memória: guardar histórico **n�
 
 Política de retenção com prazos · agregados materializados · peso variável por item · port de saída para resposta · tela de download de anexo · qualquer coisa das fases 3 a 6. Todos são tabela nova, coluna nova ou serviço novo — adicionar depois custa o mesmo que hoje.
 
-**Uma dependência de ordem que precisa ser respeitada:** métrica só sobrevive a um expurgo se estiver materializada **antes** dele. Como nada é expurgado hoje, a porta está aberta — mas a camada de agregados tem de vir antes da primeira política de retenção, nunca depois. Registrado como H-D18.
+**Uma dependência de ordem que parecia existir e não existe** *(revisto em 27/08/2026)*: a regra "métrica só sobrevive a um expurgo se estiver materializada antes dele" só morde se alguma métrica ler linha expurgável — e nenhuma lê. Todas saem de `Item`, `Atribuicao`, `SaldoCarga` e `Revisao`, que a retenção não toca e que o invariante 11 proíbe apagar. `H-D18` continua valendo por outros motivos, mas não bloqueia a política de retenção.
 
 ---
 
@@ -689,3 +689,65 @@ Corrigido com `z.email()` no esquema — que é o servidor, a única fronteira q
 **Verificado nos dois lados.** A API recusa sozinha (`nome: Too small`, `email: Invalid email address`, HTTP 400) e a tela barra antes de sair — sem requisição, sem pessoa criada, com o erro visível. Entrada legítima com maiúsculas e espaço sobrando continua passando e é gravada normalizada.
 
 **Nota de processo:** rodei `prettier --write` no arquivo da tela para arrumar a indentação e ele reescreveu 254 linhas — o projeto não tem configuração de Prettier e o código não segue os padrões dele. Revertido. Formatação aqui é manual e segue o que já está no arquivo.
+
+---
+
+## Origem da requisição e proxy confiável (`H-D16`) — 27/08/2026
+
+### Por que este item saiu na frente do `H-D18`
+
+O roteiro tinha `H-D18` (agregados de métrica materializados) como próximo. Ao abrir o item, a justificativa dele não se sustenta mais.
+
+`H-D18` existe porque *"métrica só sobrevive a um expurgo se estiver materializada antes dele"*. Mas depois da separação entre conteúdo e histórico, o que a política de retenção pode apagar é `EmailConteudo` e os bytes de anexo — e **nenhuma métrica lê essas linhas**:
+
+| Métrica | Lê de | Expurgável? |
+|---|---|---|
+| Painel por categoria | `Item.status` | não |
+| Painel por pessoa | `Atribuicao`, `SaldoCargaGlobal` | não |
+| Conservação | `RodadaDistribuicao`, `Atribuicao` | não |
+| Acerto da IA | `Revisao.sugestaoIa` / `valorFinal` | não |
+
+Enquanto o invariante 11 do `CLAUDE.md` valer (*"nunca apague dado operacional para simplificar armazenamento"*), nenhuma métrica está em risco. `H-D18` continua tendo valor — recorte histórico barato, painel com janela, e seguro contra uma retenção futura mais ampla —, mas deixou de ser **pré-requisito de segurança da política de retenção**. Reclassificado, e a dependência de ordem que estava registrada em duas seções foi corrigida.
+
+`H-D16`, por outro lado, é da lista de *obrigatório antes de expor fora da rede local*. E medindo, ele é pior do que estava escrito.
+
+### O que a medição mostrou
+
+Subi o servidor e li os cabeçalhos que chegam de verdade:
+
+```
+sem cabeçalho enviado   → x-forwarded-for: ::1            (o Next preenche com o socket)
+com cabeçalho enviado   → x-forwarded-for: 9.9.9.9, 8.8.8.8   (o Next repassa o do cliente, inteiro)
+```
+
+Ou seja: **sem proxy na frente, `x-forwarded-for` é texto livre escrito por quem chama.** E `origemDaRequisicao` lia a **primeira** entrada — exatamente o pedaço que o atacante escolhe. Variar um cabeçalho dava um balde de limite de taxa novo a cada requisição, e o limite por origem simplesmente não existia.
+
+O erro de ler a primeira entrada é independente da configuração: mesmo **com** um proxy confiável, a primeira entrada é a que o cliente mandou. O proxy acrescenta a verdadeira no fim.
+
+### A correção
+
+`PROXIES_CONFIAVEIS` (padrão `0`) declara quantos saltos confiáveis existem na frente.
+
+- **`0`** — acesso direto. Nenhum cabeçalho identifica ninguém, e o código **admite isso** em vez de fingir: a chave é `origem-indistinguivel`, marcada como não confiável.
+- **`N > 0`** — a origem é a entrada `N` posições antes do fim: a que o proxy mais externo acrescentou. Cadeia mais curta que `N` significa configuração divergente da realidade, ou alguém que alcançou o servidor por fora do proxy — e aí o valor não prova nada.
+
+### O balde de todo mundo não pode ter o limite de um só
+
+Admitir que a origem é desconhecida cria o problema oposto, que o comentário original já apontava: um balde único com número apertado é *DoS de graça* — o atacante estoura e tranca a equipe inteira.
+
+Então quando a origem é indistinguível o teto sobe (`FATOR_SEM_ORIGEM`), o bastante para uma equipe de dezenas de pessoas nunca encostar nele e ainda assim conter um laço automatizado. O que resta protegido é CPU — cada tentativa de senha custa uma derivação `scrypt`. **Isso não substitui identificar a origem**, e a defesa que de fato contém força bruta continua sendo a trava por conta, que não depende de IP.
+
+### Provado na aplicação rodando
+
+Com `PROXIES_CONFIAVEIS=1`, contra `/api/sessao`:
+
+| Cenário | Resultado |
+|---|---|
+| 25 pedidos forjando a **primeira** entrada, última fixa | 20× `422`, depois `429` — mesmo balde, forjar não compra balde novo |
+| 25 pedidos com **últimas** entradas distintas | 25× `422` — clientes reais continuam separados, nenhum `429` falso |
+
+Os dois lados importam. Só o primeiro provaria que o limite aperta; só o segundo, que ele não tranca ninguém. Juntos provam que ele voltou a fazer o que promete.
+
+### Ainda pendente
+
+`PROXIES_CONFIAVEIS` continua `0` por padrão, que é o correto para a rede local. **Publicar fora dela exige ajustar o número** — está no `.env.example` com o motivo.

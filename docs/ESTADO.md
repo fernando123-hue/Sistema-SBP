@@ -2,7 +2,7 @@
 
 > **Para continuar em outra máquina:** clone o repositório, siga o *Preparar o ambiente* abaixo e leia a seção *Onde parei*. Este arquivo é o ponto de entrada; ele diz o que já está pronto, o que ficou aberto e qual é o próximo passo.
 
-Última atualização: **27/08/2026** — cadastro de pessoa e habilitação pela tela (`H-D17`), precedido pela taxa de acerto da IA, pela revisão do adapter e da ingestão, e pela autenticação com senha.
+Última atualização: **27/08/2026** — origem da requisição e proxy confiável (`H-D16`), precedido pelo cadastro de pessoa, pela taxa de acerto da IA e pela revisão do adapter e da ingestão.
 
 ---
 
@@ -25,7 +25,7 @@ Cole o valor em `SESSAO_SECRET`. Depois:
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
-npm run verificar    # typecheck + 204 testes
+npm run verificar    # typecheck + 211 testes
 npm run dev          # http://localhost:3000
 ```
 
@@ -56,13 +56,30 @@ Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela.
 | API REST | 23 rotas, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **204 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
+| Testes | **211 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
 
+**Entrou o tratamento de proxy confiável** (`H-D16`), da lista de *obrigatório antes de expor fora da rede local*. Detalhe em `DECISOES.md`, seção *Origem da requisição e proxy confiável*.
+
+**O item saiu na frente do `H-D18` porque a justificativa do `H-D18` não se sustenta mais.** Ele existia para garantir que métrica sobrevivesse a um expurgo — mas depois da separação entre conteúdo e histórico, o que a retenção pode apagar é `EmailConteudo` e bytes de anexo, e nenhuma métrica lê essas linhas. Painel, conservação e acerto da IA saem todos de `Item`, `Atribuicao`, `SaldoCarga` e `Revisao`, que o invariante 11 proíbe apagar. `H-D18` continua valendo por recorte histórico barato, mas deixou de bloquear a retenção. Reclassificado.
+
+**E o `H-D16`, medido, era pior do que estava escrito.** Subi o servidor e li os cabeçalhos reais: sem `x-forwarded-for` o Next preenche com o endereço do socket; **com** o cabeçalho, ele repassa o valor do cliente inteiro. E `origemDaRequisicao` lia a *primeira* entrada — exatamente o pedaço que o atacante escolhe. Variar um cabeçalho dava um balde de limite de taxa novo por requisição: o limite por origem não existia.
+
+O erro de ler a primeira entrada é independente da configuração — mesmo **com** proxy confiável, a primeira entrada é a que o cliente mandou; o proxy acrescenta a verdadeira no fim.
+
+Agora `PROXIES_CONFIAVEIS` declara quantos saltos confiáveis existem. Com `0` (padrão), o código **admite que não sabe a origem** em vez de fingir, e o teto sobe para o balde compartilhado não virar um DoS de graça contra a própria equipe. Com `N > 0`, lê a entrada certa da cadeia.
+
+Provado na aplicação rodando: 25 pedidos forjando a primeira entrada com a última fixa deram 20 aceitos e depois `429` (mesmo balde); 25 pedidos com últimas entradas distintas passaram todos (clientes reais continuam separados, sem `429` falso).
+
+Testes: 204 → **211**.
+
+---
+
+## O que veio antes
 **Entrou o cadastro de pessoa pela tela** (`H-D17`), junto com a habilitação. Detalhe em `DECISOES.md`, seção *Cadastro de pessoa e habilitação*.
 
 Até aqui só o seed criava colaborador — montar a equipe exigia terminal e banco, o que na prática significa que o gestor não montava equipe nenhuma.
@@ -83,9 +100,6 @@ Corrigidos os dois no esquema, que é o servidor. A tela passou a conferir com o
 
 Testes: 187 → **204**.
 
----
-
-## O que veio antes
 **Entrou a taxa de acerto da IA** (`H-D3`) — o item 2 do roteiro, e o que destrava os outros. Detalhe em `DECISOES.md`, seção *Taxa de acerto da IA*.
 
 O critério de aceitação nº 5 pede "aceita sem correção ≥ 80%". Esse número não existia em lugar nenhum, e sem ele mexer no limiar de confiança era palpite. Nenhum dado novo precisou ser coletado: `Revisao` guarda `sugestaoIa` ao lado de `valorFinal` desde sempre — faltava a conta.
@@ -196,9 +210,9 @@ Na ordem em que eu retomaria:
 
 1. **Rodar o adapter Anthropic contra a API real.** Com a chave no `.env`: `IA_ADAPTER=anthropic npm run ia:experimentar`. É a **única** parte do sistema que nunca foi exercitada de verdade — o resto tem teste ou foi conferido na tela. Compare a saída com a do mock, especialmente no caso de injeção.
 2. ~~**Taxa de acerto da IA** (`H-D3`)~~ — **feito em 27/08/2026.** A seção *Acerto da IA* no Painel responde o critério nº 5. Com o adapter real rodando, é o primeiro lugar para olhar: ela diz se a confiança do modelo separa acerto de erro, e portanto se faz sentido mexer no limiar.
-3. **Camada de agregados de métrica** (`H-D18`) — **antes** de qualquer política de retenção. Métrica só sobrevive a um expurgo se estiver materializada antes dele; depois, o histórico anterior já foi. Como nada é expurgado hoje, não há pressa, mas há ordem.
+3. **Camada de agregados de métrica** (`H-D18`) — **reclassificado**: nenhuma métrica lê linha expurgável, então isto não bloqueia mais a política de retenção. Continua valendo por recorte histórico barato e por segurança contra uma retenção futura mais ampla.
 4. ~~**Cadastro de colaborador pela tela** (`H-D17`)~~ — **feito em 27/08/2026.** Cadastro e habilitação estão na tela de Acesso.
-5. Demais itens de `DECISOES.md § H.2` (H-D2 a H-D19). Dois têm gatilho claro: **H-D16** (`X-Forwarded-For` sem proxy confiável) é obrigatório antes de expor fora da rede local; **H-D19** (bytes de anexo sem criptografia em repouso) é obrigatório antes de documento real de associado entrar.
+5. Demais itens de `DECISOES.md § H.2` (H-D2 a H-D19). O gatilho que resta: **H-D19** (bytes de anexo sem criptografia em repouso) é obrigatório antes de documento real de associado entrar. **H-D5** (painel sem recorte de data, com definição própria de "pendente") tende a divergir da planilha na rodada paralela — vale antes da comparação lado a lado.
 
 ---
 
@@ -262,7 +276,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 204 testes |
+| `npm run verificar` | Typecheck + 211 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

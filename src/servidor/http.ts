@@ -1,6 +1,7 @@
 import { ZodError } from 'zod'
 
 import { ErroDominio } from '../core/erros'
+import { ambiente } from './ambiente'
 import { PermissaoNegadaError } from './ator'
 import { verificarLimite } from './limite-de-taxa'
 import { mensagemDoErro, novaCorrelacao, registrarLog } from './observabilidade'
@@ -102,11 +103,79 @@ export async function rota(handler: () => Promise<Response>): Promise<Response> 
  * Uma chave FIXA numa rota pré-autenticação é um DoS de graça: bastava alguém
  * estourar o balde global de `/api/sessao` para deixar a equipe inteira sem
  * conseguir entrar. A chave tem de separar quem chama.
+ *
+ * MAS SÓ DÁ PARA SEPARAR SE O VALOR NÃO FOR ESCOLHIDO POR QUEM CHAMA.
+ *
+ * Medido no servidor de desenvolvimento: quando o cliente não manda
+ * `x-forwarded-for`, o Next preenche com o endereço do socket; quando manda,
+ * o Next repassa o valor do cliente inteiro, sem acrescentar nada. Sem proxy
+ * confiável declarado, então, o cabeçalho é texto livre — e a versão antiga
+ * desta função lia a PRIMEIRA entrada dele, que é exatamente o que o
+ * atacante escreveu. Variar um cabeçalho dava um balde novo por requisição, e
+ * o limite de taxa deixava de existir.
+ *
+ * Com `PROXIES_CONFIAVEIS = N > 0`, a origem é a entrada N posições antes do
+ * fim: a que o proxy mais externo acrescentou. Cadeia mais curta que N
+ * significa configuração divergente da realidade — ou alguém alcançou o
+ * servidor por fora do proxy —, e aí o valor não prova nada.
  */
-export function origemDaRequisicao(requisicao: Request): string {
-  const encaminhado = requisicao.headers.get('x-forwarded-for')
-  if (encaminhado) return encaminhado.split(',')[0]!.trim().slice(0, 64)
-  return requisicao.headers.get('x-real-ip')?.slice(0, 64) ?? 'desconhecida'
+export interface Origem {
+  /** Chave do balde de limite. */
+  chave: string
+  /**
+   * `false` quando a chave NÃO separa quem chama.
+   *
+   * Quem chama precisa saber disto para não aplicar um limite apertado sobre
+   * um balde que é de todo mundo — seria trancar a equipe inteira por causa
+   * de um atacante.
+   */
+  confiavel: boolean
+}
+
+/** Balde único de quando não dá para identificar a origem. Nome explícito de propósito. */
+const ORIGEM_INDISTINGUIVEL = 'origem-indistinguivel'
+
+export function origemDaRequisicao(requisicao: Request): Origem {
+  const proxies = ambiente().PROXIES_CONFIAVEIS
+  if (proxies === 0) return { chave: ORIGEM_INDISTINGUIVEL, confiavel: false }
+
+  const cadeia = (requisicao.headers.get('x-forwarded-for') ?? '')
+    .split(',')
+    .map((parte) => parte.trim())
+    .filter((parte) => parte.length > 0)
+
+  const posicao = cadeia.length - proxies
+  if (posicao < 0) return { chave: ORIGEM_INDISTINGUIVEL, confiavel: false }
+
+  return { chave: cadeia[posicao]!.slice(0, 64), confiavel: true }
+}
+
+/**
+ * Quanto o limite afrouxa quando a origem é indistinguível.
+ *
+ * Sem proxy confiável, o balde é de todo mundo. Manter o número apertado
+ * trancaria a equipe inteira assim que um atacante o estourasse — o DoS de
+ * graça. O que resta proteger é CPU (cada tentativa de senha custa uma
+ * derivação scrypt), então o teto sobe o bastante para uma equipe de dezenas
+ * de pessoas nunca encostar nele, e ainda assim conter um laço automatizado.
+ *
+ * Isto NÃO substitui identificar a origem. É o que dá para fazer sem ela, e a
+ * defesa que de fato contém força bruta continua sendo a trava por conta.
+ */
+export const FATOR_SEM_ORIGEM = 30
+
+/**
+ * Limite de taxa por origem, honesto sobre o que dá para saber.
+ */
+export function limitarPorOrigem(
+  requisicao: Request,
+  prefixo: string,
+  porOrigem: number,
+  janelaSegundos: number,
+): Response | null {
+  const origem = origemDaRequisicao(requisicao)
+  const maximo = origem.confiavel ? porOrigem : porOrigem * FATOR_SEM_ORIGEM
+  return limitar(`${prefixo}:${origem.chave}`, maximo, janelaSegundos)
 }
 
 /** Aplica limite de taxa e devolve a resposta de recusa, ou `null` se liberado. */
