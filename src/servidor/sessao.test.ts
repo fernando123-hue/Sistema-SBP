@@ -35,7 +35,7 @@ beforeEach(() => {
 
 describe('cookie de sessão', () => {
   it('ida e volta preserva identidade e papel', () => {
-    const conteudo = lerCookie(montarCookie(COLABORADOR, 'operador'))
+    const conteudo = lerCookie(montarCookie(COLABORADOR, 'operador', null))
 
     expect(conteudo).not.toBeNull()
     expect(conteudo!.colaboradorId).toBe(COLABORADOR)
@@ -43,7 +43,7 @@ describe('cookie de sessão', () => {
   })
 
   it('recusa carga adulterada mantendo a assinatura antiga', () => {
-    const original = montarCookie(COLABORADOR, 'colaborador')
+    const original = montarCookie(COLABORADOR, 'colaborador', null)
     const [carga, assinatura] = original.split('.') as [string, string]
 
     // O ataque óbvio: promover-se a gestor reescrevendo a carga.
@@ -58,7 +58,7 @@ describe('cookie de sessão', () => {
   })
 
   it('recusa assinatura trocada', () => {
-    const [carga] = montarCookie(COLABORADOR, 'operador').split('.') as [string, string]
+    const [carga] = montarCookie(COLABORADOR, 'operador', null).split('.') as [string, string]
     expect(lerCookie(`${carga}.assinaturaInventada`)).toBeNull()
   })
 
@@ -72,7 +72,7 @@ describe('cookie de sessão', () => {
 
     // Assinatura VÁLIDA para uma carga expirada: a expiração tem de ser
     // verificada por si, não pode depender da assinatura.
-    const valido = montarCookie(COLABORADOR, 'operador')
+    const valido = montarCookie(COLABORADOR, 'operador', null)
     const separador = valido.lastIndexOf('.')
     const cargaValida = valido.slice(0, separador)
     expect(lerCookie(`${cargaValida}.${valido.slice(separador + 1)}`)).not.toBeNull()
@@ -98,16 +98,26 @@ describe('cookie de sessão', () => {
     definirSegredo('')
     // Assinar com string vazia daria aparência de proteção com zero proteção:
     // qualquer um recalcularia o HMAC e forjaria o cookie.
-    expect(() => montarCookie(COLABORADOR, 'operador')).toThrow(/SESSAO_SECRET/)
+    expect(() => montarCookie(COLABORADOR, 'operador', null)).toThrow(/SESSAO_SECRET/)
   })
 
   it('segredo curto demais é recusado', () => {
     definirSegredo('curto')
-    expect(() => montarCookie(COLABORADOR, 'operador')).toThrow(/16 caracteres/)
+    expect(() => montarCookie(COLABORADOR, 'operador', null)).toThrow(/16 caracteres/)
+  })
+
+  it('carrega a data da senha, que é o gatilho de revogação', () => {
+    const senhaEm = new Date('2026-08-26T12:00:00.000Z')
+    const conteudo = lerCookie(montarCookie(COLABORADOR, 'operador', senhaEm))
+
+    // `perfilAtual` compara este valor com o do banco e mata a sessão quando
+    // diferem. Sem o campo no cookie, trocar a senha — a reação de quem
+    // desconfia de acesso indevido — deixaria o cookie roubado vivo por 12h.
+    expect(conteudo!.senhaEm).toBe(senhaEm.getTime())
   })
 
   it('segredo diferente invalida cookies existentes', () => {
-    const cookie = montarCookie(COLABORADOR, 'operador')
+    const cookie = montarCookie(COLABORADOR, 'operador', null)
     definirSegredo('outro-segredo-completamente-diferente')
     expect(lerCookie(cookie)).toBeNull()
   })

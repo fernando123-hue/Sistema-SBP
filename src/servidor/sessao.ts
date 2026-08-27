@@ -10,14 +10,13 @@ import { obterPrisma } from './prisma'
 /**
  * Sessão.
  *
- * PROVISÓRIA E DECLARADA COMO TAL — ver DECISOES.md § AT-08. Não há senha
- * ainda: o operador escolhe quem é numa tela de desenvolvimento.
+ * Divisão de trabalho: `servicos/autenticacao` PROVA quem a pessoa é (e-mail e
+ * senha); este arquivo TRANSPORTA essa identidade pelo resto da requisição.
+ * Manter os dois separados foi o que permitiu trocar a prova — antes era
+ * "escolha um nome numa lista" — sem tocar em nenhum serviço.
  *
- * O que já é definitivo, e é o que importa: a identidade vem de um COOKIE
- * ASSINADO, nunca do corpo da requisição. O cliente não consegue forjar
- * `colaboradorId` sem o segredo do servidor. Quando a autenticação real entrar,
- * troca-se a forma de PROVAR a identidade; a forma de TRANSPORTÁ-LA para os
- * serviços (`Ator`) continua a mesma.
+ * A identidade vem sempre de um COOKIE ASSINADO, nunca do corpo da requisição:
+ * o cliente não forja `colaboradorId` sem o segredo do servidor.
  *
  * Cookie: `httpOnly`, `sameSite=lax`, `secure` fora de desenvolvimento.
  */
@@ -29,6 +28,15 @@ interface Conteudo {
   colaboradorId: string
   papel: Papel
   expiraEm: number
+  /**
+   * `senhaDefinidaEm` de quando o cookie foi emitido.
+   *
+   * É o que torna a troca de senha uma REVOGAÇÃO. Sem isto, a pessoa que
+   * desconfia de um acesso indevido troca a senha — a única reação que ela
+   * conhece — e o cookie roubado continua valendo até 12h, justamente no
+   * cenário em que o gesto precisava funcionar.
+   */
+  senhaEm: number | null
 }
 
 function segredo(): string {
@@ -56,11 +64,16 @@ function conferirAssinatura(carga: string, assinatura: string): boolean {
   return timingSafeEqual(esperada, recebida)
 }
 
-export function montarCookie(colaboradorId: string, papel: Papel): string {
+export function montarCookie(
+  colaboradorId: string,
+  papel: Papel,
+  senhaDefinidaEm: Date | null,
+): string {
   const conteudo: Conteudo = {
     colaboradorId,
     papel,
     expiraEm: Date.now() + VALIDADE_SEGUNDOS * 1000,
+    senhaEm: senhaDefinidaEm?.getTime() ?? null,
   }
   const carga = Buffer.from(JSON.stringify(conteudo)).toString('base64url')
   return `${carga}.${assinar(carga)}`
@@ -98,6 +111,8 @@ export interface PerfilAtual {
   ator: Ator
   nome: string
   papel: Papel
+  /** Senha ainda é a provisória entregue pelo gestor: nada além da troca é permitido. */
+  precisaTrocarSenha: boolean
 }
 
 /**
@@ -113,18 +128,32 @@ export async function perfilAtual(): Promise<PerfilAtual | null> {
   if (!conteudo) return null
 
   // O papel é reconferido no banco a cada requisição: rebaixar alguém tem
-  // efeito imediato, sem esperar o cookie expirar.
+  // efeito imediato, sem esperar o cookie expirar. Vale igual para
+  // `precisaTrocarSenha` — o gestor redefinir uma senha volta a exigir a troca
+  // na hora, mesmo em sessão já aberta.
   const colaborador = await obterPrisma().colaborador.findUnique({
     where: { id: conteudo.colaboradorId },
-    select: { id: true, nome: true, papel: true, ativo: true },
+    select: {
+      id: true,
+      nome: true,
+      papel: true,
+      ativo: true,
+      precisaTrocarSenha: true,
+      senhaDefinidaEm: true,
+    },
   })
   if (!colaborador?.ativo) return null
+
+  // Senha mudou depois deste cookie: a sessão morre aqui. Vale para a troca
+  // feita pelo dono e para a redefinição feita pelo gestor.
+  if ((colaborador.senhaDefinidaEm?.getTime() ?? null) !== conteudo.senhaEm) return null
 
   const papel = PapelSchema.parse(colaborador.papel)
   return {
     ator: atorDaSessao({ colaboradorId: colaborador.id, papel }),
     nome: colaborador.nome,
     papel,
+    precisaTrocarSenha: colaborador.precisaTrocarSenha,
   }
 }
 
@@ -141,9 +170,34 @@ export class SemSessaoError extends Error {
   }
 }
 
-/** Use nas rotas: devolve o ator ou interrompe. */
+export class SenhaProvisoriaError extends Error {
+  readonly codigo = 'SENHA_PROVISORIA'
+  constructor() {
+    super('Defina uma senha própria antes de usar o sistema.')
+    this.name = 'SenhaProvisoriaError'
+  }
+}
+
+/**
+ * Use nas rotas: devolve o ator ou interrompe.
+ *
+ * Recusa também quem ainda está com a senha provisória, e é aqui que essa
+ * regra vive porque é o ÚNICO ponto por onde toda rota passa. Bloquear só na
+ * navegação deixaria a API aberta: quem entregou a provisória a conhece, e
+ * conhecer a senha é conseguir um cookie válido. A janela em que outra pessoa
+ * pode agir em nome do dono termina no primeiro acesso dele, não em "confio
+ * que ninguém vai chamar a API na mão".
+ */
 export async function exigirAtor(): Promise<Ator> {
-  const ator = await atorAtual()
-  if (!ator) throw new SemSessaoError()
-  return ator
+  const perfil = await perfilAtual()
+  if (!perfil) throw new SemSessaoError()
+  if (perfil.precisaTrocarSenha) throw new SenhaProvisoriaError()
+  return perfil.ator
+}
+
+/** Só para a rota de troca de senha: é a única operação permitida com a provisória. */
+export async function exigirAtorParaTrocaDeSenha(): Promise<Ator> {
+  const perfil = await perfilAtual()
+  if (!perfil) throw new SemSessaoError()
+  return perfil.ator
 }

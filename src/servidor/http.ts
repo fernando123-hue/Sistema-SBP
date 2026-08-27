@@ -4,7 +4,7 @@ import { ErroDominio } from '../core/erros'
 import { PermissaoNegadaError } from './ator'
 import { verificarLimite } from './limite-de-taxa'
 import { mensagemDoErro, novaCorrelacao, registrarLog } from './observabilidade'
-import { SemSessaoError } from './sessao'
+import { SemSessaoError, SenhaProvisoriaError } from './sessao'
 
 /**
  * Camada HTTP.
@@ -42,6 +42,7 @@ export function responderErro(mensagem: string, status: number, correlacaoId?: s
 
 function statusDoErro(erro: unknown): number | null {
   if (erro instanceof SemSessaoError) return 401
+  if (erro instanceof SenhaProvisoriaError) return 403
   if (erro instanceof PermissaoNegadaError) return 403
   if (erro instanceof ZodError) return 400
   if (erro instanceof ErroDominio) {

@@ -1,5 +1,6 @@
 import { CATEGORIAS_CADASTRO } from '../src/core/config'
 import { deslocarDias, hojeIso, sequenciaDeDatas } from '../src/core/util/datas'
+import { gerarHash, sortearSenhaProvisoria } from '../src/servidor/credenciais'
 import { obterPrisma } from '../src/servidor/prisma'
 
 /**
@@ -63,8 +64,21 @@ const EQUIPE = [
 export const DATA_INICIAL = deslocarDias(hojeIso(), -7)
 export const TOTAL_DE_DIAS = 45
 
+/**
+ * Senha provisória: SORTEADA a cada execução e impressa uma única vez, nunca
+ * escrita no repositório. Uma senha fixa no arquivo seria credencial
+ * versionada — e valeria para toda instalação que rodasse este seed, inclusive
+ * uma exposta por engano.
+ *
+ * Quem já tem senha não é tocado: rodar o seed de novo não derruba o acesso de
+ * ninguém nem reimprime segredo que já foi trocado.
+ *
+ * O sorteio em si mora em `credenciais.ts`, junto do resto que lida com
+ * segredo — o mesmo que a tela do gestor usa.
+ */
 async function principal(): Promise<void> {
   const banco = obterPrisma()
+  const provisorias: { email: string; senha: string }[] = []
 
   for (const [posicao, categoria] of CATEGORIAS_CADASTRO.entries()) {
     await banco.categoria.upsert({
@@ -87,10 +101,37 @@ async function principal(): Promise<void> {
   const datas = sequenciaDeDatas(DATA_INICIAL, TOTAL_DE_DIAS)
 
   for (const [posicao, pessoa] of EQUIPE.entries()) {
+    const existente = await banco.colaborador.findUnique({
+      where: { email: pessoa.email },
+      select: { senhaHash: true },
+    })
+
+    // Quem já tem senha não é tocado. O hash é calculado UMA vez, fora do
+    // `upsert`: o objeto `create` é avaliado mesmo quando o registro já existe,
+    // então `gerarHash(senha!)` ali dentro quebrava a segunda execução do seed
+    // com "Cannot read properties of null". O `!` escondia isso do typecheck.
+    const senhaProvisoria = existente?.senhaHash ? null : sortearSenhaProvisoria()
+    const credencial = senhaProvisoria
+      ? {
+          senhaHash: await gerarHash(senhaProvisoria),
+          senhaDefinidaEm: new Date(),
+          precisaTrocarSenha: true,
+        }
+      : null
+
+    if (senhaProvisoria) provisorias.push({ email: pessoa.email, senha: senhaProvisoria })
+
     const colaborador = await banco.colaborador.upsert({
       where: { email: pessoa.email },
-      create: { nome: pessoa.nome, email: pessoa.email, papel: pessoa.papel },
-      update: { nome: pessoa.nome, papel: pessoa.papel },
+      create: {
+        nome: pessoa.nome,
+        email: pessoa.email,
+        papel: pessoa.papel,
+        // Colaborador novo SEMPRE nasce com credencial: `credencial` só é nulo
+        // quando o registro já existe, caso em que este ramo não roda.
+        ...(credencial ?? {}),
+      },
+      update: { nome: pessoa.nome, papel: pessoa.papel, ...(credencial ?? {}) },
     })
 
     for (const codigo of pessoa.categorias) {
@@ -133,6 +174,17 @@ async function principal(): Promise<void> {
   }
 
   process.stdout.write(`Seed concluído: ${JSON.stringify(totais)}\n`)
+
+  if (provisorias.length > 0) {
+    process.stdout.write(
+      '\nSenhas provisórias — aparecem UMA vez, não ficam gravadas em lugar nenhum.\n' +
+        'O sistema exige a troca no primeiro acesso.\n\n',
+    )
+    for (const entrada of provisorias) {
+      process.stdout.write(`  ${entrada.email}  ${entrada.senha}\n`)
+    }
+    process.stdout.write('\n')
+  }
 }
 
 principal().catch((erro: unknown) => {

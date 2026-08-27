@@ -1,30 +1,30 @@
 import { cookies } from 'next/headers'
-import { z } from 'zod'
 
+import { autenticar } from '../../../servicos/autenticacao'
 import { atorAtual, montarCookie, OPCOES_DO_COOKIE } from '../../../servidor/sessao'
 import {
   corpoJson,
   limitar,
   origemDaRequisicao,
   responder,
-  responderErro,
   rota,
 } from '../../../servidor/http'
 import { obterPrisma } from '../../../servidor/prisma'
-import { PapelSchema } from '../../../core/esquemas'
 
 /**
  * Sessão.
  *
- * PROVISÓRIO — ver DECISOES.md § AT-08. Não há senha: escolhe-se quem é numa
- * lista. O que já está no lugar certo é a assinatura: a identidade viaja num
- * cookie HMAC e o cliente não consegue forjá-la.
+ * A identidade é PROVADA por e-mail e senha (`servicos/autenticacao`) e depois
+ * TRANSPORTADA por um cookie HMAC. O corpo da requisição nunca diz quem você é
+ * — nem aqui, nem em nenhuma outra rota.
  *
- * O limite de taxa existe para que a troca de identidade não vire ferramenta
- * de enumeração de colaboradores.
+ * Dois limites de taxa, porque protegem coisas diferentes:
+ *
+ * - por origem, aqui, contra varredura de e-mails a partir de uma máquina;
+ * - por conta, no serviço, contra força bruta distribuída sobre uma pessoa.
+ *
+ * Nenhum dos dois sozinho cobre os dois casos.
  */
-
-const EntrarSchema = z.object({ colaboradorId: z.string().min(1) })
 
 export async function GET(): Promise<Response> {
   return rota(async () => {
@@ -33,7 +33,7 @@ export async function GET(): Promise<Response> {
 
     const colaborador = await obterPrisma().colaborador.findUnique({
       where: { id: ator.colaboradorId },
-      select: { id: true, nome: true, papel: true, email: true },
+      select: { id: true, nome: true, papel: true, email: true, precisaTrocarSenha: true },
     })
 
     return responder({ autenticado: true, colaborador })
@@ -48,24 +48,20 @@ export async function POST(requisicao: Request): Promise<Response> {
     const recusa = limitar(`sessao:entrar:${origemDaRequisicao(requisicao)}`, 20, 60)
     if (recusa) return recusa
 
-    const dados = EntrarSchema.parse(await corpoJson(requisicao))
-
-    const colaborador = await obterPrisma().colaborador.findUnique({
-      where: { id: dados.colaboradorId },
-      select: { id: true, nome: true, papel: true, ativo: true },
-    })
-
-    // Mensagem deliberadamente igual para "não existe" e "inativo": não confirma
-    // a existência de um identificador para quem estiver sondando.
-    if (!colaborador?.ativo) return responderErro('Colaborador indisponível.', 404)
+    const entrada = await autenticar(obterPrisma(), await corpoJson(requisicao))
 
     const armazem = await cookies()
     armazem.set({
       ...OPCOES_DO_COOKIE,
-      value: montarCookie(colaborador.id, PapelSchema.parse(colaborador.papel)),
+      value: montarCookie(entrada.colaboradorId, entrada.papel, entrada.senhaDefinidaEm),
     })
 
-    return responder({ id: colaborador.id, nome: colaborador.nome, papel: colaborador.papel })
+    return responder({
+      id: entrada.colaboradorId,
+      nome: entrada.nome,
+      papel: entrada.papel,
+      precisaTrocarSenha: entrada.precisaTrocarSenha,
+    })
   })
 }
 

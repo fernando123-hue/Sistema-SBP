@@ -17,9 +17,11 @@ import { PapelSchema, type Papel } from '../core/esquemas'
  * requisição teria de chamar `atorDaSessao` explicitamente — o que é visível
  * em revisão e rastreável por busca, em vez de silencioso.
  *
- * Isto NÃO substitui autenticação (ver DECISOES.md § AT-08). É a fundação de
- * tipos para que, quando a sessão existir, seja impossível ligar o corpo da
- * requisição ao campo de auditoria por acidente.
+ * Isto não é autenticação — quem prova a identidade é
+ * `servicos/autenticacao`. É a fundação de tipos que torna impossível ligar o
+ * corpo da requisição ao campo de auditoria por acidente, e é justamente por
+ * ela não saber nada sobre senha que trocar o mecanismo de login não encostou
+ * em serviço nenhum.
  */
 
 declare const marcaDeAtor: unique symbol

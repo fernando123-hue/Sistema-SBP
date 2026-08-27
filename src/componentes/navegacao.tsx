@@ -12,6 +12,10 @@ const DESTINOS = [
   { href: '/caixa', rotulo: 'Caixa de entrada', papeis: ['operador', 'gestor', 'colaborador'] },
   { href: '/fila', rotulo: 'Minha fila', papeis: ['operador', 'gestor', 'colaborador'] },
   { href: '/painel', rotulo: 'Painel', papeis: ['operador', 'gestor', 'colaborador'] },
+  // A rota também é conferida no servidor. Esconder o link é conveniência, não
+  // proteção: quem digitar `/acesso` sem ser gestor recebe 403 da API e vê a
+  // tela vazia com o erro.
+  { href: '/acesso', rotulo: 'Acesso', papeis: ['gestor'] },
 ] as const
 
 export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
