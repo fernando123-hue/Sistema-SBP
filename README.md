@@ -42,6 +42,8 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 | `/caixa` | Todos os itens com remetente, assunto, confiança e responsável |
 | `/fila` | Fila individual, mobile-first. Concluir item a item |
 | `/painel` | Recebido/distribuído/concluído/pendente. Zero campo digitável |
+| `/acesso` | Só gestor: estado de acesso da equipe, senha provisória, destravar, ligar/desligar |
+| `/senha` | Troca da própria senha. Obrigatória enquanto a provisória valer |
 
 ## Scripts
 
@@ -60,12 +62,12 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 ## Arquitetura
 
 ```
-app/          telas (a construir)
+app/          telas
 api/          endpoints REST — toda operação existe aqui primeiro
 servicos/     transações, Prisma, orquestração          -> depende de core
 core/         domínio puro: motor, esquemas, segurança  -> NÃO depende de nada
-ports/        contratos: AiPort, IngestaoPort
-adapters/     mock | anthropic | imap | xlsx
+ports/        contratos: AiPort, IngestaoPort, ArmazenamentoPort
+adapters/     mock | anthropic | disco | imap | xlsx
 ```
 
 **Regra de dependência:** as setas apontam só para dentro. `core/` não importa Prisma, React, Next nem `fetch`. É isso que torna o motor testável em milissegundos e auditável para sempre.
@@ -122,7 +124,7 @@ Toda saída de IA passa por `InterpretacaoSchema` (Zod). Uma resposta que não v
 
 ## Estado atual
 
-Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · IA mock determinística · fila de revisão com divisão manual · distribuição transacional com conservação garantida · fila individual com devolução ao pool · painel derivado · auditoria e observabilidade · API REST completa · 6 telas funcionando · **autenticação por e-mail e senha** com troca obrigatória da provisória e bloqueio progressivo · sessão por cookie assinado · limite de taxa · **auditoria completa com 24 correções aplicadas** (`DECISOES.md § H`).
+Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · adapters de IA (mock e Anthropic) · fila de revisão com divisão manual · distribuição transacional com conservação garantida · fila individual com devolução ao pool · painel derivado · auditoria e observabilidade · 19 rotas REST · 9 telas · **autenticação por e-mail e senha** com troca obrigatória da provisória, bloqueio progressivo e revogação de sessão · tela de administração de acesso · **conteúdo separado do histórico operacional**, com anexos guardados fora do banco e tipo real conferido pelos bytes · **auditoria completa com 24 correções aplicadas** (`DECISOES.md § H`).
 
 **155 testes passando.**
 

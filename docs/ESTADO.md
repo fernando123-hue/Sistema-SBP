@@ -51,9 +51,9 @@ Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela.
 | Distribuição | Transacional, com trava por dia, crédito histórico, auditoria completa |
 | Fila individual | Concluir, transferir, devolver ao pool |
 | Painel | Agregação pura, zero campo digitável |
-| API REST | 16 rotas, envelope único, limite de taxa, papéis |
+| API REST | 19 rotas, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
-| Telas | 5 telas + entrada + troca de senha, mobile-first, tema claro e escuro |
+| Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
 | Testes | **155 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
