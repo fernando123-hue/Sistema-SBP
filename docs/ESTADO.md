@@ -111,7 +111,9 @@ As mais graves que foram corrigidas:
 
 Três coisas que valem saber antes de abrir o repositório:
 
-**GitHub Actions está com a fila travada.** A execução do commit da auditoria ficou `queued` por mais de 6 horas e entrou num estado inconsistente — a API relata `queued`, o cancelamento responde `completed`. A causa provável é a cota de minutos do Actions em repositório privado no plano free. **A verificação local é a fonte da verdade** enquanto isso: `npm run verificar`.
+**GitHub Actions voltou a funcionar** (27/08/2026). A fila estava travada — execuções ficavam `queued` por horas, e o cancelamento respondia `completed` — mas destravou sozinha, provavelmente renovação da cota de minutos do plano free. Os três jobs rodam e passam no PR #11 em menos de um minuto.
+
+Ao rodar, o CI achou um problema real: o job do gitleaks falhava com `Resource not accessible by integration` em **PR comum**, não só nos do Dependabot. O `permissions` global do workflow é `contents: read`, e o gitleaks precisa de `pull-requests: read` para listar os commits do PR. Falhava **sem ter encontrado segredo nenhum** — o vermelho que ensina a equipe a ignorar vermelho. Corrigido com a permissão mínima no job.
 
 **Cinco PRs do Dependabot abertos** (#1, #2, #4, #5, #9). O #9 falhava no CI, e a investigação achou dois problemas reais — ambos corrigidos:
 
@@ -119,6 +121,10 @@ Três coisas que valem saber antes de abrir o repositório:
 - O job do gitleaks falhava com `Resource not accessible by integration` em todo PR do Dependabot, porque esses PRs recebem token somente-leitura. Era vermelho que não é defeito — o tipo que ensina a equipe a ignorar vermelho. O job agora pula quando o autor é o Dependabot.
 
 Com isso, os PRs de dependência devem passar. O merge continua sendo decisão sua.
+
+**PR aberto com o trabalho desta rodada:** [#11](https://github.com/fernando123-hue/Sistema-SBP/pull/11) — autenticação, adapter Anthropic, divisão manual da revisão e separação de conteúdo do histórico. Três checks verdes. Merge é decisão sua.
+
+Vale notar que o PR **#5 sobe o gitleaks-action de v2 para v3**. A permissão `pull-requests: read` que acabou de ser adicionada ao job de segredos vale para as duas versões, mas confira o comportamento ao fazer o merge — foi exatamente esse job que produziu vermelho falso duas vezes.
 
 **A suíte estava perto de estourar o tempo limite.** Depois que o desdobramento passou a exigir revisão humana, a simulação de 30 dias gera centenas de pendências, e o helper de teste as aprovava uma a uma. Trocado por operação em lote: o arquivo caiu de 140s para ~50s. O `testTimeout` também subiu para 90s, para dar margem em máquina mais lenta.
 
