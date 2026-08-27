@@ -669,3 +669,23 @@ Cadastrar de novo partiria o histórico de carga em duas pessoas que são a mesm
 Cadastrei uma pessoa pela interface, com o papel e a categoria escolhidos ali. O aviso de "sem categoria" apareceu e sumiu ao marcar `Ligante`. A senha provisória apareceu uma vez. O e-mail foi gravado normalizado. A pessoa apareceu no plantão com a categoria certa, **entrou no sistema com a senha entregue** e caiu na troca obrigatória. Tirar a categoria a removeu do plantão na mesma hora. Sem rolagem horizontal a 375px.
 
 13 testes novos.
+
+### Revisão do próprio trabalho — dois defeitos de validação
+
+Revisada a implementação antes de dar por pronta. Dois defeitos reais, os dois na fronteira de entrada, os dois com o mesmo destino: uma pessoa cadastrada que nunca consegue entrar.
+
+**R-07 — `.trim()` depois de `.min()` mede a string errada.** A cadeia era `z.string().min(1).max(255).trim()`. Em Zod, as validações rodam na ordem da cadeia: `"   "` tem comprimento 3, passa no `min(1)`, e **só então** é aparada, virando `""`.
+
+O efeito no nome é feio; no e-mail é grave. Provado rodando o cadastro real: a resposta voltou com `"email": ""`. Essa conta existe, tem hash de senha, e **nunca abre** — a entrada exige e-mail com ao menos um caractere, e `""` não casa com nada. Ninguém consegue entrar, e ninguém consegue ver que o problema é esse.
+
+Corrigido invertendo a ordem: `.trim()` primeiro, medida depois. A mesma inversão foi aplicada em `CredenciaisSchema`, onde o efeito era inofensivo (e-mail vazio não acha conta) mas a ordem estava igualmente errada.
+
+**R-08 — nenhuma validação de formato de e-mail, em lugar nenhum.** A API aceitava `"ana.silva"` sem domínio. E o `type="email"` que eu tinha posto no campo **não valida nada**: o input não está dentro de um `<form>` e o botão é `onClick`, não `submit`, então o navegador nunca confere. O campo parecia conferido e não era.
+
+O estrago não é estético. E-mail sem domínio cria uma conta que a pessoa nunca encontra; o gestor cadastra de novo com o endereço certo; passam a existir **duas pessoas que são a mesma**, com o histórico de carga partido entre elas. É exatamente o dano que a regra de "reative em vez de duplicar" existe para impedir, entrando pela porta da frente.
+
+Corrigido com `z.email()` no esquema — que é o servidor, a única fronteira que conta. A tela passou a conferir com o **mesmo esquema** antes de enviar: não substitui a validação do servidor, mas evita a ida inútil e devolve a mensagem exata em vez de um 400 genérico.
+
+**Verificado nos dois lados.** A API recusa sozinha (`nome: Too small`, `email: Invalid email address`, HTTP 400) e a tela barra antes de sair — sem requisição, sem pessoa criada, com o erro visível. Entrada legítima com maiúsculas e espaço sobrando continua passando e é gravada normalizada.
+
+**Nota de processo:** rodei `prettier --write` no arquivo da tela para arrumar a indentação e ele reescreveu 254 linhas — o projeto não tem configuração de Prettier e o código não segue os padrões dele. Revertido. Formatação aqui é manual e segue o que já está no arquivo.

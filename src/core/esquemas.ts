@@ -242,8 +242,17 @@ export const SenhaSchema = z
   .min(10, 'a senha precisa de pelo menos 10 caracteres')
   .max(200, 'a senha passa de 200 caracteres')
 
+/**
+ * Entrada.
+ *
+ * `.trim()` vem ANTES de `.min(1)` pelo mesmo motivo do cadastro: medir a
+ * string crua deixaria "   " passar e virar "". Aqui o efeito é inofensivo
+ * (e-mail vazio não casa com conta nenhuma), mas a ordem certa é a mesma nos
+ * dois lugares — e o formato NÃO é exigido de propósito: recusar endereço
+ * exótico na hora de entrar tranca alguém que já está cadastrado.
+ */
 export const CredenciaisSchema = z.object({
-  email: z.string().min(1).max(320).toLowerCase().trim(),
+  email: z.string().trim().toLowerCase().min(1).max(320),
   senha: z.string().min(1).max(200),
 })
 
@@ -288,10 +297,23 @@ export const AtivacaoSchema = z.object({
  * Mas quem trabalha na fila e nasce sem categoria fica INVISÍVEL para a
  * distribuição, então a tela mostra esse estado em destaque em vez de deixar
  * a pessoa sumir em silêncio.
+ *
+ * ORDEM DA CADEIA IMPORTA. `.min(1).trim()` mede a string CRUA e só então
+ * apara: "   " tem comprimento 3, passa na validação e vira "". Nascia daí
+ * uma pessoa sem nome, ou — pior — com e-mail vazio, numa conta que existe e
+ * nunca abre, porque a entrada exige e-mail com ao menos um caractere.
+ * Aparar primeiro é o que faz a medida valer sobre o que será gravado.
+ *
+ * O formato do e-mail é exigido AQUI e não só na tela: o `type="email"` de um
+ * campo fora de `<form>` não valida nada. E o estrago de um e-mail torto não
+ * é estético — "ana.silva" sem domínio cria uma conta que a pessoa nunca
+ * encontra, o gestor cadastra de novo com o endereço certo, e passam a
+ * existir duas pessoas que são a mesma, com o histórico de carga partido
+ * entre elas.
  */
 export const CadastroDeColaboradorSchema = z.object({
-  nome: z.string().min(1).max(255).trim(),
-  email: z.string().min(3).max(320).toLowerCase().trim(),
+  nome: z.string().trim().min(1).max(255),
+  email: z.string().trim().toLowerCase().pipe(z.email()).pipe(z.string().max(320)),
   papel: PapelSchema,
   categorias: z.array(CategoriaCodigoSchema).max(20).default([]),
 })

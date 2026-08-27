@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
+import { CadastroDeColaboradorSchema } from '../../core/esquemas'
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
   Aviso,
@@ -105,10 +106,27 @@ export default function Acesso() {
   }
 
   async function cadastrar() {
+    // Conferido com o MESMO esquema do servidor.
+    //
+    // Não substitui a validação de lá — substituir seria confiar no cliente —,
+    // mas evita a ida inútil e devolve a mensagem exata. E é o que de fato
+    // confere o e-mail: `type="email"` num campo FORA de `<form>` não valida
+    // nada, e o botão aqui é `onClick`, não `submit`. O campo parecia
+    // conferido e não era.
+    const conferido = CadastroDeColaboradorSchema.safeParse(novo)
+    if (!conferido.success) {
+      setErro(
+        conferido.error.issues
+          .map((problema) => `${problema.path.join('.')}: ${problema.message}`)
+          .join('; '),
+      )
+      return
+    }
+
     await agir('novo', async () => {
       const criado = await api.enviar<{ nome: string; senhaProvisoria: string }>(
         '/colaboradores',
-        novo,
+        conferido.data,
       )
       // Mesma janela única da senha provisória gerada para quem já existe: o
       // valor não volta em consulta nenhuma depois disto.

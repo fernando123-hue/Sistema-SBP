@@ -311,3 +311,67 @@ describe('habilitação', () => {
     expect(depois.map((linha) => linha.categoria.codigo)).toEqual(['LIGANTE'])
   })
 })
+
+describe('o que a API recusa antes de gravar', () => {
+  it('nome só de espaços não vira pessoa sem nome', async () => {
+    const { gestor } = await baseComGestor()
+
+    // `.trim()` depois de `.min(1)` valida a string CRUA e só então apara:
+    // "   " tem comprimento 3, passa, e vira "". A pessoa nasceria sem nome
+    // nenhum na lista de acesso e na tela de plantão.
+    await expect(
+      criarColaborador(
+        banco,
+        { nome: '   ', email: 'fulano@teste.local', papel: 'colaborador' },
+        gestor,
+      ),
+    ).rejects.toThrow()
+
+    expect(await banco.colaborador.count({ where: { email: 'fulano@teste.local' } })).toBe(0)
+  })
+
+  it('e-mail sem formato de e-mail é recusado', async () => {
+    const { gestor } = await baseComGestor()
+
+    // O estrago não é estético. "ana.silva" sem domínio cria uma conta que a
+    // pessoa nunca vai encontrar; o gestor cadastra de novo com o endereço
+    // certo, e agora existem DUAS pessoas que são a mesma — com o histórico de
+    // carga partido entre elas. É exatamente o dano que a regra de "reative em
+    // vez de duplicar" existe para impedir, entrando pela porta da frente.
+    await expect(
+      criarColaborador(
+        banco,
+        { nome: 'Ana Sintética', email: 'ana.silva', papel: 'colaborador' },
+        gestor,
+      ),
+    ).rejects.toThrow()
+
+    expect(await banco.colaborador.count({ where: { nome: 'Ana Sintética' } })).toBe(0)
+  })
+
+  it('e-mail só de espaços não vira conta inalcançável', async () => {
+    const { gestor } = await baseComGestor()
+
+    // Gravado como "", a conta existe e NUNCA abre: a entrada exige e-mail com
+    // ao menos um caractere. Ninguém consegue entrar, e ninguém consegue ver
+    // que o problema é esse.
+    await expect(
+      criarColaborador(banco, { nome: 'Fulano', email: '     ', papel: 'colaborador' }, gestor),
+    ).rejects.toThrow()
+  })
+
+  it('aceita e-mail normal com maiúsculas e espaço sobrando', async () => {
+    const { gestor } = await baseComGestor()
+
+    const criado = await criarColaborador(
+      banco,
+      { nome: '  Fulano Sintético  ', email: '  Fulano@Exemplo.TEST  ', papel: 'colaborador' },
+      gestor,
+    )
+
+    // Aparar e normalizar continua funcionando — a correção não pode ter
+    // virado uma regra que recusa entrada legítima.
+    expect(criado.nome).toBe('Fulano Sintético')
+    expect(criado.email).toBe('fulano@exemplo.test')
+  })
+})

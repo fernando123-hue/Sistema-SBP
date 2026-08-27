@@ -25,7 +25,7 @@ Cole o valor em `SESSAO_SECRET`. Depois:
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
-npm run verificar    # typecheck + 200 testes
+npm run verificar    # typecheck + 204 testes
 npm run dev          # http://localhost:3000
 ```
 
@@ -56,7 +56,7 @@ Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela.
 | API REST | 23 rotas, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **200 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
+| Testes | **204 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
@@ -75,7 +75,13 @@ Tirar uma categoria **desliga a linha, nunca apaga** — o histórico de carga s
 
 Verificado na tela ponta a ponta: cadastrei uma pessoa pela interface, o aviso de "sem categoria" apareceu e sumiu ao marcar `Ligante`, a senha provisória apareceu uma vez, **a pessoa entrou no sistema com essa senha** e caiu na troca obrigatória, apareceu no plantão com a categoria certa, e sumiu do plantão na hora em que tirei a categoria.
 
-Testes: 187 → **200**.
+**A revisão desta entrega achou dois defeitos meus, os dois na fronteira de entrada.** O primeiro: `.trim()` vinha DEPOIS de `.min(1)` no esquema, e em Zod a validação roda na ordem da cadeia — `"   "` tem comprimento 3, passa, e só então vira `""`. Rodando o cadastro real, a resposta voltou com `"email": ""`: uma conta que existe, tem senha, e **nunca abre**.
+
+O segundo: não havia validação de formato de e-mail em lugar nenhum. E o `type="email"` que eu tinha posto no campo não valida nada — o input não está dentro de um `<form>` e o botão é `onClick`, não `submit`. O campo parecia conferido e não era. E-mail sem domínio cria uma conta que a pessoa nunca encontra, o gestor cadastra de novo com o endereço certo, e passam a existir duas pessoas que são a mesma, com o histórico de carga partido — o dano que a regra de "reative em vez de duplicar" existe para impedir, entrando pela porta da frente.
+
+Corrigidos os dois no esquema, que é o servidor. A tela passou a conferir com o **mesmo** esquema antes de enviar — não substitui a validação de lá, evita a ida inútil.
+
+Testes: 187 → **204**.
 
 ---
 
@@ -256,7 +262,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 200 testes |
+| `npm run verificar` | Typecheck + 204 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |
