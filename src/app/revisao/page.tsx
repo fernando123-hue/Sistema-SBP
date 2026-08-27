@@ -36,6 +36,18 @@ const CATEGORIAS = [
   'EMAIL_LIGA',
 ] as const
 
+interface ItemExtra {
+  titulo: string
+  campos: Record<string, string>
+}
+
+interface Edicao {
+  titulo: string
+  categoria: string
+  campos: Record<string, string>
+  extras: ItemExtra[]
+}
+
 const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutro' }> = {
   baixa_confianca: { texto: 'confiança abaixo do limiar', tom: 'atencao' },
   campo_ausente: { texto: 'campo obrigatório faltando', tom: 'atencao' },
@@ -56,7 +68,7 @@ export default function Revisao() {
   const [pendentes, setPendentes] = useState<ItemEmRevisao[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
-  const [edicao, setEdicao] = useState<Record<string, { titulo: string; categoria: string }>>({})
+  const [edicao, setEdicao] = useState<Record<string, Edicao>>({})
 
   const carregar = useCallback(async () => {
     try {
@@ -66,7 +78,12 @@ export default function Revisao() {
         Object.fromEntries(
           lista.map((item) => [
             item.revisaoId,
-            { titulo: item.titulo, categoria: item.categoriaCodigo },
+            {
+              titulo: item.titulo,
+              categoria: item.categoriaCodigo,
+              campos: camposSugeridos(item),
+              extras: [],
+            },
           ]),
         ),
       )
@@ -79,17 +96,71 @@ export default function Revisao() {
     void carregar()
   }, [carregar])
 
+  function mudarEdicao(revisaoId: string, parcial: Partial<Edicao>) {
+    setEdicao((mapa) => ({ ...mapa, [revisaoId]: { ...mapa[revisaoId]!, ...parcial } }))
+  }
+
+  function mudarCampo(revisaoId: string, chave: string, valor: string) {
+    const atual = edicao[revisaoId]
+    if (!atual) return
+    mudarEdicao(revisaoId, { campos: { ...atual.campos, [chave]: valor } })
+  }
+
+  /**
+   * "A IA propõe N; o operador ajusta" (AT-06). Quando um item de lista ainda
+   * esconde gente — "e mais 2 ligantes" no rodapé — o operador adiciona aqui
+   * em vez de o sistema contar carga de menos pra sempre.
+   */
+  function adicionarExtra(revisaoId: string, chavesCampos: string[]) {
+    const atual = edicao[revisaoId]
+    if (!atual) return
+    const novo: ItemExtra = {
+      titulo: '',
+      campos: Object.fromEntries(chavesCampos.map((chave) => [chave, ''])),
+    }
+    mudarEdicao(revisaoId, { extras: [...atual.extras, novo] })
+  }
+
+  function removerExtra(revisaoId: string, indice: number) {
+    const atual = edicao[revisaoId]
+    if (!atual) return
+    mudarEdicao(revisaoId, { extras: atual.extras.filter((_, i) => i !== indice) })
+  }
+
+  function mudarExtra(revisaoId: string, indice: number, parcial: Partial<ItemExtra>) {
+    const atual = edicao[revisaoId]
+    if (!atual) return
+    const extras = atual.extras.map((extra, i) => (i === indice ? { ...extra, ...parcial } : extra))
+    mudarEdicao(revisaoId, { extras })
+  }
+
   async function resolver(item: ItemEmRevisao, aprovar: boolean) {
+    const atual = edicao[item.revisaoId]
+    const extras = atual?.extras ?? []
+
+    // NÃO descarta item sem título em silêncio.
+    //
+    // Filtrar os vazios aqui era exatamente a doença que esta tela existe para
+    // curar: o operador adicionava o ligante esquecido, esquecia o título, e o
+    // sistema voltava a contar carga de menos — agora sem nem o rastro que a
+    // IA tinha deixado. Some com o trabalho e não conta a ninguém.
+    if (aprovar && extras.some((extra) => extra.titulo.trim() === '')) {
+      setErro('Há item novo sem título. Preencha o título ou remova o item antes de aprovar.')
+      return
+    }
+
     setOcupado(item.revisaoId)
     setErro(null)
-    const atual = edicao[item.revisaoId]
     try {
       await api.enviar('/revisao/resolver', {
         revisaoId: item.revisaoId,
         categoriaCodigo: atual?.categoria ?? item.categoriaCodigo,
         titulo: atual?.titulo ?? item.titulo,
-        campos: {},
+        campos: atual?.campos ?? {},
         aprovar,
+        // Descartar é decisão sobre o item original; os extras nem chegam a
+        // existir, então não há o que criar.
+        itensExtras: aprovar ? extras : [],
       })
       setPendentes((lista) => (lista ?? []).filter((linha) => linha.revisaoId !== item.revisaoId))
     } catch (causa) {
@@ -99,12 +170,12 @@ export default function Revisao() {
     }
   }
 
-  function campos(item: ItemEmRevisao): [string, string][] {
+  function camposSugeridos(item: ItemEmRevisao): Record<string, string> {
     try {
       const sugestao = JSON.parse(item.sugestaoIa) as { campos?: Record<string, string> }
-      return Object.entries(sugestao.campos ?? {})
+      return sugestao.campos ?? {}
     } catch {
-      return []
+      return {}
     }
   }
 
@@ -160,15 +231,19 @@ export default function Revisao() {
                     </div>
                   ) : null}
 
-                  {campos(item).length > 0 ? (
-                    <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 rounded-md bg-papel-fundo px-3 py-2 text-xs">
-                      {campos(item).map(([chave, valor]) => (
-                        <div key={chave}>
-                          <dt className="inline text-tinta-fraca">{chave}: </dt>
-                          <dd className="inline font-medium">{valor}</dd>
-                        </div>
+                  {Object.keys(atual?.campos ?? {}).length > 0 ? (
+                    <div className="mt-3 grid grid-cols-2 gap-2 rounded-md bg-papel-fundo px-3 py-2 sm:grid-cols-3">
+                      {Object.entries(atual?.campos ?? {}).map(([chave, valor]) => (
+                        <label key={chave} className="flex flex-col gap-1">
+                          <span className="text-xs text-tinta-fraca">{chave}</span>
+                          <input
+                            value={valor}
+                            onChange={(evento) => mudarCampo(item.revisaoId, chave, evento.target.value)}
+                            className="min-h-9 rounded-md border border-borda-forte bg-papel px-2 text-sm"
+                          />
+                        </label>
                       ))}
-                    </dl>
+                    </div>
                   ) : null}
 
                   <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -177,13 +252,7 @@ export default function Revisao() {
                       <input
                         value={atual?.titulo ?? item.titulo}
                         onChange={(evento) =>
-                          setEdicao((mapa) => ({
-                            ...mapa,
-                            [item.revisaoId]: {
-                              titulo: evento.target.value,
-                              categoria: atual?.categoria ?? item.categoriaCodigo,
-                            },
-                          }))
+                          mudarEdicao(item.revisaoId, { titulo: evento.target.value })
                         }
                         className="min-h-10 rounded-md border border-borda-forte bg-papel px-2.5 text-sm"
                       />
@@ -194,13 +263,7 @@ export default function Revisao() {
                       <select
                         value={atual?.categoria ?? item.categoriaCodigo}
                         onChange={(evento) =>
-                          setEdicao((mapa) => ({
-                            ...mapa,
-                            [item.revisaoId]: {
-                              titulo: atual?.titulo ?? item.titulo,
-                              categoria: evento.target.value,
-                            },
-                          }))
+                          mudarEdicao(item.revisaoId, { categoria: evento.target.value })
                         }
                         className="min-h-10 rounded-md border border-borda-forte bg-papel px-2.5 text-sm"
                       >
@@ -211,6 +274,61 @@ export default function Revisao() {
                         ))}
                       </select>
                     </label>
+                  </div>
+
+                  <div className="mt-3 flex flex-col gap-2 rounded-md border border-dashed border-borda-forte px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-tinta-fraca">
+                        Este e-mail escondia mais gente? Adicione os itens que a IA não separou.
+                      </span>
+                      <Botao
+                        variante="secundario"
+                        tamanho="pequeno"
+                        onClick={() =>
+                          adicionarExtra(item.revisaoId, Object.keys(atual?.campos ?? {}))
+                        }
+                      >
+                        + item
+                      </Botao>
+                    </div>
+
+                    {(atual?.extras ?? []).map((extra, indice) => (
+                      <div
+                        key={indice}
+                        className="flex flex-col gap-2 rounded-md bg-papel-fundo px-2.5 py-2 sm:flex-row sm:items-start"
+                      >
+                        <input
+                          value={extra.titulo}
+                          required
+                          aria-label="título do item novo"
+                          placeholder="título do item (obrigatório)"
+                          onChange={(evento) =>
+                            mudarExtra(item.revisaoId, indice, { titulo: evento.target.value })
+                          }
+                          className="min-h-9 flex-1 rounded-md border border-borda-forte bg-papel px-2 text-sm"
+                        />
+                        {Object.keys(extra.campos).map((chave) => (
+                          <input
+                            key={chave}
+                            value={extra.campos[chave] ?? ''}
+                            placeholder={chave}
+                            onChange={(evento) =>
+                              mudarExtra(item.revisaoId, indice, {
+                                campos: { ...extra.campos, [chave]: evento.target.value },
+                              })
+                            }
+                            className="min-h-9 flex-1 rounded-md border border-borda-forte bg-papel px-2 text-sm"
+                          />
+                        ))}
+                        <Botao
+                          variante="perigo"
+                          tamanho="pequeno"
+                          onClick={() => removerExtra(item.revisaoId, indice)}
+                        >
+                          remover
+                        </Botao>
+                      </div>
+                    ))}
                   </div>
 
                   <div className="mt-3 flex justify-end gap-2">
