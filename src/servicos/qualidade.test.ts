@@ -160,3 +160,47 @@ describe('linha ilegível', () => {
     expect(resultado.ignoradas).toBe(1)
   })
 })
+
+describe('recorte por janela', () => {
+  it('taxa e cobertura falam do MESMO universo', async () => {
+    const base = await ingerirUmDia()
+    await aprovarTodosPendentes(banco, base.operador)
+
+    // Empurra os itens para 90 dias atrás, deixando as revisões resolvidas
+    // hoje. É o caso real de quem revisa uma fila acumulada: item velho,
+    // decisão nova.
+    const antigo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+    await banco.item.updateMany({ data: { criadoEm: antigo } })
+
+    const janela = await medirQualidadeDaIa(banco, 30)
+
+    // Se o denominador contasse item por data de criação e o numerador
+    // contasse revisão por data de resolução, este caso daria cobertura acima
+    // de 100% — e o `Math.min` a esconderia mostrando exatamente 100%, que é
+    // pior que o erro: um número redondo e falso.
+    expect(janela.cobertura.itensDeIa).toBe(0)
+    expect(janela.cobertura.revisados).toBe(0)
+    expect(janela.cobertura.fracaoRevisada).toBeNull()
+
+    // E a taxa segue o mesmo recorte: nenhum item da janela, nenhuma revisão
+    // na conta. Um universo só.
+    expect(janela.taxa.revisadas).toBe(0)
+    expect(janela.taxa.taxaDeAceitacao).toBeNull()
+
+    // Sem janela, tudo volta a aparecer.
+    const tudo = await medirQualidadeDaIa(banco, null)
+    expect(tudo.taxa.revisadas).toBeGreaterThan(0)
+    expect(tudo.cobertura.fracaoRevisada).not.toBeNull()
+  })
+
+  it('a cobertura nunca passa de 100% nem fica negativa', async () => {
+    const base = await ingerirUmDia()
+    await aprovarTodosPendentes(banco, base.operador)
+
+    const resultado = await medirQualidadeDaIa(banco, null)
+
+    expect(resultado.cobertura.revisados).toBeLessThanOrEqual(resultado.cobertura.itensDeIa)
+    expect(resultado.cobertura.naoRevisados).toBeGreaterThanOrEqual(0)
+    expect(resultado.cobertura.fracaoRevisada!).toBeLessThanOrEqual(1)
+  })
+})

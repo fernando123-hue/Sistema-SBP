@@ -1,14 +1,7 @@
-import {
-  SugestaoIaGravadaSchema,
-  ValorFinalDaRevisaoSchema,
-} from '../core/esquemas'
-import {
-  calcularTaxaDeAcerto,
-  type ParDeRevisao,
-  type TaxaDeAcerto,
-} from '../core/qualidade-ia'
-import { arredondar } from '../core/util/numero'
+import { SugestaoIaGravadaSchema, ValorFinalDaRevisaoSchema } from '../core/esquemas'
+import { calcularTaxaDeAcerto, type ParDeRevisao, type TaxaDeAcerto } from '../core/qualidade-ia'
 import { deslocarDias, hojeIso } from '../core/util/datas'
+import { arredondar } from '../core/util/numero'
 import type { Banco } from '../servidor/prisma'
 
 /**
@@ -20,6 +13,19 @@ import type { Banco } from '../servidor/prisma'
  * guardar `sugestaoIa` ao lado de `valorFinal`.
  *
  * Só leitura. Como todo o painel, não há rota de escrita — invariante 4.
+ *
+ * ═══ UM UNIVERSO SÓ ═══
+ *
+ * Tudo aqui é recortado pela data de criação do ITEM, nunca pela data em que a
+ * revisão foi resolvida. A pergunta que a tela responde é *"dos itens que a IA
+ * classificou neste período, quantos foram conferidos e quantos passaram sem
+ * correção?"* — e as três contagens só compõem se saírem do mesmo conjunto.
+ *
+ * Recortar o numerador por `resolvidoEm` e o denominador por `criadoEm` produz
+ * frações acima de 100% no caso mais banal que existe: fila acumulada, item
+ * velho, decisão nova. Foi o que este arquivo fazia antes, e o `Math.min` que
+ * limitava em 1 não corrigia o erro — escondia, devolvendo um número redondo e
+ * falso, que é pior do que a fração absurda.
  */
 
 /** Janela padrão. O critério nº 5 fala em "após 2 semanas"; 30 dias dá margem. */
@@ -42,6 +48,7 @@ export interface Cobertura {
 }
 
 export interface QualidadeDaIa {
+  /** Início da janela em ISO, ou `null` quando a medida é desde sempre. */
   desde: string | null
   taxa: TaxaDeAcerto
   cobertura: Cobertura
@@ -66,15 +73,28 @@ export async function medirQualidadeDaIa(
   const desde = dias === null ? null : deslocarDias(hojeIso(), -dias)
   const corte = desde === null ? undefined : new Date(`${desde}T00:00:00.000Z`)
 
-  const resolvidas = await banco.revisao.findMany({
-    where: {
-      resolvidoEm: corte ? { not: null, gte: corte } : { not: null },
-      valorFinal: { not: null },
-    },
-    // `resolvidoPor` deliberadamente ausente do select: medir acerto por
-    // revisor seria vigiar pessoa, não observar modelo. Invariante 10.
-    select: { sugestaoIa: true, valorFinal: true },
-  })
+  // O MESMO recorte nas três consultas. Ver a nota de cabeçalho.
+  const itemNaJanela = corte ? { criadoEm: { gte: corte } } : {}
+
+  const [resolvidas, itensDeIa, revisados] = await Promise.all([
+    banco.revisao.findMany({
+      where: {
+        resolvidoEm: { not: null },
+        valorFinal: { not: null },
+        item: { modeloIa: { not: null }, ...itemNaJanela },
+      },
+      // `resolvidoPor` deliberadamente ausente do select: medir acerto por
+      // revisor seria vigiar pessoa, não observar modelo. Invariante 10.
+      select: { sugestaoIa: true, valorFinal: true },
+    }),
+    banco.item.count({ where: { modeloIa: { not: null }, ...itemNaJanela } }),
+    banco.revisao.count({
+      where: {
+        resolvidoEm: { not: null },
+        item: { modeloIa: { not: null }, ...itemNaJanela },
+      },
+    }),
+  ])
 
   const pares: ParDeRevisao[] = []
   let ignoradas = 0
@@ -88,31 +108,19 @@ export async function medirQualidadeDaIa(
     pares.push(par)
   }
 
-  const [itensDeIa, revisados] = await Promise.all([
-    banco.item.count({
-      where: {
-        modeloIa: { not: null },
-        ...(corte ? { criadoEm: { gte: corte } } : {}),
-      },
-    }),
-    banco.revisao.count({
-      where: {
-        resolvidoEm: corte ? { not: null, gte: corte } : { not: null },
-      },
-    }),
-  ])
-
   return {
     desde,
     taxa: calcularTaxaDeAcerto(pares),
     cobertura: {
       itensDeIa,
       revisados,
-      // Nunca negativo: um item revisado fora da janela em que foi criado
-      // faria a subtração passar do zero e a tela mostraria pendência
-      // negativa — o defeito `E.9` da planilha, de novo.
+      // Com o mesmo recorte nos dois lados, `revisados <= itensDeIa` vale por
+      // construção: cada revisão pertence a um item que está no denominador.
+      // A guarda fica como rede — se algum dia a invariante quebrar, é melhor
+      // a tela mostrar zero do que uma pendência negativa, que é o defeito
+      // `E.9` da planilha.
       naoRevisados: Math.max(0, itensDeIa - revisados),
-      fracaoRevisada: itensDeIa === 0 ? null : arredondar(Math.min(1, revisados / itensDeIa)),
+      fracaoRevisada: itensDeIa === 0 ? null : arredondar(revisados / itensDeIa),
     },
     ignoradas,
   }

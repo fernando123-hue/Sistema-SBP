@@ -590,3 +590,23 @@ A ordem é deliberada. Recusar é a IA inteira errada. Categoria é a classifica
 ### O que isto destrava
 
 Com a medida no ar, `H-D3` sai da lista de dívida e o critério nº 5 passa a ser verificável. Ela é também pré-requisito honesto para duas decisões que estavam bloqueadas por falta de número: afrouxar o limiar de confiança por categoria, e baixar o `effort` do modelo de `low` para nada — ambas hoje sem base.
+
+### Revisão do próprio trabalho — dois defeitos na primeira versão
+
+Revisada a implementação antes de dar por pronta. Dois defeitos reais, ambos meus, ambos do tipo que esta seção inteira existe para evitar.
+
+**R-05 — a cobertura dividia universos diferentes.** O denominador contava itens por `Item.criadoEm`; o numerador contava revisões por `Revisao.resolvidoEm`. No caso mais banal que existe — fila acumulada, item velho, decisão nova — o numerador incluía revisões cujos itens estavam fora do denominador. A fração passava de 100%.
+
+E o pior não era a fração absurda: era o `Math.min(1, …)` que eu tinha posto para limitá-la. Ele não corrigia o erro, **escondia**, devolvendo exatamente 100% — um número redondo e falso, que ninguém questionaria. É o mesmo padrão que a revisão do adapter tinha acabado de condenar, reintroduzido três horas depois numa métrica de qualidade.
+
+Corrigido ancorando as três consultas na **mesma** data: `Item.criadoEm`. A pergunta que a tela responde passou a ser uma só — *dos itens que a IA classificou neste período, quantos foram conferidos e quantos passaram sem correção* — e as contagens compõem por construção. A guarda contra negativo ficou, como rede, com comentário dizendo que a invariante agora a torna inalcançável. Teste: item empurrado para 90 dias atrás com revisão resolvida hoje.
+
+**R-06 — o painel pedia a série inteira desde a fundação.** A tela chamava `/qualidade?dias=tudo`, carregando todas as revisões resolvidas de todos os tempos, na tela mais visitada do sistema. `conferirConservacao`, no arquivo ao lado, documenta exatamente essa proibição: *"nenhuma tela deve precisar ler a tabela inteira desde a fundação para responder está tudo certo?"*. Eu tinha reintroduzido o padrão dentro do mesmo painel.
+
+Corrigido para a janela padrão de 30 dias. `?dias=tudo` continua existindo na rota, para conferência sob demanda — que é o lugar dela.
+
+**Efeito colateral necessário:** com janela, a tela precisa dizer qual. "48%" sem período é número sem contexto, e a primeira pergunta de quem olha — *48% de quando?* — não tinha resposta. O cabeçalho da seção agora abre com "Desde 28/07/2026".
+
+### Limite conhecido, registrado em vez de contornado
+
+`campos: {}` no `valorFinal` é ambíguo entre "o operador apagou tudo" e "o cliente não mandou o campo", porque o esquema de entrada tem `.default({})`. Contra a tela não há ambiguidade — ela sempre devolve o conjunto completo, inicializado com o que a IA extraiu. Um cliente de API que omitisse `campos` faria a revisão contar como corrigida. Distinguir os dois exigiria mudar o esquema de entrada, e hoje não existe esse cliente. Está anotado no código, no ponto exato.

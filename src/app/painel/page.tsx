@@ -85,6 +85,18 @@ function percentual(fracao: number | null): string {
 }
 
 /**
+ * Qual período a medida cobre.
+ *
+ * Sem isto, "48%" é um número sem contexto — e a primeira pergunta de quem
+ * olha ("48% de quando?") não teria resposta na tela.
+ */
+function periodo(desde: string | null): string {
+  if (desde === null) return 'Desde o início'
+  const [ano, mes, dia] = desde.split('-')
+  return `Desde ${dia}/${mes}/${ano}`
+}
+
+/**
  * Painel.
  *
  * NENHUM número aqui é digitável — todos são agregação de `Item.status` e
@@ -100,7 +112,11 @@ export default function PainelPagina() {
   useEffect(() => {
     Promise.all([
       api.buscar<Painel>('/painel'),
-      api.buscar<Qualidade>('/qualidade?dias=tudo'),
+      // Janela padrão, NUNCA `dias=tudo`. Esta é a tela mais visitada do
+      // sistema; pedir a série inteira faria a consulta crescer com o tempo de
+      // vida da instalação. `conferirConservacao` já documenta a mesma regra —
+      // nenhuma tela lê a tabela desde a fundação para se desenhar.
+      api.buscar<Qualidade>('/qualidade'),
     ])
       .then(([painel, medida]) => {
         setDados(painel)
@@ -311,7 +327,7 @@ function QualidadeDaIa({ medida }: { medida: Qualidade }) {
     <section>
       <CabecalhoDeSecao
         titulo="Acerto da IA"
-        descricao="Medido só sobre o que passou por revisão humana — o único universo que não se infla mexendo no limiar de confiança."
+        descricao={`${periodo(medida.desde)} · medido só sobre o que passou por revisão humana, o único universo que não se infla mexendo no limiar de confiança.`}
       />
 
       {semDado ? (

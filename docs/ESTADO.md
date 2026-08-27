@@ -25,7 +25,7 @@ Cole o valor em `SESSAO_SECRET`. Depois:
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
-npm run verificar    # typecheck + 185 testes
+npm run verificar    # typecheck + 187 testes
 npm run dev          # http://localhost:3000
 ```
 
@@ -55,7 +55,7 @@ Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela.
 | API REST | 20 rotas, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **185 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
+| Testes | **187 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
@@ -72,7 +72,11 @@ A tela mostra também a **confiança média quando acerta ao lado da confiança 
 
 Verificado na tela com dado real do fluxo: 27 revisões resolvidas, 48% aceitas sem correção, cobertura 82%, e a repartição do que o humano mudou (6 categoria trocada, 5 título editado, 3 recusadas).
 
-Testes: 159 → **185**. Dezenove sobre o critério, puros; sete sobre a leitura contra banco real — um erro de leitura produziria um número plausível e falso, que é o pior resultado possível aqui.
+**Revisei a própria implementação antes de dar por pronta, e ela tinha dois defeitos.** O primeiro: a cobertura dividia universos diferentes — itens contados por data de criação, revisões contadas por data de resolução. Fila acumulada (item velho, decisão nova) fazia a fração passar de 100%. E o `Math.min` que eu tinha posto para limitá-la não corrigia, **escondia** — devolvia 100% redondo e falso. É o mesmo padrão que a revisão do adapter tinha acabado de condenar. Corrigido ancorando as três consultas na mesma data.
+
+O segundo: o painel pedia `?dias=tudo`, carregando todas as revisões desde a fundação na tela mais visitada do sistema — a proibição que `conferirConservacao` documenta no arquivo ao lado. Agora usa a janela de 30 dias, e a tela diz qual período está mostrando.
+
+Testes: 159 → **187**. Dezenove sobre o critério, puros; nove sobre a leitura contra banco real — um erro de leitura produziria um número plausível e falso, que é o pior resultado possível aqui.
 
 ---
 
@@ -238,7 +242,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 185 testes |
+| `npm run verificar` | Typecheck + 187 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

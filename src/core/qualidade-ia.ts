@@ -100,6 +100,13 @@ function mesmoTexto(a: string, b: string): boolean {
  * devolve o conjunto inteiro. Então diferença aqui é edição de verdade, não
  * ruído de formulário. A comparação corre a união das chaves — campo que a IA
  * inventou e o humano esvaziou também é correção.
+ *
+ * LIMITE CONHECIDO: `campos: {}` é ambíguo entre "o operador apagou tudo" e
+ * "o cliente não mandou o campo" (o esquema de entrada tem `.default({})`).
+ * Contra a tela, que sempre manda o conjunto completo, não há ambiguidade. Um
+ * cliente de API que omitisse `campos` faria a revisão contar como corrigida.
+ * Registrado em vez de contornado: distinguir os dois exigiria mudar o
+ * esquema de entrada, e hoje não há esse cliente.
  */
 function camposForamCorrigidos(
   sugeridos: Record<string, string>,
