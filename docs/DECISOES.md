@@ -751,3 +751,56 @@ Os dois lados importam. Só o primeiro provaria que o limite aperta; só o segun
 ### Ainda pendente
 
 `PROXIES_CONFIAVEIS` continua `0` por padrão, que é o correto para a rede local. **Publicar fora dela exige ajustar o número** — está no `.env.example` com o motivo.
+
+### Revisão do próprio trabalho — a correção tinha um buraco pior que o defeito
+
+Revisada a implementação de `H-D16` antes de dar por pronta. Um achado grave e uma afirmação minha que a medição desmentiu.
+
+**R-09 — proxy que não reescreve `x-forwarded-for` trancava a equipe inteira.**
+
+A leitura por posição na cadeia assume que o proxy acrescentou alguma coisa. Nem todo proxy acrescenta. Configuração comuníssima do nginx: `proxy_set_header X-Real-IP $remote_addr;` **sem** mexer em `X-Forwarded-For`. Aí o Next preenche `x-forwarded-for` com o endereço do socket — que é o do **próprio proxy**.
+
+Resultado medido, com `PROXIES_CONFIAVEIS=1` e 25 clientes distintos:
+
+```
+ 422 422 422 ... (20x) ... 429 429 429 429 429
+```
+
+Vinte e cinco pessoas diferentes num balde só, e o limite **apertado** disparando no 21º pedido. O "DoS de graça" que o comentário original do arquivo avisava — só que agora chegando por uma configuração que o operador tem toda razão de achar correta, e com o código reportando `confiavel: true`.
+
+A correção de `H-D16` tinha, portanto, trocado um defeito de segurança por um defeito de disponibilidade — pior, porque este derruba a operação num dia normal, sem atacante nenhum.
+
+**Corrigido em duas frentes, porque uma só não resolve.**
+
+A cadeia continua mandando quando ela **realmente cresceu** além dos saltos confiáveis: aí existe entrada que só um proxy pôde ter acrescentado. Quando ela tem o tamanho exato dos saltos, a situação é ambígua, e com **um** salto o `x-real-ip` desfaz o empate — quem o escreve é o proxy confiável, e ele aponta o cliente. Com dois ou mais saltos ele não serve: o proxy de dentro escreve nele o endereço do proxy de fora, e só a cadeia conhece a ordem.
+
+Depois da correção, o mesmo teste:
+
+| Cenário | Antes | Depois |
+|---|---|---|
+| 25 clientes distintos via `x-real-ip` | `429` no 21º | 25× `422` — ninguém trancado |
+| Mesmo cliente 25 vezes | — | `429` no 21º — o limite continua apertando |
+
+**A ambiguidade que sobrou não dá para resolver sozinha — então virou visível.**
+
+Cadeia com exatamente o tamanho dos saltos e sem `x-real-ip` continua sendo dois mundos diferentes com a mesma forma: proxy padrão que mandou o cliente, ou proxy que não reescreveu nada. Nenhum código distingue os dois.
+
+O que dá para fazer é parar de descobrir isso pelo pior caminho. `GET /api/diagnostico/origem` (só gestor) devolve o que o servidor entendeu como a origem **daquela** requisição, junto com os cabeçalhos crus. Abrir de dois dispositivos e comparar `chave` responde a pergunta em dez segundos:
+
+```
+A) com x-real-ip →  {"chave":"198.51.100.42","confiavel":true,
+                     "recebido":{"xForwardedFor":"::1","xRealIp":"198.51.100.42"}}
+
+B) sem x-real-ip →  {"chave":"::1","confiavel":true,
+                     "recebido":{"xForwardedFor":"::1","xRealIp":null}}
+```
+
+Em (B), `chave` igual em todos os dispositivos denuncia a configuração errada. Sem a rota, o jeito de descobrir era a equipe parar de conseguir entrar.
+
+**R-10 — eu afirmei sobre o teto global uma coisa que a medição não sustenta.**
+
+O comentário dizia que o teto afrouxado "contém um laço automatizado" e protege CPU. Fui medir: uma inundação de 900 requisições em 30 processos paralelos contra `/api/sessao` **não o alcançou**, e uma entrada legítima no meio dela passou normalmente.
+
+O motivo é que cada tentativa custa uma derivação `scrypt`, então a vazão da rota satura antes do teto — o servidor já está no limite de CPU quando o contador ainda está longe. O teto é uma trava contra volume patológico, **não** a proteção de CPU que seria fácil supor. Quem limita a vazão é o custo do `scrypt`; quem contém força bruta é a trava por conta.
+
+Comentário corrigido para dizer o que foi medido. Afirmação confortável em comentário é a mesma doença de log que mente: alguém confia nela justamente quando importa.

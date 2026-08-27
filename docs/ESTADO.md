@@ -25,7 +25,7 @@ Cole o valor em `SESSAO_SECRET`. Depois:
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
-npm run verificar    # typecheck + 211 testes
+npm run verificar    # typecheck + 215 testes
 npm run dev          # http://localhost:3000
 ```
 
@@ -56,7 +56,7 @@ Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela.
 | API REST | 23 rotas, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **211 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
+| Testes | **215 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
@@ -75,7 +75,15 @@ Agora `PROXIES_CONFIAVEIS` declara quantos saltos confiáveis existem. Com `0` (
 
 Provado na aplicação rodando: 25 pedidos forjando a primeira entrada com a última fixa deram 20 aceitos e depois `429` (mesmo balde); 25 pedidos com últimas entradas distintas passaram todos (clientes reais continuam separados, sem `429` falso).
 
-Testes: 204 → **211**.
+**A revisão desta entrega achou um buraco pior que o defeito original.** A leitura por posição na cadeia assume que o proxy acrescentou alguma coisa — e nem todo proxy acrescenta. Na configuração comuníssima do nginx que manda `X-Real-IP` **sem** mexer em `X-Forwarded-For`, o Next preenche a cadeia com o endereço do próprio proxy. Medido com 25 clientes distintos: todos num balde só, e o limite **apertado** disparando no 21º pedido. A correção tinha trocado um defeito de segurança por um de disponibilidade — pior, porque derruba a operação num dia normal, sem atacante nenhum.
+
+Corrigido: a cadeia manda quando ela realmente cresceu além dos saltos confiáveis; com um salto, `x-real-ip` desfaz o empate. Depois disso, 25 clientes distintos passam todos, e o mesmo cliente 25 vezes continua sendo travado no 21º.
+
+**A ambiguidade que sobrou não dá para resolver sozinha, então virou visível.** `GET /api/diagnostico/origem` (só gestor) devolve o que o servidor entendeu como origem daquela requisição, com os cabeçalhos crus. Abrir de dois dispositivos e comparar `chave` responde em dez segundos se o proxy está configurado certo. Sem isso, o jeito de descobrir era a equipe parar de conseguir entrar.
+
+A revisão também desmentiu uma afirmação minha: eu tinha escrito que o teto global afrouxado protege CPU e contém laço automatizado. Fui medir — 900 requisições em 30 processos paralelos **não** o alcançaram, e uma entrada legítima no meio passou. O `scrypt` satura a vazão antes do teto. Comentário corrigido para dizer o que foi medido.
+
+Testes: 204 → **215**.
 
 ---
 
@@ -276,7 +284,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 211 testes |
+| `npm run verificar` | Typecheck + 215 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

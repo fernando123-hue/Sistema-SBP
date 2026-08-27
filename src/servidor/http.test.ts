@@ -110,3 +110,60 @@ describe('com proxy confiável declarado', () => {
     expect(origem.confiavel).toBe(false)
   })
 })
+
+describe('proxy que manda só x-real-ip', () => {
+  beforeEach(() => comProxies(1))
+
+  it('cada cliente ganha seu balde, em vez de todos caírem no do proxy', () => {
+    // Medido contra nginx-como-o-Next-vê: quando o proxy NÃO reescreve
+    // `x-forwarded-for`, o Next preenche o cabeçalho com o endereço do socket
+    // — que é o do PRÓPRIO PROXY. A cadeia fica com um elemento só, a leitura
+    // por posição devolve o IP do proxy, e 25 clientes distintos viram um
+    // balde só. Com o limite apertado ligado, isso trancou a equipe inteira no
+    // 21º pedido: o "DoS de graça" chegando por uma configuração que o
+    // operador tem toda razão de achar correta.
+    const um = origemDaRequisicao(
+      pedido({ 'x-forwarded-for': '10.0.0.1', 'x-real-ip': '198.51.100.7' }),
+    )
+    const outro = origemDaRequisicao(
+      pedido({ 'x-forwarded-for': '10.0.0.1', 'x-real-ip': '198.51.100.8' }),
+    )
+
+    expect(um.chave).not.toBe(outro.chave)
+    expect(um.chave).toContain('198.51.100.7')
+    expect(um.confiavel).toBe(true)
+  })
+
+  it('cadeia mais longa que o salto confiável ainda manda', () => {
+    // Aqui o proxy DE FATO acrescentou: o cliente mandou "1.2.3.4" e a cadeia
+    // veio com dois elementos. A cadeia é a fonte mais forte e vence.
+    const origem = origemDaRequisicao(
+      pedido({ 'x-forwarded-for': '1.2.3.4, 203.0.113.9', 'x-real-ip': '203.0.113.9' }),
+    )
+
+    expect(origem.chave).toContain('203.0.113.9')
+    expect(origem.confiavel).toBe(true)
+  })
+
+  it('com dois saltos, x-real-ip não vale — ele aponta o proxy de dentro', () => {
+    comProxies(2)
+
+    // Com mais de um salto, o `x-real-ip` que o proxy interno escreve é o
+    // endereço do proxy EXTERNO, não o do cliente. Só a cadeia sabe a ordem.
+    const origem = origemDaRequisicao(
+      pedido({ 'x-forwarded-for': '1.2.3.4, 203.0.113.9, 10.0.0.1', 'x-real-ip': '10.0.0.1' }),
+    )
+
+    expect(origem.chave).toContain('203.0.113.9')
+  })
+
+  it('sem proxy confiável, x-real-ip continua sem valer nada', () => {
+    comProxies(0)
+
+    const um = origemDaRequisicao(pedido({ 'x-real-ip': '1.2.3.4' }))
+    const outro = origemDaRequisicao(pedido({ 'x-real-ip': '9.9.9.9' }))
+
+    expect(um.chave).toBe(outro.chave)
+    expect(um.confiavel).toBe(false)
+  })
+})

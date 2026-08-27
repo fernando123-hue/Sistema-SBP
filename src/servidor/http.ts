@@ -144,10 +144,37 @@ export function origemDaRequisicao(requisicao: Request): Origem {
     .map((parte) => parte.trim())
     .filter((parte) => parte.length > 0)
 
-  const posicao = cadeia.length - proxies
-  if (posicao < 0) return { chave: ORIGEM_INDISTINGUIVEL, confiavel: false }
+  // A cadeia manda quando ela REALMENTE cresceu além dos saltos confiáveis:
+  // aí existe entrada que só um proxy pôde ter acrescentado.
+  if (cadeia.length > proxies) {
+    return { chave: cadeia[cadeia.length - proxies]!.slice(0, 64), confiavel: true }
+  }
 
-  return { chave: cadeia[posicao]!.slice(0, 64), confiavel: true }
+  // Cadeia do tamanho exato dos saltos é AMBÍGUA, e a ambiguidade tem um
+  // custo medido. Proxy que não reescreve `x-forwarded-for` faz o Next
+  // preencher o cabeçalho com o endereço do socket — que é o do próprio
+  // proxy. A leitura por posição devolvia esse endereço, 25 clientes
+  // distintos viravam um balde só, e o limite apertado trancou a equipe
+  // inteira no 21º pedido: o "DoS de graça" chegando por uma configuração
+  // que o operador tem toda razão de achar correta.
+  //
+  // Com UM salto, `x-real-ip` desfaz o empate: quem o escreve é o proxy
+  // confiável, e ele aponta o cliente. Com dois ou mais, não serve — o
+  // proxy de dentro escreve nele o endereço do proxy de fora, não o do
+  // cliente, e só a cadeia conhece a ordem.
+  if (proxies === 1) {
+    const real = requisicao.headers.get('x-real-ip')?.trim()
+    if (real) return { chave: real.slice(0, 64), confiavel: true }
+  }
+
+  if (cadeia.length === proxies) {
+    return { chave: cadeia[0]!.slice(0, 64), confiavel: true }
+  }
+
+  // Cadeia mais curta que a configuração: ou ela está errada, ou alguém
+  // alcançou o servidor por fora do proxy. Nos dois casos o valor não prova
+  // nada, e supor que prova é pior do que admitir que não sabe.
+  return { chave: ORIGEM_INDISTINGUIVEL, confiavel: false }
 }
 
 /**
@@ -155,12 +182,20 @@ export function origemDaRequisicao(requisicao: Request): Origem {
  *
  * Sem proxy confiável, o balde é de todo mundo. Manter o número apertado
  * trancaria a equipe inteira assim que um atacante o estourasse — o DoS de
- * graça. O que resta proteger é CPU (cada tentativa de senha custa uma
- * derivação scrypt), então o teto sobe o bastante para uma equipe de dezenas
- * de pessoas nunca encostar nele, e ainda assim conter um laço automatizado.
+ * graça que o comentário acima descreve.
  *
- * Isto NÃO substitui identificar a origem. É o que dá para fazer sem ela, e a
- * defesa que de fato contém força bruta continua sendo a trava por conta.
+ * O QUE ESTE TETO DE FATO FAZ, medido em vez de suposto: quase nada. Uma
+ * inundação de 900 requisições em 30 processos paralelos contra `/api/sessao`
+ * NÃO o alcançou, e uma entrada legítima no meio dela passou normalmente. O
+ * motivo é que cada tentativa custa uma derivação `scrypt`, então a vazão da
+ * rota satura antes do teto — o servidor já está no limite de CPU quando o
+ * contador ainda está longe.
+ *
+ * Ou seja: ele é uma trava de segurança contra volume patológico, não a
+ * proteção de CPU que seria fácil supor que fosse. O custo do `scrypt` é que
+ * limita a vazão, e quem de fato contém força bruta é a trava por conta, que
+ * não depende de IP. Identificar a origem de verdade — com proxy confiável
+ * declarado — continua sendo a única coisa que torna o limite por origem real.
  */
 export const FATOR_SEM_ORIGEM = 30
 
