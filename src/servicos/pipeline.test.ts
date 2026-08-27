@@ -2,7 +2,15 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { IaMock } from '../adapters/ia-mock'
 import { IngestaoMock } from '../adapters/ingestao-mock'
+import {
+  EmailBrutoSchema,
+  InterpretacaoSchema,
+  type EmailBruto,
+  type Interpretacao,
+} from '../core/esquemas'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
+import { InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
+import type { IngestaoPort } from '../ports/ingestao'
 import { fimDoDia, sequenciaDeDatas } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, aprovarTudoNoBanco, limparTudo, semearBase } from '../testes/apoio'
@@ -956,5 +964,159 @@ describe('painel derivado', () => {
     expect(alocacaoGravada).toEqual(alocacaoDaPrevia)
     // E a prévia realmente não gravou nada por conta própria.
     expect(depois.rodadasGravadas).toBe(antes.planos.filter((plano) => plano.resultado).length)
+  })
+})
+
+/**
+ * Um único e-mail sintético.
+ *
+ * O `IngestaoMock` gera volume realista, mas nunca produz os dois casos abaixo.
+ * Aqui o que importa é controlar exatamente o que entra.
+ */
+class IngestaoDeUmEmail implements IngestaoPort {
+  readonly nome = 'um-email'
+
+  constructor(private readonly messageId: string) {}
+
+  async buscarNovos(): Promise<EmailBruto[]> {
+    return [
+      EmailBrutoSchema.parse({
+        messageId: this.messageId,
+        remetente: 'remetente@teste.local',
+        assunto: 'Resposta automática de ausência',
+        corpo: 'Estou fora do escritório até segunda-feira.',
+        recebidoEm: new Date(`${DATA_BASE}T12:00:00.000Z`),
+      }),
+    ]
+  }
+}
+
+/** Devolve a interpretação combinada. Produz respostas que o `IaMock` jamais produziria. */
+class IaCombinada implements AiPort {
+  readonly nome = 'combinada'
+
+  constructor(private readonly itens: Interpretacao['itens']) {}
+
+  async interpretar(): Promise<Interpretacao> {
+    return InterpretacaoSchema.parse({
+      itens: this.itens,
+      modelo: 'combinada-de-teste',
+      versaoPrompt: 'teste-1.0.0',
+    })
+  }
+}
+
+/**
+ * O trabalho nunca desaparece sem deixar rastro.
+ *
+ * Estes dois casos são a razão de existir do sistema: a planilha perde carga em
+ * silêncio, e um substituto que perca carga em silêncio não substitui nada.
+ */
+describe('e-mail que não vira item', () => {
+  it('interpretação sem nenhum item é contada e registrada, nunca silenciosa', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const messageId = 'sem-item@teste.local'
+
+    const resumo = await sincronizar(
+      { banco, ingestao: new IngestaoDeUmEmail(messageId), ia: new IaCombinada([]) },
+      base.operador,
+    )
+
+    // Zero item é resultado legítimo — resposta automática, aviso de entrega,
+    // boletim. O que não pode é passar despercebido.
+    expect(resumo.novos).toBe(1)
+    expect(resumo.itensCriados).toBe(0)
+    expect(resumo.emailsSemItem).toBe(1)
+
+    const eventos = await banco.eventoProcessamento.findMany({
+      where: { correlacaoId: resumo.correlacaoId, referencia: messageId },
+    })
+    expect(eventos).toHaveLength(1)
+    expect(eventos[0]?.situacao).toBe('falha')
+  })
+
+  it('categoria ausente do banco aborta a transação e mantém o e-mail reprocessável', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const messageId = 'categoria-sumida@teste.local'
+
+    // Simula o banco fora de sincronia com o enum: categoria que o código
+    // conhece e o banco não tem. Seed incompleto, migração pela metade.
+    await banco.categoria.delete({ where: { codigo: 'LIGANTE' } })
+
+    const resumo = await sincronizar(
+      {
+        banco,
+        ingestao: new IngestaoDeUmEmail(messageId),
+        ia: new IaCombinada([
+          {
+            categoriaCodigo: 'LIGANTE',
+            titulo: 'Ligante para cadastro',
+            confianca: 0.95,
+            campos: {},
+            camposAusentes: [],
+            ligaMencionada: null,
+            observacao: null,
+          },
+        ]),
+      },
+      base.operador,
+    )
+
+    expect(resumo.falhas).toBe(1)
+    expect(resumo.novos).toBe(0)
+
+    // A transação inteira volta atrás: o e-mail não fica marcado como
+    // processado, então corrigir o cadastro e sincronizar de novo recupera o
+    // trabalho. Descartar o item em silêncio o perderia para sempre, porque a
+    // idempotência por `messageId` nunca mais deixaria ele voltar.
+    const email = await banco.email.findUnique({ where: { messageId } })
+    expect(email).toBeNull()
+  })
+})
+
+/** Vários e-mails sintéticos, para provar que o lote PARA em vez de insistir. */
+class IngestaoDeVariosEmails implements IngestaoPort {
+  readonly nome = 'varios-emails'
+
+  constructor(private readonly quantidade: number) {}
+
+  async buscarNovos(): Promise<EmailBruto[]> {
+    return Array.from({ length: this.quantidade }, (_, indice) =>
+      EmailBrutoSchema.parse({
+        messageId: `lote-${indice}@teste.local`,
+        remetente: 'remetente@teste.local',
+        assunto: `Mensagem ${indice}`,
+        corpo: 'Segue a ficha de cadastro.',
+        recebidoEm: new Date(`${DATA_BASE}T12:00:00.000Z`),
+      }),
+    )
+  }
+}
+
+describe('camada de IA fora do ar', () => {
+  it('para o lote na primeira ocorrência em vez de falhar e-mail por e-mail', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    let chamadas = 0
+
+    const ia: AiPort = {
+      nome: 'fora-do-ar',
+      async interpretar() {
+        chamadas += 1
+        throw new InterpretacaoIndisponivelError('invalid x-api-key')
+      },
+    }
+
+    await expect(
+      sincronizar({ banco, ingestao: new IngestaoDeVariosEmails(5), ia }, base.operador),
+    ).rejects.toThrow(InterpretacaoIndisponivelError)
+
+    // Uma tentativa, não cinco. Seguir o laço gastaria uma chamada condenada
+    // por mensagem e enterraria a causa real — chave errada — no meio de
+    // cinco linhas de erro idênticas.
+    expect(chamadas).toBe(1)
+
+    // E nada ficou marcado como processado: corrigida a chave, o lote inteiro
+    // volta na próxima sincronização.
+    expect(await banco.email.count({ where: { processadoEm: { not: null } } })).toBe(0)
   })
 })

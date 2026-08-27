@@ -6,11 +6,12 @@ import {
   type Interpretacao,
   type MotivoRevisao,
 } from '../core/esquemas'
+import { CategoriaDesconhecidaError } from '../core/erros'
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
 import { paraDataIso } from '../core/util/datas'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
-import type { AiPort } from '../ports/ia'
+import { InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { ATOR_SISTEMA, exigirPapel, type Ator } from '../servidor/ator'
 import type { Banco, Transacao } from '../servidor/prisma'
@@ -51,6 +52,16 @@ export interface ResumoIngestao {
   novos: number
   duplicados: number
   itensCriados: number
+  /**
+   * E-mails interpretados que não geraram item nenhum.
+   *
+   * Zero item é resultado legítimo — resposta automática, aviso de entrega,
+   * boletim. Mas é indistinguível de "a IA não entendeu e a carga sumiu", e o
+   * e-mail fica marcado como processado, então nunca mais volta. Sem este
+   * contador na tela, a diferença entre os dois casos não existiria para
+   * ninguém: seria exatamente a perda silenciosa que a planilha comete.
+   */
+  emailsSemItem: number
   itensAprovados: number
   itensParaRevisao: number
   falhas: number
@@ -72,6 +83,7 @@ export async function sincronizar(
     novos: 0,
     duplicados: 0,
     itensCriados: 0,
+    emailsSemItem: 0,
     itensAprovados: 0,
     itensParaRevisao: 0,
     falhas: 0,
@@ -118,12 +130,49 @@ export async function sincronizar(
       resumo.itensAprovados += resultado.aprovados
       resumo.itensParaRevisao += resultado.paraRevisao
       resumo.anexosRejeitados += resultado.anexosRejeitados
+
+      // E-mail que entrou e não virou trabalho nenhum.
+      //
+      // NÃO é falha do lote: marcar o dia inteiro de vermelho por causa de uma
+      // resposta automática é o vermelho que ensina a equipe a ignorar
+      // vermelho. Mas o evento fica gravado como `falha` para aparecer em
+      // qualquer busca por problema, e o contador sobe para aparecer na tela.
+      // Silenciar isto era perder carga sem que ninguém pudesse notar.
+      if (resultado.criados === 0) {
+        resumo.emailsSemItem += 1
+        registrarLog('aviso', 'e-mail interpretado sem nenhum item', {
+          correlacaoId,
+          messageId: email.messageId,
+        })
+        await registrarEvento(deps.banco, {
+          correlacaoId,
+          etapa: 'ingestao',
+          situacao: 'falha',
+          referencia: email.messageId,
+          mensagem: 'e-mail interpretado sem nenhum item — confira se havia trabalho ali',
+        })
+      }
     } catch (erro) {
       // Violação de unicidade é corrida perdida, não defeito: o outro processo
       // já gravou o mesmo e-mail. Contar como falha produziria alerta enganoso.
       if (ehViolacaoDeUnicidade(erro)) {
         resumo.duplicados += 1
         continue
+      }
+
+      // A camada de IA está fora — chave recusada, permissão negada. Seguir o
+      // laço produziria a MESMA falha em cada e-mail restante, uma chamada
+      // condenada por mensagem, e a causa real ficaria diluída em centenas de
+      // linhas idênticas. O lote para aqui, e quem lê sabe o que consertar.
+      if (erro instanceof InterpretacaoIndisponivelError) {
+        await registrarEvento(deps.banco, {
+          correlacaoId,
+          etapa: 'ingestao',
+          situacao: 'reprocessavel',
+          referencia: candidato.messageId,
+          mensagem: mensagemDoErro(erro),
+        })
+        throw erro
       }
 
       resumo.falhas += 1
@@ -317,7 +366,11 @@ async function criarItens(
 
   for (const [posicao, extraido] of interpretacao.itens.entries()) {
     const categoria = categorias.get(extraido.categoriaCodigo)
-    if (!categoria) continue
+    // `continue` aqui descartava o item em silêncio: nada gravado, nada
+    // contado, nada registrado — e o e-mail marcado como processado do mesmo
+    // jeito, o que somado à idempotência por `messageId` significa trabalho
+    // perdido para sempre. É o defeito da planilha reconstruído aqui dentro.
+    if (!categoria) throw new CategoriaDesconhecidaError(extraido.categoriaCodigo)
 
     const motivo = decidirRevisao(
       extraido.confianca,

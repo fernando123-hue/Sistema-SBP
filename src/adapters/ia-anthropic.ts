@@ -11,7 +11,11 @@ import {
   type Interpretacao,
 } from '../core/esquemas'
 import { prepararConteudoExterno } from '../core/seguranca/conteudo-nao-confiavel'
-import { FalhaDeInterpretacao, type AiPort } from '../ports/ia'
+import {
+  FalhaDeInterpretacao,
+  InterpretacaoIndisponivelError,
+  type AiPort,
+} from '../ports/ia'
 import { ambiente } from '../servidor/ambiente'
 import { registrarLog } from '../servidor/observabilidade'
 
@@ -132,6 +136,32 @@ function clienteAnthropic(): ClienteDeInterpretacao {
   }
 }
 
+/**
+ * Que tipo de problema aconteceu.
+ *
+ * A distinção decide se vale repetir. Antes havia um `catch` só, e um
+ * timeout virava "rejeitada pela validação" no log e — pior — no PRÓPRIO
+ * PROMPT da segunda tentativa, pedindo ao modelo que corrigisse um erro de
+ * rede. Log que mente é log que ninguém usa quando o sistema quebra.
+ */
+type EspecieDeFalha = 'validacao' | 'transporte'
+
+function especieDoErro(erro: unknown): EspecieDeFalha {
+  // Só erro de FORMATO vale repetir: dito qual campo saiu do esquema, o
+  // modelo costuma acertar na segunda. Timeout, 429, 500, resposta truncada e
+  // recusa por política não se resolvem reescrevendo o pedido — repetir seria
+  // gastar uma segunda chamada já condenada.
+  return erro instanceof z.ZodError ? 'validacao' : 'transporte'
+}
+
+/** Credencial recusada é sistema mal configurado, nunca defeito deste e-mail. */
+function ehCredencialRecusada(erro: unknown): boolean {
+  return (
+    erro instanceof Anthropic.AuthenticationError ||
+    erro instanceof Anthropic.PermissionDeniedError
+  )
+}
+
 export class IaAnthropic implements AiPort {
   readonly nome = 'anthropic'
 
@@ -146,14 +176,16 @@ export class IaAnthropic implements AiPort {
     const modelo = ambiente().IA_MODELO
 
     const primeira = await this.tentar(conteudo, modelo, null)
+
+    // UMA nova tentativa, e SÓ quando o problema é o formato da resposta: com
+    // o erro em mãos, o modelo costuma corrigir sozinho, e uma repetição sai
+    // mais barata que uma ida à fila humana. Duas seriam teimosia. E falha de
+    // transporte não repete nenhuma vez — reescrever o prompt não conserta
+    // rede, e o SDK já tentou de novo por conta própria antes de desistir.
     const resultado =
-      primeira.tipo === 'ok'
+      primeira.tipo === 'ok' || primeira.especie === 'transporte'
         ? primeira
-        : // UMA nova tentativa, com o erro de validação em mãos. O modelo
-          // costuma corrigir sozinho um campo fora do formato, e uma repetição
-          // é mais barata que uma ida à fila humana. Duas seriam teimosia:
-          // quando o modelo não entende o e-mail, insistir só multiplica custo.
-          await this.tentar(conteudo, modelo, primeira.erro)
+        : await this.tentar(conteudo, modelo, primeira.erro)
 
     if (resultado.tipo === 'erro') {
       throw new FalhaDeInterpretacao(email.messageId, resultado.erro)
@@ -179,7 +211,7 @@ export class IaAnthropic implements AiPort {
     erroAnterior: string | null,
   ): Promise<
     | { tipo: 'ok'; resposta: z.infer<typeof RespostaDoModeloSchema>; modeloUsado: string }
-    | { tipo: 'erro'; erro: string }
+    | { tipo: 'erro'; erro: string; especie: EspecieDeFalha }
   > {
     try {
       const { objeto, modeloUsado } = await this.cliente.interpretar({
@@ -196,12 +228,26 @@ export class IaAnthropic implements AiPort {
       return { tipo: 'ok', resposta: RespostaDoModeloSchema.parse(objeto), modeloUsado }
     } catch (erro) {
       const causa = erro instanceof Error ? erro.message : String(erro)
-      registrarLog('aviso', 'interpretação recusada pela validação', {
-        adapter: this.nome,
-        repetindo: erroAnterior === null,
-        causa,
-      })
-      return { tipo: 'erro', erro: causa }
+
+      // Sobe inteiro, sem virar falha deste e-mail: o laço de ingestão
+      // reconhece este erro e para o lote em vez de repetir o mesmo fracasso
+      // uma vez por mensagem.
+      if (ehCredencialRecusada(erro)) throw new InterpretacaoIndisponivelError(causa)
+
+      const especie = especieDoErro(erro)
+      registrarLog(
+        'aviso',
+        especie === 'validacao'
+          ? 'resposta do modelo recusada pela validação'
+          : 'chamada ao modelo falhou',
+        {
+          adapter: this.nome,
+          especie,
+          segundaTentativa: erroAnterior !== null,
+          causa,
+        },
+      )
+      return { tipo: 'erro', erro: causa, especie }
     }
   }
 }

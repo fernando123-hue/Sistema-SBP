@@ -480,3 +480,53 @@ E um buraco de usabilidade com consequência prática: com senha provisória a b
 - **`X-Forwarded-For` é aceito sem proxy confiável** (`src/servidor/http.ts`). Um atacante que varie o cabeçalho ganha uma "origem" nova por requisição e zera o limite por IP. Hoje isso **não** abre a porta para força bruta, porque a trava por conta (A-01, A-02) não depende do IP; o que resta é consumo de CPU. A correção depende de saber qual proxy vai estar na frente em produção — fixar agora seria adivinhar. Registrado como H-D16, **obrigatório antes de expor o sistema fora da rede local**.
 - **Tela de administração de acesso.** O gestor define senha por `POST /api/colaboradores/senha`; não há interface. Registrado como H-D14.
 - **Nada disso é LGPD.** § F continua de pé.
+
+---
+
+## Revisão do adapter e da ingestão — 27/08/2026
+
+Revisão dirigida ao trabalho ainda não mesclado (PR #11), com foco em adapter Anthropic, credenciais, sessão, ingestão e armazenamento. Quatro achados, todos corrigidos com teste que provou o defeito antes da correção.
+
+### O que estava certo e não foi tocado
+
+Vale registrar, porque é a maior parte e porque saber o que **não** precisa de atenção é tão útil quanto a lista de defeitos:
+
+- **Forma da chamada à API.** `output_config: { format, effort }` é a forma atual; `output_format` está depreciada e não é usada. `messages.parse()` é o caminho recomendado. `stop_reason === 'max_tokens'` vira erro em vez de aceitar resposta cortada.
+- **O schema do modelo é menor que `Interpretacao`.** `modelo` e `versaoPrompt` não são preenchíveis pela resposta, então ela não pode mentir sobre a própria origem.
+- **Armazenamento em disco.** Chave sorteada, nunca derivada do nome do anexo; travessia barrada por `resolve` + `startsWith(raiz + sep)`; `flag: 'wx'`; `ENOENT` distinguido de falha real.
+- **`credenciais.ts`.** Parâmetros gravados no hash, tetos em `N`/`r`/`keylen`, comparação em tempo constante, tempo equivalente para e-mail inexistente.
+- **Revogação de sessão.** `senhaDefinidaEm` conferido contra o banco a cada requisição, e o **papel lido do banco, não do cookie**.
+
+### Os quatro defeitos
+
+| # | Defeito | Gravidade | Por que importava |
+|---|---|---|---|
+| R-01 | **E-mail sem item nenhum sumia em silêncio.** `InterpretacaoSchema.itens` era `.max(N)` sem piso, então `itens: []` validava. O laço criava zero itens, o e-mail era marcado `processadoEm`, e a idempotência por `messageId` garantia que ele nunca mais voltasse | 🔴 | É o defeito `E.9` da planilha reconstruído na porta de entrada do substituto. Trabalho entrava, trabalho evaporava, e não havia erro, log, contador nem fila onde ele aparecesse |
+| R-02 | **Item com categoria ausente do banco era descartado em silêncio.** `if (!categoria) continue` | 🔴 | Mesmo mecanismo, gatilho diferente: enum do código fora de sincronia com a tabela `Categoria`. Descartar perdia o item para sempre, porque o e-mail seguia marcado como processado |
+| R-03 | **Erro de transporte era tratado como erro de validação.** Um `catch` só para 401, 429, timeout, 500 e falha de Zod | 🟠 | Três consequências: o log dizia "recusada pela validação" com causa `timeout`, e log que mente não se usa em incidente; a segunda tentativa mandava *"rejeitada pela validação: timeout"* para o modelo, pedindo que ele consertasse a rede; e chave inválida virava falha por e-mail, com até 6 chamadas HTTP condenadas por mensagem e a causa real diluída |
+| R-04 | **`ESTADO.md` descrevia um caminho que o código não percorre.** Dizia que o e-mail ia "inteiro para a revisão humana" | 🟡 | Nenhuma linha de `Revisao` era criada — e nem poderia, porque `Revisao` exige `itemId`. Documentação errada sobre o caminho de falha é a que mais custa, porque é lida justamente quando algo quebrou |
+
+### Decisão: zero item é resultado legítimo, não erro
+
+Este era o ponto de projeto de R-01, e vale registrar o raciocínio.
+
+Resposta automática de ausência, aviso de entrega, boletim informativo — todos são e-mails reais que **corretamente** geram zero item. Recusá-los como falha de interpretação criaria um laço de repetição infinito: o e-mail nunca seria marcado como processado, voltaria a cada sincronização, e gastaria crédito de IA para sempre.
+
+O que não pode é a diferença entre "não havia trabalho" e "a IA não entendeu e a carga sumiu" ser invisível. Então zero item:
+
+- é contado em `ResumoIngestao.emailsSemItem`;
+- grava `EventoProcessamento` com situação `falha`, para aparecer em qualquer busca por problema;
+- **não** deixa o lote vermelho — o resumo final continua olhando só `resumo.falhas`, porque marcar o dia inteiro por causa de uma resposta automática é o vermelho que ensina a equipe a ignorar vermelho.
+
+R-02 recebeu tratamento oposto e deliberadamente diferente: categoria ausente **é** defeito de configuração, então aborta a transação inteira (`CategoriaDesconhecidaError`). O e-mail fica sem `processadoEm` e volta na próxima sincronização, depois que o cadastro for corrigido. A escolha entre "marcar processado e contar" e "abortar e reprocessar" é a diferença entre uma situação esperada e um sistema mal configurado.
+
+### Efeito colateral: a tela descartava o resumo inteiro
+
+Corrigir R-01 expôs um problema maior. `src/app/distribuicao/page.tsx` fazia `await api.enviar('/ingestao')` e jogava o resultado fora — então **nenhum** número da sincronização chegava ao operador. Cinco e-mails podiam falhar sem que ninguém visse.
+
+Um contador que ninguém lê não é visibilidade. A tela passou a mostrar o resumo depois da busca, destacando falhas e e-mails sem item.
+
+### Novo erro que atravessa a camada
+
+`InterpretacaoIndisponivelError` (`src/ports/ia.ts`) marca "a camada de IA está fora, e o problema não é deste e-mail". O adapter o levanta para credencial recusada; o laço de ingestão o reconhece e **para o lote** em vez de repetir o mesmo fracasso uma vez por mensagem. É a diferença entre uma linha de log que diz o que consertar e mil linhas idênticas que escondem a causa.
+

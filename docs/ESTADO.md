@@ -2,7 +2,7 @@
 
 > **Para continuar em outra máquina:** clone o repositório, siga o *Preparar o ambiente* abaixo e leia a seção *Onde parei*. Este arquivo é o ponto de entrada; ele diz o que já está pronto, o que ficou aberto e qual é o próximo passo.
 
-Última atualização: **27/08/2026** — complemento arquitetural (histórico, retenção, carga ponderada, armazenamento de anexos), precedido pelo adapter Anthropic, pela autenticação real com senha e pela tela de acesso.
+Última atualização: **27/08/2026** — revisão do adapter e da ingestão (quatro defeitos corrigidos, dois deles de perda silenciosa), precedida pelo complemento arquitetural, pelo adapter Anthropic, pela autenticação real com senha e pela tela de acesso.
 
 ---
 
@@ -25,7 +25,7 @@ Cole o valor em `SESSAO_SECRET`. Depois:
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
-npm run verificar    # typecheck + 155 testes
+npm run verificar    # typecheck + 159 testes
 npm run dev          # http://localhost:3000
 ```
 
@@ -54,12 +54,33 @@ Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela.
 | API REST | 19 rotas, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **155 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
+| Testes | **159 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
+
+**Uma revisão dirigida ao código ainda não mesclado encontrou quatro defeitos** — dois deles da categoria que este sistema existe para eliminar. Detalhe completo em `DECISOES.md`, seção *Revisão do adapter e da ingestão*.
+
+Os dois graves eram **perda silenciosa de trabalho**, o defeito `E.9` da planilha reconstruído dentro do substituto:
+
+1. **E-mail sem item nenhum sumia.** O schema aceitava lista vazia. O e-mail era gravado como processado, zero item criado, e a idempotência por `messageId` garantia que ele nunca mais voltasse. Sem erro, sem log, sem contador, sem fila.
+2. **Item com categoria ausente do banco era descartado** por um `continue` — e o e-mail seguia marcado como processado do mesmo jeito.
+
+A correção dos dois é deliberadamente **diferente**, porque as situações são diferentes. Zero item é resultado legítimo (resposta automática, aviso de entrega): o e-mail é processado, contado em `emailsSemItem` e registrado como evento — recusá-lo criaria repetição infinita gastando crédito. Categoria ausente é sistema mal configurado: aborta a transação inteira, o e-mail fica reprocessável e volta quando o cadastro for corrigido.
+
+Corrigir o primeiro expôs um problema maior: **a tela de distribuição descartava o resumo inteiro da sincronização.** Nenhum número chegava ao operador — cinco e-mails podiam falhar sem que ninguém visse. Um contador que ninguém lê não é visibilidade. A tela agora mostra o resumo depois da busca.
+
+Os outros dois: o adapter tratava **erro de rede como erro de validação** (o log dizia "recusada pela validação" com causa `timeout`, e a segunda tentativa pedia ao modelo que consertasse a rede), e este arquivo descrevia um caminho de falha que o código não percorre.
+
+**Chave recusada agora para o lote inteiro** na primeira ocorrência, via `InterpretacaoIndisponivelError`. Antes, virava falha por e-mail: mil chamadas condenadas e a causa real — uma variável de ambiente errada — diluída em mil linhas iguais.
+
+Testes: 155 → **159**. Cada defeito tem teste que o provou antes da correção.
+
+---
+
+## O que veio antes
 
 **Entrou o complemento arquitetural sobre histórico e retenção** (`DECISOES.md`, seção *Complemento arquitetural*). A avaliação mostrou que a maior parte da evolução pedida já estava preservada — tempo por tarefa, devolução com motivo, carga acumulada e reconstrução de decisão já eram calculáveis. Mas havia **um conflito real**: conteúdo de e-mail e metadado operacional viviam na mesma linha, então ou se guardava dado pessoal para sempre, ou se perdia o histórico junto com ele.
 
@@ -69,11 +90,13 @@ Outras quatro mudanças estruturais, todas baratas agora e caras depois: janela 
 
 Três invariantes novos em `CLAUDE.md`: guardar histórico não é treinar modelo · métrica por pessoa é observabilidade, não avaliação · conteúdo tem retenção, histórico operacional não.
 
-**Entrou o adapter Anthropic.** `IA_ADAPTER=anthropic` passa a usar o modelo real; nenhum serviço mudou, porque nenhum serviço sabe qual adapter está atrás do `AiPort`. A saída do modelo é gerada a partir do próprio schema Zod, então o formato pedido e o formato validado não podem divergir. Resposta que não valida volta ao modelo uma vez, com o erro junto; falhando de novo, o e-mail vai inteiro para a revisão humana.
+**Entrou o adapter Anthropic.** `IA_ADAPTER=anthropic` passa a usar o modelo real; nenhum serviço mudou, porque nenhum serviço sabe qual adapter está atrás do `AiPort`. A saída do modelo é gerada a partir do próprio schema Zod, então o formato pedido e o formato validado não podem divergir. Resposta que não valida volta ao modelo uma vez, com o erro junto; falhando de novo, o e-mail é contado como falha da rodada, registrado como reprocessável e **volta inteiro na próxima sincronização** — ele não entra em fila de revisão nenhuma, porque sem item não há o que revisar.
+
+Repetir só acontece quando o problema é o **formato** da resposta. Timeout, 429 e erro de servidor não repetem — reescrever o prompt não conserta rede, e o SDK já tentou por conta própria antes de erguer o erro. Chave recusada não vira falha de e-mail: ela para o lote inteiro na primeira ocorrência, para a causa real não ficar diluída em centenas de linhas idênticas.
 
 A detecção de injeção continua sendo **nossa**, por regex, antes de o texto chegar ao modelo — o sinal do modelo entra como reforço, nunca como substituto. Perguntar ao modelo atacado se houve ataque é pedir ao réu que se julgue.
 
-> **Atenção, e é a parte importante:** o adapter **nunca rodou contra a API real** — não há credencial nesta máquina e gastar crédito não é decisão minha. Os 11 testes novos cobrem tudo que é nossa responsabilidade (delimitação, retentativa, falha alta, recusa de categoria inventada e de confiança inflada) com a rede substituída por um duble. Antes de confiar nele em qualquer volume, rode com a chave configurada:
+> **Atenção, e é a parte importante:** o adapter **nunca rodou contra a API real** — não há credencial nesta máquina e gastar crédito não é decisão minha. Os 12 testes cobrem tudo que é nossa responsabilidade (delimitação, retentativa só quando cabe, falha alta, parada do lote por credencial recusada, recusa de categoria inventada e de confiança inflada) com a rede substituída por um duble. Antes de confiar nele em qualquer volume, rode com a chave configurada:
 >
 > ```bash
 > IA_ADAPTER=anthropic npm run ia:experimentar
@@ -202,7 +225,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 155 testes |
+| `npm run verificar` | Typecheck + 159 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

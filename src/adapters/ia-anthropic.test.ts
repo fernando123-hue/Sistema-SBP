@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import { MARCADOR_FIM, MARCADOR_INICIO } from '../core/seguranca/conteudo-nao-confiavel'
 import { EmailBrutoSchema, type EmailBruto } from '../core/esquemas'
-import { FalhaDeInterpretacao } from '../ports/ia'
+import Anthropic from '@anthropic-ai/sdk'
+
+import { FalhaDeInterpretacao, InterpretacaoIndisponivelError } from '../ports/ia'
 import { IaAnthropic, type ClienteDeInterpretacao } from './ia-anthropic'
 
 /**
@@ -146,11 +148,29 @@ describe('resposta inválida', () => {
     expect(cliente.chamadas).toHaveLength(2)
   })
 
-  it('erro de rede também consome a retentativa e falha alto', async () => {
-    const cliente = clienteFalso([new Error('timeout'), new Error('timeout')])
+  it('erro de transporte falha alto SEM gastar a retentativa', async () => {
+    const cliente = clienteFalso([new Error('timeout'), RESPOSTA_VALIDA])
 
     await expect(new IaAnthropic(cliente).interpretar(email())).rejects.toThrow(/timeout/)
-    expect(cliente.chamadas).toHaveLength(2)
+    // Repetir aqui mandaria "rejeitada pela validação: timeout" para o modelo —
+    // pedir que ele conserte a rede. O SDK já tentou de novo por conta própria
+    // antes de erguer o erro; insistir é só uma segunda chamada condenada.
+    expect(cliente.chamadas).toHaveLength(1)
+  })
+
+  it('credencial recusada sobe acima do e-mail, para o lote inteiro parar', async () => {
+    const cliente = clienteFalso([
+      new Anthropic.AuthenticationError(401, undefined, 'invalid x-api-key', new Headers()),
+      RESPOSTA_VALIDA,
+    ])
+
+    // Chave errada não é defeito DESTE e-mail. Virar `FalhaDeInterpretacao`
+    // faria a ingestão contar uma falha por mensagem e seguir em frente,
+    // repetindo o mesmo fracasso centenas de vezes.
+    await expect(new IaAnthropic(cliente).interpretar(email())).rejects.toThrow(
+      InterpretacaoIndisponivelError,
+    )
+    expect(cliente.chamadas).toHaveLength(1)
   })
 
   it('sucesso na primeira não gasta a segunda chamada', async () => {

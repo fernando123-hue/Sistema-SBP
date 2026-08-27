@@ -45,6 +45,22 @@ interface LinhaDaPrevia {
   fatias: Fatia[]
 }
 
+/**
+ * O que a busca de e-mails produziu.
+ *
+ * A tela descartava este objeto inteiro. Com isso, e-mail que falhou e e-mail
+ * que não virou item nenhum sumiam sem que o operador tivesse como saber —
+ * exatamente a perda silenciosa que o sistema existe para eliminar.
+ */
+interface ResumoDaIngestao {
+  recebidos: number
+  novos: number
+  duplicados: number
+  itensCriados: number
+  emailsSemItem: number
+  falhas: number
+}
+
 interface Resumo {
   data: string
   totalDistribuido: number
@@ -74,6 +90,7 @@ export default function Distribuicao() {
   const [previa, setPrevia] = useState<Resumo | null>(null)
   const [confirmado, setConfirmado] = useState<Resumo | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  const [ingestao, setIngestao] = useState<ResumoDaIngestao | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
 
   const carregarEscala = useCallback(async (dia: string) => {
@@ -115,7 +132,7 @@ export default function Distribuicao() {
     setErro(null)
     try {
       if (acao === 'sincronizar') {
-        await api.enviar('/ingestao')
+        setIngestao(await api.enviar<ResumoDaIngestao>('/ingestao'))
         setPrevia(null)
       } else if (acao === 'previa') {
         setPrevia(await api.enviar<Resumo>('/distribuicao/previa', { data, categorias: [] }))
@@ -160,6 +177,27 @@ export default function Distribuicao() {
       </div>
 
       {erro ? <Aviso>{erro}</Aviso> : null}
+
+      {ingestao ? (
+        <Aviso tom={ingestao.falhas > 0 || ingestao.emailsSemItem > 0 ? "atencao" : "ok"}>
+          {ingestao.recebidos} e-mails lidos · {ingestao.novos} novos ·{' '}
+          {ingestao.duplicados} já conhecidos · {ingestao.itensCriados} itens criados
+          {ingestao.emailsSemItem > 0 ? (
+            <>
+              {' · '}
+              <strong>
+                {ingestao.emailsSemItem} sem item nenhum
+              </strong>
+            </>
+          ) : null}
+          {ingestao.falhas > 0 ? (
+            <>
+              {' · '}
+              <strong>{ingestao.falhas} falharam e voltam na próxima busca</strong>
+            </>
+          ) : null}
+        </Aviso>
+      ) : null}
 
       <section>
         <CabecalhoDeSecao
