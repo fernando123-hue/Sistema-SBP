@@ -286,6 +286,39 @@ export const PayloadDoItemSchema = z.object({
 })
 export type PayloadDoItem = z.infer<typeof PayloadDoItemSchema>
 
+/**
+ * Forma do `Revisao.sugestaoIa` — o que a IA propôs, congelado.
+ *
+ * Mais frouxo que `ItemExtraidoSchema` de propósito: linhas antigas foram
+ * gravadas por versões anteriores do pipeline, e a medida de acerto precisa
+ * ler o histórico como ele é, não como gostaríamos que fosse. O que interessa
+ * aqui é só o que se compara com a decisão humana.
+ */
+export const SugestaoIaGravadaSchema = z.object({
+  categoriaCodigo: z.string().min(1).max(60),
+  titulo: z.string().max(300).default(""),
+  confianca: z.number().min(0).max(1).default(0),
+  campos: z.record(z.string().max(60), z.string().max(2000)).default({}),
+})
+
+/**
+ * Forma do `Revisao.valorFinal` — o que o humano decidiu.
+ *
+ * Duas formas, porque há dois caminhos de resolução. A revisão item a item
+ * grava categoria, título e campos; a aprovação em massa grava só `aprovado`
+ * mais a marca de origem. Os campos anuláveis distinguem "o humano manteve o
+ * que a IA disse" de "o humano nem foi consultado sobre isso" — colapsar os
+ * dois faria toda aprovação rotineira contar como correção.
+ */
+export const ValorFinalDaRevisaoSchema = z.object({
+  categoriaCodigo: z.string().min(1).max(60).nullish(),
+  titulo: z.string().max(300).nullish(),
+  campos: z.record(z.string().max(60), z.string().max(2000)).nullish(),
+  aprovado: z.boolean(),
+  itensExtras: z.number().int().min(0).default(0),
+  origem: z.string().max(60).nullish(),
+})
+
 // ─── Utilitário de serialização ──────────────────────────────
 
 /** O banco guarda JSON como texto. Isto é a única porta de entrada e saída. */

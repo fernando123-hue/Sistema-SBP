@@ -2,7 +2,7 @@
 
 > **Para continuar em outra máquina:** clone o repositório, siga o *Preparar o ambiente* abaixo e leia a seção *Onde parei*. Este arquivo é o ponto de entrada; ele diz o que já está pronto, o que ficou aberto e qual é o próximo passo.
 
-Última atualização: **27/08/2026** — revisão do adapter e da ingestão (quatro defeitos corrigidos, dois deles de perda silenciosa), precedida pelo complemento arquitetural, pelo adapter Anthropic, pela autenticação real com senha e pela tela de acesso.
+Última atualização: **27/08/2026** — taxa de acerto da IA (`H-D3`), precedida pela revisão do adapter e da ingestão, pelo complemento arquitetural, pelo adapter Anthropic e pela autenticação com senha.
 
 ---
 
@@ -25,7 +25,7 @@ Cole o valor em `SESSAO_SECRET`. Depois:
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
-npm run verificar    # typecheck + 159 testes
+npm run verificar    # typecheck + 185 testes
 npm run dev          # http://localhost:3000
 ```
 
@@ -51,15 +51,32 @@ Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela.
 | Distribuição | Transacional, com trava por dia, crédito histórico, auditoria completa |
 | Fila individual | Concluir, transferir, devolver ao pool |
 | Painel | Agregação pura, zero campo digitável |
-| API REST | 19 rotas, envelope único, limite de taxa, papéis |
+| Qualidade da IA | Taxa de aceitação, cobertura e calibração da confiança. Critério de aceitação nº 5 passa a ser verificável |
+| API REST | 20 rotas, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **159 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
+| Testes | **185 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
+
+**Entrou a taxa de acerto da IA** (`H-D3`) — o item 2 do roteiro, e o que destrava os outros. Detalhe em `DECISOES.md`, seção *Taxa de acerto da IA*.
+
+O critério de aceitação nº 5 pede "aceita sem correção ≥ 80%". Esse número não existia em lugar nenhum, e sem ele mexer no limiar de confiança era palpite. Nenhum dado novo precisou ser coletado: `Revisao` guarda `sugestaoIa` ao lado de `valorFinal` desde sempre — faltava a conta.
+
+**A decisão de projeto foi o denominador.** Se o universo fosse todos os itens, os que nunca foram à revisão contariam como acerto, e bastaria subir o limiar até ninguém revisar nada para a taxa ir a 100% — o indicador subindo justamente enquanto a conferência humana sumia. Então o universo é só o que passou por humano: número pessimista por construção, e o único que não se infla mexendo em parâmetro. A **cobertura** aparece sempre ao lado, porque 95% de acerto sobre 2% de cobertura é ruído com cara de resultado.
+
+A tela mostra também a **confiança média quando acerta ao lado da confiança média quando erra**. Se as duas estiverem coladas, o número que o modelo reporta não separa acerto de erro e mexer no limiar é regular ruído. Rodando contra o mock, saíram 0,91 e 0,90 — o aviso dispara. Com o modelo real, é isso que a medição vai dizer.
+
+Verificado na tela com dado real do fluxo: 27 revisões resolvidas, 48% aceitas sem correção, cobertura 82%, e a repartição do que o humano mudou (6 categoria trocada, 5 título editado, 3 recusadas).
+
+Testes: 159 → **185**. Dezenove sobre o critério, puros; sete sobre a leitura contra banco real — um erro de leitura produziria um número plausível e falso, que é o pior resultado possível aqui.
+
+---
+
+## O que veio antes
 
 **Uma revisão dirigida ao código ainda não mesclado encontrou quatro defeitos** — dois deles da categoria que este sistema existe para eliminar. Detalhe completo em `DECISOES.md`, seção *Revisão do adapter e da ingestão*.
 
@@ -77,10 +94,6 @@ Os outros dois: o adapter tratava **erro de rede como erro de validação** (o l
 **Chave recusada agora para o lote inteiro** na primeira ocorrência, via `InterpretacaoIndisponivelError`. Antes, virava falha por e-mail: mil chamadas condenadas e a causa real — uma variável de ambiente errada — diluída em mil linhas iguais.
 
 Testes: 155 → **159**. Cada defeito tem teste que o provou antes da correção.
-
----
-
-## O que veio antes
 
 **Entrou o complemento arquitetural sobre histórico e retenção** (`DECISOES.md`, seção *Complemento arquitetural*). A avaliação mostrou que a maior parte da evolução pedida já estava preservada — tempo por tarefa, devolução com motivo, carga acumulada e reconstrução de decisão já eram calculáveis. Mas havia **um conflito real**: conteúdo de e-mail e metadado operacional viviam na mesma linha, então ou se guardava dado pessoal para sempre, ou se perdia o histórico junto com ele.
 
@@ -158,7 +171,7 @@ Vale notar que o PR **#5 sobe o gitleaks-action de v2 para v3**. A permissão `p
 Na ordem em que eu retomaria:
 
 1. **Rodar o adapter Anthropic contra a API real.** Com a chave no `.env`: `IA_ADAPTER=anthropic npm run ia:experimentar`. É a **única** parte do sistema que nunca foi exercitada de verdade — o resto tem teste ou foi conferido na tela. Compare a saída com a do mock, especialmente no caso de injeção.
-2. **Taxa de acerto da IA** (`H-D3`). O dado bruto já existe: `Revisao.sugestaoIa` contra `Revisao.valorFinal`. É esse número que autoriza (ou não) afrouxar o limiar de confiança e baixar o `effort` do modelo. Sem ele, o critério de aceitação nº 5 não é mensurável, e qualquer ajuste vira palpite.
+2. ~~**Taxa de acerto da IA** (`H-D3`)~~ — **feito em 27/08/2026.** A seção *Acerto da IA* no Painel responde o critério nº 5. Com o adapter real rodando, é o primeiro lugar para olhar: ela diz se a confiança do modelo separa acerto de erro, e portanto se faz sentido mexer no limiar.
 3. **Camada de agregados de métrica** (`H-D18`) — **antes** de qualquer política de retenção. Métrica só sobrevive a um expurgo se estiver materializada antes dele; depois, o histórico anterior já foi. Como nada é expurgado hoje, não há pressa, mas há ordem.
 4. **Cadastro de colaborador pela tela** (`H-D17`), junto com a tela de habilitação. Hoje só o seed cria pessoa; criar sem habilitação faria alguém nascer invisível para a distribuição.
 5. Demais itens de `DECISOES.md § H.2` (H-D2 a H-D19). Dois têm gatilho claro: **H-D16** (`X-Forwarded-For` sem proxy confiável) é obrigatório antes de expor fora da rede local; **H-D19** (bytes de anexo sem criptografia em repouso) é obrigatório antes de documento real de associado entrar.
@@ -225,7 +238,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 159 testes |
+| `npm run verificar` | Typecheck + 185 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

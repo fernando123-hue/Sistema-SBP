@@ -268,7 +268,7 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 | # | Item | Por que não agora |
 |---|---|---|
 | H-D2 | `RegraDistribuicao` modelado e nunca lido — `RF-32` (configuração sem deploy) não existe | Os defaults estão corretos; o caminho de escrita é trabalho próprio |
-| H-D3 | Taxa de acerto da IA não é calculada em lugar nenhum — critério de aceitação nº 5 não é mensurável | O dado de qualidade já existe desde H-D1 (título/campos/N editáveis, tudo em `valorFinal`); falta só o cálculo |
+| ~~H-D3~~ | ~~Taxa de acerto da IA não é calculada em lugar nenhum~~ | **RESOLVIDO em 27/08/2026** — seção *Taxa de acerto da IA* abaixo. Critério nº 5 passa a ser verificável |
 | H-D4 | `INADIMP`/`ISENTO` sem caminho de criação manual (`POST /api/itens`) | Categorias semeadas mas inalcançáveis hoje |
 | H-D5 | Painel sem recorte de data (`?de=&ate=` da Spec) e com definição própria de "pendente" | Vai divergir da planilha na rodada paralela |
 | H-D6 | Escopo do livro-razão global antes de a frente `TÍTULOS` entrar | Acrescentar escopo a um razão já acumulado exige recomputar histórico |
@@ -530,3 +530,63 @@ Um contador que ninguém lê não é visibilidade. A tela passou a mostrar o res
 
 `InterpretacaoIndisponivelError` (`src/ports/ia.ts`) marca "a camada de IA está fora, e o problema não é deste e-mail". O adapter o levanta para credencial recusada; o laço de ingestão o reconhece e **para o lote** em vez de repetir o mesmo fracasso uma vez por mensagem. É a diferença entre uma linha de log que diz o que consertar e mil linhas idênticas que escondem a causa.
 
+
+---
+
+## Taxa de acerto da IA (`H-D3`) — 27/08/2026
+
+O critério de aceitação nº 5 diz "classificação automática aceita sem correção ≥ 80% após 2 semanas". Até agora esse número não existia em lugar nenhum, e sem ele qualquer ajuste no limiar de confiança ou no `effort` do modelo era palpite.
+
+Nenhum dado novo precisou ser coletado. `Revisao` já guarda `sugestaoIa` ao lado de `valorFinal` desde que a fila de revisão existe — o dataset estava pronto, faltava a conta.
+
+### O denominador, que é a decisão de verdade
+
+"Aceita sem correção" parece óbvio até a pergunta "sobre o quê?".
+
+Se o universo fosse **todos os itens**, os que nunca foram à revisão contariam como acerto — e bastaria subir o limiar de confiança até ninguém revisar nada para a taxa ir a 100%. O indicador subiria exatamente enquanto a conferência humana desaparecia. Seria a métrica se tornando ferramenta de esconder o problema que ela deveria denunciar, que é o que a planilha faz com `SUBTOTAL(109)`.
+
+Então o universo é **só o que passou por humano**. Duas consequências, ambas assumidas:
+
+1. O número é **pessimista por construção** — a fila de revisão seleciona justamente os casos duvidosos. A taxa real sobre a população inteira é mais alta.
+2. Ele é o único que **não se infla mexendo em parâmetro**.
+
+A **cobertura** (quanto do total foi revisado) é reportada ao lado, sempre, e nunca deve ser lida separada: 95% de acerto sobre 2% de cobertura é ruído com aparência de resultado.
+
+### Calibração da confiança — o número que decide se o limiar significa algo
+
+A tela mostra a confiança média das aceitas ao lado da confiança média das corrigidas. Se as duas estiverem coladas, o valor que o modelo reporta **não separa acerto de erro**, e mexer no limiar é regular ruído.
+
+Isso não é hipótese: rodando contra o `IaMock`, as médias saíram 0,91 e 0,90 — distância de 0,01. A tela emite o aviso. Com o adapter real o quadro pode ser outro, e é justamente isso que a medição vai dizer.
+
+### Precedência do rótulo
+
+Uma revisão pode ter várias correções ao mesmo tempo. Para que a distribuição some 100% e possa virar gráfico, cada revisão recebe **um** rótulo, pela correção mais grave: recusada · categoria trocada · itens acrescentados · título editado · campos corrigidos · aceita sem correção.
+
+A ordem é deliberada. Recusar é a IA inteira errada. Categoria é a classificação em si. Item acrescentado é **carga** que teria sumido. Título e campo são conteúdo do item, não a decisão sobre ele. As correções individuais continuam todas disponíveis em `Correcoes`, sem precedência nenhuma.
+
+### Três armadilhas evitadas, todas da mesma família
+
+| Armadilha | O que se fez |
+|---|---|
+| **Taxa `0` quando não há dado** | Devolve `null`, e a tela mostra travessão. Zero leria como "a IA errou tudo", que é o oposto de "ainda não sei" — é o defeito do painel da planilha, que mostra `0` para linha vazia, reconstruído numa métrica de qualidade |
+| **Aprovação em massa contando como correção** | Ela grava só `aprovado`, sem categoria nem título. Tratar os nulos como "mudou" faria toda aprovação rotineira virar erro do modelo, e a taxa despencaria justamente quando ele acerta o bastante para dispensar conferência item a item |
+| **Linha ilegível engolida** | Revisões cujo JSON gravado não parseia são **contadas** em `ignoradas` e mostradas na tela. Desfalcar a amostra em silêncio distorceria a taxa sem que ninguém pudesse notar — numa métrica onde ninguém iria procurar |
+
+### O que esta medida não é, e não vai ser
+
+**Não é avaliação de pessoa.** `Revisao.resolvidoPor` existe no banco e é deliberadamente omitido até do `select` da consulta. Recortar acerto por revisor transformaria a fila num instrumento de vigilância, e quem revisa passaria a evitar corrigir para não "estragar o próprio número" — destruindo exatamente o dado que este cálculo precisa. Invariante 10 do `CLAUDE.md`.
+
+### Onde mora
+
+| Camada | Arquivo |
+|---|---|
+| Critério (puro, sem banco) | `src/core/qualidade-ia.ts` |
+| Leitura do histórico | `src/servicos/qualidade.ts` |
+| Rota (só leitura) | `src/app/api/qualidade/route.ts` — `?dias=N` ou `?dias=tudo` |
+| Tela | seção *Acerto da IA* no Painel |
+
+26 testes novos: 19 sobre o critério (puros, milissegundos) e 7 sobre a leitura contra banco real, porque um erro de leitura produziria um número plausível e falso — o pior resultado possível para uma métrica que vai autorizar mexer no limiar.
+
+### O que isto destrava
+
+Com a medida no ar, `H-D3` sai da lista de dívida e o critério nº 5 passa a ser verificável. Ela é também pré-requisito honesto para duas decisões que estavam bloqueadas por falta de número: afrouxar o limiar de confiança por categoria, e baixar o `effort` do modelo de `low` para nada — ambas hoje sem base.
