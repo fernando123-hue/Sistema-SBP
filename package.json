@@ -14,6 +14,7 @@
     "db:limpar": "tsx scripts/limpar-transacional.ts",
     "db:studio": "prisma studio",
     "demo": "tsx scripts/demo.ts",
+    "ia:experimentar": "tsx scripts/experimentar-ia.ts",
     "verificar": "npm run typecheck && npm run test",
     "dev": "next dev",
     "build": "next build",
@@ -32,6 +33,7 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.121.0",
     "@prisma/adapter-better-sqlite3": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "class-variance-authority": "^0.7.1",
