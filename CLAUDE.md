@@ -35,10 +35,16 @@ O cliente é uma empresa de grande porte, mas este é o **primeiro** sistema de 
 
 8. **Dados de teste são 100% sintéticos.** Nenhum nome, CPF, CRM ou e-mail real entra no repositório.
 
+9. **Guardar histórico não é treinar modelo.** O sistema preserva o histórico operacional para auditoria, métrica e melhoria de regra. Nenhuma rotina de treinamento, fine-tuning ou aprendizado automático com dado real da associação pode ser implementada sem decisão explícita do dono do negócio — e não existe hoje nenhum caminho de export para isso. Se for preciso criar um, ele é uma decisão, nunca um efeito colateral.
+
+10. **Métrica por pessoa é observabilidade, não avaliação.** Tempo de execução, taxa de devolução e volume existem para balancear carga, achar gargalo e planejar. O sistema **não** transforma esses números em julgamento sobre indivíduo — nada de ranking, nota ou classificação de desempenho sem decisão separada, com critérios explícitos e análise de privacidade.
+
+11. **Conteúdo tem retenção; histórico operacional, não.** `EmailConteudo` e os bytes de anexo são expurgáveis por política de retenção; `Email`, `Item`, `Atribuicao`, `SaldoCarga` e `LogAuditoria` sobrevivem. Nunca junte as duas coisas na mesma linha, e nunca apague dado operacional para simplificar armazenamento.
+
 ## Antes de considerar qualquer trabalho pronto
 
 ```bash
-npm run verificar    # typecheck + 96 testes
+npm run verificar    # typecheck + testes
 ```
 
 Mudou schema? `npx prisma migrate dev` e confira que o CI valida a sincronia.

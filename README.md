@@ -27,7 +27,9 @@ npm run db:seed
 npm run dev
 ```
 
-Abra `http://localhost:3000`, escolha a operadora **Ana Ribeiro Salgado**, clique em **Buscar e-mails**, marque o plantão e calcule a prévia.
+O `db:seed` imprime **uma senha provisória por pessoa, uma única vez** — copie-as do terminal, elas não ficam gravadas em lugar nenhum.
+
+Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a senha provisória dela; o sistema pede a troca antes de liberar qualquer tela. Depois, clique em **Buscar e-mails**, marque o plantão e calcule a prévia.
 
 `npm run demo` roda o mesmo fluxo pelo terminal, sem tela: ingestão, classificação por IA, fila de revisão, distribuição, execução, painel e conferência de conservação.
 
@@ -49,6 +51,7 @@ Abra `http://localhost:3000`, escolha a operadora **Ana Ribeiro Salgado**, cliqu
 | `npm test` | Testes (unitários + integração) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run demo` | Fluxo completo ponta a ponta |
+| `npm run ia:experimentar` | Compara mock e modelo real em 4 casos. Único caminho que gasta crédito |
 | `npm run db:seed` | Cadastro base sintético |
 | `npm run db:limpar` | Apaga dados transacionais, preserva o cadastro |
 | `npm run db:migrate` | Cria e aplica migração |
@@ -98,7 +101,8 @@ Toda saída de IA passa por `InterpretacaoSchema` (Zod). Uma resposta que não v
 ## Segurança
 
 - **Conteúdo externo é dado, nunca instrução.** Corpo de e-mail, assunto e nome de anexo passam por truncar → detectar → delimitar ([`conteudo-nao-confiavel.ts`](src/core/seguranca/conteudo-nao-confiavel.ts)). A defesa real não é a regex: é a arquitetura — a IA não decide quem recebe nem quanto, então uma injeção bem-sucedida no máximo classifica errado, e a revisão pega.
-- **Anexos:** allowlist de extensão, travessia de diretório removida do nome, teto de tamanho. O MIME type declarado pelo remetente é ignorado.
+- **Anexos:** allowlist de extensão, travessia de diretório removida do nome, teto de tamanho e **conferência do tipo real pelos bytes** ([`assinatura-de-arquivo.ts`](src/core/seguranca/assinatura-de-arquivo.ts)) — um executável chamado `laudo.pdf` passa pela allowlist inteiro e só a assinatura o denuncia. O MIME type declarado pelo remetente é ignorado. Arquivo recusado não vai para o disco.
+- **Retenção:** conteúdo do e-mail e bytes de anexo vivem em linhas próprias, expurgáveis sem derrubar item, carga, conservação ou auditoria. Nenhuma política de prazo foi implementada — a estrutura permite, a decisão é do dono.
 - **Idempotência:** `Email.messageId` é único. Reprocessar nunca duplica carga.
 - **Responsável único:** garantido por índice do banco, não por código.
 - **Segredos:** só via ambiente, validados na inicialização. `.env` fora do repositório.
@@ -118,10 +122,12 @@ Toda saída de IA passa por `InterpretacaoSchema` (Zod). Uma resposta que não v
 
 ## Estado atual
 
-Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · IA mock determinística · fila de revisão · distribuição transacional com conservação garantida · fila individual com devolução ao pool · painel derivado · auditoria e observabilidade · API REST completa · 5 telas funcionando · sessão por cookie assinado · limite de taxa · **auditoria completa com 24 correções aplicadas** (`DECISOES.md § H`).
+Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · IA mock determinística · fila de revisão com divisão manual · distribuição transacional com conservação garantida · fila individual com devolução ao pool · painel derivado · auditoria e observabilidade · API REST completa · 6 telas funcionando · **autenticação por e-mail e senha** com troca obrigatória da provisória e bloqueio progressivo · sessão por cookie assinado · limite de taxa · **auditoria completa com 24 correções aplicadas** (`DECISOES.md § H`).
 
-**96 testes passando.**
+**155 testes passando.**
 
-A seguir, em ordem: ajuste do desdobramento na tela de Revisão · autenticação com senha (hoje é provisória — `DECISOES.md § AT-08`) · adapter Anthropic real · exportação para o sistema legado.
+O adapter Anthropic está escrito e coberto por testes, mas **ainda não foi exercitado contra a API real** — rode `IA_ADAPTER=anthropic npm run ia:experimentar` com a chave configurada antes de confiar nele.
+
+A seguir, em ordem: validar o adapter contra a API · tela de administração de acesso · medir a taxa de acerto da IA · exportação para o sistema legado.
 
 Retomando o trabalho em outra máquina? Leia [docs/ESTADO.md](docs/ESTADO.md).

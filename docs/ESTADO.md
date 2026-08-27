@@ -2,7 +2,7 @@
 
 > **Para continuar em outra máquina:** clone o repositório, siga o *Preparar o ambiente* abaixo e leia a seção *Onde parei*. Este arquivo é o ponto de entrada; ele diz o que já está pronto, o que ficou aberto e qual é o próximo passo.
 
-Última atualização: **26/08/2026, à noite** — auditoria completa com oito agentes, mais uma rodada de higiene de CI.
+Última atualização: **27/08/2026** — complemento arquitetural (histórico, retenção, carga ponderada, armazenamento de anexos), precedido pelo adapter Anthropic, pela autenticação real com senha e pela tela de acesso.
 
 ---
 
@@ -25,11 +25,13 @@ Cole o valor em `SESSAO_SECRET`. Depois:
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
-npm run verificar    # typecheck + 96 testes
+npm run verificar    # typecheck + 155 testes
 npm run dev          # http://localhost:3000
 ```
 
-Na tela de entrada, escolha **Ana Ribeiro Salgado** (operadora). Em Distribuição: *Buscar e-mails* → marcar plantão → *Calcular prévia* → *Confirmar*.
+**O `db:seed` imprime uma senha provisória por pessoa, uma única vez.** Elas não ficam gravadas em lugar nenhum — copie as do terminal. Rodar o seed de novo não mexe em quem já trocou a senha.
+
+Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela. O sistema exige a troca antes de liberar qualquer tela. Depois, em Distribuição: *Buscar e-mails* → marcar plantão → *Calcular prévia* → *Confirmar*.
 
 `npm run demo` roda o fluxo inteiro pelo terminal, sem tela.
 
@@ -40,22 +42,56 @@ Na tela de entrada, escolha **Ana Ribeiro Salgado** (operadora). Em Distribuiç�
 | Camada | Estado |
 |---|---|
 | Motor de distribuição | Função pura, determinística, versionada. Conservação garantida por transação |
-| Modelo de dados | 18 modelos, constraints reais, 2 migrações |
-| Ingestão | Idempotente por `message-id`, IA mock determinística atrás de port |
+| Modelo de dados | 20 modelos, constraints reais, 4 migrações |
+| Retenção | Conteúdo do e-mail e bytes de anexo em linhas próprias, expurgáveis sem tocar no histórico operacional |
+| Ingestão | Idempotente por `message-id`, IA atrás de port, tipo real do anexo conferido pelos bytes |
+| Armazenamento | Arquivos fora do banco, atrás de port. Disco local hoje, nuvem trocando o adapter |
+| Adapters de IA | `mock` determinístico e `anthropic` real (este ainda **não** exercitado contra a API) |
 | Revisão humana | Fila de exceções com sugestão da IA e campos editáveis |
 | Distribuição | Transacional, com trava por dia, crédito histórico, auditoria completa |
 | Fila individual | Concluir, transferir, devolver ao pool |
 | Painel | Agregação pura, zero campo digitável |
 | API REST | 16 rotas, envelope único, limite de taxa, papéis |
-| Telas | 5 telas + entrada, mobile-first, tema claro e escuro |
-| Testes | **96 passando** (motor, propriedade, segurança, sessão, pipeline de integração) |
+| Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
+| Telas | 5 telas + entrada + troca de senha, mobile-first, tema claro e escuro |
+| Testes | **155 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
 
-Terminei uma **auditoria completa com oito agentes** (arquitetura, segurança, banco, performance, qualidade de código, testes, regras de negócio, telas) e apliquei as correções classificadas como *CORRIGIR AGORA*. Estão todas em `DECISOES.md § H`.
+**Entrou o complemento arquitetural sobre histórico e retenção** (`DECISOES.md`, seção *Complemento arquitetural*). A avaliação mostrou que a maior parte da evolução pedida já estava preservada — tempo por tarefa, devolução com motivo, carga acumulada e reconstrução de decisão já eram calculáveis. Mas havia **um conflito real**: conteúdo de e-mail e metadado operacional viviam na mesma linha, então ou se guardava dado pessoal para sempre, ou se perdia o histórico junto com ele.
+
+Resolvido: `EmailConteudo` é linha separada e expurgável; `Email` guarda o metadado que sobrevive. Há teste que apaga **todo** o conteúdo e verifica que item, atribuição, carga e conservação continuam de pé. Nenhuma política de retenção foi implementada — a estrutura permite, o prazo é decisão sua.
+
+Outras quatro mudanças estruturais, todas baratas agora e caras depois: janela deslizante de 30 dias no desempate (sai a fronteira mensal que a `RN-11` manda eliminar), carga ponderada gravada ao lado da contagem, escopo por frente no livro-razão global, e anexos como entidade com os arquivos fora do banco. Junto veio a **verificação do tipo real do arquivo** — um executável chamado `laudo.pdf` passava pela allowlist de extensão inteiro.
+
+Três invariantes novos em `CLAUDE.md`: guardar histórico não é treinar modelo · métrica por pessoa é observabilidade, não avaliação · conteúdo tem retenção, histórico operacional não.
+
+**Entrou o adapter Anthropic.** `IA_ADAPTER=anthropic` passa a usar o modelo real; nenhum serviço mudou, porque nenhum serviço sabe qual adapter está atrás do `AiPort`. A saída do modelo é gerada a partir do próprio schema Zod, então o formato pedido e o formato validado não podem divergir. Resposta que não valida volta ao modelo uma vez, com o erro junto; falhando de novo, o e-mail vai inteiro para a revisão humana.
+
+A detecção de injeção continua sendo **nossa**, por regex, antes de o texto chegar ao modelo — o sinal do modelo entra como reforço, nunca como substituto. Perguntar ao modelo atacado se houve ataque é pedir ao réu que se julgue.
+
+> **Atenção, e é a parte importante:** o adapter **nunca rodou contra a API real** — não há credencial nesta máquina e gastar crédito não é decisão minha. Os 11 testes novos cobrem tudo que é nossa responsabilidade (delimitação, retentativa, falha alta, recusa de categoria inventada e de confiança inflada) com a rede substituída por um duble. Antes de confiar nele em qualquer volume, rode com a chave configurada:
+>
+> ```bash
+> IA_ADAPTER=anthropic npm run ia:experimentar
+> ```
+>
+> O script mostra quatro casos — comum, desdobramento em N itens, campo faltando e tentativa de injeção — e não toca no banco.
+
+**Entrou também a autenticação real com senha** — era o item que bloqueava qualquer dado de associado. A entrada agora é por e-mail e senha; o gestor cadastra a pessoa com uma senha provisória e a entrega, e o sistema não libera tela nenhuma nem rota nenhuma até ela definir a própria senha. Quem erra a senha cinco vezes seguidas trava por alguns minutos e destrava sozinho.
+
+Sumiu junto a pior brecha que existia: a tela antiga **listava a equipe inteira** e deixava assumir qualquer identidade sem senha, inclusive a de gestor. A lista de colaboradores agora exige papel `gestor`.
+
+**Passei uma auditoria em cima do meu próprio trabalho antes de dar por pronto**, e ela achou cinco defeitos reais — todos corrigidos e com teste. O mais grave: o contador de tentativas era lido e regravado, então dez tentativas *simultâneas* contavam como uma e o bloqueio nunca disparava; provei o furo com um teste antes de consertar. O mais traiçoeiro: trocar a senha **não** derrubava as sessões antigas — ou seja, a reação natural de quem desconfia de um acesso indevido não expulsava ninguém. Agora expulsa, e redefinir a senha de alguém virou a ferramenta do gestor para cortar uma sessão na hora.
+
+O raciocínio de cada escolha (por que `scrypt` do Node em vez de `bcrypt`, por que mensagem única de erro, por que o bloqueio nunca é permanente) e a lista completa dos defeitos encontrados estão em `DECISOES.md`, seção *Autenticação com senha*. Testes: 98 → 120.
+
+Antes disso, a tela de Revisão passou a deixar o operador **editar os campos que a IA extraiu** e **ajustar o N do desdobramento pra cima**. Detalhe em `DECISOES.md`, seção *Divisão manual da revisão*.
+
+Antes disso, tinha terminado uma **auditoria completa com oito agentes** (arquitetura, segurança, banco, performance, qualidade de código, testes, regras de negócio, telas) e aplicado as correções classificadas como *CORRIGIR AGORA*. Estão todas em `DECISOES.md § H`.
 
 As mais graves que foram corrigidas:
 
@@ -92,21 +128,30 @@ Com isso, os PRs de dependência devem passar. O merge continua sendo decisão s
 
 Na ordem em que eu retomaria:
 
-1. **Tela de Revisão: ajustar o desdobramento.** Hoje o operador vê o motivo `desdobramento` mas ainda não consegue mudar o N nem editar os campos extraídos. `ResolucaoRevisaoSchema` precisa aceitar os itens revisados. É a lacuna que sobrou da correção nº 4 e nº 5 acima.
-2. **Autenticação real com senha** (`DECISOES.md § AT-08`). Bloqueia a entrada de qualquer dado real de associado.
-3. **Adapter Anthropic** atrás do `AiPort`, usando `criarAiPort()` em `src/adapters/fabrica.ts` — o caminho já existe e falha alto se pedirem um adapter não implementado.
-4. Itens de `DECISOES.md § H` classificados como *ANTES DA PRÓXIMA ETAPA*.
+1. **Rodar o adapter Anthropic contra a API real.** Com a chave no `.env`: `IA_ADAPTER=anthropic npm run ia:experimentar`. É a **única** parte do sistema que nunca foi exercitada de verdade — o resto tem teste ou foi conferido na tela. Compare a saída com a do mock, especialmente no caso de injeção.
+2. **Taxa de acerto da IA** (`H-D3`). O dado bruto já existe: `Revisao.sugestaoIa` contra `Revisao.valorFinal`. É esse número que autoriza (ou não) afrouxar o limiar de confiança e baixar o `effort` do modelo. Sem ele, o critério de aceitação nº 5 não é mensurável, e qualquer ajuste vira palpite.
+3. **Camada de agregados de métrica** (`H-D18`) — **antes** de qualquer política de retenção. Métrica só sobrevive a um expurgo se estiver materializada antes dele; depois, o histórico anterior já foi. Como nada é expurgado hoje, não há pressa, mas há ordem.
+4. **Cadastro de colaborador pela tela** (`H-D17`), junto com a tela de habilitação. Hoje só o seed cria pessoa; criar sem habilitação faria alguém nascer invisível para a distribuição.
+5. Demais itens de `DECISOES.md § H.2` (H-D2 a H-D19). Dois têm gatilho claro: **H-D16** (`X-Forwarded-For` sem proxy confiável) é obrigatório antes de expor fora da rede local; **H-D19** (bytes de anexo sem criptografia em repouso) é obrigatório antes de documento real de associado entrar.
 
 ---
 
-## Quatro decisões que dependem do dono do negócio
+## Três decisões que dependem do dono do negócio
 
-Estão registradas em `DECISOES.md § H`, sem resposta inventada:
+Estão registradas em `DECISOES.md § H.4`, sem resposta inventada:
 
-1. **Dono único** — quando uma categoria tem dono fixo (o caso `E-MAIL LIGA`), a intenção é *sempre a mesma pessoa*, ou apenas que o lote não seja fragmentado no mesmo dia?
+1. **Dono único** — quando uma categoria tem dono fixo (o caso `E-MAIL LIGA`), a intenção é *sempre a mesma pessoa*, ou apenas que o lote não seja fragmentado no mesmo dia? Hoje o código entrega 100% a quem estiver mais credor, o que é rodízio, não dono fixo.
 2. **Etapa 6 da operação** — depois que o sistema distribui, o colaborador trabalha pela tela ou continua pela pasta de e-mail dele? Se for pela pasta, o `IngestaoPort` precisa deixar de ser somente-leitura.
-3. **Itens mais antigos** — devem ir para quem está mais credor, ou ser espalhados?
-4. **"Período" do desempate** — hoje é o mês corrente, o que reintroduz a fronteira mensal que `RN-11` manda eliminar. Deve ser janela deslizante?
+3. **Itens mais antigos** — devem ir para quem está mais credor, ou ser espalhados? Tem consequência de prazo.
+
+> A quarta pergunta — **"período" do desempate** — foi respondida em 27/08/2026: janela deslizante de 30 dias, já implementada.
+
+---
+
+## Pendências que aguardam decisão, não código
+
+- **Retenção:** a estrutura separa conteúdo de histórico e permite expurgo, mas **nenhum prazo foi definido** e nada é apagado hoje. Definir prazo é decisão de negócio e de DPO, não de engenharia.
+- **Dado real para a API da Anthropic:** bloqueado por decisão de 27/08/2026 — só dados sintéticos até aprovação formal da associação.
 
 ---
 
@@ -123,16 +168,27 @@ docs/
 src/
   core/             domínio puro — não importa Prisma, React nem Next
     distribuicao/   o motor e a ordenação (núcleo de valor)
-    seguranca/      defesa contra prompt injection e anexos
-  ports/            AiPort, IngestaoPort
-  adapters/         mock + fábrica escolhida por ambiente
+    seguranca/      injeção de prompt, validação e tipo real de anexo
+    autenticacao.ts política de bloqueio (pura, sem I/O)
+  ports/            AiPort, IngestaoPort, ArmazenamentoPort
+  adapters/         mock, anthropic, disco + fábrica escolhida por ambiente
   servicos/         transações, orquestração
-  servidor/         prisma, ambiente, ator, sessão, http, observabilidade
-  app/              rotas de API e telas
+  servidor/         prisma, ambiente, ator, sessão, credenciais, http
+  app/              rotas de API e telas (inclui /acesso e /senha)
   componentes/      design system (matrizes) e cliente de API
 ```
 
 **Regra de dependência:** as setas apontam só para dentro — `app → servicos → core`. `core/` não importa infraestrutura. É isso que mantém o motor testável em milissegundos e auditável para sempre.
+
+**Onde mexer para cada coisa:**
+
+| Quero… | Vou em |
+|---|---|
+| mudar como o trabalho é repartido | `src/core/distribuicao/motor.ts` (puro) e `ordenacao.ts` |
+| mudar o que a IA extrai | `src/adapters/ia-anthropic.ts` (prompt) e `src/core/esquemas.ts` (contrato) |
+| mudar a janela do desempate | `DIAS_DA_JANELA` em `src/servicos/distribuicao.ts` |
+| implementar retenção | apagar `EmailConteudo` e bytes; **nunca** `Item`, `Atribuicao`, `SaldoCarga`, `LogAuditoria` |
+| trocar disco por nuvem | novo adapter de `ArmazenamentoPort` + `criarArmazenamentoPort()` |
 
 ---
 
@@ -140,11 +196,22 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 96 testes |
+| `npm run verificar` | Typecheck + 155 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
-| `npm run db:seed` | Cadastro base sintético |
+| `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |
+| `npm run db:seed` | Cadastro base sintético + senhas provisórias |
 | `npm run db:limpar` | Apaga dados transacionais, preserva cadastro |
 | `npm run db:studio` | Inspeciona o banco |
 
 Dados são 100% sintéticos. Nenhum nome, CPF ou e-mail real entra no repositório.
+
+---
+
+## Se algo parecer quebrado ao retomar
+
+- **`npm run db:seed` não mostra senha de alguém:** é o comportamento correto — quem já trocou a senha não é tocado. Para recomeçar do zero, limpe o banco e rode as migrações de novo.
+- **Erro de typecheck vindo de `.next/`:** artefato do dev server, não do código. `rm -rf .next` e rode de novo.
+- **`AdapterIndisponivelError`:** `IA_ADAPTER` ou `INGESTAO_ADAPTER` aponta para um adapter não implementado. É proposital — o sistema recusa subir em vez de cair no mock em silêncio.
+- **`SESSAO_SECRET ausente ou curto demais`:** gere um com `node -e "console.log(crypto.randomUUID())"` e cole no `.env`.
+- **Login recusado com a senha certa:** confira se a conta não está desativada ou travada por tentativas. A mensagem é genérica de propósito — ela não revela qual dos casos é. Use a tela `/acesso` como gestor.
