@@ -8,21 +8,14 @@
 
 ## Continuando em outra máquina
 
-**⚠️ O trabalho NÃO está na `main`.** Ele vive na branch `feat/fundacao-dominio`, no [PR #11](https://github.com/fernando123-hue/Sistema-SBP/pull/11). Quem clonar e ficar na `main` vai encontrar o projeto 19 commits atrás e achar que tudo sumiu.
+Tudo está na **`main`**. Clone e siga — não há branch para trocar, nem passo escondido.
 
 ```bash
 git clone https://github.com/fernando123-hue/Sistema-SBP.git
 cd Sistema-SBP
-git checkout feat/fundacao-dominio
 ```
 
-Confira que chegou no lugar certo — o commit mais recente tem de falar da trava de conservação:
-
-```bash
-git log --oneline -1
-```
-
-Depois siga *Preparar o ambiente* abaixo. Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aberto e qual é o próximo passo.
+Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aberto e qual é o próximo passo.
 
 ### O que NÃO vem no clone, e por quê
 
@@ -40,7 +33,7 @@ Depois siga *Preparar o ambiente* abaixo. Este arquivo é o ponto de entrada: el
 
 ## Preparar o ambiente
 
-Testado num clone limpo em 28/08/2026 — os passos abaixo levam de zero a 229 testes verdes.
+Testado num clone limpo da `main` em 28/08/2026 — os passos abaixo levam de zero a 229 testes verdes, sem nenhuma etapa extra.
 
 ```bash
 npm install
@@ -249,24 +242,51 @@ As mais graves que foram corrigidas:
 
 ## Situação do CI e das dependências
 
-Três coisas que valem saber antes de abrir o repositório:
+**O CI roda e passa em três checagens:** typecheck e testes, sincronia entre schema e migrações, varredura de segredos, e auditoria de dependências. `npm audit` acusa **zero vulnerabilidades**.
 
-**GitHub Actions voltou a funcionar** (27/08/2026). A fila estava travada — execuções ficavam `queued` por horas, e o cancelamento respondia `completed` — mas destravou sozinha, provavelmente renovação da cota de minutos do plano free. Os três jobs rodam e passam no PR #11 em menos de um minuto.
+O quarto workflow, o do CodeQL, está **desarmado de propósito** (`workflow_dispatch` apenas). A análise funciona, mas o upload do resultado exige "code scanning", que o GitHub só oferece em repositório público ou com Advanced Security — e workflow eternamente vermelho ensina a equipe a ignorar vermelho. Reativar é descomentar os gatilhos quando o plano permitir.
 
-Ao rodar, o CI achou um problema real: o job do gitleaks falhava com `Resource not accessible by integration` em **PR comum**, não só nos do Dependabot. O `permissions` global do workflow é `contents: read`, e o gitleaks precisa de `pull-requests: read` para listar os commits do PR. Falhava **sem ter encontrado segredo nenhum** — o vermelho que ensina a equipe a ignorar vermelho. Corrigido com a permissão mínima no job.
+### O que foi mesclado em 28/08/2026
 
-**Cinco PRs do Dependabot abertos** (#1, #2, #4, #5, #9). O #9 falhava no CI, e a investigação achou dois problemas reais — ambos corrigidos:
+| PR | O quê | Estado |
+|---|---|---|
+| [#11](https://github.com/fernando123-hue/Sistema-SBP/pull/11) | Toda a fundação do domínio — 20 commits | ✅ mesclado |
+| [#5](https://github.com/fernando123-hue/Sistema-SBP/pull/5) | `gitleaks-action` v2 → v3 | ✅ mesclado |
+| [#9](https://github.com/fernando123-hue/Sistema-SBP/pull/9) | `@types/node` e `typescript` (dev) | ✅ mesclado |
 
-- `TS5102: Option 'baseUrl' has been removed`. O `tsconfig.json` usava `baseUrl` junto com `paths`, e a versão nova do TypeScript removeu a opção. Isso travaria **qualquer** upgrade de TypeScript. `baseUrl` saiu; `paths` continua funcionando porque resolve relativo ao próprio `tsconfig.json`.
-- O job do gitleaks falhava com `Resource not accessible by integration` em todo PR do Dependabot, porque esses PRs recebem token somente-leitura. Era vermelho que não é defeito — o tipo que ensina a equipe a ignorar vermelho. O job agora pula quando o autor é o Dependabot.
+### O que ficou aberto, e por quê
 
-Com isso, os PRs de dependência devem passar. O merge continua sendo decisão sua.
+| PR | O quê | Situação |
+|---|---|---|
+| [#2](https://github.com/fernando123-hue/Sistema-SBP/pull/2) | `actions/checkout` v4 → v7 | **Verde e pronto.** Falta um clique |
+| [#1](https://github.com/fernando123-hue/Sistema-SBP/pull/1) | `actions/setup-node` v4 → v7 | **Verde e pronto.** Falta um clique |
+| [#4](https://github.com/fernando123-hue/Sistema-SBP/pull/4) | `codeql-action` v3 → v4 | Se recusa a rebasear; checagens vermelhas são de execuções antigas. **Inócuo** — o workflow do CodeQL está desarmado, então a versão da ação não muda nada hoje |
 
-**PR aberto com o trabalho desta rodada:** [#11](https://github.com/fernando123-hue/Sistema-SBP/pull/11) — autenticação, adapter Anthropic, divisão manual da revisão e separação de conteúdo do histórico. Três checks verdes. Merge é decisão sua.
+**#1 e #2 não foram mesclados por limitação de permissão, não por defeito.** Os dois alteram `.github/workflows/ci.yml`, e o token usado aqui não tem escopo para escrever arquivo de workflow — o GitHub recusa com `refusing to allow an OAuth App to create or update workflow`. Os dois estão rebaseados sobre a `main` atual e com as checagens verdes: basta abrir cada um e clicar em *Merge*.
 
-Vale notar que o PR **#5 sobe o gitleaks-action de v2 para v3**. A permissão `pull-requests: read` que acabou de ser adicionada ao job de segredos vale para as duas versões, mas confira o comportamento ao fazer o merge — foi exatamente esse job que produziu vermelho falso duas vezes.
+### Por que #1 e #2 têm prazo
 
-**A suíte estava perto de estourar o tempo limite.** Depois que o desdobramento passou a exigir revisão humana, a simulação de 30 dias gera centenas de pendências, e o helper de teste as aprovava uma a uma. Trocado por operação em lote: o arquivo caiu de 140s para ~50s. O `testTimeout` também subiu para 90s, para dar margem em máquina mais lenta.
+> **16 de setembro de 2026** — o GitHub remove o Node 20 dos runners. As notas de versão do próprio gitleaks-action v3 dizem: *"Node 20 is removed from GitHub-hosted runners entirely."*
+
+O log do CI já avisa hoje:
+
+```
+Node.js 20 is deprecated. The following actions target Node.js 20 but are
+being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4
+```
+
+`gitleaks-action@v3` já resolveu esse ponto (foi por isso que o #5 entrou). Faltam `checkout` e `setup-node` — que é exatamente o que #2 e #1 fazem.
+
+### Histórico que vale saber
+
+O CI já produziu **vermelho que não era defeito**, duas vezes, e as duas foram corrigidas:
+
+- O job do gitleaks falhava com `Resource not accessible by integration` em PR comum, porque o `permissions` global é `contents: read` e ele precisa de `pull-requests: read` para listar os commits. Falhava **sem ter encontrado segredo nenhum**.
+- O mesmo job falhava em todo PR do Dependabot, que recebe token somente-leitura. Hoje ele pula quando o autor é o Dependabot — Dependabot só mexe em manifesto de dependência, e segredo novo não entra por aí.
+
+E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O `tsconfig.json` usava `baseUrl` junto com `paths`, e a versão nova do TypeScript removeu a opção — isso travaria **qualquer** upgrade de TypeScript.
+
+**A suíte já esteve perto de estourar o tempo limite.** Depois que o desdobramento passou a exigir revisão humana, a simulação de 30 dias passou a gerar centenas de pendências, e o helper de teste as aprovava uma a uma. Trocado por operação em lote: o arquivo caiu de 140s para ~50s. O `testTimeout` subiu para 90s, para dar margem em máquina mais lenta.
 
 ---
 
@@ -286,7 +306,7 @@ Vale notar que o PR **#5 sobe o gitleaks-action de v2 para v3**. A permissão `p
 
 ### Depois — o que tem gatilho real
 
-3. **Resolver os 5 PRs do Dependabot.** Três têm prazo: **16 de setembro**, quando o Node 20 sai dos runners do GitHub. Ordem: mesclar o PR #11 → `@dependabot rebase` nos demais → #5, #2, #1. Detalhe na seção *Situação do CI e das dependências*.
+3. **Clicar em *Merge* nos PRs [#2](https://github.com/fernando123-hue/Sistema-SBP/pull/2) e [#1](https://github.com/fernando123-hue/Sistema-SBP/pull/1).** Os dois estão verdes e rebaseados; não foram mesclados aqui por limitação de permissão (alteram arquivo de workflow), não por defeito. Têm prazo: **16 de setembro**, quando o Node 20 sai dos runners do GitHub. Detalhe na seção *Situação do CI e das dependências*.
 
 4. **`H-D19` — cifrar os bytes de anexo em repouso.** Obrigatório antes de documento real de associado entrar. Depende da aprovação formal da associação, que ainda não veio.
 
@@ -388,5 +408,5 @@ Dados são 100% sintéticos. Nenhum nome, CPF ou e-mail real entra no repositór
 - **Login recusado com a senha certa:** confira se a conta não está desativada ou travada por tentativas. A mensagem é genérica de propósito — ela não revela qual dos casos é. Use a tela `/acesso` como gestor.
 - **`Cannot find module ... src/generated/prisma`:** o cliente do Prisma não é versionado. Rode `npx prisma generate`.
 - **O `CLAUDE.md` aparece modificado sem você ter mexido:** é o `next dev` escrevendo um bloco sozinho a cada execução. Esperado até a decisão de aceitar ou desligar.
-- **A `main` parece desatualizada:** ela está mesmo. O trabalho vive em `feat/fundacao-dominio` até o PR #11 ser mesclado.
+- **Nenhum branch a trocar:** desde 28/08/2026 a `main` tem tudo. Se você encontrar referência a `feat/fundacao-dominio` em texto antigo, ela já foi mesclada.
 - **Testes lentos ou estourando tempo:** a simulação de 30 dias roda contra SQLite de verdade. `testTimeout` está em 90s para dar margem em máquina mais lenta; o arquivo pesado leva ~50s.
