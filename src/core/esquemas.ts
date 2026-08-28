@@ -38,6 +38,111 @@ export const CategoriaClassificavelSchema = z.enum([
   'EMAIL_LIGA',
 ])
 
+/**
+ * A qual sistema do ecossistema uma linha de memória pertence.
+ *
+ * Hoje há um só, e a lista tem um valor só. Ela existe assim mesmo porque a
+ * trilha de auditoria é APPEND-ONLY por invariante: corrigir um dado gera
+ * linha nova, nunca reescreve a anterior. Uma linha que nasce sem dizer de
+ * onde veio só ganharia essa informação por um `UPDATE` na trilha — a única
+ * escrita que este sistema promete nunca fazer.
+ *
+ * É irmão de `SaldoCargaGlobal.escopo` (`H-D6`), e vale o mesmo raciocínio
+ * que o dono do negócio já aceitou em 27/08: acrescentar escopo a um razão
+ * já acumulado exige recomputar histórico. Aqui nem recomputar resolve.
+ *
+ * NÃO confunda com `Frente`. `frente` (CADASTRO/TITULOS) separa operações
+ * DENTRO deste sistema; `dominio` separa este sistema dos outros. Os dois
+ * eixos são ortogonais — uma frente nova não é um domínio novo.
+ */
+export const DominioSchema = z.enum(['distribuicao'])
+export type Dominio = z.infer<typeof DominioSchema>
+
+/** O domínio deste sistema. Todo registro de memória nasce com ele. */
+export const DOMINIO_ATUAL: Dominio = 'distribuicao'
+
+/**
+ * Vocabulário fechado da trilha de auditoria.
+ *
+ * Era `string` livre em 21 literais espalhados por 10 arquivos. Um `concluido`
+ * digitado `concluído` entrava calado, e a consulta que fosse procurá-lo
+ * simplesmente não o encontraria — sem erro, sem aviso, sem nada. Numa trilha
+ * append-only isso é permanente: a linha errada não pode ser corrigida, só
+ * acompanhada de outra.
+ *
+ * Fechar o vocabulário é também o que torna esta memória LEGÍVEL POR MÁQUINA.
+ * Enquanto a ação for texto livre, ninguém — nem uma camada de orquestração
+ * futura, nem uma consulta de hoje — consegue perguntar "o que aconteceu com
+ * este item" sem adivinhar como a pergunta foi escrita.
+ */
+export const AcaoAuditavelSchema = z.enum([
+  // Ingestão e interpretação
+  'ingerido',
+  // Revisão humana
+  'revisao_aprovada',
+  'revisao_recusada',
+  'revisao_aprovada_em_massa',
+  'item_criado_por_divisao_de_revisao',
+  // Item
+  'item_registrado_manualmente',
+  'concluido',
+  'devolvido',
+  'transferencia',
+  // Distribuição
+  'distribuido',
+  'escala_definida',
+  // Pessoas e acesso
+  'colaborador_criado',
+  'habilitacao_definida',
+  'acesso_reativado',
+  'acesso_desativado',
+  'entrada_autorizada',
+  'entrada_recusada',
+  'senha_trocada',
+  'senha_inicial_definida',
+  'senha_redefinida_pelo_gestor',
+  'conta_destravada',
+])
+export type AcaoAuditavel = z.infer<typeof AcaoAuditavelSchema>
+
+/**
+ * Vocabulário fechado das operações sujeitas a papel.
+ *
+ * A string já existia em cada chamada de `exigirPapel`, mas servia SÓ para
+ * compor a mensagem de erro — não era chave de nada, e `'sincronizar ingestão'`
+ * já aparecia duplicada em dois arquivos. Fechada, ela vira a resposta única
+ * para "que operações existem e quem pode cada uma", que hoje está espalhada
+ * por três lugares mantidos à mão: as chamadas de `exigirPapel`, o mapa de
+ * telas em `navegacao.tsx` e a checagem duplicada em `caixa/page.tsx`.
+ *
+ * É a primeira metade de uma "capacidade" no sentido da diretriz do cérebro:
+ * identificação e autorização. Finalidade, escopo e registro de uso ficam
+ * para quando existir um agente — hoje seriam burocracia sobre 19 linhas.
+ */
+export const OperacaoSchema = z.enum([
+  'sincronizar ingestão',
+  'ver fila de revisão',
+  'resolver revisão',
+  'aprovar revisões em massa',
+  'ver prévia da distribuição',
+  'confirmar distribuição',
+  'ver auditoria de rodada',
+  'definir escala',
+  'registrar item manualmente',
+  'ver a fila de outra pessoa',
+  'transferir item de outra pessoa',
+  'devolver item de outra pessoa',
+  'listar colaboradores',
+  'cadastrar colaborador',
+  'definir habilitação',
+  'definir senha de outro colaborador',
+  'destravar conta',
+  'ativar ou desativar colaborador',
+  'consultar diagnóstico de origem',
+  'consultar memória operacional',
+])
+export type Operacao = z.infer<typeof OperacaoSchema>
+
 export const StatusItemSchema = z.enum([
   'novo',
   'aguardando_revisao',

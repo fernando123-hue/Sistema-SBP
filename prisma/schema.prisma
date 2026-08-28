@@ -483,6 +483,18 @@ model Revisao {
 /// Append-only. Quem fez, quando, o quê, valor antes e depois.
 model LogAuditoria {
   id           String   @id @default(cuid())
+  /// Qual sistema do ecossistema escreveu esta linha. Ver `DominioSchema`.
+  ///
+  /// ESTA COLUNA NÃO TEM BACKFILL POSSÍVEL. A trilha é append-only por
+  /// invariante — corrigir um dado gera linha nova, nunca reescreve a
+  /// anterior. Então uma linha gravada hoje sem domínio fica sem domínio
+  /// para sempre, e no dia em que um segundo sistema escrever aqui não
+  /// haverá como separar a história de um da história do outro.
+  ///
+  /// É o mesmo raciocínio que já valeu para `SaldoCargaGlobal.escopo`
+  /// (`H-D6`): acrescentar escopo a um razão já acumulado exige recomputar
+  /// histórico. Aqui é pior — não dá nem para recomputar.
+  dominio      String   @default("distribuicao")
   entidade     String
   entidadeId   String
   acao         String
@@ -497,11 +509,18 @@ model LogAuditoria {
   @@index([entidade, entidadeId])
   @@index([timestamp])
   @@index([correlacaoId])
+  @@index([dominio, timestamp])
 }
 
 /// Observabilidade: o que falhou, onde, quando, e se pode ser reprocessado.
 model EventoProcessamento {
   id           String    @id @default(cuid())
+  /// Qual sistema do ecossistema gerou este evento. Ver `DominioSchema`.
+  ///
+  /// `etapa` é string livre e não serve de substituto: "ingestao" pode
+  /// existir em qualquer sistema futuro, e as duas séries se somariam numa
+  /// consulta sem que nada acusasse.
+  dominio      String    @default("distribuicao")
   correlacaoId String
   etapa        String
   /// iniciado | sucesso | falha | reprocessavel
@@ -515,4 +534,5 @@ model EventoProcessamento {
 
   @@index([correlacaoId])
   @@index([situacao, etapa])
+  @@index([dominio, criadoEm])
 }

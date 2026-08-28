@@ -4,7 +4,8 @@ import { ErroDominio } from '../core/erros'
 import { ambiente } from './ambiente'
 import { PermissaoNegadaError } from './ator'
 import { verificarLimite } from './limite-de-taxa'
-import { mensagemDoErro, novaCorrelacao, registrarLog } from './observabilidade'
+import { mensagemDoErro, novaCorrelacao, registrarEvento, registrarLog } from './observabilidade'
+import { obterPrisma } from './prisma'
 import { SemSessaoError, SenhaProvisoriaError } from './sessao'
 
 /**
@@ -88,6 +89,31 @@ export async function rota(handler: () => Promise<Response>): Promise<Response> 
       erro: mensagemDoErro(erro),
       pilha: erro instanceof Error ? erro.stack : undefined,
     })
+
+    // A resposta abaixo promete que o identificador "permite rastrear a
+    // falha". Enquanto isto aqui não existia, a promessa era falsa: o id era
+    // sorteado, entregue ao usuário e gravado SÓ em stdout — nenhuma tabela o
+    // continha e nenhuma rota o buscava. Quem da secretaria dissesse "deu
+    // erro, o código é a3f…" só podia ser atendido por alguém com o terminal
+    // do servidor à mão. Prometer rastreabilidade e não entregar é a doença
+    // que este sistema existe para curar, cometida na própria mensagem de erro.
+    //
+    // O `catch` é obrigatório e não é zelo: se a falha original FOR do banco,
+    // gravar o evento falha também. O erro que o usuário recebe tem de
+    // continuar sendo o primeiro — o segundo vira log, nunca substitui.
+    try {
+      await registrarEvento(obterPrisma(), {
+        correlacaoId,
+        etapa: 'rota',
+        situacao: 'falha',
+        mensagem: mensagemDoErro(erro),
+      })
+    } catch (aoGravar) {
+      registrarLog('erro', 'falha ao registrar o evento da falha', {
+        correlacaoId,
+        erro: mensagemDoErro(aoGravar),
+      })
+    }
 
     return responderErro(
       'Erro interno. O identificador abaixo permite rastrear a falha no log.',

@@ -41,6 +41,10 @@ O cliente é uma empresa de grande porte, mas este é o **primeiro** sistema de 
 
 11. **Conteúdo tem retenção; histórico operacional, não.** `EmailConteudo` e os bytes de anexo são expurgáveis por política de retenção; `Email`, `Item`, `Atribuicao`, `SaldoCarga` e `LogAuditoria` sobrevivem. Nunca junte as duas coisas na mesma linha, e nunca apague dado operacional para simplificar armazenamento.
 
+12. **Memória é lida, nunca soprada de volta ao modelo.** A trilha (`LogAuditoria`, `EventoProcessamento`) existe para humano investigar e para uma orquestração futura consultar. Ela **não** monta contexto de prompt. Devolver ao modelo texto que veio de e-mail transforma injeção de prompt — hoje limitada a uma mensagem — em ataque persistente; e selecionar correções humanas parecidas para injetar no prompt é aprendizado em contexto, ou seja, treinar com dado real da associação sem a decisão que o invariante 9 exige. Se um dia isso entrar, entra como decisão do dono, com o texto passando pelas três camadas de `conteudo-nao-confiavel` no caminho de **leitura** e sempre dentro dos delimitadores.
+
+13. **Toda linha de memória nasce sabendo de que domínio é.** `dominio` em `LogAuditoria` e `EventoProcessamento` não é enfeite para o futuro: a trilha é append-only, então uma linha gravada sem domínio só ganharia um por `UPDATE` — a única escrita que este sistema promete nunca fazer. Evento futuro é gravado **na mesma `Transacao`** do fato, ou não é gravado: publicar antes do commit deixa a memória afirmando uma distribuição que a transação abortou.
+
 ## Antes de considerar qualquer trabalho pronto
 
 ```bash

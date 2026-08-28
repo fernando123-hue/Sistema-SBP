@@ -1,8 +1,8 @@
 # Estado do projeto — retomada
 
-Última atualização: **28/08/2026** — registro manual de item (`H-D4`), precedido pela auditoria com agentes especializados e pelo painel com recorte de período.
+Última atualização: **28/08/2026** — fundação do cérebro operacional, precedida pelo registro manual de item (`H-D4`).
 
-> **`INADIMP.` e `ISENTO` existiam no cadastro e eram inalcançáveis.** Semeadas, marcadas fora do rateio, proibidas à IA — e sem nenhuma rota que as criasse. Duas linhas da planilha sem correspondente aqui dentro, o que faria a rodada de comparação lado a lado nascer incompleta por construção. Agora há `POST /api/itens` e um formulário na Caixa de entrada. Detalhe em `DECISOES.md`, seção *Registro manual de item*.
+> **O sistema tinha memória e nenhuma forma de lê-la.** `LogAuditoria` e `EventoProcessamento` eram gravados em 27 pontos do código e não tinham **um único leitor em produção**. O caso que obrigou a entrega: numa falha 500, o sistema entrega ao usuário um identificador dizendo que ele "permite rastrear a falha" — e esse id não estava em tabela nenhuma e nenhuma rota o buscava. A promessa estava na própria mensagem de erro. Detalhe em `DECISOES.md`, seção *Fundação do cérebro operacional*.
 
 ---
 
@@ -33,7 +33,7 @@ Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aber
 
 ## Preparar o ambiente
 
-Testado num clone limpo da `main` em 28/08/2026 — os passos abaixo levam de zero a 248 testes verdes, sem nenhuma etapa extra.
+Testado num clone limpo da `main` em 28/08/2026 — os passos abaixo levam de zero a 265 testes verdes, sem nenhuma etapa extra.
 
 ```bash
 npm install
@@ -53,10 +53,10 @@ Os outros vêm prontos do `.env.example`. `PROXIES_CONFIAVEIS="0"` é o correto 
 Depois:
 
 ```bash
-npx prisma migrate deploy   # cria o banco e aplica as 6 migrações
+npx prisma migrate deploy   # cria o banco e aplica as 7 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 248 testes
+npm run verificar           # typecheck + 265 testes
 npm run dev                 # http://localhost:3000
 ```
 
@@ -77,7 +77,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Camada | Estado |
 |---|---|
 | Motor de distribuição | Função pura, determinística, versionada. Conservação garantida por transação |
-| Modelo de dados | 20 modelos, constraints reais, 6 migrações |
+| Modelo de dados | 20 modelos, constraints reais, 7 migrações |
 | Retenção | Conteúdo do e-mail e bytes de anexo em linhas próprias, expurgáveis sem tocar no histórico operacional |
 | Ingestão | Idempotente por `message-id`, IA atrás de port, tipo real do anexo conferido pelos bytes |
 | Armazenamento | Arquivos fora do banco, atrás de port. Disco local hoje, nuvem trocando o adapter |
@@ -86,18 +86,47 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Distribuição | Transacional, com trava por dia, crédito histórico, auditoria completa |
 | Fila individual | Concluir, transferir, devolver ao pool |
 | Registro manual | O que não chega por e-mail entra pela Caixa: balcão, telefone, e as categorias de exceção `INADIMP.`/`ISENTO` |
+| Memória consultável | A trilha de auditoria deixa de ser write-only: `GET /api/memoria` responde por ciclo (`?correlacao=`) e por registro (`?entidade=&id=`). Toda linha nasce com `dominio` |
 | Painel | Agregação pura, zero campo digitável. Recorte por período, colunas mapeadas uma a uma para as da planilha |
 | Qualidade da IA | Taxa de aceitação, cobertura e calibração da confiança. Critério de aceitação nº 5 passa a ser verificável |
 | Cadastro de equipe | Gestor cadastra pessoa e define o que ela pode receber, pela tela. Quem fica sem categoria aparece em destaque |
-| API REST | 23 caminhos, 28 operações, envelope único, limite de taxa, papéis |
+| API REST | 24 caminhos, 29 operações, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **248 passando** (motor, propriedade, segurança, sessão, autenticação, registro manual, pipeline de integração) |
+| Testes | **265 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
+
+**Entrou a fundação do cérebro operacional.** Detalhe em `DECISOES.md`, seção *Fundação do cérebro operacional*.
+
+A diretriz era grande — memória, eventos, capacidades, contexto, isolamento de domínio, ecossistema futuro — e a análise com agentes especializados devolveu a resposta que interessava: **a maior parte já estava atendida**. O gateway de IA está limpo desde 26/08, a memória de feedback (`sugestaoIa` × `valorFinal`) existe e já é lida por `qualidade-ia.ts`, o histórico é reproduzível, e conteúdo já está separado de histórico operacional.
+
+**O buraco real era outro: memória que ninguém conseguia ler.** `LogAuditoria` e `EventoProcessamento` eram gravados em 27 pontos do código e não tinham **um único leitor em produção** — nenhuma rota, nenhuma tela. A trilha de um sistema que existe para acabar com erro silencioso só era alcançável por `prisma studio`.
+
+**O caso mais concreto estava na mensagem de erro.** Num 500, o sistema sorteia um identificador, entrega ao usuário dizendo que ele *"permite rastrear a falha no log"*, e gravava **só em stdout**. Quem da secretaria dissesse "deu erro, o código é `a3f…`" só podia ser atendido por alguém com o terminal do servidor à mão. Agora o 500 grava evento, e `GET /api/memoria?correlacao=<id>` resolve — com teste que estoura uma rota de verdade e prova a ponta a ponta.
+
+**Três peças entraram, e só três:**
+
+- **`dominio` em `LogAuditoria` e `EventoProcessamento`.** É o que fica mais caro a cada dia: a trilha é append-only, então acrescentar a coluna depois preencheria as linhas antigas por `UPDATE` — a única escrita que o projeto promete nunca fazer. Mesmo raciocínio do `escopo` que você aceitou em 27/08.
+- **Vocabulário fechado.** 41 literais de `acao` e de operação eram `string` livre; um `concluido` digitado `concluído` entrava calado numa tabela que ninguém pode corrigir. O compilador casou com as 19 chamadas de produção de primeira.
+- **Interface de consulta.** Por ciclo e por registro. **Sem listagem geral, de propósito** — a trilha diz quem fez o quê sobre a operação inteira, e despejá-la em página transformaria auditoria em vigilância.
+
+**E o teste que faltava havia meses.** A regra mais citada do projeto — `app → servicos → core` — era sustentada **só por disciplina**: nenhum teste, nenhuma checagem no CI. Agora `src/core/pureza.test.ts` varre o núcleo resolvendo cada import por caminho, e falha nomeando arquivo, linha e regra. Provado com um violador temporário de 8 casos. Nenhuma violação real no código atual.
+
+**O que eu recusei construir, e é o que mais parecia central na diretriz:** montagem de contexto para a IA com "casos parecidos corrigidos por humano". Devolver ao modelo texto que veio de e-mail transforma injeção de prompt — hoje limitada a uma mensagem — em ataque persistente. E selecionar correções humanas para injetar no prompt é aprendizado em contexto: treinar com dado real da associação a cada requisição, sem decisão sua. Também fora: tabela de memória genérica (`Categoria` já é a memória de domínio), `MemoriaPort` (sem segunda implementação, seria outro `RegraDistribuicao`) e barramento de eventos (nada precisa reagir).
+
+**Dois invariantes novos** no `CLAUDE.md`, custo zero: memória é lida, nunca soprada de volta ao modelo (12); toda linha de memória nasce sabendo de que domínio é, e evento vai na mesma transação do fato (13).
+
+**Duas perguntas novas para você**, em `DECISOES.md § H.4`: um agente é ator de quê (hoje `ATOR_SISTEMA` tem papel `operador` e confirmaria distribuição), e de que lado da retenção a memória cai.
+
+Testes: 248 → **265**.
+
+---
+
+## O que veio antes
 
 **Entrou o registro manual de item** (`H-D4`). Detalhe em `DECISOES.md`, seção *Registro manual de item*.
 
@@ -118,10 +147,6 @@ O sintoma estava escrito no próprio código, meses antes: `CategoriaForaDoRatei
 Testes: 229 → **248**.
 
 **Os PRs [#1](https://github.com/fernando123-hue/Sistema-SBP/pull/1) e [#2](https://github.com/fernando123-hue/Sistema-SBP/pull/2) foram mesclados.** `actions/checkout` e `actions/setup-node` agora em `v7` nos três jobs e no CodeQL. O prazo de 16/09, quando o Node 20 sai dos runners do GitHub, está resolvido.
-
----
-
-## O que veio antes
 
 **Entrou o recorte de período no painel** (`H-D5`). Detalhe em `DECISOES.md`, seção *Painel com recorte de período*.
 
@@ -320,6 +345,8 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 2. **Depois de rodar, olhar a seção *Acerto da IA* no Painel.** Ela responde o critério de aceitação nº 5 e diz se a confiança que o modelo reporta separa acerto de erro. Contra o mock as duas médias saem coladas (0,91 e 0,90) e a tela avisa. Com o modelo real esse número muda — e é ele que autoriza, ou proíbe, afrouxar o limiar de confiança.
 
+   **Isto virou pré-requisito de outra coisa em 28/08.** A diretriz do cérebro pede montagem de contexto para a IA, e eu recusei construí-la agora em parte por este motivo: sem linha de base medida contra o modelo real, acrescentar contexto compra a maior superfície de risco do sistema em troca de uma melhoria que ninguém consegue falsificar. Este passo destrava aquele.
+
 ### Depois — o que tem gatilho real
 
 3. **`H-D19` — cifrar os bytes de anexo em repouso.** Obrigatório antes de documento real de associado entrar. Depende da aprovação formal da associação, que ainda não veio.
@@ -338,7 +365,7 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ---
 
-## Cinco decisões que dependem do dono do negócio
+## Sete decisões que dependem do dono do negócio
 
 Estão registradas em `DECISOES.md § H.4`, sem resposta inventada:
 
@@ -348,7 +375,10 @@ Estão registradas em `DECISOES.md § H.4`, sem resposta inventada:
 4. **Quem vê a caixa de entrada inteira?** *(levantada na auditoria de 28/08/2026)* Hoje `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails. O `RF-23` diz que colaborador vê *os seus*. **Não foi alterado de propósito:** a equipe já trabalha de uma caixa compartilhada, então restringir mudaria a operação em vez de corrigir defeito.
 5. **Carga de exceção conta para o balanceamento?** *(levantada em 28/08/2026, com o registro manual)* Quem atende 30 inadimplentes num dia fez trabalho real, e hoje esse trabalho **não** entra no crédito — a pessoa continua recebendo cota cheia das categorias do rateio. Contar resolveria a justiça de carga, mas faria uma categoria de exceção mexer na cota justa de categorias das quais ela não participa. Escolhi o lado reversível (`§ AT-09`) porque despoluir um razão já acumulado exige recomputar histórico; começar a contar depois, não.
 
-> Uma sexta pergunta — **"período" do desempate** — foi respondida em 27/08/2026: janela deslizante de 30 dias, já implementada.
+6. **Um agente é ator de quê?** *(levantada em 28/08/2026, com a fundação do cérebro)* Hoje `ATOR_SISTEMA` tem papel **`operador`** — e com esse papel passam `confirmar distribuição` e `aprovar revisões em massa`. Um agente futuro empunhando essa identidade decidiria distribuição, e a trilha registraria `sistema`, indistinguível do cron de ingestão. Pior: `'sistema'` não é `Colaborador`, então não pode ser desativado, expirado nem travado. Isto é verdade **antes** do cérebro; o cérebro só torna o caminho alcançável. Tem consequência de schema.
+7. **Memória cai de que lado da retenção?** *(levantada em 28/08/2026)* `LogAuditoria` guarda `Item.titulo`, que a IA extraiu do corpo do e-mail e pode carregar nome de associado. Se a retenção expurgar `EmailConteudo`, o título **sobrevive** na trilha — que o invariante 11 proíbe apagar. Decisão de DPO, não de engenharia.
+
+> Uma oitava pergunta — **"período" do desempate** — foi respondida em 27/08/2026: janela deslizante de 30 dias, já implementada.
 
 ---
 
@@ -395,6 +425,8 @@ src/
 | mudar o critério de acerto da IA | `src/core/qualidade-ia.ts` (puro) — o serviço só lê o banco |
 | mexer em cadastro de pessoa ou habilitação | `src/servicos/colaboradores.ts` e a tela `/acesso` |
 | registrar trabalho que não veio por e-mail | `src/servicos/itens.ts` e o formulário em `/caixa` |
+| investigar "o que aconteceu com este item / neste erro" | `GET /api/memoria` e `src/servicos/memoria.ts` |
+| acrescentar uma ação de auditoria ou uma operação com papel | `AcaoAuditavelSchema` / `OperacaoSchema` em `src/core/esquemas.ts` — são uniões fechadas |
 | ajustar confiança em proxy | `PROXIES_CONFIAVEIS` no `.env`; confira em `/api/diagnostico/origem` |
 | implementar retenção | apagar `EmailConteudo` e bytes; **nunca** `Item`, `Atribuicao`, `SaldoCarga`, `LogAuditoria` |
 | trocar disco por nuvem | novo adapter de `ArmazenamentoPort` + `criarArmazenamentoPort()` |
@@ -405,7 +437,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 248 testes |
+| `npm run verificar` | Typecheck + 265 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

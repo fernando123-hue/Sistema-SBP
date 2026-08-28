@@ -247,6 +247,22 @@ export async function confirmar(
     situacao: comErro.length > 0 ? 'reprocessavel' : 'sucesso',
     referencia: pedido.data,
     mensagem: `${relatorio.rodadasGravadas} rodadas · ${relatorio.totalDistribuido} itens`,
+    // QUAIS categoriais falharam, não só que alguma falhou.
+    //
+    // O aviso acima vai para stdout, que roda e some. O evento dizia apenas
+    // "N rodadas · M itens", então "quais categorias ficaram sem distribuir na
+    // semana passada, e por quê?" exigia ter o terminal do servidor guardado.
+    // Aqui o motivo fica na memória do sistema, junto do dia.
+    ...(comErro.length > 0
+      ? {
+          detalhe: {
+            naoDistribuidas: comErro.map((plano) => ({
+              categoria: plano.categoria.codigo,
+              motivo: plano.erro,
+            })),
+          },
+        }
+      : {}),
     duracaoMs: Date.now() - inicio,
   })
 

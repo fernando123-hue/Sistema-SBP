@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { serializar } from '../core/esquemas'
+import { DOMINIO_ATUAL, serializar } from '../core/esquemas'
 import type { Transacao } from './prisma'
 
 /**
@@ -90,6 +90,7 @@ export interface EventoEntrada {
 export async function registrarEvento(banco: Transacao, evento: EventoEntrada): Promise<void> {
   await banco.eventoProcessamento.create({
     data: {
+      dominio: DOMINIO_ATUAL,
       correlacaoId: evento.correlacaoId,
       etapa: evento.etapa,
       situacao: evento.situacao,

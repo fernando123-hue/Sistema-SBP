@@ -129,8 +129,10 @@ describe('autorização por papel', () => {
   const gestor = atorDaSessao({ colaboradorId: 'ge1', papel: 'gestor' })
 
   it('permite o papel listado', () => {
-    expect(() => exigirPapel(operador, 'testar', 'operador', 'gestor')).not.toThrow()
-    expect(() => exigirPapel(gestor, 'testar', 'operador', 'gestor')).not.toThrow()
+    // Operação real do sistema, não um nome inventado: `Operacao` é uma união
+    // fechada, e o compilador recusaria um valor que não existe de verdade.
+    expect(() => exigirPapel(operador, 'definir escala', 'operador', 'gestor')).not.toThrow()
+    expect(() => exigirPapel(gestor, 'definir escala', 'operador', 'gestor')).not.toThrow()
   })
 
   it('recusa papel não listado, e a mensagem diz quais são aceitos', () => {
