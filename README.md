@@ -44,6 +44,8 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 | `/painel` | Recebido/distribuído/concluído/pendente. Zero campo digitável |
 | `/acesso` | Só gestor: estado de acesso da equipe, senha provisória, destravar, ligar/desligar |
 | `/senha` | Troca da própria senha. Obrigatória enquanto a provisória valer |
+| `/entrar` | E-mail e senha. Única porta de entrada |
+| `/` | Raiz: manda para a tela certa conforme o papel |
 
 ## Scripts
 
@@ -67,7 +69,7 @@ api/          endpoints REST — toda operação existe aqui primeiro
 servicos/     transações, Prisma, orquestração          -> depende de core
 core/         domínio puro: motor, esquemas, segurança  -> NÃO depende de nada
 ports/        contratos: AiPort, IngestaoPort, ArmazenamentoPort
-adapters/     mock | anthropic | disco | imap | xlsx
+adapters/     mock | anthropic | disco   (imap, gmail, nuvem: previstos)
 ```
 
 **Regra de dependência:** as setas apontam só para dentro. `core/` não importa Prisma, React, Next nem `fetch`. É isso que torna o motor testável em milissegundos e auditável para sempre.

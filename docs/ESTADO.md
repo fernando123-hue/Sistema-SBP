@@ -307,9 +307,9 @@ As mais graves que foram corrigidas:
 
 ## Situação do CI e das dependências
 
-**O CI roda e passa em três checagens:** typecheck e testes, sincronia entre schema e migrações, varredura de segredos, e auditoria de dependências. `npm audit` acusa **zero vulnerabilidades**.
+**O CI roda e passa em três jobs:** `verificar` (typecheck, testes e sincronia entre schema e migrações — a sincronia é um passo dentro dele, não um job próprio), `segredos` (gitleaks) e `dependencias`. `npm audit` acusa **zero vulnerabilidades**.
 
-O quarto workflow, o do CodeQL, está **desarmado de propósito** (`workflow_dispatch` apenas). A análise funciona, mas o upload do resultado exige "code scanning", que o GitHub só oferece em repositório público ou com Advanced Security — e workflow eternamente vermelho ensina a equipe a ignorar vermelho. Reativar é descomentar os gatilhos quando o plano permitir.
+O segundo arquivo de workflow, o do CodeQL, está **desarmado de propósito** (`workflow_dispatch` apenas). A análise funciona, mas o upload do resultado exige "code scanning", que o GitHub só oferece em repositório público ou com Advanced Security — e workflow eternamente vermelho ensina a equipe a ignorar vermelho. Reativar é descomentar os gatilhos quando o plano permitir.
 
 ### O que foi mesclado em 28/08/2026
 
@@ -332,9 +332,9 @@ Os dois estavam parados por limitação de permissão (alteram arquivo de workfl
 
 ### O que ficou aberto, e por quê
 
-| PR | O quê | Situação |
-|---|---|---|
-| [#4](https://github.com/fernando123-hue/Sistema-SBP/pull/4) | `codeql-action` v3 → v4 | Se recusa a rebasear; checagens vermelhas são de execuções antigas. **Inócuo** — o workflow do CodeQL está desarmado, então a versão da ação não muda nada hoje |
+**Nenhum PR de dependência está aberto.** O [#4](https://github.com/fernando123-hue/Sistema-SBP/pull/4) (`codeql-action` v3 → v4) foi **fechado sem merge** em 28/08/2026: ele se recusava a rebasear, e é inócuo de qualquer forma — o workflow do CodeQL está desarmado, então a versão da ação não muda nada hoje. Quando o CodeQL for reativado, o Dependabot abre outro.
+
+O único PR aberto é o [#12](https://github.com/fernando123-hue/Sistema-SBP/pull/12), que carrega o trabalho de 28/08 e está verde.
 
 ### Histórico que vale saber
 
@@ -379,7 +379,7 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 6. **`H-D8`** — as consultas N+1 do painel e da distribuição. Irrelevantes com 4-7 pessoas em SQLite local (medido: ~29 consultas por carregamento do painel, ~14 por categoria na distribuição). Viram problema de verdade na migração para PostgreSQL, e pior por acontecerem dentro da transação que segura a trava do dia.
 
-7. **Demais itens de `DECISOES.md § H.2`.** Doze abertos, nenhum com prazo, nenhum travando uso.
+7. **Demais itens de `DECISOES.md § H.2`.** Onze dívidas continuam abertas no total; tirando as quatro já nomeadas acima, sobram **sete**. Nenhuma com prazo, nenhuma travando uso.
 
 ---
 
@@ -478,5 +478,5 @@ Dados são 100% sintéticos. Nenhum nome, CPF ou e-mail real entra no repositór
 - **Login recusado com a senha certa:** confira se a conta não está desativada ou travada por tentativas. A mensagem é genérica de propósito — ela não revela qual dos casos é. Use a tela `/acesso` como gestor.
 - **`Cannot find module ... src/generated/prisma`:** o cliente do Prisma não é versionado. Rode `npx prisma generate`.
 - **O `CLAUDE.md` aparece modificado sem você ter mexido:** é o `next dev` escrevendo um bloco sozinho a cada execução. Esperado até a decisão de aceitar ou desligar.
-- **Nenhum branch a trocar:** desde 28/08/2026 a `main` tem tudo. Se você encontrar referência a `feat/fundacao-dominio` em texto antigo, ela já foi mesclada.
+- **Clonou e falta código (sem `src/servicos/memoria.ts`, sem registro manual, 6 migrações em vez de 7):** você está na `main`, e o trabalho de 28/08 está no [PR #12](https://github.com/fernando123-hue/Sistema-SBP/pull/12). Veja a primeira seção deste arquivo. Enquanto o #12 estiver aberto, `git clone` sem parâmetro entrega a versão anterior — **e a `main` carrega uma cópia antiga deste arquivo, que ainda diz "tudo está na `main`"**. Confie no PR, não naquele texto.
 - **Testes lentos ou estourando tempo:** a simulação de 30 dias roda contra SQLite de verdade. `testTimeout` está em 90s para dar margem em máquina mais lenta; o arquivo pesado leva ~50s.
