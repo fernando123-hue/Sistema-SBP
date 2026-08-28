@@ -494,6 +494,12 @@ model LogAuditoria {
   /// É o mesmo raciocínio que já valeu para `SaldoCargaGlobal.escopo`
   /// (`H-D6`): acrescentar escopo a um razão já acumulado exige recomputar
   /// histórico. Aqui é pior — não dá nem para recomputar.
+  ///
+  /// SEM ÍNDICE PRÓPRIO, de propósito. Com um domínio só, a cardinalidade é 1:
+  /// `[dominio, timestamp]` seria um duplicado de `[timestamp]` e só encareceria
+  /// a escrita na tabela mais escrita do sistema. O índice entra no dia em que
+  /// existir um segundo domínio — e aí custa o mesmo que hoje, ao contrário da
+  /// coluna.
   dominio      String   @default("distribuicao")
   entidade     String
   entidadeId   String
@@ -509,7 +515,6 @@ model LogAuditoria {
   @@index([entidade, entidadeId])
   @@index([timestamp])
   @@index([correlacaoId])
-  @@index([dominio, timestamp])
 }
 
 /// Observabilidade: o que falhou, onde, quando, e se pode ser reprocessado.
@@ -534,5 +539,4 @@ model EventoProcessamento {
 
   @@index([correlacaoId])
   @@index([situacao, etapa])
-  @@index([dominio, criadoEm])
 }

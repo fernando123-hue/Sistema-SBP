@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
+import { ErroDominio } from '../core/erros'
 import { DOMINIO_ATUAL, serializar } from '../core/esquemas'
 import type { Transacao } from './prisma'
 
@@ -103,6 +104,29 @@ export async function registrarEvento(banco: Transacao, evento: EventoEntrada): 
       duracaoMs: evento.duracaoMs ?? null,
     },
   })
+}
+
+/**
+ * Texto de erro que pode ser GRAVADO e depois lido pela API.
+ *
+ * `mensagemDoErro` devolve a mensagem crua, e ela nem sempre pode sair daqui.
+ * `ConservacaoVioladaError` carrega a alocação inteira — o id de cada colega
+ * da rodada; um erro do SDK de IA carrega o que o fornecedor resolveu dizer;
+ * um erro do SQLite carrega o caminho do arquivo do banco. Enquanto
+ * `EventoProcessamento` era gravado e nunca lido, isso era teórico. Com a
+ * consulta de memória deixou de ser.
+ *
+ * A regra é a MESMA que `http.ts` já usava para decidir o que cruza para o
+ * cliente, e não uma invenção nova: erro de DOMÍNIO tem mensagem escrita para
+ * humano e vai inteiro; qualquer outro vira só o nome da classe, e o detalhe
+ * fica no log do servidor. `ConservacaoVioladaError` é a exceção explícita —
+ * é erro de domínio e mesmo assim não sai, exatamente como lá.
+ */
+export function mensagemPersistivel(erro: unknown): string {
+  if (erro instanceof ErroDominio && erro.codigo !== 'CONSERVACAO_VIOLADA') {
+    return erro.message
+  }
+  return erro instanceof Error ? erro.name : 'Erro inesperado'
 }
 
 export function mensagemDoErro(erro: unknown): string {

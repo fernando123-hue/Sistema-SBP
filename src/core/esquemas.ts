@@ -64,7 +64,7 @@ export const DOMINIO_ATUAL: Dominio = 'distribuicao'
 /**
  * Vocabulário fechado da trilha de auditoria.
  *
- * Era `string` livre em 21 literais espalhados por 10 arquivos. Um `concluido`
+ * Era `string` livre em 21 literais espalhados por 8 arquivos. Um `concluido`
  * digitado `concluído` entrava calado, e a consulta que fosse procurá-lo
  * simplesmente não o encontraria — sem erro, sem aviso, sem nada. Numa trilha
  * append-only isso é permanente: a linha errada não pode ser corrigida, só
@@ -117,7 +117,7 @@ export type AcaoAuditavel = z.infer<typeof AcaoAuditavelSchema>
  *
  * É a primeira metade de uma "capacidade" no sentido da diretriz do cérebro:
  * identificação e autorização. Finalidade, escopo e registro de uso ficam
- * para quando existir um agente — hoje seriam burocracia sobre 19 linhas.
+ * para quando existir um agente — hoje seriam burocracia sobre 20 linhas.
  */
 export const OperacaoSchema = z.enum([
   'sincronizar ingestão',

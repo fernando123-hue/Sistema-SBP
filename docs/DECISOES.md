@@ -1111,6 +1111,39 @@ Eram 41 literais espalhados por 10 arquivos. Um `concluido` digitado `concluído
 
 Isto é verdade **antes** desta entrega; o cérebro é o que tornaria o caminho alcançável na prática. **Não foi alterado**, porque a resposta tem consequência de schema e é decisão do dono. Registrado em `§ H.4`, item 7.
 
+### Revisão do próprio trabalho — quatro defeitos na primeira versão
+
+Revisão adversarial contra os 11 invariantes, feita depois de a entrega estar verde. Achou quatro coisas, e duas eram graves.
+
+**1. A rota reintroduzia, uma requisição depois, o vazamento que `http.ts` proíbe três linhas acima.** O comentário do ramo de 500 diz, sem meias palavras, que `ConservacaoVioladaError` carrega a alocação inteira — o id de cada colega da rodada — e que houve um ramo especial devolvendo isso ao cliente, removido de propósito. A primeira versão gravava `mensagemDoErro(erro)` no evento; a consulta de memória devolvia. O ramo especial tinha sido tirado da resposta e recolocado como **recurso consultável**. Vale para qualquer 500: erro do SDK de IA, erro do Prisma com o caminho do arquivo do banco.
+
+Pior: o teste que escrevi **consagrava o defeito**, afirmando `toBe('defeito inesperado no servidor')` — ou seja, exigia como requisito que o texto interno chegasse ao chamador.
+
+Corrigido com `mensagemPersistivel`, que reaproveita a regra que `http.ts` já usava para decidir o que cruza: erro de domínio tem mensagem escrita para humano e vai inteiro; qualquer outro vira o nome da classe. `ConservacaoVioladaError` é a exceção explícita — é erro de domínio e mesmo assim não sai, exatamente como lá. A mesma correção fechou duas gravações **preexistentes** em `ingestao.ts`, que já escreviam mensagem crua e ninguém notava porque a tabela nunca era lida.
+
+**2. `entidade` como texto livre dava a `operador` o que a rota de colaboradores exige `gestor` para ver.** Com `?entidade=Colaborador&id=<id>` vinham e-mail e papel de uma colega — e mais o que rota nenhuma expõe hoje: quantas vezes ela errou a senha, por quanto tempo ficou trancada, quando o gestor redefiniu o acesso. Os ids saem de graça de `GET /api/painel`, que não exige papel. Escalonamento de privilégio por caminho lateral, e auditoria virando vigilância no lugar exato onde o invariante 10 dói.
+
+Corrigido com lista fechada de entidades consultáveis. `Colaborador` ficou **de fora**, não restrito a gestor: ninguém pediu essa consulta, e liberá-la a gestor resolveria a permissão sem resolver o propósito.
+
+**3. Truncamento silencioso.** O teto de 200 por tabela cortava sem dizer. Uma sincronização usa **um** `correlacaoId` para o lote inteiro: num dia de 250 e-mails, a consulta devolveria os 200 primeiros e calaria sobre os 50 finais — justamente onde o lote quebrou. Numa ferramenta cujo texto de abertura diz que erro silencioso é a doença que o sistema existe para curar, é o defeito mais fora de lugar possível. Agora o retorno é `{ linhas, truncado }`.
+
+**4. A ordem "de causa e efeito" mentia no empate.** Ordenar só por instante deixava a estabilidade do `sort` decidir, e como a auditoria era concatenada antes dos eventos, a história exibia o e-mail sendo *ingerido* antes de a ingestão *começar* — empate de milissegundo é comum numa transação SQLite local. Desempate explícito: `iniciado` antes, auditoria no meio, `sucesso`/`falha` depois.
+
+**E o teste de pureza estava calado, não correto.** A mesma revisão apontou que ele era um *denylist* de Prisma/React/Next: `import Anthropic from '@anthropic-ai/sdk'` dentro de `src/core/` passaria verde — e o SDK **já está instalado no projeto**, então o falso negativo era alcançável hoje, não hipotético. Invertido para *allowlist*: em produção o núcleo só importa `zod`; em teste, mais `vitest` e três builtins nominais (`node:fs`, `node:path`, `node:url`), nunca `node:` por prefixo. O denylist não sumiu — virou a escolha da **mensagem** de erro, que é onde uma lista de suspeitos é segura. Barrar por lista de suspeitos e explicar por lista de suspeitos são coisas diferentes.
+
+A inversão revelou dois falsos positivos que o denylist escondia por omissão: o padrão de import de efeito colateral casava com o **nome de um teste** terminado na palavra `import`, emendando na aspa seguinte. Corrigido ancorando as formas estáticas em início de sentença. Que esse lixo passasse antes é mais uma evidência de que o guarda estava calado.
+
+Também saíram os dois índices `[dominio, …]`: com um domínio só a cardinalidade é 1, e eles eram duplicatas dos índices existentes, encarecendo a escrita nas duas tabelas mais escritas do sistema. O índice entra quando existir um segundo domínio — e aí custa o mesmo que hoje, ao contrário da coluna.
+
+### O que esta entrega NÃO resolveu, e eu havia afirmado que resolvia
+
+**O identificador do 500 não costura o ciclo.** `http.ts` sorteia um `correlacaoId` **novo**, sem relação com o que o serviço gerou internamente — `sincronizar`, `confirmar` e `resolver` chamam `novaCorrelacao()` cada um por conta própria. Então `?correlacao=<id do 500>` devolve **uma linha**: a falha da rota. Os eventos que diriam *quais e-mails ficaram para trás* continuam sob a correlação interna, inalcançáveis para quem só tem o id da tela.
+
+O caso que este módulo cita como sua razão de existir foi, portanto, resolvido pela metade. O id deixou de ser órfão — antes não estava em tabela nenhuma; agora responde "às 14:32, a rota X falhou com erro do tipo Y", o que já é mais do que o stdout dava. Mas não entrega a história do ciclo, e eu afirmei que entregava.
+
+A correção estrutural é propagar a correlação de dentro para fora (`AsyncLocalStorage`, ou um parâmetro em `rota()`) e toca todos os serviços. **Não foi feita agora** porque é refatoração própria, não fundação. Fica registrada para não virar promessa esquecida. `porCorrelacao` e `porEntidade` funcionam inteiros para as correlações de serviço, que são as que atravessam ingestão, IA, revisão e distribuição.
+
+
 ### Limite conhecido, registrado em vez de contornado
 
 `LogAuditoria.antes`/`depois` guardam o JSON do que mudou, e a nova rota devolve esses campos. Em `revisao_aprovada`/`revisao_recusada`, o JSON inclui `Item.titulo` — que a IA **extraiu do corpo do e-mail** e pode carregar nome de associado.

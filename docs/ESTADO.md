@@ -33,7 +33,7 @@ Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aber
 
 ## Preparar o ambiente
 
-Testado num clone limpo da `main` em 28/08/2026 — os passos abaixo levam de zero a 265 testes verdes, sem nenhuma etapa extra.
+Testado num clone limpo da `main` em 28/08/2026 — os passos abaixo levam de zero a 271 testes verdes, sem nenhuma etapa extra.
 
 ```bash
 npm install
@@ -56,7 +56,7 @@ Depois:
 npx prisma migrate deploy   # cria o banco e aplica as 7 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 265 testes
+npm run verificar           # typecheck + 271 testes
 npm run dev                 # http://localhost:3000
 ```
 
@@ -93,7 +93,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | API REST | 24 caminhos, 29 operações, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **265 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
+| Testes | **271 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
@@ -122,7 +122,11 @@ A diretriz era grande — memória, eventos, capacidades, contexto, isolamento d
 
 **Duas perguntas novas para você**, em `DECISOES.md § H.4`: um agente é ator de quê (hoje `ATOR_SISTEMA` tem papel `operador` e confirmaria distribuição), e de que lado da retenção a memória cai.
 
-Testes: 248 → **265**.
+Testes: 248 → **271**.
+
+**A revisão desta entrega achou quatro defeitos meus, dois graves.** O pior: a rota reintroduzia, uma requisição depois, o vazamento que `http.ts` proíbe três linhas acima — `ConservacaoVioladaError` carrega o id de cada colega da rodada, e eu gravava a mensagem crua no evento. O ramo especial tinha sido tirado da resposta e recolocado como recurso consultável. O segundo: `entidade` era texto livre, então `?entidade=Colaborador` dava a `operador` o e-mail e o histórico de senha de uma colega — o que `GET /api/colaboradores` exige `gestor` para ver. Ambos corrigidos, com teste. Detalhe em `DECISOES.md`, *Revisão do próprio trabalho*.
+
+**E preciso corrigir uma afirmação minha.** Eu disse que o identificador do erro 500 passa a resolver o ciclo. Resolve pela metade: `http.ts` sorteia uma correlação NOVA, sem relação com a que o serviço gerou por dentro, então a consulta devolve uma linha — "às 14:32 a rota X falhou com erro do tipo Y" — e não a história. É mais do que o stdout dava, e menos do que eu afirmei. Costurar de verdade exige propagar a correlação de dentro para fora, o que toca todos os serviços; ficou registrado como trabalho próprio, não como fundação.
 
 ---
 
@@ -437,7 +441,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 265 testes |
+| `npm run verificar` | Typecheck + 271 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

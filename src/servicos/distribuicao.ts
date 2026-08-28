@@ -247,7 +247,7 @@ export async function confirmar(
     situacao: comErro.length > 0 ? 'reprocessavel' : 'sucesso',
     referencia: pedido.data,
     mensagem: `${relatorio.rodadasGravadas} rodadas · ${relatorio.totalDistribuido} itens`,
-    // QUAIS categoriais falharam, não só que alguma falhou.
+    // QUAIS categorias falharam, não só que alguma falhou.
     //
     // O aviso acima vai para stdout, que roda e some. O evento dizia apenas
     // "N rodadas · M itens", então "quais categorias ficaram sem distribuir na

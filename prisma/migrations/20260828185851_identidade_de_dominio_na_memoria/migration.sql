@@ -18,7 +18,6 @@ DROP TABLE "EventoProcessamento";
 ALTER TABLE "new_EventoProcessamento" RENAME TO "EventoProcessamento";
 CREATE INDEX "EventoProcessamento_correlacaoId_idx" ON "EventoProcessamento"("correlacaoId");
 CREATE INDEX "EventoProcessamento_situacao_etapa_idx" ON "EventoProcessamento"("situacao", "etapa");
-CREATE INDEX "EventoProcessamento_dominio_criadoEm_idx" ON "EventoProcessamento"("dominio", "criadoEm");
 CREATE TABLE "new_LogAuditoria" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "dominio" TEXT NOT NULL DEFAULT 'distribuicao',
@@ -37,6 +36,5 @@ ALTER TABLE "new_LogAuditoria" RENAME TO "LogAuditoria";
 CREATE INDEX "LogAuditoria_entidade_entidadeId_idx" ON "LogAuditoria"("entidade", "entidadeId");
 CREATE INDEX "LogAuditoria_timestamp_idx" ON "LogAuditoria"("timestamp");
 CREATE INDEX "LogAuditoria_correlacaoId_idx" ON "LogAuditoria"("correlacaoId");
-CREATE INDEX "LogAuditoria_dominio_timestamp_idx" ON "LogAuditoria"("dominio", "timestamp");
 PRAGMA foreign_keys=ON;
 PRAGMA defer_foreign_keys=OFF;
