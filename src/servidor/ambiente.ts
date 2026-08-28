@@ -27,6 +27,31 @@ const AmbienteSchema = z.object({
   IA_MODELO: z.string().default('claude-sonnet-5'),
   ANTHROPIC_API_KEY: z.string().optional(),
   SESSAO_SECRET: z.string().optional(),
+  /**
+   * Onde os arquivos de anexo são guardados.
+   *
+   * Fora do repositório de propósito: são documentos de associado, não código.
+   * Ao migrar para nuvem, troca-se o adapter de armazenamento e esta variável
+   * deixa de ser usada.
+   */
+  ARMAZENAMENTO_DIR: z.string().default('./armazenamento'),
+  /**
+   * Quantos proxies confiáveis ficam na frente da aplicação.
+   *
+   * `0` (padrão) significa acesso direto — e nesse caso `x-forwarded-for` é
+   * TEXTO LIVRE escrito por quem chama. Medido no servidor: sem o cabeçalho, o
+   * Next preenche com o endereço do socket; com o cabeçalho, ele repassa o
+   * valor do cliente inteiro. Ler esse valor como se fosse a origem dá ao
+   * atacante um balde de limite de taxa novo por requisição.
+   *
+   * Com `N > 0`, a origem é a entrada `N` posições antes do fim da cadeia — a
+   * que o proxy confiável mais externo acrescentou. Contar do começo é contar
+   * o que o cliente escreveu.
+   *
+   * Ajuste isto ao publicar atrás de nginx, Cloudflare ou balanceador: com o
+   * padrão `0`, o limite por origem vira limite global.
+   */
+  PROXIES_CONFIAVEIS: z.coerce.number().int().min(0).max(10).default(0),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 })
 

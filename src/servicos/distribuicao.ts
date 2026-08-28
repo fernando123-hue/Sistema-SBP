@@ -1,7 +1,8 @@
 import { ALGORITMO_VERSAO, distribuir } from '../core/distribuicao/motor'
+import { SemElegiveisError } from '../core/erros'
 import { serializar, type PedidoDistribuicao } from '../core/esquemas'
 import type { Categoria, Elegivel, ResultadoRodada } from '../core/tipos'
-import { fimDoDia, inicioDoDia, inicioDoMes } from '../core/util/datas'
+import { deslocarDias, fimDoDia, inicioDoDia } from '../core/util/datas'
 import { somar } from '../core/util/numero'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import {
@@ -12,6 +13,14 @@ import {
 } from '../servidor/observabilidade'
 import type { Banco, Transacao } from '../servidor/prisma'
 import { auditarLote } from './auditoria'
+
+/**
+ * Tamanho da janela do critério "recebido no período" do desempate.
+ *
+ * Decisão do dono do processo em 27/08/2026: janela deslizante de 30 dias, no
+ * lugar do mês corrente. Ver DECISOES.md.
+ */
+const DIAS_DA_JANELA = 30
 
 /**
  * Serviço de distribuição.
@@ -87,16 +96,36 @@ export async function planejarCategoria(
 
   if (itens.length === 0) return null
 
-  const elegiveis = await carregarElegiveis(banco, categoria.id, data, ajusteGlobal)
+  const elegiveis = await carregarElegiveis(
+    banco,
+    categoria.id,
+    data,
+    categoria.frente,
+    ajusteGlobal,
+  )
   const base = { categoria, quantidade: itens.length, itensIds: itens.map((item) => item.id) }
 
   try {
     const resultado = distribuir({ data, categoria, quantidade: itens.length, elegiveis })
     return { ...base, resultado, erro: null }
   } catch (erro) {
-    // Falha explícita, nunca silenciosa. Sem elegível, o trabalho FICA na fila
-    // — que é o oposto do que a planilha faz quando perde 16 itens de LIGA.
-    return { ...base, resultado: null, erro: mensagemDoErro(erro) }
+    // SÓ "ninguém de plantão" vira resultado. Todo o resto sobe.
+    //
+    // Sem elegível é situação de OPERAÇÃO: o trabalho fica na fila e a tela
+    // diz por categoria o que aconteceu — o oposto do que a planilha faz
+    // quando perde 16 itens de LIGA.
+    //
+    // Os outros erros que `distribuir` pode lançar são DEFEITO, e um deles é
+    // `ConservacaoVioladaError` — a trava que materializa o invariante nº 3,
+    // o único que o `CLAUDE.md` descreve como razão de o sistema existir.
+    // Capturá-la aqui a rebaixava a uma linha de log de nível `aviso`,
+    // indistinguível de um dia sem escala, e a categoria inteira era pulada
+    // com os itens presos na fila. A trava existe para gritar; engolir o
+    // grito é pior do que não ter trava, porque dá a impressão de que há uma.
+    if (erro instanceof SemElegiveisError) {
+      return { ...base, resultado: null, erro: mensagemDoErro(erro) }
+    }
+    throw erro
   }
 }
 
@@ -286,6 +315,7 @@ async function gravarRodada(
       data,
       recebido: cota,
       pesoCategoria: plano.categoria.peso,
+      escopo: plano.categoria.frente,
       cotaJusta: resultado.cotaJusta,
       creditoCategoria: resultado.creditoCategoriaDepois[colaboradorId] ?? 0,
       creditoGlobalAnterior: resultado.creditoGlobalAntes[colaboradorId] ?? 0,
@@ -330,6 +360,8 @@ async function atualizarSaldos(
     data: string
     recebido: number
     pesoCategoria: number
+    /** Frente da categoria. Mantém razões de `CADASTRO` e `TITULOS` separados. */
+    escopo: string
     cotaJusta: number
     creditoCategoria: number
     creditoGlobalAnterior: number
@@ -349,11 +381,16 @@ async function atualizarSaldos(
       categoriaId: entrada.categoriaId,
       data: entrada.data,
       recebido: entrada.recebido,
+      // Contagem e carga gravadas lado a lado. Hoje uma é múltipla da outra;
+      // quando o peso passar a variar por item, deixam de ser — e é por isso
+      // que as duas são gravadas desde já, em vez de uma ser derivada da outra.
+      recebidoPonderado: entrada.recebido * entrada.pesoCategoria,
       cotaJusta: entrada.cotaJusta,
       creditoAcumulado: entrada.creditoCategoria,
     },
     update: {
       recebido: { increment: entrada.recebido },
+      recebidoPonderado: { increment: entrada.recebido * entrada.pesoCategoria },
       // `cotaJusta` ACUMULA, igual a `recebido`. Sobrescrevendo, num dia com
       // duas rodadas da mesma categoria a linha passava a comparar a cota da
       // segunda rodada com o recebido do dia inteiro — número silenciosamente
@@ -366,12 +403,17 @@ async function atualizarSaldos(
 
   await tx.saldoCargaGlobal.upsert({
     where: {
-      colaboradorId_data: { colaboradorId: entrada.colaboradorId, data: entrada.data },
+      colaboradorId_escopo_data: {
+        colaboradorId: entrada.colaboradorId,
+        escopo: entrada.escopo,
+        data: entrada.data,
+      },
     },
     // Primeira categoria do dia: abre a linha com o crédito herdado de ontem
     // mais o delta de agora. As seguintes só incrementam.
     create: {
       colaboradorId: entrada.colaboradorId,
+      escopo: entrada.escopo,
       data: entrada.data,
       recebidoPonderado: entrada.recebido * entrada.pesoCategoria,
       creditoGlobal: entrada.creditoGlobalAnterior + entrada.deltaCreditoGlobal,
@@ -426,6 +468,7 @@ async function carregarElegiveis(
   banco: Banco | Transacao,
   categoriaId: string,
   data: string,
+  escopo: string,
   ajusteGlobal: AjusteDeCredito = new Map(),
 ): Promise<Elegivel[]> {
   const habilitacoes = await banco.habilitacao.findMany({
@@ -460,15 +503,23 @@ async function carregarElegiveis(
         select: { creditoAcumulado: true },
       }),
       banco.saldoCargaGlobal.findFirst({
-        where: { colaboradorId: escala.colaboradorId, data: { lte: data } },
+        where: { colaboradorId: escala.colaboradorId, escopo, data: { lte: data } },
         orderBy: { data: 'desc' },
         select: { creditoGlobal: true },
       }),
+      // JANELA DESLIZANTE, não mês corrente.
+      //
+      // Com `inicioDoMes`, todo dia 1º o histórico do desempate zerava: quem
+      // recebeu muito no dia 31 voltava ao topo da fila no dia seguinte, e a
+      // fronteira mensal que a `RN-11` manda eliminar reaparecia dentro do
+      // próprio substituto da planilha. A janela move-se com o dia e não tem
+      // essa borda. O livro-razão é diário, então qualquer janela é calculável
+      // — trocar o tamanho é trocar esta constante.
       banco.saldoCarga.aggregate({
         where: {
           colaboradorId: escala.colaboradorId,
           categoriaId,
-          data: { gte: inicioDoMes(data), lte: data },
+          data: { gte: deslocarDias(data, -(DIAS_DA_JANELA - 1)), lte: data },
         },
         _sum: { recebido: true },
       }),

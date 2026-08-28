@@ -50,7 +50,9 @@ export async function minhaFila(
       item: { status: { in: ['distribuido', 'em_andamento'] } },
     },
     orderBy: { atribuidoEm: 'asc' },
-    include: { item: { include: { categoria: true, email: true } } },
+    include: {
+      item: { include: { categoria: true, email: { include: { conteudo: true } } } },
+    },
   })
 
   return atribuicoes.map((atribuicao) => ({
@@ -59,8 +61,8 @@ export async function minhaFila(
     categoriaCodigo: atribuicao.item.categoria.codigo,
     categoriaRotulo: atribuicao.item.categoria.rotulo,
     status: atribuicao.item.status,
-    remetente: atribuicao.item.email?.remetente ?? null,
-    assunto: atribuicao.item.email?.assunto ?? null,
+    remetente: atribuicao.item.email?.conteudo?.remetente ?? null,
+    assunto: atribuicao.item.email?.conteudo?.assunto ?? null,
     recebidoEm: atribuicao.item.email?.recebidoEm ?? null,
     atribuidoEm: atribuicao.atribuidoEm,
   }))

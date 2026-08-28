@@ -50,17 +50,38 @@ export interface ItemEmRevisao {
   sugestaoIa: string
 }
 
-export async function listarPendentes(banco: Banco, limite = 100): Promise<ItemEmRevisao[]> {
+/**
+ * A fila de revisão, com o TOTAL ao lado.
+ *
+ * Devolver só o pedaço truncado deixava a tela dizer "200 itens" para
+ * sempre enquanto a fila crescia atrás do corte. Como a ordenação é fixa
+ * (`confianca asc, criadoEm asc`), o que fica além do limite fica lá
+ * PERMANENTEMENTE: nunca sobe, nunca aparece, ninguém resolve. Fila que
+ * esconde o próprio tamanho é indistinguível de fila sob controle.
+ */
+export interface FilaDeRevisao {
+  itens: ItemEmRevisao[]
+  /** Quantas revisões pendentes existem de verdade, ignorando o limite. */
+  total: number
+}
+
+export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaDeRevisao> {
+  const total = await banco.revisao.count({ where: { resolvidoEm: null } })
   const registros = await banco.revisao.findMany({
     where: { resolvidoEm: null },
     orderBy: [{ confianca: 'asc' }, { criadoEm: 'asc' }],
     take: limite,
     include: {
-      item: { include: { categoria: { select: { codigo: true } }, email: true } },
+      item: {
+        include: {
+          categoria: { select: { codigo: true } },
+          email: { include: { conteudo: true } },
+        },
+      },
     },
   })
 
-  return registros.map((registro) => ({
+  const itens = registros.map((registro) => ({
     revisaoId: registro.id,
     itemId: registro.itemId,
     motivo: registro.motivo,
@@ -68,17 +89,19 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<ItemE
     campoIncerto: registro.campoIncerto,
     titulo: registro.item.titulo,
     categoriaCodigo: registro.item.categoria.codigo,
-    remetente: registro.item.email?.remetente ?? null,
-    assunto: registro.item.email?.assunto ?? null,
+    remetente: registro.item.email?.conteudo?.remetente ?? null,
+    assunto: registro.item.email?.conteudo?.assunto ?? null,
     sugestaoIa: registro.sugestaoIa,
   }))
+
+  return { itens, total }
 }
 
 export async function resolver(
   banco: Banco,
   entrada: unknown,
   ator: Ator,
-): Promise<{ itemId: string }> {
+): Promise<{ itemId: string; itensExtrasCriados: string[] }> {
   exigirPapel(ator, 'resolver revisão', 'operador', 'gestor')
   const dados = ResolucaoRevisaoSchema.parse(entrada)
   const correlacaoId = novaCorrelacao()
@@ -135,6 +158,11 @@ export async function resolver(
         // Aprovado por humano entra na próxima rodada. Recusado sai da fila
         // sem sumir do banco — cancelado é estado, não exclusão.
         status: dados.aprovar ? 'aprovado' : 'cancelado',
+        // Carimba QUANDO saiu. Sem isto, um cancelamento feito hoje mudaria
+        // retroativamente a pendência do mês passado no painel: o número
+        // mudaria sozinho entre duas consultas, e a comparação com a planilha
+        // deixaria de significar coisa alguma.
+        canceladoEm: dados.aprovar ? null : new Date(),
       },
     })
 
@@ -146,6 +174,7 @@ export async function resolver(
           titulo: dados.titulo,
           campos: dados.campos,
           aprovado: dados.aprovar,
+          itensExtras: dados.itensExtras.length,
         }),
         resolvidoPor: ator.colaboradorId,
         resolvidoEm: new Date(),
@@ -162,7 +191,68 @@ export async function resolver(
       correlacaoId,
     })
 
-    return { itemId: item.id }
+    // O N que a IA propôs é só uma sugestão (AT-06). Quando o operador percebe
+    // que um item de lista ainda escondia mais gente — ex.: "e mais 2 ligantes"
+    // no rodapé —, ele registra a carga real aqui em vez de o sistema ficar
+    // pequeno pra sempre. Cada item extra nasce já `aprovado`: um humano acabou
+    // de olhar para ele, não faz sentido mandar pra fila de novo.
+    const itensExtrasCriados: string[] = []
+    if (dados.aprovar && dados.itensExtras.length > 0) {
+      // `(emailId, sequencia)` é único no banco. `revisao.item.sequencia + 1`
+      // colide na hora — é exatamente a posição do PRÓXIMO irmão que a IA já
+      // criou no mesmo desdobramento. A sequência real precisa vir do maior
+      // valor já usado pelo e-mail, não da posição do item sendo revisado.
+      //
+      // Só que isso vale para item VINDO DE E-MAIL. Com `emailId` nulo — que
+      // significa "origem manual" no resto do sistema — a mesma consulta
+      // varreria todos os itens manuais já criados, que não têm parentesco
+      // nenhum entre si, e devolveria uma sequência sem sentido. Pior: em SQL,
+      // `NULL` é distinto de `NULL` num índice único, então a constraint não
+      // apanharia a colisão e o erro passaria calado. Para esses, a sequência
+      // se conta a partir do próprio item de origem.
+      let proximaSequencia = revisao.item.sequencia + 1
+
+      if (revisao.item.emailId) {
+        const maiorSequencia = await tx.item.aggregate({
+          where: { emailId: revisao.item.emailId },
+          _max: { sequencia: true },
+        })
+        proximaSequencia = (maiorSequencia._max.sequencia ?? revisao.item.sequencia) + 1
+      }
+
+      for (const extra of dados.itensExtras) {
+        const criado = await tx.item.create({
+          data: {
+            emailId: revisao.item.emailId,
+            categoriaId: categoria.id,
+            sequencia: proximaSequencia,
+            titulo: extra.titulo,
+            payload: serializar({
+              campos: extra.campos,
+              camposAusentes: [],
+              ligaMencionada: payloadAnterior.ligaMencionada,
+              observacao: null,
+              revisadoPorHumano: true,
+            }),
+            confianca: 1,
+            status: 'aprovado',
+          },
+        })
+        itensExtrasCriados.push(criado.id)
+        proximaSequencia += 1
+
+        await auditar(tx, {
+          entidade: 'Item',
+          entidadeId: criado.id,
+          acao: 'item_criado_por_divisao_de_revisao',
+          depois: { categoriaId: categoria.id, titulo: criado.titulo, origemRevisaoId: dados.revisaoId },
+          usuario: ator.colaboradorId,
+          correlacaoId,
+        })
+      }
+    }
+
+    return { itemId: item.id, itensExtrasCriados }
   })
 }
 

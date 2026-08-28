@@ -1,4 +1,8 @@
-import { criarAiPort, criarIngestaoPort } from '../../../adapters/fabrica'
+import {
+  criarAiPort,
+  criarArmazenamentoPort,
+  criarIngestaoPort,
+} from '../../../adapters/fabrica'
 import { hojeIso, sequenciaDeDatas } from '../../../core/util/datas'
 import { sincronizar } from '../../../servicos/ingestao'
 import { exigirPapel } from '../../../servidor/ator'
@@ -34,6 +38,7 @@ export async function POST(): Promise<Response> {
           semente: Number(hoje.replaceAll('-', '')),
         }),
         ia: criarAiPort(),
+        armazenamento: criarArmazenamentoPort(),
       },
       ator,
     )

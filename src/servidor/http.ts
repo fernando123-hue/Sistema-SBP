@@ -1,10 +1,11 @@
 import { ZodError } from 'zod'
 
 import { ErroDominio } from '../core/erros'
+import { ambiente } from './ambiente'
 import { PermissaoNegadaError } from './ator'
 import { verificarLimite } from './limite-de-taxa'
 import { mensagemDoErro, novaCorrelacao, registrarLog } from './observabilidade'
-import { SemSessaoError } from './sessao'
+import { SemSessaoError, SenhaProvisoriaError } from './sessao'
 
 /**
  * Camada HTTP.
@@ -42,6 +43,7 @@ export function responderErro(mensagem: string, status: number, correlacaoId?: s
 
 function statusDoErro(erro: unknown): number | null {
   if (erro instanceof SemSessaoError) return 401
+  if (erro instanceof SenhaProvisoriaError) return 403
   if (erro instanceof PermissaoNegadaError) return 403
   if (erro instanceof ZodError) return 400
   if (erro instanceof ErroDominio) {
@@ -101,11 +103,114 @@ export async function rota(handler: () => Promise<Response>): Promise<Response> 
  * Uma chave FIXA numa rota pré-autenticação é um DoS de graça: bastava alguém
  * estourar o balde global de `/api/sessao` para deixar a equipe inteira sem
  * conseguir entrar. A chave tem de separar quem chama.
+ *
+ * MAS SÓ DÁ PARA SEPARAR SE O VALOR NÃO FOR ESCOLHIDO POR QUEM CHAMA.
+ *
+ * Medido no servidor de desenvolvimento: quando o cliente não manda
+ * `x-forwarded-for`, o Next preenche com o endereço do socket; quando manda,
+ * o Next repassa o valor do cliente inteiro, sem acrescentar nada. Sem proxy
+ * confiável declarado, então, o cabeçalho é texto livre — e a versão antiga
+ * desta função lia a PRIMEIRA entrada dele, que é exatamente o que o
+ * atacante escreveu. Variar um cabeçalho dava um balde novo por requisição, e
+ * o limite de taxa deixava de existir.
+ *
+ * Com `PROXIES_CONFIAVEIS = N > 0`, a origem é a entrada N posições antes do
+ * fim: a que o proxy mais externo acrescentou. Cadeia mais curta que N
+ * significa configuração divergente da realidade — ou alguém alcançou o
+ * servidor por fora do proxy —, e aí o valor não prova nada.
  */
-export function origemDaRequisicao(requisicao: Request): string {
-  const encaminhado = requisicao.headers.get('x-forwarded-for')
-  if (encaminhado) return encaminhado.split(',')[0]!.trim().slice(0, 64)
-  return requisicao.headers.get('x-real-ip')?.slice(0, 64) ?? 'desconhecida'
+export interface Origem {
+  /** Chave do balde de limite. */
+  chave: string
+  /**
+   * `false` quando a chave NÃO separa quem chama.
+   *
+   * Quem chama precisa saber disto para não aplicar um limite apertado sobre
+   * um balde que é de todo mundo — seria trancar a equipe inteira por causa
+   * de um atacante.
+   */
+  confiavel: boolean
+}
+
+/** Balde único de quando não dá para identificar a origem. Nome explícito de propósito. */
+const ORIGEM_INDISTINGUIVEL = 'origem-indistinguivel'
+
+export function origemDaRequisicao(requisicao: Request): Origem {
+  const proxies = ambiente().PROXIES_CONFIAVEIS
+  if (proxies === 0) return { chave: ORIGEM_INDISTINGUIVEL, confiavel: false }
+
+  const cadeia = (requisicao.headers.get('x-forwarded-for') ?? '')
+    .split(',')
+    .map((parte) => parte.trim())
+    .filter((parte) => parte.length > 0)
+
+  // A cadeia manda quando ela REALMENTE cresceu além dos saltos confiáveis:
+  // aí existe entrada que só um proxy pôde ter acrescentado.
+  if (cadeia.length > proxies) {
+    return { chave: cadeia[cadeia.length - proxies]!.slice(0, 64), confiavel: true }
+  }
+
+  // Cadeia do tamanho exato dos saltos é AMBÍGUA, e a ambiguidade tem um
+  // custo medido. Proxy que não reescreve `x-forwarded-for` faz o Next
+  // preencher o cabeçalho com o endereço do socket — que é o do próprio
+  // proxy. A leitura por posição devolvia esse endereço, 25 clientes
+  // distintos viravam um balde só, e o limite apertado trancou a equipe
+  // inteira no 21º pedido: o "DoS de graça" chegando por uma configuração
+  // que o operador tem toda razão de achar correta.
+  //
+  // Com UM salto, `x-real-ip` desfaz o empate: quem o escreve é o proxy
+  // confiável, e ele aponta o cliente. Com dois ou mais, não serve — o
+  // proxy de dentro escreve nele o endereço do proxy de fora, não o do
+  // cliente, e só a cadeia conhece a ordem.
+  if (proxies === 1) {
+    const real = requisicao.headers.get('x-real-ip')?.trim()
+    if (real) return { chave: real.slice(0, 64), confiavel: true }
+  }
+
+  if (cadeia.length === proxies) {
+    return { chave: cadeia[0]!.slice(0, 64), confiavel: true }
+  }
+
+  // Cadeia mais curta que a configuração: ou ela está errada, ou alguém
+  // alcançou o servidor por fora do proxy. Nos dois casos o valor não prova
+  // nada, e supor que prova é pior do que admitir que não sabe.
+  return { chave: ORIGEM_INDISTINGUIVEL, confiavel: false }
+}
+
+/**
+ * Quanto o limite afrouxa quando a origem é indistinguível.
+ *
+ * Sem proxy confiável, o balde é de todo mundo. Manter o número apertado
+ * trancaria a equipe inteira assim que um atacante o estourasse — o DoS de
+ * graça que o comentário acima descreve.
+ *
+ * O QUE ESTE TETO DE FATO FAZ, medido em vez de suposto: quase nada. Uma
+ * inundação de 900 requisições em 30 processos paralelos contra `/api/sessao`
+ * NÃO o alcançou, e uma entrada legítima no meio dela passou normalmente. O
+ * motivo é que cada tentativa custa uma derivação `scrypt`, então a vazão da
+ * rota satura antes do teto — o servidor já está no limite de CPU quando o
+ * contador ainda está longe.
+ *
+ * Ou seja: ele é uma trava de segurança contra volume patológico, não a
+ * proteção de CPU que seria fácil supor que fosse. O custo do `scrypt` é que
+ * limita a vazão, e quem de fato contém força bruta é a trava por conta, que
+ * não depende de IP. Identificar a origem de verdade — com proxy confiável
+ * declarado — continua sendo a única coisa que torna o limite por origem real.
+ */
+export const FATOR_SEM_ORIGEM = 30
+
+/**
+ * Limite de taxa por origem, honesto sobre o que dá para saber.
+ */
+export function limitarPorOrigem(
+  requisicao: Request,
+  prefixo: string,
+  porOrigem: number,
+  janelaSegundos: number,
+): Response | null {
+  const origem = origemDaRequisicao(requisicao)
+  const maximo = origem.confiavel ? porOrigem : porOrigem * FATOR_SEM_ORIGEM
+  return limitar(`${prefixo}:${origem.chave}`, maximo, janelaSegundos)
 }
 
 /** Aplica limite de taxa e devolve a resposta de recusa, ou `null` se liberado. */
@@ -127,10 +232,23 @@ export function limitar(
   )
 }
 
+/**
+ * Corpo JSON da requisição.
+ *
+ * Corpo ilegível vira `{}` para o Zod recusar com mensagem útil em vez de o
+ * servidor estourar — mas o `catch` REGISTRA. Sem o registro, uma rota cujos
+ * campos são todos opcionais (a conclusão de item, por exemplo) aceitava um
+ * corpo corrompido como se fosse um pedido legítimo sem observação, e a única
+ * evidência de que a requisição chegou quebrada desaparecia.
+ */
 export async function corpoJson(requisicao: Request): Promise<unknown> {
   try {
     return await requisicao.json()
-  } catch {
+  } catch (erro) {
+    registrarLog('aviso', 'corpo da requisição não é JSON válido', {
+      caminho: new URL(requisicao.url).pathname,
+      causa: mensagemDoErro(erro),
+    })
     return {}
   }
 }

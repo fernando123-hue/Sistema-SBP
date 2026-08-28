@@ -99,3 +99,25 @@ export class ConservacaoVioladaError extends ErroDominio {
     )
   }
 }
+
+/**
+ * A IA classificou numa categoria que o banco não tem.
+ *
+ * O enum do código e a tabela `Categoria` saíram de sincronia — seed
+ * incompleto, migração pela metade, categoria removida à mão. Descartar o
+ * item seria perdê-lo para sempre: a idempotência por `messageId` garante que
+ * aquele e-mail nunca mais é reinterpretado. Abortando a transação, o e-mail
+ * continua sem `processadoEm` e volta inteiro na próxima sincronização, depois
+ * que o cadastro for corrigido.
+ */
+export class CategoriaDesconhecidaError extends ErroDominio {
+  readonly codigo = 'CATEGORIA_DESCONHECIDA'
+
+  constructor(categoria: string) {
+    super(
+      `A categoria "${categoria}" não existe no cadastro. ` +
+        `O item NÃO foi descartado: a transação inteira foi abortada e o e-mail ` +
+        `continua reprocessável. Cadastre a categoria e sincronize de novo.`,
+    )
+  }
+}

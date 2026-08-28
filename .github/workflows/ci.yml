@@ -59,6 +59,16 @@ jobs:
     # dependência; segredo novo não entra por aí.
     if: github.actor != 'dependabot[bot]'
 
+    # Em pull request, o gitleaks lista os commits do PR pela API
+    # (`/pulls/{n}/commits`) para varrer só o que mudou. Com o padrão do
+    # workflow (`contents: read`), essa chamada volta 403 e o job falha SEM
+    # ter encontrado segredo nenhum — de novo o vermelho que não é defeito,
+    # agora no PR comum e não só no do Dependabot. Leitura de PR é o mínimo
+    # que resolve; o restante do menor privilégio continua de pé.
+    permissions:
+      contents: read
+      pull-requests: read
+
     steps:
       - uses: actions/checkout@v4
         with:

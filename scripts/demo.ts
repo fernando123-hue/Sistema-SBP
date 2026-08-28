@@ -77,7 +77,7 @@ async function principal(): Promise<void> {
   )
 
   titulo('3. FILA DE REVISAO')
-  const pendentes = await listarPendentes(banco, 500)
+  const { itens: pendentes } = await listarPendentes(banco, 500)
   linha(`${pendentes.length} itens aguardando olho humano`)
   for (const motivo of new Set(pendentes.map((item) => item.motivo))) {
     linha(`   ${motivo}: ${pendentes.filter((item) => item.motivo === motivo).length}`)
@@ -96,7 +96,7 @@ async function principal(): Promise<void> {
   const aprovacao = await aprovarTodosPendentes(banco, operador)
   linha(`\n${aprovacao.aprovados} revisoes rotineiras resolvidas pelo operador.`)
 
-  const retidos = await listarPendentes(banco, 500)
+  const { itens: retidos } = await listarPendentes(banco, 500)
   if (retidos.length > 0) {
     const porMotivo = new Map<string, number>()
     for (const item of retidos) porMotivo.set(item.motivo, (porMotivo.get(item.motivo) ?? 0) + 1)
@@ -172,18 +172,23 @@ async function principal(): Promise<void> {
   }
 
   titulo('7. PAINEL - nenhum numero digitavel')
-  linha('categoria         grupo       receb  revisao  aprov  distrib  concl   pend')
+  // As colunas espelham a planilha, para a comparacao lado a lado.
+  linha('categoria         grupo        saldo  entrou  aberto   concl   canc    pend')
   for (const item of await porCategoria(banco)) {
-    if (item.recebido === 0) continue
+    if (item.aberto === 0) continue
     linha(
       `${item.categoriaCodigo.padEnd(17)} ${item.grupo.padEnd(10)} ` +
-        `${String(item.recebido).padStart(6)} ${String(item.aguardandoRevisao).padStart(8)} ` +
-        `${String(item.aprovado).padStart(6)} ${String(item.distribuido).padStart(8)} ` +
-        `${String(item.concluido).padStart(6)} ${String(item.pendente).padStart(6)}`,
+        `${String(item.saldoInicial).padStart(6)} ${String(item.entrouNoPeriodo).padStart(7)} ` +
+        `${String(item.aberto).padStart(7)} ${String(item.concluidoNoPeriodo).padStart(7)} ` +
+        `${String(item.canceladoNoPeriodo).padStart(6)} ${String(item.pendente).padStart(7)}`,
     )
   }
 
-  linha('\npessoa                        atribuidos  concluidos  pendentes   credito')
+  // "cred.global", nao "credito": o criterio de aceitacao no 4 (|credito| < 1)
+  // e por colaborador X CATEGORIA (`SaldoCarga.creditoAcumulado`). O numero
+  // desta coluna e o razao GLOBAL, que soma as categorias e serve de desempate
+  // secundario (decisao A2) -- passar de 1 aqui e esperado, nao violacao.
+  linha('\npessoa                        atribuidos  concluidos  pendentes  cred.global')
   for (const pessoa of await porPessoa(banco)) {
     if (pessoa.atribuidos === 0) continue
     linha(

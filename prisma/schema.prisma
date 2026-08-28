@@ -31,7 +31,16 @@ model Colaborador {
   ativo        Boolean   @default(true)
   dataEntrada  DateTime  @default(now())
   dataSaida    DateTime?
-  senhaHash    String?
+
+  /// Formato versionado — ver `src/servidor/credenciais.ts`. Nulo = sem acesso ainda.
+  senhaHash          String?
+  senhaDefinidaEm    DateTime?
+  /// Senha provisória entregue pelo gestor: obriga a troca antes de usar o sistema.
+  precisaTrocarSenha Boolean   @default(false)
+  /// Erros consecutivos. Zera a cada entrada bem-sucedida.
+  tentativasFalhas   Int       @default(0)
+  bloqueadoAte       DateTime?
+
   criadoEm     DateTime  @default(now())
   atualizadoEm DateTime  @updatedAt
 
@@ -109,15 +118,20 @@ model Escala {
 // Entrada: e-mail e item
 // ─────────────────────────────────────────────────────────────
 
+/// Metadado operacional do e-mail. Retenção LONGA.
+///
+/// Aqui não mora nada que identifique pessoa: só o que a operação precisa para
+/// sempre — quando chegou, de onde veio, qual modelo interpretou. É esta linha
+/// que sustenta métrica histórica, auditoria e conservação anos depois.
+///
+/// O conteúdo (remetente, assunto, corpo) vive em `EmailConteudo`, separado de
+/// propósito: sem essa divisão, aplicar retenção ao dado pessoal significaria
+/// apagar junto o histórico operacional, e guardar o histórico significaria
+/// reter dado pessoal para sempre. As duas saídas são inaceitáveis.
 model Email {
   id String @id @default(cuid())
   /// Chave de idempotência. Reprocessar o mesmo e-mail nunca duplica trabalho.
   messageId  String   @unique
-  remetente  String
-  assunto    String
-  corpo      String
-  /// JSON: [{ nome, tipoDeclarado, tamanho, hash }]
-  anexos     String   @default("[]")
   /// mock | imap | graph | gmail | manual
   origem     String   @default("mock")
   recebidoEm DateTime
@@ -128,10 +142,66 @@ model Email {
   versaoPrompt  String?
   processadoEm  DateTime?
 
-  itens Item[]
+  /// Carimbo do expurgo do conteúdo. Distingue "nunca teve" de "tinha e foi
+  /// removido pela retenção" — sem ele, um e-mail sem corpo seria ambíguo, e
+  /// ambiguidade silenciosa é o defeito que este sistema existe para eliminar.
+  conteudoExpurgadoEm DateTime?
+
+  conteudo EmailConteudo?
+  anexos   Anexo[]
+  itens    Item[]
 
   @@index([recebidoEm])
   @@index([origem, processadoEm])
+}
+
+/// Conteúdo do e-mail. Retenção CURTA, expurgável.
+///
+/// Tudo que carrega dado pessoal ou texto livre de terceiro. Apagar esta linha
+/// não derruba item, atribuição, carga nem auditoria — é exatamente para isso
+/// que ela é uma linha separada.
+model EmailConteudo {
+  emailId   String @id
+  remetente String
+  assunto   String
+  corpo     String
+
+  email Email @relation(fields: [emailId], references: [id], onDelete: Cascade)
+}
+
+/// Anexo do e-mail, com o arquivo guardado fora do banco.
+///
+/// Os METADADOS (nome, tipo, tamanho, hash, veredicto) ficam aqui e seguem a
+/// retenção longa: são eles que respondem "que documento chegou nesse dia" mesmo
+/// depois de o arquivo ter sido expurgado. Os BYTES ficam no armazenamento,
+/// endereçados por `chaveArmazenamento`.
+///
+/// Antes eram um JSON dentro de `Email` — o que impedia guardar o arquivo,
+/// aplicar retenção ao arquivo separada da do metadado e indexar por hash.
+model Anexo {
+  id            String @id @default(cuid())
+  emailId       String
+  /// Já normalizado: sem caminho, sem caractere de controle. Ver `validarAnexo`.
+  nomeSeguro    String
+  /// O que o REMETENTE alegou. Nunca é usado para decidir nada.
+  tipoDeclarado String
+  tamanho       Int
+  /// Conteúdo do arquivo, para deduplicar e provar integridade.
+  hash          String?
+  aceito        Boolean @default(false)
+  motivo        String?
+
+  /// Endereço no armazenamento. Nulo = bytes nunca guardados, ou já expurgados.
+  chaveArmazenamento String?
+  armazenadoEm       DateTime?
+  bytesExpurgadosEm  DateTime?
+
+  criadoEm DateTime @default(now())
+
+  email Email @relation(fields: [emailId], references: [id], onDelete: Cascade)
+
+  @@index([emailId])
+  @@index([hash])
 }
 
 /// A entidade que a planilha não tem. Sai a contagem anônima, entra o item.
@@ -153,6 +223,18 @@ model Item {
   versaoPrompt String?
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
+
+  /// Quando o item foi cancelado, se foi.
+  ///
+  /// `atualizadoEm` não serve: ele muda a cada escrita, então não responde
+  /// "estava cancelado no dia 12?". Sem este carimbo, um cancelamento feito
+  /// hoje alteraria RETROATIVAMENTE a pendência do mês passado — o painel
+  /// mudaria de número sozinho entre uma consulta e outra, que é exatamente o
+  /// que destrói a confiança numa comparação lado a lado com a planilha.
+  ///
+  /// Conclusão não precisa de coluna equivalente: ela vive em
+  /// `Execucao.concluidoEm`, e item concluído nunca reabre (`devolver` recusa).
+  canceladoEm  DateTime?
 
   /// `Restrict`, não `SetNull`: com `SetNull`, um expurgo futuro de e-mails
   /// antigos apagaria o vínculo e o item perderia remetente e assunto. Pior,
@@ -273,7 +355,16 @@ model SaldoCarga {
   colaboradorId    String
   categoriaId      String
   data             String
+  /// CONTAGEM de itens. Continua sendo o número que a equipe reconhece.
   recebido         Int    @default(0)
+  /// CARGA em unidades ponderadas. Hoje `recebido × peso da categoria`.
+  ///
+  /// Existe separado porque o peso vai deixar de ser por categoria e passar a
+  /// ser por item (complexidade, tempo estimado). No dia em que isso acontecer,
+  /// `recebido` continua respondendo "quantos itens" e este campo responde
+  /// "quanta carga" — sem ele, o histórico anterior viraria incomparável com o
+  /// posterior, e nenhum dos dois números significaria coisa alguma.
+  recebidoPonderado Float @default(0)
   cotaJusta        Float  @default(0)
   creditoAcumulado Float  @default(0)
 
@@ -288,16 +379,28 @@ model SaldoCarga {
   @@index([categoriaId, data])
 }
 
+/// Livro-razão global, POR FRENTE.
+///
+/// O escopo existe porque `CADASTRO` e `TITULOS` são operações distintas, com
+/// equipes e pesos próprios. Um razão único somaria universos diferentes e o
+/// crédito acumulado perderia significado — quem trabalhou muito numa frente
+/// apareceria como credor na outra.
+///
+/// Acrescentar o escopo depois de `TITULOS` entrar exigiria recomputar todo o
+/// histórico acumulado; agora custa uma coluna.
 model SaldoCargaGlobal {
   id                 String @id @default(cuid())
   colaboradorId      String
+  /// CADASTRO | TITULOS — validado por `FrenteSchema`.
+  escopo             String @default("CADASTRO")
   data               String
   recebidoPonderado  Float  @default(0)
   creditoGlobal      Float  @default(0)
 
   colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Restrict)
 
-  @@unique([colaboradorId, data])
+  @@unique([colaboradorId, escopo, data])
+  @@index([escopo, data])
 }
 
 // ─────────────────────────────────────────────────────────────

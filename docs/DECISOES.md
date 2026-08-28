@@ -152,10 +152,10 @@ Formato: hipótese · motivo · impacto · status.
 
 ### AT-08 — Autenticação
 
-**Hipótese:** login simples com 3 papéis (`operador`, `colaborador`, `gestor`). Seed com dados fictícios.
-**Motivo:** nenhum dos documentos menciona auth, e *Minha Fila* exige identidade.
-**Impacto:** suficiente para validação; insuficiente para dados reais de associado.
-**Status:** ⏳ endurecer antes de qualquer dado real entrar.
+**Decisão:** entrada por **e-mail e senha**. O gestor cadastra a pessoa com uma senha provisória e a entrega; o sistema obriga a troca antes de liberar qualquer tela ou rota. Três papéis (`operador`, `colaborador`, `gestor`).
+**Motivo:** decisão do dono do processo em 26/08/2026 — "no momento o gestor definir é mais profissional e organizado". O modelo alternativo (a própria pessoa define no primeiro acesso) deixaria o cadastro aberto a quem soubesse o e-mail enquanto a senha não fosse criada.
+**Impacto:** a janela em que outra pessoa conhece a senha existe, mas termina no primeiro acesso do dono — e ela é a única operação permitida nesse estado.
+**Status:** ✅ implementado em 26/08/2026. Ver *Autenticação com senha* mais abaixo. Continua **insuficiente para dados reais de associado** enquanto a LGPD (§ F) não for endereçada.
 
 ---
 
@@ -267,11 +267,10 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 
 | # | Item | Por que não agora |
 |---|---|---|
-| H-D1 | Tela de Revisão não deixa ajustar o N do desdobramento nem editar campos | A retenção já está no lugar (H-04); falta o controle na tela. **É o próximo passo natural** |
 | H-D2 | `RegraDistribuicao` modelado e nunca lido — `RF-32` (configuração sem deploy) não existe | Os defaults estão corretos; o caminho de escrita é trabalho próprio |
-| H-D3 | Taxa de acerto da IA não é calculada em lugar nenhum — critério de aceitação nº 5 não é mensurável | Depende de H-D1 para ter dado de qualidade |
+| ~~H-D3~~ | ~~Taxa de acerto da IA não é calculada em lugar nenhum~~ | **RESOLVIDO em 27/08/2026** — seção *Taxa de acerto da IA* abaixo. Critério nº 5 passa a ser verificável |
 | H-D4 | `INADIMP`/`ISENTO` sem caminho de criação manual (`POST /api/itens`) | Categorias semeadas mas inalcançáveis hoje |
-| H-D5 | Painel sem recorte de data (`?de=&ate=` da Spec) e com definição própria de "pendente" | Vai divergir da planilha na rodada paralela |
+| ~~H-D5~~ | ~~Painel sem recorte de data e com definição própria de "pendente"~~ | **RESOLVIDO em 28/08/2026** — `?de=&ate=`, colunas mapeadas uma a uma para as da planilha, e o carry-over deixa de ser digitado. Seção *Painel com recorte de período* abaixo |
 | H-D6 | Escopo do livro-razão global antes de a frente `TÍTULOS` entrar | Acrescentar escopo a um razão já acumulado exige recomputar histórico |
 | H-D7 | Contratos de API duplicados à mão nas telas — já divergiram (`emAndamento` sumiu; `Date` vs. string) | O legado vai consumir sem esquema contra o qual programar |
 | H-D8 | N+1 em `carregarElegiveis` e `painel.porPessoa` | Irrelevante com 4–7 pessoas; vira problema com equipe grande ou PostgreSQL remoto |
@@ -280,6 +279,11 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 | H-D11 | `duplicata_suspeita` no enum e na tela, nunca produzido | `RF-07` não implementado |
 | H-D12 | Sem versionamento de caminho na API (`/v1/`) | Barato agora, caro depois de o legado plugar |
 | H-D13 | Ao migrar para PostgreSQL: `CHECK` nos domínios fechados, `jsonb` nas colunas JSON, isolamento de transação, runbook de migração de dados | O momento certo é a migração, com a tabela pequena |
+| H-D14 | Sem tela de administração de acesso — o gestor define senha só por chamada de API | A rota existe e é conferida por papel; a tela é trabalho próprio e depende de decidir se cadastro de pessoa entra junto |
+| ~~H-D16~~ | ~~`X-Forwarded-For` aceito sem proxy confiável~~ | **RESOLVIDO em 27/08/2026** — `PROXIES_CONFIAVEIS` declara os saltos confiáveis; sem eles o código admite que não sabe a origem em vez de fingir. Seção *Origem da requisição e proxy confiável* abaixo. Publicar fora da rede local ainda exige ajustar o número |
+| ~~H-D17~~ | ~~Sem cadastro de colaborador pela tela~~ | **RESOLVIDO em 27/08/2026** — cadastro e habilitação na tela de Acesso, entregues juntos. Seção *Cadastro de pessoa e habilitação* abaixo |
+| H-D18 | Agregados de métrica não são materializados | **Reclassificado em 27/08/2026.** Nenhuma métrica lê linha expurgável — todas saem de `Item`, `Atribuicao`, `SaldoCarga` e `Revisao`, e o invariante 11 proíbe apagar dado operacional. Deixou de ser pré-requisito da retenção; continua valendo por recorte histórico barato e por segurança contra uma retenção futura mais ampla |
+| H-D19 | Bytes de anexo sem criptografia em repouso e sem controle de acesso próprio | O diretório fica fora do repositório e não há rota que sirva arquivo. Antes de documento real de associado entrar: cifrar em repouso e decidir quem pode baixar o quê |
 
 ### H.3 Adequado como está
 
@@ -293,6 +297,112 @@ Nenhuma resposta foi inventada. As quatro estão em `ESTADO.md`:
 2. **Etapa 6 da operação** — o colaborador trabalha pela tela ou continua pela pasta de e-mail? Define se o `IngestaoPort` precisa escrever na caixa. Sem isso, a equipe fica com duas filas na rodada paralela.
 3. **Itens mais antigos** — vão para quem está mais credor, ou são espalhados? Tem consequência de prazo.
 4. **"Período" do desempate** — hoje é o mês corrente, o que reintroduz a fronteira mensal que `RN-11` manda eliminar. Janela deslizante?
+5. **Quem vê a caixa de entrada inteira?** *(levantado na auditoria de 28/08/2026)* `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails, e quem está com cada item. O `RF-23` diz *"Colaborador vê **seus** itens reais"*. As duas leituras são defensáveis: hoje a equipe trabalha de uma caixa de e-mail compartilhada, e todo mundo já vê tudo — restringir mudaria a operação, não corrigiria defeito. Por outro lado, remetente e assunto de associado são dado pessoal, e o resto do sistema é cuidadoso com isso. **Não foi alterado**, porque a escolha é de operação.
+
+---
+
+## Complemento arquitetural: histórico, retenção e evolução — 27/08/2026
+
+Diretrizes do dono do negócio sobre preservar histórico operacional, separar armazenamento de treinamento, permitir distribuição por período e evoluir para automação. A instrução foi explícita: **preservar a evolução sem expandir o escopo do protótipo**.
+
+### Avaliação: o que já estava preservado
+
+Motor versionado com snapshot completo da decisão · `LogAuditoria` append-only · `Execucao` com início e conclusão (tempo por tarefa já é derivável) · `Atribuicao` com motivo e justificativa (transferência e devolução rastreadas) · `Revisao` com sugestão da IA contra valor final · livro-razão diário contínuo · `RegraDistribuicao` com vigência. Tempo médio, taxa de devolução, gargalo e sazonalidade **já eram calculáveis** com o que estava gravado.
+
+### O conflito estrutural encontrado — e resolvido
+
+**Conteúdo de e-mail e metadado operacional viviam na mesma linha.** `corpo` e `remetente` (dado pessoal, retenção curta) estavam ao lado de `recebidoEm` e `origem` (metadado, retenção longa), e `Item.emailId` é `Restrict`. Consequência: ou se guardava tudo para sempre, ou se perdia o histórico junto com o conteúdo — as duas saídas que a diretriz proíbe.
+
+`EmailConteudo` passou a ser linha própria. `Email.conteudoExpurgadoEm` distingue "nunca teve" de "foi expurgado pela retenção" — sem esse carimbo, e-mail sem corpo seria ambíguo, e ambiguidade silenciosa é a doença que o sistema existe para curar. Há teste que apaga todo o conteúdo e verifica que item, atribuição, carga e **conservação** continuam de pé.
+
+**Nenhuma política de retenção foi implementada.** A estrutura permite; o prazo é decisão do dono, e prazo errado apaga o que era preciso guardar.
+
+### Decisões do dono do negócio (27/08/2026)
+
+| Questão | Decisão |
+|---|---|
+| Separar conteúdo de metadado | **Agora**, com a tabela pequena |
+| Guardar os arquivos dos anexos | **Sim** — não só os metadados |
+| Período do desempate | **Janela deslizante de 30 dias**, no lugar do mês corrente |
+| Enviar conteúdo real para a API da Anthropic | **Ainda não** — só dados sintéticos até aprovação formal |
+
+### Mudanças aplicadas
+
+**Janela deslizante de 30 dias.** O critério "recebido no período" usava `inicioDoMes`: todo dia 1º o histórico do desempate zerava, e quem recebeu muito no dia 31 voltava ao topo da fila — a fronteira mensal que a `RN-11` manda eliminar, reconstruída dentro do próprio substituto da planilha. O livro-razão é diário, então trocar o tamanho da janela é trocar uma constante.
+
+**Carga ponderada gravada ao lado da contagem.** `SaldoCarga.recebidoPonderado` é novo. Hoje é `recebido × peso da categoria` e os dois números coincidem; quando o peso passar a variar por item (complexidade, tempo estimado), `recebido` continua respondendo "quantos itens" e o novo campo, "quanta carga". Sem gravar os dois desde já, o histórico anterior viraria incomparável com o posterior.
+
+**Escopo no livro-razão global** (resolve H-D6). `SaldoCargaGlobal` agora é por frente. Um razão único somaria `CADASTRO` e `TITULOS` — operações distintas, equipes e pesos próprios — e o crédito perderia significado. Acrescentar depois de `TITULOS` entrar exigiria recomputar todo o histórico.
+
+**Anexos viraram entidade, com os arquivos fora do banco.** Eram JSON dentro de `Email`, o que impedia guardar o arquivo, aplicar retenção separada e indexar por hash. Agora `Anexo` guarda o metadado (retenção longa) e `chaveArmazenamento` aponta para os bytes no `ArmazenamentoPort` — disco local hoje, nuvem depois, trocando só o adapter. Chave sorteada, nunca derivada do nome: nome de anexo vem do remetente, e usá-lo para montar caminho é convite a travessia de diretório e a colisão silenciosa entre dois `documento.pdf`.
+
+**Verificação do tipo real do arquivo** (resolve D3, que era marcado como obrigatório antes de plugar e-mail real). A allowlist de extensão só olha o nome — o que o remetente escreveu. Com os bytes em mãos, a assinatura é conferida: um executável chamado `laudo.pdf` passava pela allowlist inteiro e agora é recusado com motivo registrado. O mock passou a entregar bytes, inclusive um executável disfarçado, para que a defesa seja exercitada por teste que roda todo dia e não por nota na documentação. Arquivo recusado **não** vai para o disco.
+
+### Invariantes registrados em `CLAUDE.md`
+
+Três regras novas, custo zero e alto valor de memória: guardar histórico **não** é treinar modelo (e não existe caminho de export para isso); métrica por pessoa é observabilidade, **não** avaliação individual; conteúdo tem retenção, histórico operacional não — nunca juntar os dois na mesma linha.
+
+### O que deliberadamente NÃO foi feito
+
+Política de retenção com prazos · agregados materializados · peso variável por item · port de saída para resposta · tela de download de anexo · qualquer coisa das fases 3 a 6. Todos são tabela nova, coluna nova ou serviço novo — adicionar depois custa o mesmo que hoje.
+
+**Uma dependência de ordem que parecia existir e não existe** *(revisto em 27/08/2026)*: a regra "métrica só sobrevive a um expurgo se estiver materializada antes dele" só morde se alguma métrica ler linha expurgável — e nenhuma lê. Todas saem de `Item`, `Atribuicao`, `SaldoCarga` e `Revisao`, que a retenção não toca e que o invariante 11 proíbe apagar. `H-D18` continua valendo por outros motivos, mas não bloqueia a política de retenção.
+
+---
+
+## Tela de administração de acesso — 26/08/2026
+
+Resolveu `H-D14`. Cadastrar senha e destravar conta existiam só como chamada de API — um gestor real não tem como usar isso.
+
+**Escopo: acesso, não cadastro de pessoas.** A tela lista a equipe com o estado real de cada um (sem senha · senha provisória · travada por tentativas · acesso desligado · em ordem), gera senha provisória, destrava conta e liga/desliga acesso. **Criar colaborador ficou de fora de propósito:** enquanto não existir tela de habilitação, uma pessoa criada aqui nasceria sem categoria nenhuma — invisível para a distribuição, e de um jeito que ninguém percebe. Meia funcionalidade em administração de acesso é pior que nenhuma. Registrado como H-D17.
+
+### Duas regras que a tela impõe
+
+**O gestor nunca inventa a senha.** O corpo da requisição não leva senha; quem sorteia é o servidor (`sortearSenhaProvisoria`, o mesmo que o seed usa). Pedir a um humano apressado que escolha a senha de outro termina em `Sbp2026!` para a equipe inteira, e a provisória vira permanente conhecida por todos. Sorteada, é forte por construção e descartável por natureza — aparece uma vez na tela e não fica gravada em lugar nenhum além do hash.
+
+**Não se desliga o último gestor ativo.** É uma porta que tranca por fora: só gestor cadastra senha, destrava conta e reativa acesso — inclusive o acesso que acabou de ser desligado. A recuperação seria editar o banco na mão. O sistema recusa e explica o porquê; com um segundo gestor ativo, a operação passa.
+
+### Detalhes que não são acidente
+
+- **`GET /api/colaboradores` passou a incluir os inativos.** Sem eles não haveria como reativar ninguém, e alguém desligado por engano ficaria invisível.
+- **Desligar acesso não apaga nada.** `perfilAtual` já recusa quem está inativo, então a sessão aberta morre na requisição seguinte; o histórico de carga e a trilha de auditoria continuam de pé, porque precisam responder quem recebeu o quê no ano passado.
+- **Religar não exige nova senha.** Desligar alguém de férias não pode custar um ritual de redefinição na volta.
+- **Destravar zera o contador junto.** Sem isso, o erro de digitação seguinte recolocaria a pessoa no bloqueio na hora — destravar seria teatro.
+- **O hash nunca sai da rota.** `senhaDefinidaEm` responde "esta pessoa já tem acesso?" sem revelar nada sobre a senha.
+
+Verificado no navegador: as quatro rotas recusam operador com 403; a recusa do último gestor aparece na tela sem derrubar a sessão; senha gerada entra e obriga a troca; desligar corta a entrada com a mensagem genérica de sempre (sem revelar que a conta existe e está desativada); religar devolve o acesso com a mesma senha.
+
+---
+
+## Adapter Anthropic — 26/08/2026
+
+O `AiPort` deixou de ter só o mock. `IA_ADAPTER=anthropic` agora entrega `IaAnthropic`; nenhum serviço mudou, porque nenhum serviço sabe qual adapter está atrás do port.
+
+### Decisões do dono do processo
+
+**Testes automáticos nunca chamam a API.** A suíte roda no mock: determinística, sem rede, sem custo, igual em qualquer máquina. O modelo real é exercitado por `npm run ia:experimentar`, que é manual, explícito e mostra os quatro casos que importam (comum, desdobramento, campo faltando, tentativa de injeção). O preço dessa escolha é conhecido: uma mudança de contrato da API só aparece quando alguém rodar o script — não há teste que acuse sozinho.
+
+**Uma retentativa, depois revisão humana.** Resposta que o Zod rejeita volta ao modelo uma única vez, agora com o erro de validação junto — modelo costuma corrigir sozinho um campo fora do formato, e uma repetição é mais barata que uma ida à fila. Falhou de novo, o e-mail inteiro vai para revisão. Duas retentativas seriam teimosia: quando o modelo não entende o e-mail, insistir só multiplica custo e latência.
+
+### O que o adapter recusa fazer
+
+| Recusa | Por quê |
+|---|---|
+| Confiar no modelo para detectar o próprio ataque | A detecção que vale é a nossa regex, rodada **antes** do texto chegar ao modelo. O sinal do modelo (`pareceInstrucao`) entra como **OU**, nunca como substituto: uma defesa não vê paráfrase, a outra é a parte atacada |
+| Deixar `modelo` e `versaoPrompt` no schema de saída | São metadados de auditoria. No schema do modelo, uma resposta poderia mentir sobre a própria origem e sujar o dataset de acerto |
+| Aceitar resposta truncada | `stop_reason: max_tokens` vira falha. Aceitar seria gravar meia lista de ligantes como se fosse a lista inteira — carga perdida em silêncio, o defeito da planilha |
+| Aceitar `parsed_output` nulo | Seguiria adiante como "e-mail sem item nenhum": trabalho que desaparece sem erro |
+
+### Escolhas técnicas
+
+- **Saída estruturada com `output_config.format`** a partir do próprio Zod (`zodOutputFormat`). O schema que o modelo recebe é gerado do schema que valida — não há como os dois divergirem.
+- **`effort: "low"`.** Classificar um e-mail curto é tarefa mecânica, o volume é diário e o custo de errar é baixo (o item cai na revisão, que existe para isso). É o primeiro botão a girar se a taxa de acerto medida não satisfizer.
+- **Modelo configurável por `IA_MODELO`**, mantido o default que já existia no projeto (`claude-sonnet-5`). Não foi alterado sem decisão sua.
+- **Cliente injetável.** O adapter recebe a interface de chamada pelo construtor, o que permitiu 11 testes de comportamento real — delimitação, retentativa, falha alta, recusa de categoria fora do domínio e de confiança inflada — sem uma linha de rede.
+
+### Não verificado
+
+**O adapter nunca foi executado contra a API real.** Não há credencial nesta máquina, e gastar crédito não é decisão minha. O TypeScript valida a forma da chamada (parâmetros, `parsed_output`, `stop_reason`), o que pega erro de nome e de tipo, mas não prova que a integração responde como esperado. Rode `IA_ADAPTER=anthropic npm run ia:experimentar` com a chave configurada antes de confiar nele em qualquer volume.
 
 ---
 
@@ -301,3 +411,562 @@ Nenhuma resposta foi inventada. As quatro estão em `ESTADO.md`:
 - **LGPD** — dados de associados e estudantes. Retenção, controle de acesso, log. Fora do escopo da V1, obrigatório antes de dado real.
 - **Dono do sistema após a entrega** — quem cadastra colaborador, ajusta limiar, define escala.
 - **Conhecimento concentrado** — hoje uma pessoa entende a mecânica dos ajustes. Férias ou saída = paralisia. O sistema elimina isso, mas a transição depende dessa pessoa.
+
+---
+
+## Divisão manual da revisão — 26/08/2026
+
+Resolveu H-D1. A tela de Revisão agora entrega o que AT-06 promete ("a IA propõe N; o operador ajusta"):
+
+- **Campos extraídos ficam editáveis.** Antes só título e categoria podiam ser corrigidos; `campos` sempre ia vazio pro serviço, que mesclava com o valor anterior (correção H-05) — então editar não tinha efeito visível nenhum. Agora a tela envia o que o operador de fato digitou.
+- **N deixou de ser teto.** `ResolucaoRevisaoSchema.itensExtras` (novo, `src/core/esquemas.ts`) aceita até `LIMITE_ITENS_POR_DIVISAO_MANUAL` (20) itens adicionais. `resolver()` (`src/servicos/revisao.ts`) cria cada um já `aprovado` — um humano acabou de olhar, não faz sentido devolver à fila — e a sequência vem do maior `sequencia` já usado no e-mail, não da posição do item sendo revisado (colidia com `@@unique([emailId, sequencia])` quando havia irmãos depois dele).
+- Ignorado quando `aprovar: false` — dividir carga a partir de uma revisão recusada não faz sentido.
+- Reduzir N continua sendo o que já existia: descartar o item individual (`aprovar: false`), que sai como `cancelado`, não distribuído.
+
+**Não implementado, de propósito:** merge de dois itens já existentes em um só. O caso de uso real observado é "a IA subestimou", não "a IA duplicou" — `duplicata_suspeita` (H-D11) é o motivo que cobriria duplicata, e ainda não é produzido por nenhum adapter.
+
+---
+
+## Autenticação com senha — 26/08/2026
+
+Resolveu `AT-08`. O que existia antes era uma tela que **listava a equipe inteira** e deixava assumir qualquer identidade sem senha, inclusive a de gestor — o risco estava documentado no próprio código, e era o item que bloqueava qualquer dado real de associado.
+
+### O que entrou
+
+| Peça | Onde | Papel |
+|---|---|---|
+| Hash de senha | `src/servidor/credenciais.ts` | **A fronteira.** Ninguém mais no sistema sabe qual algoritmo está em uso |
+| Política de bloqueio | `src/core/autenticacao.ts` | Domínio puro: quando trava e por quanto tempo |
+| Regras de entrada | `src/servicos/autenticacao.ts` | `autenticar`, `trocarSenha`, `definirSenhaProvisoria` |
+| Recusa da sessão provisória | `src/servidor/sessao.ts` | `exigirAtor` recusa; só a troca de senha passa |
+
+### Decisões e o porquê
+
+**`scrypt` do `node:crypto`, não `bcrypt`/`argon2` do npm.** Os dois são módulos nativos que precisam compilar na máquina de quem instala; o ganho sobre scrypt com parâmetros adequados não paga uma dependência a mais na cadeia de suprimentos de um sistema que vai guardar dado de associado. O hash gravado carrega os parâmetros (`scrypt$16384$8$1$sal$derivado`), então endurecer o custo depois **não invalida** as senhas existentes — elas são reescritas na próxima entrada de cada pessoa.
+
+**Mensagem única para toda falha de entrada, e custo de CPU constante.** "E-mail não existe" e "senha errada" respondem igual *e demoram igual*: sem a conferência contra um hash de referência no caminho do e-mail inexistente, o relógio responderia o que a mensagem se recusa a dizer.
+
+**Comprimento mínimo (10), sem exigir símbolo/maiúscula/dígito.** É a recomendação do NIST desde 2017: regra de composição empurra a pessoa para `Senha@2026` — previsível — enquanto uma frase longa é forte e memorizável.
+
+**Bloqueio temporal, nunca permanente.** Progressivo com teto de 15 min. Travar até intervenção humana transformaria "errar de propósito a senha de um colega" em ferramenta para deixá-lo fora do sistema.
+
+**A recusa da senha provisória vive em `exigirAtor`, não na navegação.** Bloquear só nas telas deixaria a API aberta: quem entrega a provisória a conhece, e conhecer a senha é conseguir um cookie válido. Como toda rota passa por `exigirAtor`, a proteção vale por construção — inclusive para rotas que ainda não existem. O layout raiz faz o par visual, devolvendo a tela de troca no lugar de qualquer conteúdo.
+
+**`GET /api/colaboradores` deixou de ser pública** e agora exige papel `gestor`. Nome e papel da equipe são exatamente o material de quem monta ataque direcionado; a tela de entrada não precisa mais da lista.
+
+**O seed sorteia a senha provisória e a imprime uma vez.** Senha fixa no arquivo seria credencial versionada, válida em toda instalação que rodasse o seed. Rodar de novo não toca em quem já trocou a senha.
+
+### Terreno preparado para a próxima remodelação
+
+O pedido foi explícito: modelo bom para o protótipo, sem fechar portas. Trocar para convite por link, SSO ou provedor externo é mexer em `credenciais.ts` e `servicos/autenticacao.ts`. O resto do sistema conhece apenas o `Ator`, que não mudou — e `precisaTrocarSenha` já é o gancho de "esta sessão ainda não está plenamente habilitada", reaproveitável para segundo fator sem inventar conceito novo.
+
+### Revisão do próprio trabalho — o que a auditoria desta entrega encontrou
+
+Dois revisores (segurança e qualidade) passaram no código antes de ele ser dado como pronto. Cinco defeitos reais saíram daí, todos corrigidos:
+
+| # | Defeito | Gravidade | Por que importava |
+|---|---|---|---|
+| A-01 | **Corrida no contador de tentativas.** O contador era lido no início e regravado como valor absoluto. Dez tentativas disparadas ao mesmo tempo liam `0` e gravavam `1` | 🔴 | O bloqueio por conta é a **única** defesa contra o atacante distribuído — o limite por origem não o alcança. Bastava paralelizar as requisições para a trava nunca disparar. Corrigido com `increment` atômico, e há teste que dispara 10 tentativas simultâneas |
+| A-02 | **`trocarSenha` era oráculo de senha sem trava.** Conferia a senha atual sem contar erro nem bloquear | 🟠 | Quem roubasse um cookie chutaria a senha ali à vontade, contornando o bloqueio que protege `/api/sessao`. Agora a rota usa a mesma política de conta |
+| A-03 | **Trocar a senha não revogava as sessões antigas.** O cookie levava só identidade, papel e expiração | 🟠 | É o pior caso possível: a pessoa desconfia de acesso indevido, troca a senha — a única reação que ela conhece — e o cookie roubado segue válido por até 12h. O cookie passou a carregar `senhaDefinidaEm`, conferido a cada requisição; a rota de troca reemite o cookie para não expulsar quem acabou de trocar. **Efeito colateral bom:** redefinir a senha de alguém virou a ferramenta do gestor para expulsar uma sessão na hora |
+| A-04 | **Item extra sem título era descartado em silêncio.** A tela filtrava os vazios antes de enviar | 🟠 | Exatamente a doença que o sistema existe para curar, reconstruída dentro do remédio: o operador registra o ligante esquecido, erra o título, e a carga some sem aviso — agora sem nem o rastro que a IA tinha deixado. Passou a bloquear com mensagem explícita |
+| A-05 | **Teto de memória do scrypt validava os fatores, não o produto.** `N` e `r` no limite pediriam ~8 GB numa derivação | 🟡 | Defesa em profundidade: um hash corrompido na coluna derrubaria o processo inteiro, não só aquela conta |
+
+Também corrigido, achado ao testar: **`npm run db:seed` quebrava na segunda execução** — o objeto `create` de um `upsert` é avaliado mesmo quando o registro já existe, então `gerarHash(senha!)` recebia `null`. O `!` escondia isso do typecheck. É o comando que o README manda rodar.
+
+E um buraco de usabilidade com consequência prática: com senha provisória a barra de navegação não é renderizada, então **a tela de troca era a única sem saída** — quem entrasse na conta errada ficava preso, sem conseguir nem deslogar. Ganhou o botão.
+
+### O que continua faltando
+
+- **`X-Forwarded-For` é aceito sem proxy confiável** (`src/servidor/http.ts`). Um atacante que varie o cabeçalho ganha uma "origem" nova por requisição e zera o limite por IP. Hoje isso **não** abre a porta para força bruta, porque a trava por conta (A-01, A-02) não depende do IP; o que resta é consumo de CPU. A correção depende de saber qual proxy vai estar na frente em produção — fixar agora seria adivinhar. Registrado como H-D16, **obrigatório antes de expor o sistema fora da rede local**.
+- **Tela de administração de acesso.** O gestor define senha por `POST /api/colaboradores/senha`; não há interface. Registrado como H-D14.
+- **Nada disso é LGPD.** § F continua de pé.
+
+---
+
+## Revisão do adapter e da ingestão — 27/08/2026
+
+Revisão dirigida ao trabalho ainda não mesclado (PR #11), com foco em adapter Anthropic, credenciais, sessão, ingestão e armazenamento. Quatro achados, todos corrigidos com teste que provou o defeito antes da correção.
+
+### O que estava certo e não foi tocado
+
+Vale registrar, porque é a maior parte e porque saber o que **não** precisa de atenção é tão útil quanto a lista de defeitos:
+
+- **Forma da chamada à API.** `output_config: { format, effort }` é a forma atual; `output_format` está depreciada e não é usada. `messages.parse()` é o caminho recomendado. `stop_reason === 'max_tokens'` vira erro em vez de aceitar resposta cortada.
+- **O schema do modelo é menor que `Interpretacao`.** `modelo` e `versaoPrompt` não são preenchíveis pela resposta, então ela não pode mentir sobre a própria origem.
+- **Armazenamento em disco.** Chave sorteada, nunca derivada do nome do anexo; travessia barrada por `resolve` + `startsWith(raiz + sep)`; `flag: 'wx'`; `ENOENT` distinguido de falha real.
+- **`credenciais.ts`.** Parâmetros gravados no hash, tetos em `N`/`r`/`keylen`, comparação em tempo constante, tempo equivalente para e-mail inexistente.
+- **Revogação de sessão.** `senhaDefinidaEm` conferido contra o banco a cada requisição, e o **papel lido do banco, não do cookie**.
+
+### Os quatro defeitos
+
+| # | Defeito | Gravidade | Por que importava |
+|---|---|---|---|
+| R-01 | **E-mail sem item nenhum sumia em silêncio.** `InterpretacaoSchema.itens` era `.max(N)` sem piso, então `itens: []` validava. O laço criava zero itens, o e-mail era marcado `processadoEm`, e a idempotência por `messageId` garantia que ele nunca mais voltasse | 🔴 | É o defeito `E.9` da planilha reconstruído na porta de entrada do substituto. Trabalho entrava, trabalho evaporava, e não havia erro, log, contador nem fila onde ele aparecesse |
+| R-02 | **Item com categoria ausente do banco era descartado em silêncio.** `if (!categoria) continue` | 🔴 | Mesmo mecanismo, gatilho diferente: enum do código fora de sincronia com a tabela `Categoria`. Descartar perdia o item para sempre, porque o e-mail seguia marcado como processado |
+| R-03 | **Erro de transporte era tratado como erro de validação.** Um `catch` só para 401, 429, timeout, 500 e falha de Zod | 🟠 | Três consequências: o log dizia "recusada pela validação" com causa `timeout`, e log que mente não se usa em incidente; a segunda tentativa mandava *"rejeitada pela validação: timeout"* para o modelo, pedindo que ele consertasse a rede; e chave inválida virava falha por e-mail, com até 6 chamadas HTTP condenadas por mensagem e a causa real diluída |
+| R-04 | **`ESTADO.md` descrevia um caminho que o código não percorre.** Dizia que o e-mail ia "inteiro para a revisão humana" | 🟡 | Nenhuma linha de `Revisao` era criada — e nem poderia, porque `Revisao` exige `itemId`. Documentação errada sobre o caminho de falha é a que mais custa, porque é lida justamente quando algo quebrou |
+
+### Decisão: zero item é resultado legítimo, não erro
+
+Este era o ponto de projeto de R-01, e vale registrar o raciocínio.
+
+Resposta automática de ausência, aviso de entrega, boletim informativo — todos são e-mails reais que **corretamente** geram zero item. Recusá-los como falha de interpretação criaria um laço de repetição infinito: o e-mail nunca seria marcado como processado, voltaria a cada sincronização, e gastaria crédito de IA para sempre.
+
+O que não pode é a diferença entre "não havia trabalho" e "a IA não entendeu e a carga sumiu" ser invisível. Então zero item:
+
+- é contado em `ResumoIngestao.emailsSemItem`;
+- grava `EventoProcessamento` com situação `falha`, para aparecer em qualquer busca por problema;
+- **não** deixa o lote vermelho — o resumo final continua olhando só `resumo.falhas`, porque marcar o dia inteiro por causa de uma resposta automática é o vermelho que ensina a equipe a ignorar vermelho.
+
+R-02 recebeu tratamento oposto e deliberadamente diferente: categoria ausente **é** defeito de configuração, então aborta a transação inteira (`CategoriaDesconhecidaError`). O e-mail fica sem `processadoEm` e volta na próxima sincronização, depois que o cadastro for corrigido. A escolha entre "marcar processado e contar" e "abortar e reprocessar" é a diferença entre uma situação esperada e um sistema mal configurado.
+
+### Efeito colateral: a tela descartava o resumo inteiro
+
+Corrigir R-01 expôs um problema maior. `src/app/distribuicao/page.tsx` fazia `await api.enviar('/ingestao')` e jogava o resultado fora — então **nenhum** número da sincronização chegava ao operador. Cinco e-mails podiam falhar sem que ninguém visse.
+
+Um contador que ninguém lê não é visibilidade. A tela passou a mostrar o resumo depois da busca, destacando falhas e e-mails sem item.
+
+### Novo erro que atravessa a camada
+
+`InterpretacaoIndisponivelError` (`src/ports/ia.ts`) marca "a camada de IA está fora, e o problema não é deste e-mail". O adapter o levanta para credencial recusada; o laço de ingestão o reconhece e **para o lote** em vez de repetir o mesmo fracasso uma vez por mensagem. É a diferença entre uma linha de log que diz o que consertar e mil linhas idênticas que escondem a causa.
+
+
+---
+
+## Taxa de acerto da IA (`H-D3`) — 27/08/2026
+
+O critério de aceitação nº 5 diz "classificação automática aceita sem correção ≥ 80% após 2 semanas". Até agora esse número não existia em lugar nenhum, e sem ele qualquer ajuste no limiar de confiança ou no `effort` do modelo era palpite.
+
+Nenhum dado novo precisou ser coletado. `Revisao` já guarda `sugestaoIa` ao lado de `valorFinal` desde que a fila de revisão existe — o dataset estava pronto, faltava a conta.
+
+### O denominador, que é a decisão de verdade
+
+"Aceita sem correção" parece óbvio até a pergunta "sobre o quê?".
+
+Se o universo fosse **todos os itens**, os que nunca foram à revisão contariam como acerto — e bastaria subir o limiar de confiança até ninguém revisar nada para a taxa ir a 100%. O indicador subiria exatamente enquanto a conferência humana desaparecia. Seria a métrica se tornando ferramenta de esconder o problema que ela deveria denunciar, que é o que a planilha faz com `SUBTOTAL(109)`.
+
+Então o universo é **só o que passou por humano**. Duas consequências, ambas assumidas:
+
+1. O número é **pessimista por construção** — a fila de revisão seleciona justamente os casos duvidosos. A taxa real sobre a população inteira é mais alta.
+2. Ele é o único que **não se infla mexendo em parâmetro**.
+
+A **cobertura** (quanto do total foi revisado) é reportada ao lado, sempre, e nunca deve ser lida separada: 95% de acerto sobre 2% de cobertura é ruído com aparência de resultado.
+
+### Calibração da confiança — o número que decide se o limiar significa algo
+
+A tela mostra a confiança média das aceitas ao lado da confiança média das corrigidas. Se as duas estiverem coladas, o valor que o modelo reporta **não separa acerto de erro**, e mexer no limiar é regular ruído.
+
+Isso não é hipótese: rodando contra o `IaMock`, as médias saíram 0,91 e 0,90 — distância de 0,01. A tela emite o aviso. Com o adapter real o quadro pode ser outro, e é justamente isso que a medição vai dizer.
+
+### Precedência do rótulo
+
+Uma revisão pode ter várias correções ao mesmo tempo. Para que a distribuição some 100% e possa virar gráfico, cada revisão recebe **um** rótulo, pela correção mais grave: recusada · categoria trocada · itens acrescentados · título editado · campos corrigidos · aceita sem correção.
+
+A ordem é deliberada. Recusar é a IA inteira errada. Categoria é a classificação em si. Item acrescentado é **carga** que teria sumido. Título e campo são conteúdo do item, não a decisão sobre ele. As correções individuais continuam todas disponíveis em `Correcoes`, sem precedência nenhuma.
+
+### Três armadilhas evitadas, todas da mesma família
+
+| Armadilha | O que se fez |
+|---|---|
+| **Taxa `0` quando não há dado** | Devolve `null`, e a tela mostra travessão. Zero leria como "a IA errou tudo", que é o oposto de "ainda não sei" — é o defeito do painel da planilha, que mostra `0` para linha vazia, reconstruído numa métrica de qualidade |
+| **Aprovação em massa contando como correção** | Ela grava só `aprovado`, sem categoria nem título. Tratar os nulos como "mudou" faria toda aprovação rotineira virar erro do modelo, e a taxa despencaria justamente quando ele acerta o bastante para dispensar conferência item a item |
+| **Linha ilegível engolida** | Revisões cujo JSON gravado não parseia são **contadas** em `ignoradas` e mostradas na tela. Desfalcar a amostra em silêncio distorceria a taxa sem que ninguém pudesse notar — numa métrica onde ninguém iria procurar |
+
+### O que esta medida não é, e não vai ser
+
+**Não é avaliação de pessoa.** `Revisao.resolvidoPor` existe no banco e é deliberadamente omitido até do `select` da consulta. Recortar acerto por revisor transformaria a fila num instrumento de vigilância, e quem revisa passaria a evitar corrigir para não "estragar o próprio número" — destruindo exatamente o dado que este cálculo precisa. Invariante 10 do `CLAUDE.md`.
+
+### Onde mora
+
+| Camada | Arquivo |
+|---|---|
+| Critério (puro, sem banco) | `src/core/qualidade-ia.ts` |
+| Leitura do histórico | `src/servicos/qualidade.ts` |
+| Rota (só leitura) | `src/app/api/qualidade/route.ts` — `?dias=N` ou `?dias=tudo` |
+| Tela | seção *Acerto da IA* no Painel |
+
+26 testes novos: 19 sobre o critério (puros, milissegundos) e 7 sobre a leitura contra banco real, porque um erro de leitura produziria um número plausível e falso — o pior resultado possível para uma métrica que vai autorizar mexer no limiar.
+
+### O que isto destrava
+
+Com a medida no ar, `H-D3` sai da lista de dívida e o critério nº 5 passa a ser verificável. Ela é também pré-requisito honesto para duas decisões que estavam bloqueadas por falta de número: afrouxar o limiar de confiança por categoria, e baixar o `effort` do modelo de `low` para nada — ambas hoje sem base.
+
+### Revisão do próprio trabalho — dois defeitos na primeira versão
+
+Revisada a implementação antes de dar por pronta. Dois defeitos reais, ambos meus, ambos do tipo que esta seção inteira existe para evitar.
+
+**R-05 — a cobertura dividia universos diferentes.** O denominador contava itens por `Item.criadoEm`; o numerador contava revisões por `Revisao.resolvidoEm`. No caso mais banal que existe — fila acumulada, item velho, decisão nova — o numerador incluía revisões cujos itens estavam fora do denominador. A fração passava de 100%.
+
+E o pior não era a fração absurda: era o `Math.min(1, …)` que eu tinha posto para limitá-la. Ele não corrigia o erro, **escondia**, devolvendo exatamente 100% — um número redondo e falso, que ninguém questionaria. É o mesmo padrão que a revisão do adapter tinha acabado de condenar, reintroduzido três horas depois numa métrica de qualidade.
+
+Corrigido ancorando as três consultas na **mesma** data: `Item.criadoEm`. A pergunta que a tela responde passou a ser uma só — *dos itens que a IA classificou neste período, quantos foram conferidos e quantos passaram sem correção* — e as contagens compõem por construção. A guarda contra negativo ficou, como rede, com comentário dizendo que a invariante agora a torna inalcançável. Teste: item empurrado para 90 dias atrás com revisão resolvida hoje.
+
+**R-06 — o painel pedia a série inteira desde a fundação.** A tela chamava `/qualidade?dias=tudo`, carregando todas as revisões resolvidas de todos os tempos, na tela mais visitada do sistema. `conferirConservacao`, no arquivo ao lado, documenta exatamente essa proibição: *"nenhuma tela deve precisar ler a tabela inteira desde a fundação para responder está tudo certo?"*. Eu tinha reintroduzido o padrão dentro do mesmo painel.
+
+Corrigido para a janela padrão de 30 dias. `?dias=tudo` continua existindo na rota, para conferência sob demanda — que é o lugar dela.
+
+**Efeito colateral necessário:** com janela, a tela precisa dizer qual. "48%" sem período é número sem contexto, e a primeira pergunta de quem olha — *48% de quando?* — não tinha resposta. O cabeçalho da seção agora abre com "Desde 28/07/2026".
+
+### Limite conhecido, registrado em vez de contornado
+
+`campos: {}` no `valorFinal` é ambíguo entre "o operador apagou tudo" e "o cliente não mandou o campo", porque o esquema de entrada tem `.default({})`. Contra a tela não há ambiguidade — ela sempre devolve o conjunto completo, inicializado com o que a IA extraiu. Um cliente de API que omitisse `campos` faria a revisão contar como corrigida. Distinguir os dois exigiria mudar o esquema de entrada, e hoje não existe esse cliente. Está anotado no código, no ponto exato.
+
+---
+
+## Cadastro de pessoa e habilitação (`H-D17`) — 27/08/2026
+
+Até aqui só o seed criava colaborador. Montar a equipe exigia acesso ao terminal e ao banco — o que quer dizer que, na prática, o gestor não montava equipe nenhuma.
+
+### Por que as duas coisas entraram juntas
+
+`H-D17` estava travado por um motivo registrado quando a tela de acesso nasceu: *"enquanto não houver tela de habilitação, alguém criado nasceria sem categoria — invisível para a distribuição, e de um jeito que ninguém percebe"*.
+
+Não é hipérbole. `obterEscala` filtra por `habilitacoes: { some: { podeReceber: true } }` — quem não tem nenhuma **não aparece na tela de plantão**. A pessoa existiria, teria senha, entraria no sistema, veria as telas, e nunca receberia trabalho. Sem erro, sem aviso, sem lugar onde olhar.
+
+Então cadastro e habilitação são a mesma entrega, e há um teste que documenta exatamente esse estado — não para provar que é raro, mas para provar que é detectável.
+
+### Sem categoria continua sendo possível, e agora é visível
+
+Proibir o cadastro sem categoria seria errado: gestor administra e não recebe rateio. Então o estado continua alcançável, mas deixou de ser silencioso em dois pontos:
+
+- **No formulário**, marcar papel diferente de `gestor` e nenhuma categoria acende um aviso dizendo que a pessoa entra no sistema e nunca recebe trabalho.
+- **Na lista**, quem está nesse estado ganha um selo em vermelho: *"sem categoria · não recebe nada"*.
+
+A regra é a de sempre: a decisão continua sendo do gestor, o que muda é que ele decide sabendo.
+
+### Desligar categoria nunca apaga a linha
+
+Tirar uma categoria de alguém desliga `podeReceber` na linha que já existe. Não apaga, e não mexe em `vigenciaFim`.
+
+O motivo de não apagar é o mesmo de sempre: o histórico de carga se apoia no registro de que aquela pessoa esteve habilitada.
+
+O motivo de usar `podeReceber` em vez de fechar a vigência é o **efeito imediato**. `vigenciaFim` é lida como dia inteiro inclusivo (uma habilitação que termina hoje vale hoje), então fechá-la hoje só faria efeito amanhã — e o gestor tira uma categoria justamente *antes* da distribuição do dia. Uma revogação que só vale amanhã chegaria tarde no único momento em que ela importa. Há teste para isso.
+
+### A lista enviada é o estado final, não um delta
+
+`POST /api/colaboradores/habilitacao` recebe o conjunto completo desejado; o que não estiver nele é desligado.
+
+Delta obrigaria a tela a conhecer o estado anterior para montar o pedido, e duas abas abertas ao mesmo tempo produziriam resultados diferentes conforme a ordem de envio. Com estado final, a última gravação vence e é exatamente o que o gestor viu na tela.
+
+### Tudo ou nada nas categorias
+
+Se um código pedido não existe ou está inativo, **nada** é gravado — nem a pessoa, no caso do cadastro. Aplicar só as válidas deixaria o gestor achando que gravou uma coisa e o banco com outra, que é a forma mais barata de produzir um trabalhador meio-invisível.
+
+### E-mail normalizado dos dois lados
+
+O cadastro normaliza o e-mail do mesmo jeito que a entrada (`CredenciaisSchema`): minúsculas, sem espaço nas pontas. Normalizar só de um lado criaria uma conta que existe e não abre — cadastrada como `Ana@Exemplo.test`, procurada no login como `ana@exemplo.test`.
+
+### E-mail repetido de alguém desligado manda reativar
+
+Cadastrar de novo partiria o histórico de carga em duas pessoas que são a mesma, e o crédito acumulado da primeira ficaria órfão. A mensagem diz isso, em vez de só recusar.
+
+### Rota nova de categorias
+
+`GET /api/categorias` existe para a tela ter o que oferecer. Poderia sair da constante `CATEGORIAS_CADASTRO`, que é a mesma fonte do seed — mas a tabela pode divergir dela (categoria desativada, rótulo ajustado), e oferecer ao gestor uma categoria que o banco não tem produziria erro na gravação. A tela pergunta ao banco o que existe de verdade.
+
+### Verificado na tela, ponta a ponta
+
+Cadastrei uma pessoa pela interface, com o papel e a categoria escolhidos ali. O aviso de "sem categoria" apareceu e sumiu ao marcar `Ligante`. A senha provisória apareceu uma vez. O e-mail foi gravado normalizado. A pessoa apareceu no plantão com a categoria certa, **entrou no sistema com a senha entregue** e caiu na troca obrigatória. Tirar a categoria a removeu do plantão na mesma hora. Sem rolagem horizontal a 375px.
+
+13 testes novos.
+
+### Revisão do próprio trabalho — dois defeitos de validação
+
+Revisada a implementação antes de dar por pronta. Dois defeitos reais, os dois na fronteira de entrada, os dois com o mesmo destino: uma pessoa cadastrada que nunca consegue entrar.
+
+**R-07 — `.trim()` depois de `.min()` mede a string errada.** A cadeia era `z.string().min(1).max(255).trim()`. Em Zod, as validações rodam na ordem da cadeia: `"   "` tem comprimento 3, passa no `min(1)`, e **só então** é aparada, virando `""`.
+
+O efeito no nome é feio; no e-mail é grave. Provado rodando o cadastro real: a resposta voltou com `"email": ""`. Essa conta existe, tem hash de senha, e **nunca abre** — a entrada exige e-mail com ao menos um caractere, e `""` não casa com nada. Ninguém consegue entrar, e ninguém consegue ver que o problema é esse.
+
+Corrigido invertendo a ordem: `.trim()` primeiro, medida depois. A mesma inversão foi aplicada em `CredenciaisSchema`, onde o efeito era inofensivo (e-mail vazio não acha conta) mas a ordem estava igualmente errada.
+
+**R-08 — nenhuma validação de formato de e-mail, em lugar nenhum.** A API aceitava `"ana.silva"` sem domínio. E o `type="email"` que eu tinha posto no campo **não valida nada**: o input não está dentro de um `<form>` e o botão é `onClick`, não `submit`, então o navegador nunca confere. O campo parecia conferido e não era.
+
+O estrago não é estético. E-mail sem domínio cria uma conta que a pessoa nunca encontra; o gestor cadastra de novo com o endereço certo; passam a existir **duas pessoas que são a mesma**, com o histórico de carga partido entre elas. É exatamente o dano que a regra de "reative em vez de duplicar" existe para impedir, entrando pela porta da frente.
+
+Corrigido com `z.email()` no esquema — que é o servidor, a única fronteira que conta. A tela passou a conferir com o **mesmo esquema** antes de enviar: não substitui a validação do servidor, mas evita a ida inútil e devolve a mensagem exata em vez de um 400 genérico.
+
+**Verificado nos dois lados.** A API recusa sozinha (`nome: Too small`, `email: Invalid email address`, HTTP 400) e a tela barra antes de sair — sem requisição, sem pessoa criada, com o erro visível. Entrada legítima com maiúsculas e espaço sobrando continua passando e é gravada normalizada.
+
+**Nota de processo:** rodei `prettier --write` no arquivo da tela para arrumar a indentação e ele reescreveu 254 linhas — o projeto não tem configuração de Prettier e o código não segue os padrões dele. Revertido. Formatação aqui é manual e segue o que já está no arquivo.
+
+---
+
+## Origem da requisição e proxy confiável (`H-D16`) — 27/08/2026
+
+### Por que este item saiu na frente do `H-D18`
+
+O roteiro tinha `H-D18` (agregados de métrica materializados) como próximo. Ao abrir o item, a justificativa dele não se sustenta mais.
+
+`H-D18` existe porque *"métrica só sobrevive a um expurgo se estiver materializada antes dele"*. Mas depois da separação entre conteúdo e histórico, o que a política de retenção pode apagar é `EmailConteudo` e os bytes de anexo — e **nenhuma métrica lê essas linhas**:
+
+| Métrica | Lê de | Expurgável? |
+|---|---|---|
+| Painel por categoria | `Item.status` | não |
+| Painel por pessoa | `Atribuicao`, `SaldoCargaGlobal` | não |
+| Conservação | `RodadaDistribuicao`, `Atribuicao` | não |
+| Acerto da IA | `Revisao.sugestaoIa` / `valorFinal` | não |
+
+Enquanto o invariante 11 do `CLAUDE.md` valer (*"nunca apague dado operacional para simplificar armazenamento"*), nenhuma métrica está em risco. `H-D18` continua tendo valor — recorte histórico barato, painel com janela, e seguro contra uma retenção futura mais ampla —, mas deixou de ser **pré-requisito de segurança da política de retenção**. Reclassificado, e a dependência de ordem que estava registrada em duas seções foi corrigida.
+
+`H-D16`, por outro lado, é da lista de *obrigatório antes de expor fora da rede local*. E medindo, ele é pior do que estava escrito.
+
+### O que a medição mostrou
+
+Subi o servidor e li os cabeçalhos que chegam de verdade:
+
+```
+sem cabeçalho enviado   → x-forwarded-for: ::1            (o Next preenche com o socket)
+com cabeçalho enviado   → x-forwarded-for: 9.9.9.9, 8.8.8.8   (o Next repassa o do cliente, inteiro)
+```
+
+Ou seja: **sem proxy na frente, `x-forwarded-for` é texto livre escrito por quem chama.** E `origemDaRequisicao` lia a **primeira** entrada — exatamente o pedaço que o atacante escolhe. Variar um cabeçalho dava um balde de limite de taxa novo a cada requisição, e o limite por origem simplesmente não existia.
+
+O erro de ler a primeira entrada é independente da configuração: mesmo **com** um proxy confiável, a primeira entrada é a que o cliente mandou. O proxy acrescenta a verdadeira no fim.
+
+### A correção
+
+`PROXIES_CONFIAVEIS` (padrão `0`) declara quantos saltos confiáveis existem na frente.
+
+- **`0`** — acesso direto. Nenhum cabeçalho identifica ninguém, e o código **admite isso** em vez de fingir: a chave é `origem-indistinguivel`, marcada como não confiável.
+- **`N > 0`** — a origem é a entrada `N` posições antes do fim: a que o proxy mais externo acrescentou. Cadeia mais curta que `N` significa configuração divergente da realidade, ou alguém que alcançou o servidor por fora do proxy — e aí o valor não prova nada.
+
+### O balde de todo mundo não pode ter o limite de um só
+
+Admitir que a origem é desconhecida cria o problema oposto, que o comentário original já apontava: um balde único com número apertado é *DoS de graça* — o atacante estoura e tranca a equipe inteira.
+
+Então quando a origem é indistinguível o teto sobe (`FATOR_SEM_ORIGEM`), o bastante para uma equipe de dezenas de pessoas nunca encostar nele e ainda assim conter um laço automatizado. O que resta protegido é CPU — cada tentativa de senha custa uma derivação `scrypt`. **Isso não substitui identificar a origem**, e a defesa que de fato contém força bruta continua sendo a trava por conta, que não depende de IP.
+
+### Provado na aplicação rodando
+
+Com `PROXIES_CONFIAVEIS=1`, contra `/api/sessao`:
+
+| Cenário | Resultado |
+|---|---|
+| 25 pedidos forjando a **primeira** entrada, última fixa | 20× `422`, depois `429` — mesmo balde, forjar não compra balde novo |
+| 25 pedidos com **últimas** entradas distintas | 25× `422` — clientes reais continuam separados, nenhum `429` falso |
+
+Os dois lados importam. Só o primeiro provaria que o limite aperta; só o segundo, que ele não tranca ninguém. Juntos provam que ele voltou a fazer o que promete.
+
+### Ainda pendente
+
+`PROXIES_CONFIAVEIS` continua `0` por padrão, que é o correto para a rede local. **Publicar fora dela exige ajustar o número** — está no `.env.example` com o motivo.
+
+### Revisão do próprio trabalho — a correção tinha um buraco pior que o defeito
+
+Revisada a implementação de `H-D16` antes de dar por pronta. Um achado grave e uma afirmação minha que a medição desmentiu.
+
+**R-09 — proxy que não reescreve `x-forwarded-for` trancava a equipe inteira.**
+
+A leitura por posição na cadeia assume que o proxy acrescentou alguma coisa. Nem todo proxy acrescenta. Configuração comuníssima do nginx: `proxy_set_header X-Real-IP $remote_addr;` **sem** mexer em `X-Forwarded-For`. Aí o Next preenche `x-forwarded-for` com o endereço do socket — que é o do **próprio proxy**.
+
+Resultado medido, com `PROXIES_CONFIAVEIS=1` e 25 clientes distintos:
+
+```
+ 422 422 422 ... (20x) ... 429 429 429 429 429
+```
+
+Vinte e cinco pessoas diferentes num balde só, e o limite **apertado** disparando no 21º pedido. O "DoS de graça" que o comentário original do arquivo avisava — só que agora chegando por uma configuração que o operador tem toda razão de achar correta, e com o código reportando `confiavel: true`.
+
+A correção de `H-D16` tinha, portanto, trocado um defeito de segurança por um defeito de disponibilidade — pior, porque este derruba a operação num dia normal, sem atacante nenhum.
+
+**Corrigido em duas frentes, porque uma só não resolve.**
+
+A cadeia continua mandando quando ela **realmente cresceu** além dos saltos confiáveis: aí existe entrada que só um proxy pôde ter acrescentado. Quando ela tem o tamanho exato dos saltos, a situação é ambígua, e com **um** salto o `x-real-ip` desfaz o empate — quem o escreve é o proxy confiável, e ele aponta o cliente. Com dois ou mais saltos ele não serve: o proxy de dentro escreve nele o endereço do proxy de fora, e só a cadeia conhece a ordem.
+
+Depois da correção, o mesmo teste:
+
+| Cenário | Antes | Depois |
+|---|---|---|
+| 25 clientes distintos via `x-real-ip` | `429` no 21º | 25× `422` — ninguém trancado |
+| Mesmo cliente 25 vezes | — | `429` no 21º — o limite continua apertando |
+
+**A ambiguidade que sobrou não dá para resolver sozinha — então virou visível.**
+
+Cadeia com exatamente o tamanho dos saltos e sem `x-real-ip` continua sendo dois mundos diferentes com a mesma forma: proxy padrão que mandou o cliente, ou proxy que não reescreveu nada. Nenhum código distingue os dois.
+
+O que dá para fazer é parar de descobrir isso pelo pior caminho. `GET /api/diagnostico/origem` (só gestor) devolve o que o servidor entendeu como a origem **daquela** requisição, junto com os cabeçalhos crus. Abrir de dois dispositivos e comparar `chave` responde a pergunta em dez segundos:
+
+```
+A) com x-real-ip →  {"chave":"198.51.100.42","confiavel":true,
+                     "recebido":{"xForwardedFor":"::1","xRealIp":"198.51.100.42"}}
+
+B) sem x-real-ip →  {"chave":"::1","confiavel":true,
+                     "recebido":{"xForwardedFor":"::1","xRealIp":null}}
+```
+
+Em (B), `chave` igual em todos os dispositivos denuncia a configuração errada. Sem a rota, o jeito de descobrir era a equipe parar de conseguir entrar.
+
+**R-10 — eu afirmei sobre o teto global uma coisa que a medição não sustenta.**
+
+O comentário dizia que o teto afrouxado "contém um laço automatizado" e protege CPU. Fui medir: uma inundação de 900 requisições em 30 processos paralelos contra `/api/sessao` **não o alcançou**, e uma entrada legítima no meio dela passou normalmente.
+
+O motivo é que cada tentativa custa uma derivação `scrypt`, então a vazão da rota satura antes do teto — o servidor já está no limite de CPU quando o contador ainda está longe. O teto é uma trava contra volume patológico, **não** a proteção de CPU que seria fácil supor. Quem limita a vazão é o custo do `scrypt`; quem contém força bruta é a trava por conta.
+
+Comentário corrigido para dizer o que foi medido. Afirmação confortável em comentário é a mesma doença de log que mente: alguém confia nela justamente quando importa.
+
+---
+
+## Painel com recorte de período (`H-D5`) — 28/08/2026
+
+O painel contava desde a fundação do sistema e chamava o resultado de "pendente". A planilha tem uma aba por mês. Na rodada de comparação lado a lado — que é como este sistema se prova — os dois números nunca iriam bater, e a conclusão natural de quem olha é que o substituto está errado.
+
+### O mapeamento, que é o ponto
+
+Cada coluna do painel passou a ter uma correspondente na planilha, e a tela diz isso no rodapé:
+
+| Painel | Planilha | O que é |
+|---|---|---|
+| `saldoInicial` | `Saldo` | Entrou antes e ainda estava aberto na virada |
+| `entrouNoPeriodo` | `Mov. do Dia` + `Mov. Extra` | Chegou dentro do período |
+| `aberto` | `ABERTO` | `Saldo + entrou` — tudo que esteve na mesa |
+| `concluidoNoPeriodo` | `Realizado` | Fechou dentro do período |
+| `pendente` | `Pend.` | Ainda aberto no fim |
+
+Sem esse mapeamento a conferência vira discussão sobre o que cada palavra significa, e a rodada paralela não conclui nada.
+
+### O carry-over deixa de ser digitado
+
+A planilha faz `Saldo(d) = Pend.(d−1)` **à mão**, sem fórmula — e por isso quebra em ~10% dos dias (`CAD-MAIO`: 26 de 30; `CAD-JULHO`: 27 de 30).
+
+Aqui `saldoInicial` é consulta. Verificado com histórico atravessando a virada do mês:
+
+```
+julho   → saldo 0 · entrou 3 · aberto 3 · concluído 1 · pendente 2
+agosto  → saldo 2 · entrou 22 · aberto 24 · concluído 1 · pendente 23
+            ↑ exatamente a pendência de julho, sem ninguém digitar
+```
+
+### Uma divergência deliberada, que vai aparecer na comparação
+
+A planilha calcula `Pend. = IF((Aberto − Realizado) < 0, "0", Aberto − Realizado)` — ela **grampeia** o resultado em zero. Quem conclui mais do que recebeu, limpando backlog antigo, tem o excedente descartado. É o defeito registrado em `RN-09`.
+
+Aqui não existe grampo, e nem precisa: `concluidoNoPeriodo` só conta item que estava em `aberto`, então a subtração não tem como ficar negativa. Há teste que fecha cinco itens velhos num mês sem entrada nenhuma — na planilha é o dia em que o excedente evapora; aqui a conta fecha em zero sozinha.
+
+**Quando os dois números divergirem num dia de limpeza de backlog, o certo é o do sistema.** Está registrado aqui para não virar discussão na hora.
+
+### Cancelamento ganhou carimbo próprio
+
+`Item.canceladoEm` é coluna nova. `atualizadoEm` não servia: ele muda a cada escrita, então não responde "estava cancelado no dia 12?".
+
+Sem o carimbo, um cancelamento feito hoje mudaria **retroativamente** a pendência do mês passado — o painel mudaria de número sozinho entre duas consultas, e a comparação com a planilha deixaria de significar coisa alguma. Há teste que consulta junho, cancela um item em julho, consulta junho de novo e exige o mesmo número.
+
+Conclusão não precisou de coluna equivalente: já vive em `Execucao.concluidoEm`, e **item concluído nunca reabre** — `devolver` recusa item concluído e `concluir` sai cedo se já estiver. É essa garantia que torna "estava fechado no dia X" uma pergunta com resposta exata, sem precisar de tabela de eventos de status.
+
+O backfill dos itens já cancelados foi para migração separada (a primeira já tinha sido aplicada, e editar o arquivo depois quebraria o checksum). Ele usa `atualizadoEm` e é explicitamente uma **aproximação** — o carimbo exato daqueles cancelamentos antigos só existe em `LogAuditoria`. Sem backfill eles ficariam com `canceladoEm` nulo e o painel os contaria como abertos para sempre: pendência que nunca fecha, pior que data aproximada.
+
+### O invariante: duas contas, mesmo número
+
+`porCategoria` chega em `pendente` **subtraindo**. `conferirPendencia` conta **diretamente** quantos itens estavam abertos no fim do período. Os dois têm de bater sempre.
+
+É o mesmo espírito de `conferirConservacao`: um número que só existe de uma forma não tem como se provar errado. Divergência aqui é defeito do painel, nunca erro de operação — e é justamente por não fechar que a planilha precisa do grampo em zero.
+
+### Recorte na rota
+
+`GET /api/painel?de=&ate=`, como a Spec pedia. Sem parâmetros, o mês corrente — a unidade da planilha, e portanto a unidade da comparação.
+
+Data torta cai no padrão (pedir o painel com parâmetro errado é erro de link, não de sistema), mas `de` depois de `ate` é **invertido em vez de aceito**: período de duração negativa produziria saldo inicial maior que o aberto, e a tela mostraria pendência negativa — o defeito `E.9` de novo.
+
+### Verificado na tela
+
+Período padrão é o mês corrente; trocar as datas para julho muda `Ligante` de `2 · 22 · 24 · 1 · 23` para `0 · 3 · 3 · 1 · 2`; a pendência de julho aparece como o saldo de agosto. Sem rolagem horizontal a 375px.
+
+9 testes novos.
+
+### Revisão do próprio trabalho — o invariante pegou o defeito
+
+**R-11 — pendência negativa na fronteira exata do período.** `concluidoAte` usava `lte: abertura` para "concluído antes do período", enquanto `concluidoNoPeriodo` usa `gte: abertura`. Um item concluído no instante exato da virada casava com os **dois**: era descontado do saldo inicial e descontado de novo como conclusão do período.
+
+O resultado medido não foi "uma unidade a menos". Foi **`porSubtracao: -1`** — pendência negativa, que é o defeito `E.9` da planilha ("realizado maior que o recebido, fisicamente impossível") reconstruído dentro do substituto, na entrega cujo objetivo era justamente não reconstruí-lo.
+
+Corrigido com comparação estrita. E vale registrar **como** foi encontrado: pelo `conferirPendencia`, o invariante das duas contagens, escrito na mesma entrega. Sem ele, o defeito só apareceria num dia em que alguém concluísse um item à meia-noite exata do fuso da operação — e apareceria como um número errado, não como um erro.
+
+Detalhe do caminho: a primeira versão do teste usou meia-noite **UTC** e passou. A fronteira do sistema é o fuso da operação (Brasília), então o instante certo é `inicioDoDia(data)`. Teste que erra a fronteira por três horas não testa fronteira nenhuma.
+
+**R-12 — a tabela misturava período com estado atual sem dizer.** A coluna `Revisão` mostra a fila **agora**, ao lado de cinco colunas recortadas pelo período. Quem consultasse julho leria como "fila de revisão de julho". Passou a se chamar `Revisão (hoje)`, com nota no rodapé. É a mesma família de defeito que a cobertura da taxa de acerto teve (`R-05`): dois universos na mesma linha produzem um número plausível e falso.
+
+---
+
+## Auditoria com agentes especializados — 28/08/2026
+
+Três agentes varreram o projeto em paralelo: falhas silenciosas, segurança e banco de dados. Conferi cada achado no código antes de aceitar — dois foram reclassificados por exagerarem o impacto.
+
+### O achado mais grave: a trava de conservação estava sendo engolida
+
+**A-01 — `ConservacaoVioladaError` virava aviso de rotina.** 🔴
+
+`planejarCategoria` (`distribuicao.ts`) envolvia a chamada ao motor num `try/catch` genérico. O comentário falava de "sem elegível, o trabalho FICA na fila" — mas o `catch` não distinguia nada:
+
+```ts
+} catch (erro) {
+  return { ...base, resultado: null, erro: mensagemDoErro(erro) }
+}
+```
+
+`distribuir()` pode lançar `ConservacaoVioladaError` — a trava que materializa o invariante nº 3, **o único que o `CLAUDE.md` descreve como razão de o sistema existir**. Capturada ali, ela virava:
+
+- `plano.erro` com a mesma cara de "ninguém de plantão hoje"
+- log de nível **`aviso`**, não `erro`
+- evento da rodada como `reprocessavel`, nunca `falha`
+- a categoria inteira pulada, com os itens presos na fila
+
+Ou seja: se o motor algum dia produzisse uma alocação que não conserva, o sistema reagiria como num dia sem escala. **A trava existe para gritar; engolir o grito é pior do que não ter trava, porque dá a impressão de que há uma.**
+
+Corrigido: só `SemElegiveisError` — que é situação de operação — vira resultado. Todo o resto sobe. Há teste que força a violação e exige que ela chegue inteira à superfície, e um segundo que garante que "ninguém de plantão" continua sendo resultado, não exceção.
+
+### Fila de revisão que escondia o próprio tamanho
+
+**A-02 — `listarPendentes` truncava em 200 sem dizer.** 🟠
+
+A rota pedia 200 e devolvia só o array. Como a ordenação é fixa (`confianca asc, criadoEm asc`), o que ficasse além do corte ficava lá **permanentemente**: nunca subia, nunca aparecia, ninguém resolvia. E a tela dizia "200 itens" para sempre enquanto a fila crescia atrás dela.
+
+Com ~27 revisões por dia, bastam oito dias de fila parada — uma ausência prolongada — para o corte começar a esconder trabalho.
+
+Corrigido: `listarPendentes` devolve `{ itens, total }`, e a tela avisa em destaque quando `total > itens.length`, explicando que o resto só sobe conforme a fila for resolvida.
+
+### O gestor não escolhe mais a senha de ninguém
+
+**A-03 — `senhaProvisoria` era aceita pelo corpo da requisição.** 🟠
+
+`credenciais.ts` declara: *"O sistema NUNCA pede ao gestor que invente a senha de alguém — pessoa apressada escolhe `Sbp2026!` para a equipe inteira."* Mas `DefinicaoDeSenhaSchema` aceitava `senhaProvisoria` opcional, e o serviço usava o valor recebido. A regra valia **só enquanto a tela cooperasse**; o servidor obedecia a qualquer coisa que chegasse pela rota.
+
+Corrigido: o campo saiu do esquema. Senha fixa virou **quarto parâmetro** de `definirSenhaProvisoria`, alcançável por teste e seed e por nenhuma requisição HTTP.
+
+**Ressalva honesta, que o agente não fez:** isto NÃO impede um gestor de assumir a identidade de alguém. Ele sempre pôde redefinir a senha, ler a sorteada na resposta e entrar como a pessoa — é poder inerente a "gestor redefine senha", e não há como tirar sem tirar a função. O que muda é que a regra declarada passou a ser imposta pelo servidor, e o redefinir continua gravado em `LogAuditoria` como `senha_redefinida_pelo_gestor`, então a correlação "gestor redefiniu → alguém entrou como a vítima" fica reconstruível.
+
+### Corpo malformado deixou de sumir calado
+
+**A-04 — `corpoJson` devolvia `{}` sem registrar.** 🟡
+
+JSON truncado, `Content-Type` errado ou encoding quebrado viravam `{}` em silêncio. Inofensivo em rota com campo obrigatório (o Zod recusa depois), mas `POST /api/itens/[id]/concluir` tem **todos os campos opcionais**: um corpo corrompido passava como pedido legítimo sem observação. Agora o `catch` registra caminho e causa.
+
+### Reclassificados — o agente exagerou
+
+**Categoria desativada esconderia trabalho.** O mecanismo existe (`porCategoria` e `carregarCategorias` filtram `ativa: true`, e itens abertos de uma categoria desativada sumiriam do painel e de toda distribuição futura). Mas **nenhum caminho do sistema desativa categoria** — `ativa: false` não é escrito em lugar nenhum de `src/`. É armadilha para quem for implementar essa função um dia, não defeito de hoje. Registrado aqui como aviso a quem mexer.
+
+**N+1 e ausência de recorte no painel.** Reais e bem descritos: `carregarElegiveis` faz 4 consultas por colaborador elegível; `porPessoa` faz 1 + 4×N; o `groupBy` de estado atual varre `Item` inteiro sem `where`. Com 4-7 pessoas em SQLite embarcado, é irrelevante — o próprio código já documenta a dívida. Vira problema real na migração para PostgreSQL, quando cada consulta passa a ser ida e volta de rede, e pior por acontecer dentro da transação que segura a trava do dia. Continua registrado como `H-D8`, agora com a medida: ~29 consultas por carregamento do painel, ~14 por categoria na distribuição.
+
+### O que a auditoria confirmou que está sólido
+
+Vale registrar, porque cobre a maior parte do sistema:
+
+- **Identidade nunca vem do corpo.** Verificado nas 23 rotas e nos serviços que elas chamam: `usuario`, `atribuidoPor`, `resolvidoPor` e `executadoPor` saem sempre de `ator.colaboradorId`. `Ator` é tipo fantasma — não há como fabricar um fora de `atorDaSessao`.
+- **Papel é reconferido no banco a cada requisição**, nunca lido do cookie. Rebaixar ou desativar alguém tem efeito imediato.
+- **Injeção de prompt**: truncar → detectar → delimitar aplicado igual no mock e no adapter real, sempre antes do modelo; detecção nunca bloqueia sozinha, sempre chama humano; e `aprovarTodosPendentes` exclui `conteudo_suspeito` da aprovação em massa.
+- **Sem SQL bruto, sem `dangerouslySetInnerHTML`**, sem rota de escrita para métrica.
+- **Erro ≥500 nunca vaza detalhe** — inclusive `ConservacaoVioladaError`, que carrega a alocação inteira.
+- **`onDelete` protege a prova histórica**: `Restrict` nos livros-razão e em `Item.email`; `Cascade` só em tabelas de vínculo sem rota de exclusão.
+- **Anexo**: allowlist de extensão + conferência dos bytes reais + remoção de caracteres invisíveis + chave sorteada, nunca derivada do nome.
+- **Nada específico de SQLite** no caminho de dados — a migração para PostgreSQL não esbarra em tipo nem em sintaxe.
+
+### Uma pergunta que é sua, não minha
+
+**A caixa de entrada mostra a operação inteira para qualquer pessoa autenticada.** `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador`. O `RF-23` do PRD diz *"Colaborador vê **seus** itens reais"*.
+
+Não mexi, porque as duas leituras são defensáveis e a escolha é de operação, não de engenharia:
+
+- Hoje a equipe trabalha de uma **caixa de e-mail compartilhada** — todo mundo já vê tudo. Restringir seria mudar a operação, não corrigir um defeito.
+- Por outro lado, remetente e assunto de e-mail de associado são dado pessoal, e o resto do sistema é cuidadoso com isso (a lista de colaboradores, por exemplo, exige gestor).
+
+Registrado em `§ H.4` como pergunta ao dono do processo.

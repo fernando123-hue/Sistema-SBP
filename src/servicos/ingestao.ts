@@ -6,9 +6,12 @@ import {
   type Interpretacao,
   type MotivoRevisao,
 } from '../core/esquemas'
+import { CategoriaDesconhecidaError } from '../core/erros'
+import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
 import { paraDataIso } from '../core/util/datas'
-import type { AiPort } from '../ports/ia'
+import type { ArmazenamentoPort } from '../ports/armazenamento'
+import { InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { ATOR_SISTEMA, exigirPapel, type Ator } from '../servidor/ator'
 import type { Banco, Transacao } from '../servidor/prisma'
@@ -33,6 +36,14 @@ export interface DependenciasIngestao {
   banco: Banco
   ingestao: IngestaoPort
   ia: AiPort
+  /**
+   * Onde os bytes dos anexos são guardados.
+   *
+   * Opcional: sem ele, o sistema grava o metadado do anexo e NÃO guarda o
+   * arquivo — o que é registrado, nunca fingido. Um `chaveArmazenamento` nulo
+   * significa exatamente "os bytes não estão aqui".
+   */
+  armazenamento?: ArmazenamentoPort | undefined
 }
 
 export interface ResumoIngestao {
@@ -41,6 +52,16 @@ export interface ResumoIngestao {
   novos: number
   duplicados: number
   itensCriados: number
+  /**
+   * E-mails interpretados que não geraram item nenhum.
+   *
+   * Zero item é resultado legítimo — resposta automática, aviso de entrega,
+   * boletim. Mas é indistinguível de "a IA não entendeu e a carga sumiu", e o
+   * e-mail fica marcado como processado, então nunca mais volta. Sem este
+   * contador na tela, a diferença entre os dois casos não existiria para
+   * ninguém: seria exatamente a perda silenciosa que a planilha comete.
+   */
+  emailsSemItem: number
   itensAprovados: number
   itensParaRevisao: number
   falhas: number
@@ -62,6 +83,7 @@ export async function sincronizar(
     novos: 0,
     duplicados: 0,
     itensCriados: 0,
+    emailsSemItem: 0,
     itensAprovados: 0,
     itensParaRevisao: 0,
     falhas: 0,
@@ -108,12 +130,49 @@ export async function sincronizar(
       resumo.itensAprovados += resultado.aprovados
       resumo.itensParaRevisao += resultado.paraRevisao
       resumo.anexosRejeitados += resultado.anexosRejeitados
+
+      // E-mail que entrou e não virou trabalho nenhum.
+      //
+      // NÃO é falha do lote: marcar o dia inteiro de vermelho por causa de uma
+      // resposta automática é o vermelho que ensina a equipe a ignorar
+      // vermelho. Mas o evento fica gravado como `falha` para aparecer em
+      // qualquer busca por problema, e o contador sobe para aparecer na tela.
+      // Silenciar isto era perder carga sem que ninguém pudesse notar.
+      if (resultado.criados === 0) {
+        resumo.emailsSemItem += 1
+        registrarLog('aviso', 'e-mail interpretado sem nenhum item', {
+          correlacaoId,
+          messageId: email.messageId,
+        })
+        await registrarEvento(deps.banco, {
+          correlacaoId,
+          etapa: 'ingestao',
+          situacao: 'falha',
+          referencia: email.messageId,
+          mensagem: 'e-mail interpretado sem nenhum item — confira se havia trabalho ali',
+        })
+      }
     } catch (erro) {
       // Violação de unicidade é corrida perdida, não defeito: o outro processo
       // já gravou o mesmo e-mail. Contar como falha produziria alerta enganoso.
       if (ehViolacaoDeUnicidade(erro)) {
         resumo.duplicados += 1
         continue
+      }
+
+      // A camada de IA está fora — chave recusada, permissão negada. Seguir o
+      // laço produziria a MESMA falha em cada e-mail restante, uma chamada
+      // condenada por mensagem, e a causa real ficaria diluída em centenas de
+      // linhas idênticas. O lote para aqui, e quem lê sabe o que consertar.
+      if (erro instanceof InterpretacaoIndisponivelError) {
+        await registrarEvento(deps.banco, {
+          correlacaoId,
+          etapa: 'ingestao',
+          situacao: 'reprocessavel',
+          referencia: candidato.messageId,
+          mensagem: mensagemDoErro(erro),
+        })
+        throw erro
       }
 
       resumo.falhas += 1
@@ -174,10 +233,38 @@ async function processarUm(
   // deve segurar lock de banco. Se falhar, nada foi gravado.
   const interpretacao = await deps.ia.interpretar(email)
 
-  const anexosAvaliados = email.anexos.map((anexo) => ({
-    ...anexo,
-    veredicto: validarAnexo(anexo.nome, anexo.tamanho, TAMANHO_MAXIMO_ANEXO_BYTES),
-  }))
+  const anexosAvaliados = await Promise.all(
+    email.anexos.map(async (anexo) => {
+      const veredicto = validarAnexo(anexo.nome, anexo.tamanho, TAMANHO_MAXIMO_ANEXO_BYTES)
+
+      // A allowlist de extensão só olha o NOME, que quem escreveu foi o
+      // remetente. Com os bytes em mãos, o tipo real é conferido — é o que
+      // separa um PDF de um executável chamado `laudo.pdf`.
+      if (veredicto.aceito && anexo.conteudo) {
+        const assinatura = conferirAssinatura(veredicto.nomeSeguro, anexo.conteudo)
+        if (assinatura.situacao === 'divergente') {
+          return {
+            ...anexo,
+            veredicto: { aceito: false, motivo: assinatura.motivo, nomeSeguro: veredicto.nomeSeguro },
+            chaveArmazenamento: null,
+          }
+        }
+      }
+
+      // Arquivo só é guardado depois de aceito. Rejeitado não entra no disco:
+      // não se armazena o que já se sabe que não devia ter chegado.
+      let chaveArmazenamento: string | null = null
+      if (veredicto.aceito && anexo.conteudo && deps.armazenamento) {
+        const ponto = veredicto.nomeSeguro.lastIndexOf('.')
+        chaveArmazenamento = await deps.armazenamento.guardar(
+          anexo.conteudo,
+          ponto === -1 ? '' : veredicto.nomeSeguro.slice(ponto),
+        )
+      }
+
+      return { ...anexo, veredicto, chaveArmazenamento }
+    }),
+  )
   const anexosRejeitados = anexosAvaliados.filter((anexo) => !anexo.veredicto.aceito).length
 
   return deps.banco.$transaction(async (tx) => {
@@ -189,27 +276,37 @@ async function processarUm(
     })
     if (jaProcessado?.processadoEm) return null
 
+    // Metadado e conteúdo nascem juntos, mas em linhas separadas: é o que
+    // permite, depois, expurgar o conteúdo pela retenção sem levar junto o
+    // histórico operacional que sustenta métrica, auditoria e conservação.
     const registro = await tx.email.upsert({
       where: { messageId: email.messageId },
       create: {
         messageId: email.messageId,
-        remetente: email.remetente,
-        assunto: email.assunto,
-        corpo: email.corpo,
-        anexos: serializar(
-          anexosAvaliados.map((anexo) => ({
-            nome: anexo.veredicto.nomeSeguro,
-            tipoDeclarado: anexo.tipoDeclarado,
-            tamanho: anexo.tamanho,
-            aceito: anexo.veredicto.aceito,
-            motivo: anexo.veredicto.motivo ?? null,
-          })),
-        ),
         origem: email.origem,
         recebidoEm: email.recebidoEm,
         modeloIa: interpretacao.modelo,
         versaoPrompt: interpretacao.versaoPrompt,
         processadoEm: new Date(),
+        conteudo: {
+          create: {
+            remetente: email.remetente,
+            assunto: email.assunto,
+            corpo: email.corpo,
+          },
+        },
+        anexos: {
+          create: anexosAvaliados.map((anexo) => ({
+            nomeSeguro: anexo.veredicto.nomeSeguro,
+            tipoDeclarado: anexo.tipoDeclarado,
+            tamanho: anexo.tamanho,
+            hash: anexo.hash,
+            aceito: anexo.veredicto.aceito,
+            motivo: anexo.veredicto.motivo ?? null,
+            chaveArmazenamento: anexo.chaveArmazenamento,
+            armazenadoEm: anexo.chaveArmazenamento ? new Date() : null,
+          })),
+        },
       },
       update: { processadoEm: new Date() },
     })
@@ -269,7 +366,11 @@ async function criarItens(
 
   for (const [posicao, extraido] of interpretacao.itens.entries()) {
     const categoria = categorias.get(extraido.categoriaCodigo)
-    if (!categoria) continue
+    // `continue` aqui descartava o item em silêncio: nada gravado, nada
+    // contado, nada registrado — e o e-mail marcado como processado do mesmo
+    // jeito, o que somado à idempotência por `messageId` significa trabalho
+    // perdido para sempre. É o defeito da planilha reconstruído aqui dentro.
+    if (!categoria) throw new CategoriaDesconhecidaError(extraido.categoriaCodigo)
 
     const motivo = decidirRevisao(
       extraido.confianca,

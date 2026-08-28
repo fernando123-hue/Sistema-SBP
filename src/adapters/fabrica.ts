@@ -1,6 +1,9 @@
+import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { ambiente } from '../servidor/ambiente'
+import { ArmazenamentoEmDisco } from './armazenamento-disco'
+import { IaAnthropic } from './ia-anthropic'
 import { IaMock } from './ia-mock'
 import { IngestaoMock, type OpcoesIngestaoMock } from './ingestao-mock'
 
@@ -33,9 +36,21 @@ export function criarAiPort(): AiPort {
   switch (nome) {
     case 'mock':
       return new IaMock()
+    case 'anthropic':
+      return new IaAnthropic()
     default:
       throw new AdapterIndisponivelError('IA', nome)
   }
+}
+
+/**
+ * Armazenamento dos arquivos de anexo.
+ *
+ * Só existe a implementação em disco hoje. Quando entrar nuvem, este é o único
+ * lugar que escolhe — o serviço de ingestão fala com o port.
+ */
+export function criarArmazenamentoPort(): ArmazenamentoPort {
+  return new ArmazenamentoEmDisco()
 }
 
 export function criarIngestaoPort(opcoes: OpcoesIngestaoMock): IngestaoPort {
