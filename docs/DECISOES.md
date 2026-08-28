@@ -872,3 +872,15 @@ Data torta cai no padrão (pedir o painel com parâmetro errado é erro de link,
 Período padrão é o mês corrente; trocar as datas para julho muda `Ligante` de `2 · 22 · 24 · 1 · 23` para `0 · 3 · 3 · 1 · 2`; a pendência de julho aparece como o saldo de agosto. Sem rolagem horizontal a 375px.
 
 9 testes novos.
+
+### Revisão do próprio trabalho — o invariante pegou o defeito
+
+**R-11 — pendência negativa na fronteira exata do período.** `concluidoAte` usava `lte: abertura` para "concluído antes do período", enquanto `concluidoNoPeriodo` usa `gte: abertura`. Um item concluído no instante exato da virada casava com os **dois**: era descontado do saldo inicial e descontado de novo como conclusão do período.
+
+O resultado medido não foi "uma unidade a menos". Foi **`porSubtracao: -1`** — pendência negativa, que é o defeito `E.9` da planilha ("realizado maior que o recebido, fisicamente impossível") reconstruído dentro do substituto, na entrega cujo objetivo era justamente não reconstruí-lo.
+
+Corrigido com comparação estrita. E vale registrar **como** foi encontrado: pelo `conferirPendencia`, o invariante das duas contagens, escrito na mesma entrega. Sem ele, o defeito só apareceria num dia em que alguém concluísse um item à meia-noite exata do fuso da operação — e apareceria como um número errado, não como um erro.
+
+Detalhe do caminho: a primeira versão do teste usou meia-noite **UTC** e passou. A fronteira do sistema é o fuso da operação (Brasília), então o instante certo é `inicioDoDia(data)`. Teste que erra a fronteira por três horas não testa fronteira nenhuma.
+
+**R-12 — a tabela misturava período com estado atual sem dizer.** A coluna `Revisão` mostra a fila **agora**, ao lado de cinco colunas recortadas pelo período. Quem consultasse julho leria como "fila de revisão de julho". Passou a se chamar `Revisão (hoje)`, com nota no rodapé. É a mesma família de defeito que a cobertura da taxa de acerto teve (`R-05`): dois universos na mesma linha produzem um número plausível e falso.

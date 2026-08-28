@@ -25,7 +25,7 @@ Cole o valor em `SESSAO_SECRET`. Depois:
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
-npm run verificar    # typecheck + 224 testes
+npm run verificar    # typecheck + 226 testes
 npm run dev          # http://localhost:3000
 ```
 
@@ -56,7 +56,7 @@ Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela.
 | API REST | 23 rotas, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **224 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
+| Testes | **226 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
@@ -77,7 +77,7 @@ O painel contava desde a fundação e chamava isso de "pendente". A planilha tem
 
 E o painel ganhou o invariante que faltava: `pendente` sai de uma subtração, `conferirPendencia` conta direto, e os dois têm de bater. Mesmo espírito de `conferirConservacao` — número que só existe de uma forma não tem como se provar errado.
 
-Testes: 215 → **224**.
+Testes: 215 → **226**. A revisão desta entrega achou pendência NEGATIVA na fronteira exata do período — o defeito `E.9` reconstruído — e foi o próprio invariante das duas contagens que pegou.
 
 ---
 
@@ -300,7 +300,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 224 testes |
+| `npm run verificar` | Typecheck + 226 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

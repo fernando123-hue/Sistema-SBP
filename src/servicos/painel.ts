@@ -101,8 +101,16 @@ export async function porCategoria(banco: Banco, periodo = periodoPadrao()): Pro
   // sai cedo se já estiver. Por isso "estava fechado no dia X" é uma pergunta
   // com resposta exata: existe execução concluída até X. Sem essa garantia, o
   // recorte histórico precisaria de uma tabela de eventos de status.
-  const concluidoAte = (quando: Date) => ({
-    execucoes: { some: { resultado: 'concluido', concluidoEm: { lte: quando } } },
+  //
+  // A COMPARAÇÃO É ESTRITA (`lt`), e isso não é detalhe. O período começa em
+  // `gte: abertura`; se "antes do período" fosse `lte: abertura`, um item
+  // concluído no instante exato da virada casaria com OS DOIS — descontado do
+  // saldo inicial e descontado de novo como conclusão do período. A pendência
+  // ia a −1: o defeito `E.9` da planilha ("realizado maior que o recebido,
+  // fisicamente impossível") reconstruído dentro do substituto. Foi
+  // `conferirPendencia` que pegou.
+  const concluidoAntesDe = (quando: Date) => ({
+    execucoes: { some: { resultado: 'concluido', concluidoEm: { lt: quando } } },
   })
 
   const [
@@ -138,7 +146,7 @@ export async function porCategoria(banco: Banco, periodo = periodoPadrao()): Pro
     }),
     banco.item.groupBy({
       by: ['categoriaId'],
-      where: { criadoEm: { lt: abertura }, ...concluidoAte(abertura) },
+      where: { criadoEm: { lt: abertura }, ...concluidoAntesDe(abertura) },
       _count: { _all: true },
     }),
     banco.item.groupBy({

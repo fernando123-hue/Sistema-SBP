@@ -282,7 +282,12 @@ export default function PainelPagina() {
               },
               {
                 chave: 'revisao',
-                cabecalho: 'Revisão',
+                // "(hoje)" no cabeçalho porque esta coluna NÃO é do período: é
+                // estado atual, ao lado de cinco colunas que são recortadas.
+                // Sem o rótulo, quem consulta julho leria como "fila de revisão de
+                // julho" — misturar dois universos na mesma tabela sem dizer é a
+                // forma mais barata de produzir um número plausível e falso.
+                cabecalho: 'Revisão (hoje)',
                 alinhamento: 'direita',
                 conteudo: (linha) => (
                   <span className={juntar('numerico', linha.aguardandoRevisao > 0 && 'text-atencao')}>
@@ -300,7 +305,8 @@ export default function PainelPagina() {
           São as colunas <em>Saldo</em>, <em>Mov. do Dia</em>, <em>ABERTO</em>,{' '}
           <em>Realizado</em> e <em>Pend.</em> da planilha, na mesma ordem. A diferença: lá a
           pendência é grampeada em zero e o excedente de quem limpa backlog antigo é descartado;
-          aqui a conta fecha sozinha.
+          aqui a conta fecha sozinha. <strong>Revisão (hoje)</strong> é a única coluna que não
+          segue o período — ela mostra a fila neste momento, não a de quando o período correu.
         </p>
       </section>
 

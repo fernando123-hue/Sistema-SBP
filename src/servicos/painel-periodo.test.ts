@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { inicioDoDia } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
 import { conferirPendencia, periodoPadrao, porCategoria } from './painel'
@@ -216,5 +217,65 @@ describe('período padrão', () => {
   it('atores de teste continuam válidos', () => {
     // Guarda contra o helper mudar de forma e os testes acima calarem.
     expect(atorDeTeste('x', 'gestor').papel).toBe('gestor')
+  })
+})
+
+describe('a fronteira do período', () => {
+  it('item concluído no instante exato da virada não é subtraído duas vezes', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const pessoa = base.colaboradores[0]!
+
+    const categoria = await banco.categoria.findUniqueOrThrow({ where: { codigo: 'LIGANTE' } })
+    const item = await banco.item.create({
+      data: {
+        categoriaId: categoria.id,
+        titulo: 'concluído na virada',
+        status: 'concluido',
+        criadoEm: new Date('2026-05-20T12:00:00.000Z'),
+      },
+    })
+
+    // A abertura do período em UTC. `concluidoAte` usava `lte` e
+    // `concluidoNoPeriodo` usa `gte`: um item exatamente neste instante casava
+    // com os DOIS, era descontado do saldo inicial e descontado outra vez como
+    // conclusão do período. A pendência saía uma unidade abaixo do real.
+    await banco.execucao.create({
+      data: {
+        itemId: item.id,
+        colaboradorId: pessoa.id,
+        resultado: 'concluido',
+        concluidoEm: inicioDoDia('2026-06-01'),
+      },
+    })
+
+    const conferencia = await conferirPendencia(banco, { de: '2026-06-01', ate: '2026-06-30' })
+    const linha = conferencia.find((item) => item.categoriaCodigo === 'LIGANTE')!
+
+    // O invariante do painel pega o desconto duplicado: a subtração não bate
+    // mais com a contagem direta.
+    expect(linha.porSubtracao).toBe(linha.porContagem)
+  })
+
+  it('item criado no instante exato da virada conta como entrada do período', async () => {
+    await semearBase(banco, { totalDeDias: 1 })
+    const categoria = await banco.categoria.findUniqueOrThrow({ where: { codigo: 'LIGA' } })
+
+    await banco.item.create({
+      data: {
+        categoriaId: categoria.id,
+        titulo: 'criado na virada',
+        status: 'aprovado',
+        criadoEm: inicioDoDia('2026-06-01'),
+      },
+    })
+
+    const junho = await porCategoria(banco, { de: '2026-06-01', ate: '2026-06-30' })
+    const linha = linhaDe(junho, 'LIGA')
+
+    // Cair nos dois lados aqui inflaria `aberto` sem inflar nada que o
+    // compense, e a pendência sairia alta.
+    expect(linha.saldoInicial).toBe(0)
+    expect(linha.entrouNoPeriodo).toBe(1)
+    expect(linha.aberto).toBe(1)
   })
 })
