@@ -1,41 +1,81 @@
 # Estado do projeto — retomada
 
-> **Para continuar em outra máquina:** clone o repositório, siga o *Preparar o ambiente* abaixo e leia a seção *Onde parei*. Este arquivo é o ponto de entrada; ele diz o que já está pronto, o que ficou aberto e qual é o próximo passo.
-
 Última atualização: **28/08/2026** — auditoria com agentes especializados (segurança, falhas silenciosas, banco), precedida pelo painel com recorte de período e pelo proxy confiável.
 
 > **A auditoria achou a trava de conservação sendo engolida.** `planejarCategoria` capturava `ConservacaoVioladaError` junto com "ninguém de plantão", e a violação do único invariante que o projeto descreve como razão de existir virava um log de nível `aviso`. Corrigido, com teste que força a violação. Detalhe em `DECISOES.md`, seção *Auditoria com agentes especializados*.
 
 ---
 
+## Continuando em outra máquina
+
+**⚠️ O trabalho NÃO está na `main`.** Ele vive na branch `feat/fundacao-dominio`, no [PR #11](https://github.com/fernando123-hue/Sistema-SBP/pull/11). Quem clonar e ficar na `main` vai encontrar o projeto 19 commits atrás e achar que tudo sumiu.
+
+```bash
+git clone https://github.com/fernando123-hue/Sistema-SBP.git
+cd Sistema-SBP
+git checkout feat/fundacao-dominio
+```
+
+Confira que chegou no lugar certo — o commit mais recente tem de falar da trava de conservação:
+
+```bash
+git log --oneline -1
+```
+
+Depois siga *Preparar o ambiente* abaixo. Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aberto e qual é o próximo passo.
+
+### O que NÃO vem no clone, e por quê
+
+| O quê | Por que não está no git | Como recriar |
+|---|---|---|
+| `.env` | Contém segredos | `cp .env.example .env` e preencher |
+| `dev.db` | Banco local, dado de trabalho | `npx prisma migrate deploy` + `npm run db:seed` |
+| `src/generated/` | Gerado pelo Prisma a partir do schema | `npx prisma generate` |
+| `node_modules/` | Dependências | `npm install` |
+| `armazenamento/` | Anexos; são documentos, não código | Criado sozinho no primeiro anexo |
+
+**A chave da Anthropic não está em lugar nenhum do repositório, e é assim que tem de ser.** Na máquina nova ela precisa ser colada de novo em `ANTHROPIC_API_KEY`, dentro do `.env`.
+
+---
+
 ## Preparar o ambiente
+
+Testado num clone limpo em 28/08/2026 — os passos abaixo levam de zero a 229 testes verdes.
 
 ```bash
 npm install
 cp .env.example .env
 ```
 
-Edite o `.env` e gere um segredo de sessão (mínimo 16 caracteres):
+Edite o `.env`. Dois campos precisam de atenção:
+
+- **`SESSAO_SECRET`** — obrigatório, mínimo 16 caracteres. Gere com:
+  ```bash
+  node -e "console.log(crypto.randomUUID())"
+  ```
+- **`ANTHROPIC_API_KEY`** — só se for usar o modelo real. Com `IA_ADAPTER="mock"` (o padrão) o sistema roda inteiro sem ela.
+
+Os outros vêm prontos do `.env.example`. `PROXIES_CONFIAVEIS="0"` é o correto para rede local; só muda ao publicar atrás de nginx ou balanceador — e aí confira o resultado em `/api/diagnostico/origem`, que existe justamente para isso.
+
+Depois:
 
 ```bash
-node -e "console.log(crypto.randomUUID())"
-```
-
-Cole o valor em `SESSAO_SECRET`. Depois:
-
-```bash
-npx prisma migrate deploy
-npx prisma generate
-npm run db:seed
-npm run verificar    # typecheck + 229 testes
-npm run dev          # http://localhost:3000
+npx prisma migrate deploy   # cria o banco e aplica as 6 migrações
+npx prisma generate         # gera o cliente Prisma em src/generated/
+npm run db:seed             # cadastro sintético + senhas provisórias
+npm run verificar           # typecheck + 229 testes
+npm run dev                 # http://localhost:3000
 ```
 
 **O `db:seed` imprime uma senha provisória por pessoa, uma única vez.** Elas não ficam gravadas em lugar nenhum — copie as do terminal. Rodar o seed de novo não mexe em quem já trocou a senha.
 
 Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela. O sistema exige a troca antes de liberar qualquer tela. Depois, em Distribuição: *Buscar e-mails* → marcar plantão → *Calcular prévia* → *Confirmar*.
 
-`npm run demo` roda o fluxo inteiro pelo terminal, sem tela.
+`npm run demo` roda o fluxo inteiro pelo terminal, sem tela — é a forma mais rápida de conferir que a máquina nova está inteira.
+
+### Uma surpresa conhecida
+
+Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.md`**, que é o arquivo de instruções do projeto. Ele reaparece a cada execução. A decisão de aceitar ou desligar essa geração ainda é sua — até lá, é esperado ver esse arquivo modificado sem você ter mexido nele.
 
 ---
 
@@ -232,25 +272,44 @@ Vale notar que o PR **#5 sobe o gitleaks-action de v2 para v3**. A permissão `p
 
 ## Próximo passo sugerido
 
-Na ordem em que eu retomaria:
+**Nada de código está bloqueando.** O que falta para o sistema sair de "roda com dado sintético" e virar "roda com dado de associado" são decisões e duas ações, todas do dono. Na ordem em que eu retomaria:
 
-1. **Rodar o adapter Anthropic contra a API real.** Com a chave no `.env`: `IA_ADAPTER=anthropic npm run ia:experimentar`. É a **única** parte do sistema que nunca foi exercitada de verdade — o resto tem teste ou foi conferido na tela. Compare a saída com a do mock, especialmente no caso de injeção.
-2. ~~**Taxa de acerto da IA** (`H-D3`)~~ — **feito em 27/08/2026.** A seção *Acerto da IA* no Painel responde o critério nº 5. Com o adapter real rodando, é o primeiro lugar para olhar: ela diz se a confiança do modelo separa acerto de erro, e portanto se faz sentido mexer no limiar.
-3. **Camada de agregados de métrica** (`H-D18`) — **reclassificado**: nenhuma métrica lê linha expurgável, então isto não bloqueia mais a política de retenção. Continua valendo por recorte histórico barato e por segurança contra uma retenção futura mais ampla.
-4. ~~**Cadastro de colaborador pela tela** (`H-D17`)~~ — **feito em 27/08/2026.** Cadastro e habilitação estão na tela de Acesso.
-5. Demais itens de `DECISOES.md § H.2` (H-D2 a H-D19). O gatilho que resta: **H-D19** (bytes de anexo sem criptografia em repouso) é obrigatório antes de documento real de associado entrar.
+### Primeiro — a única parte nunca provada
+
+1. **Rodar o adapter Anthropic contra a API real.** Com a chave em `ANTHROPIC_API_KEY` no `.env`:
+   ```bash
+   IA_ADAPTER=anthropic npm run ia:experimentar
+   ```
+   Ele mostra quatro casos — comum, desdobramento em N itens, campo faltando e tentativa de injeção — e não toca no banco. Compare com a saída do mock, principalmente no caso de injeção. É a **única** parte do sistema que nunca trocou uma palavra com o modelo; tudo mais tem teste ou foi conferido na tela.
+
+2. **Depois de rodar, olhar a seção *Acerto da IA* no Painel.** Ela responde o critério de aceitação nº 5 e diz se a confiança que o modelo reporta separa acerto de erro. Contra o mock as duas médias saem coladas (0,91 e 0,90) e a tela avisa. Com o modelo real esse número muda — e é ele que autoriza, ou proíbe, afrouxar o limiar de confiança.
+
+### Depois — o que tem gatilho real
+
+3. **Resolver os 5 PRs do Dependabot.** Três têm prazo: **16 de setembro**, quando o Node 20 sai dos runners do GitHub. Ordem: mesclar o PR #11 → `@dependabot rebase` nos demais → #5, #2, #1. Detalhe na seção *Situação do CI e das dependências*.
+
+4. **`H-D19` — cifrar os bytes de anexo em repouso.** Obrigatório antes de documento real de associado entrar. Depende da aprovação formal da associação, que ainda não veio.
+
+### Depois disso, por valor decrescente
+
+5. **`H-D18`** — agregados de métrica materializados. Reclassificado: nenhuma métrica lê linha expurgável, então **não bloqueia mais a política de retenção**. Continua valendo por recorte histórico barato.
+
+6. **`H-D8`** — as consultas N+1 do painel e da distribuição. Irrelevantes com 4-7 pessoas em SQLite local (medido: ~29 consultas por carregamento do painel, ~14 por categoria na distribuição). Viram problema de verdade na migração para PostgreSQL, e pior por acontecerem dentro da transação que segura a trava do dia.
+
+7. **Demais itens de `DECISOES.md § H.2`.** Treze abertos, nenhum com prazo, nenhum travando uso.
 
 ---
 
-## Três decisões que dependem do dono do negócio
+## Quatro decisões que dependem do dono do negócio
 
 Estão registradas em `DECISOES.md § H.4`, sem resposta inventada:
 
 1. **Dono único** — quando uma categoria tem dono fixo (o caso `E-MAIL LIGA`), a intenção é *sempre a mesma pessoa*, ou apenas que o lote não seja fragmentado no mesmo dia? Hoje o código entrega 100% a quem estiver mais credor, o que é rodízio, não dono fixo.
 2. **Etapa 6 da operação** — depois que o sistema distribui, o colaborador trabalha pela tela ou continua pela pasta de e-mail dele? Se for pela pasta, o `IngestaoPort` precisa deixar de ser somente-leitura.
 3. **Itens mais antigos** — devem ir para quem está mais credor, ou ser espalhados? Tem consequência de prazo.
+4. **Quem vê a caixa de entrada inteira?** *(levantada na auditoria de 28/08/2026)* Hoje `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails. O `RF-23` diz que colaborador vê *os seus*. **Não foi alterado de propósito:** a equipe já trabalha de uma caixa compartilhada, então restringir mudaria a operação em vez de corrigir defeito.
 
-> A quarta pergunta — **"período" do desempate** — foi respondida em 27/08/2026: janela deslizante de 30 dias, já implementada.
+> Uma quinta pergunta — **"período" do desempate** — foi respondida em 27/08/2026: janela deslizante de 30 dias, já implementada.
 
 ---
 
@@ -293,6 +352,10 @@ src/
 | mudar como o trabalho é repartido | `src/core/distribuicao/motor.ts` (puro) e `ordenacao.ts` |
 | mudar o que a IA extrai | `src/adapters/ia-anthropic.ts` (prompt) e `src/core/esquemas.ts` (contrato) |
 | mudar a janela do desempate | `DIAS_DA_JANELA` em `src/servicos/distribuicao.ts` |
+| mudar as colunas do painel | `porCategoria` em `src/servicos/painel.ts` — mantenha `conferirPendencia` batendo |
+| mudar o critério de acerto da IA | `src/core/qualidade-ia.ts` (puro) — o serviço só lê o banco |
+| mexer em cadastro de pessoa ou habilitação | `src/servicos/colaboradores.ts` e a tela `/acesso` |
+| ajustar confiança em proxy | `PROXIES_CONFIAVEIS` no `.env`; confira em `/api/diagnostico/origem` |
 | implementar retenção | apagar `EmailConteudo` e bytes; **nunca** `Item`, `Atribuicao`, `SaldoCarga`, `LogAuditoria` |
 | trocar disco por nuvem | novo adapter de `ArmazenamentoPort` + `criarArmazenamentoPort()` |
 
@@ -309,6 +372,8 @@ src/
 | `npm run db:seed` | Cadastro base sintético + senhas provisórias |
 | `npm run db:limpar` | Apaga dados transacionais, preserva cadastro |
 | `npm run db:studio` | Inspeciona o banco |
+| `npx prisma migrate deploy` | Aplica as migrações num banco novo |
+| `npx prisma generate` | Regenera o cliente Prisma em `src/generated/` |
 
 Dados são 100% sintéticos. Nenhum nome, CPF ou e-mail real entra no repositório.
 
@@ -321,3 +386,7 @@ Dados são 100% sintéticos. Nenhum nome, CPF ou e-mail real entra no repositór
 - **`AdapterIndisponivelError`:** `IA_ADAPTER` ou `INGESTAO_ADAPTER` aponta para um adapter não implementado. É proposital — o sistema recusa subir em vez de cair no mock em silêncio.
 - **`SESSAO_SECRET ausente ou curto demais`:** gere um com `node -e "console.log(crypto.randomUUID())"` e cole no `.env`.
 - **Login recusado com a senha certa:** confira se a conta não está desativada ou travada por tentativas. A mensagem é genérica de propósito — ela não revela qual dos casos é. Use a tela `/acesso` como gestor.
+- **`Cannot find module ... src/generated/prisma`:** o cliente do Prisma não é versionado. Rode `npx prisma generate`.
+- **O `CLAUDE.md` aparece modificado sem você ter mexido:** é o `next dev` escrevendo um bloco sozinho a cada execução. Esperado até a decisão de aceitar ou desligar.
+- **A `main` parece desatualizada:** ela está mesmo. O trabalho vive em `feat/fundacao-dominio` até o PR #11 ser mesclado.
+- **Testes lentos ou estourando tempo:** a simulação de 30 dias roda contra SQLite de verdade. `testTimeout` está em 90s para dar margem em máquina mais lenta; o arquivo pesado leva ~50s.

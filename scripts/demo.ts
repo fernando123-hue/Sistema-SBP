@@ -184,7 +184,11 @@ async function principal(): Promise<void> {
     )
   }
 
-  linha('\npessoa                        atribuidos  concluidos  pendentes   credito')
+  // "cred.global", nao "credito": o criterio de aceitacao no 4 (|credito| < 1)
+  // e por colaborador X CATEGORIA (`SaldoCarga.creditoAcumulado`). O numero
+  // desta coluna e o razao GLOBAL, que soma as categorias e serve de desempate
+  // secundario (decisao A2) -- passar de 1 aqui e esperado, nao violacao.
+  linha('\npessoa                        atribuidos  concluidos  pendentes  cred.global')
   for (const pessoa of await porPessoa(banco)) {
     if (pessoa.atribuidos === 0) continue
     linha(
