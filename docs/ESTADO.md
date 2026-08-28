@@ -8,12 +8,26 @@
 
 ## Continuando em outra máquina
 
-Tudo está na **`main`**. Clone e siga — não há branch para trocar, nem passo escondido.
+**Confira primeiro se o [PR #12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) já foi mesclado.** Ele carrega o trabalho de 28/08 — registro manual de item e a fundação do cérebro operacional — e enquanto estiver aberto, a `main` está três commits atrás.
+
+**Se o #12 já estiver mesclado**, a `main` basta:
 
 ```bash
 git clone https://github.com/fernando123-hue/Sistema-SBP.git
 cd Sistema-SBP
 ```
+
+**Se ainda estiver aberto**, clone a branch dele:
+
+```bash
+git clone --branch claude/sistema-sbp-continuacao-czey81 \
+  https://github.com/fernando123-hue/Sistema-SBP.git
+cd Sistema-SBP
+```
+
+Nos dois casos, o resto dos passos é idêntico e não há etapa escondida.
+
+> **Por que este aviso existe.** Até 28/08 esta seção dizia "tudo está na `main`", e isso deixou de ser verdade no instante em que o trabalho foi para uma branch. Quem seguisse a instrução ao pé da letra clonaria a `main` e perderia o dia inteiro sem que nada acusasse — a versão de documentação do defeito que este sistema existe para eliminar. Quando o #12 entrar na `main`, apague este aviso e volte ao texto simples.
 
 Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aberto e qual é o próximo passo.
 
@@ -33,7 +47,7 @@ Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aber
 
 ## Preparar o ambiente
 
-Testado num clone limpo da `main` em 28/08/2026 — os passos abaixo levam de zero a 271 testes verdes, sem nenhuma etapa extra.
+Testado num clone limpo em 28/08/2026 — clone da branch do PR #12, `npm install`, `.env`, migrações, seed e `npm run verificar` levam de zero a **271 testes verdes**, sem nenhuma etapa extra. O caminho abaixo é exatamente o que foi executado.
 
 ```bash
 npm install
