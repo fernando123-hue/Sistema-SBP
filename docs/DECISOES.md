@@ -270,7 +270,7 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 | H-D2 | `RegraDistribuicao` modelado e nunca lido — `RF-32` (configuração sem deploy) não existe | Os defaults estão corretos; o caminho de escrita é trabalho próprio |
 | ~~H-D3~~ | ~~Taxa de acerto da IA não é calculada em lugar nenhum~~ | **RESOLVIDO em 27/08/2026** — seção *Taxa de acerto da IA* abaixo. Critério nº 5 passa a ser verificável |
 | H-D4 | `INADIMP`/`ISENTO` sem caminho de criação manual (`POST /api/itens`) | Categorias semeadas mas inalcançáveis hoje |
-| H-D5 | Painel sem recorte de data (`?de=&ate=` da Spec) e com definição própria de "pendente" | Vai divergir da planilha na rodada paralela |
+| ~~H-D5~~ | ~~Painel sem recorte de data e com definição própria de "pendente"~~ | **RESOLVIDO em 28/08/2026** — `?de=&ate=`, colunas mapeadas uma a uma para as da planilha, e o carry-over deixa de ser digitado. Seção *Painel com recorte de período* abaixo |
 | H-D6 | Escopo do livro-razão global antes de a frente `TÍTULOS` entrar | Acrescentar escopo a um razão já acumulado exige recomputar histórico |
 | H-D7 | Contratos de API duplicados à mão nas telas — já divergiram (`emAndamento` sumiu; `Date` vs. string) | O legado vai consumir sem esquema contra o qual programar |
 | H-D8 | N+1 em `carregarElegiveis` e `painel.porPessoa` | Irrelevante com 4–7 pessoas; vira problema com equipe grande ou PostgreSQL remoto |
@@ -804,3 +804,71 @@ O comentário dizia que o teto afrouxado "contém um laço automatizado" e prote
 O motivo é que cada tentativa custa uma derivação `scrypt`, então a vazão da rota satura antes do teto — o servidor já está no limite de CPU quando o contador ainda está longe. O teto é uma trava contra volume patológico, **não** a proteção de CPU que seria fácil supor. Quem limita a vazão é o custo do `scrypt`; quem contém força bruta é a trava por conta.
 
 Comentário corrigido para dizer o que foi medido. Afirmação confortável em comentário é a mesma doença de log que mente: alguém confia nela justamente quando importa.
+
+---
+
+## Painel com recorte de período (`H-D5`) — 28/08/2026
+
+O painel contava desde a fundação do sistema e chamava o resultado de "pendente". A planilha tem uma aba por mês. Na rodada de comparação lado a lado — que é como este sistema se prova — os dois números nunca iriam bater, e a conclusão natural de quem olha é que o substituto está errado.
+
+### O mapeamento, que é o ponto
+
+Cada coluna do painel passou a ter uma correspondente na planilha, e a tela diz isso no rodapé:
+
+| Painel | Planilha | O que é |
+|---|---|---|
+| `saldoInicial` | `Saldo` | Entrou antes e ainda estava aberto na virada |
+| `entrouNoPeriodo` | `Mov. do Dia` + `Mov. Extra` | Chegou dentro do período |
+| `aberto` | `ABERTO` | `Saldo + entrou` — tudo que esteve na mesa |
+| `concluidoNoPeriodo` | `Realizado` | Fechou dentro do período |
+| `pendente` | `Pend.` | Ainda aberto no fim |
+
+Sem esse mapeamento a conferência vira discussão sobre o que cada palavra significa, e a rodada paralela não conclui nada.
+
+### O carry-over deixa de ser digitado
+
+A planilha faz `Saldo(d) = Pend.(d−1)` **à mão**, sem fórmula — e por isso quebra em ~10% dos dias (`CAD-MAIO`: 26 de 30; `CAD-JULHO`: 27 de 30).
+
+Aqui `saldoInicial` é consulta. Verificado com histórico atravessando a virada do mês:
+
+```
+julho   → saldo 0 · entrou 3 · aberto 3 · concluído 1 · pendente 2
+agosto  → saldo 2 · entrou 22 · aberto 24 · concluído 1 · pendente 23
+            ↑ exatamente a pendência de julho, sem ninguém digitar
+```
+
+### Uma divergência deliberada, que vai aparecer na comparação
+
+A planilha calcula `Pend. = IF((Aberto − Realizado) < 0, "0", Aberto − Realizado)` — ela **grampeia** o resultado em zero. Quem conclui mais do que recebeu, limpando backlog antigo, tem o excedente descartado. É o defeito registrado em `RN-09`.
+
+Aqui não existe grampo, e nem precisa: `concluidoNoPeriodo` só conta item que estava em `aberto`, então a subtração não tem como ficar negativa. Há teste que fecha cinco itens velhos num mês sem entrada nenhuma — na planilha é o dia em que o excedente evapora; aqui a conta fecha em zero sozinha.
+
+**Quando os dois números divergirem num dia de limpeza de backlog, o certo é o do sistema.** Está registrado aqui para não virar discussão na hora.
+
+### Cancelamento ganhou carimbo próprio
+
+`Item.canceladoEm` é coluna nova. `atualizadoEm` não servia: ele muda a cada escrita, então não responde "estava cancelado no dia 12?".
+
+Sem o carimbo, um cancelamento feito hoje mudaria **retroativamente** a pendência do mês passado — o painel mudaria de número sozinho entre duas consultas, e a comparação com a planilha deixaria de significar coisa alguma. Há teste que consulta junho, cancela um item em julho, consulta junho de novo e exige o mesmo número.
+
+Conclusão não precisou de coluna equivalente: já vive em `Execucao.concluidoEm`, e **item concluído nunca reabre** — `devolver` recusa item concluído e `concluir` sai cedo se já estiver. É essa garantia que torna "estava fechado no dia X" uma pergunta com resposta exata, sem precisar de tabela de eventos de status.
+
+O backfill dos itens já cancelados foi para migração separada (a primeira já tinha sido aplicada, e editar o arquivo depois quebraria o checksum). Ele usa `atualizadoEm` e é explicitamente uma **aproximação** — o carimbo exato daqueles cancelamentos antigos só existe em `LogAuditoria`. Sem backfill eles ficariam com `canceladoEm` nulo e o painel os contaria como abertos para sempre: pendência que nunca fecha, pior que data aproximada.
+
+### O invariante: duas contas, mesmo número
+
+`porCategoria` chega em `pendente` **subtraindo**. `conferirPendencia` conta **diretamente** quantos itens estavam abertos no fim do período. Os dois têm de bater sempre.
+
+É o mesmo espírito de `conferirConservacao`: um número que só existe de uma forma não tem como se provar errado. Divergência aqui é defeito do painel, nunca erro de operação — e é justamente por não fechar que a planilha precisa do grampo em zero.
+
+### Recorte na rota
+
+`GET /api/painel?de=&ate=`, como a Spec pedia. Sem parâmetros, o mês corrente — a unidade da planilha, e portanto a unidade da comparação.
+
+Data torta cai no padrão (pedir o painel com parâmetro errado é erro de link, não de sistema), mas `de` depois de `ate` é **invertido em vez de aceito**: período de duração negativa produziria saldo inicial maior que o aberto, e a tela mostraria pendência negativa — o defeito `E.9` de novo.
+
+### Verificado na tela
+
+Período padrão é o mês corrente; trocar as datas para julho muda `Ligante` de `2 · 22 · 24 · 1 · 23` para `0 · 3 · 3 · 1 · 2`; a pendência de julho aparece como o saldo de agosto. Sem rolagem horizontal a 375px.
+
+9 testes novos.

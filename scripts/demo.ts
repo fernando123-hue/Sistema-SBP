@@ -172,14 +172,15 @@ async function principal(): Promise<void> {
   }
 
   titulo('7. PAINEL - nenhum numero digitavel')
-  linha('categoria         grupo       receb  revisao  aprov  distrib  concl   pend')
+  // As colunas espelham a planilha, para a comparacao lado a lado.
+  linha('categoria         grupo        saldo  entrou  aberto   concl   canc    pend')
   for (const item of await porCategoria(banco)) {
-    if (item.recebido === 0) continue
+    if (item.aberto === 0) continue
     linha(
       `${item.categoriaCodigo.padEnd(17)} ${item.grupo.padEnd(10)} ` +
-        `${String(item.recebido).padStart(6)} ${String(item.aguardandoRevisao).padStart(8)} ` +
-        `${String(item.aprovado).padStart(6)} ${String(item.distribuido).padStart(8)} ` +
-        `${String(item.concluido).padStart(6)} ${String(item.pendente).padStart(6)}`,
+        `${String(item.saldoInicial).padStart(6)} ${String(item.entrouNoPeriodo).padStart(7)} ` +
+        `${String(item.aberto).padStart(7)} ${String(item.concluidoNoPeriodo).padStart(7)} ` +
+        `${String(item.canceladoNoPeriodo).padStart(6)} ${String(item.pendente).padStart(7)}`,
     )
   }
 

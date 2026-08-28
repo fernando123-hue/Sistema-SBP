@@ -2,7 +2,7 @@
 
 > **Para continuar em outra máquina:** clone o repositório, siga o *Preparar o ambiente* abaixo e leia a seção *Onde parei*. Este arquivo é o ponto de entrada; ele diz o que já está pronto, o que ficou aberto e qual é o próximo passo.
 
-Última atualização: **27/08/2026** — origem da requisição e proxy confiável (`H-D16`), precedido pelo cadastro de pessoa, pela taxa de acerto da IA e pela revisão do adapter e da ingestão.
+Última atualização: **28/08/2026** — painel com recorte de período (`H-D5`), precedido pelo proxy confiável, pelo cadastro de pessoa e pela taxa de acerto da IA.
 
 ---
 
@@ -25,7 +25,7 @@ Cole o valor em `SESSAO_SECRET`. Depois:
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
-npm run verificar    # typecheck + 215 testes
+npm run verificar    # typecheck + 224 testes
 npm run dev          # http://localhost:3000
 ```
 
@@ -42,7 +42,7 @@ Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela.
 | Camada | Estado |
 |---|---|
 | Motor de distribuição | Função pura, determinística, versionada. Conservação garantida por transação |
-| Modelo de dados | 20 modelos, constraints reais, 4 migrações |
+| Modelo de dados | 20 modelos, constraints reais, 6 migrações |
 | Retenção | Conteúdo do e-mail e bytes de anexo em linhas próprias, expurgáveis sem tocar no histórico operacional |
 | Ingestão | Idempotente por `message-id`, IA atrás de port, tipo real do anexo conferido pelos bytes |
 | Armazenamento | Arquivos fora do banco, atrás de port. Disco local hoje, nuvem trocando o adapter |
@@ -50,19 +50,38 @@ Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela.
 | Revisão humana | Fila de exceções com sugestão da IA e campos editáveis |
 | Distribuição | Transacional, com trava por dia, crédito histórico, auditoria completa |
 | Fila individual | Concluir, transferir, devolver ao pool |
-| Painel | Agregação pura, zero campo digitável |
+| Painel | Agregação pura, zero campo digitável. Recorte por período, colunas mapeadas uma a uma para as da planilha |
 | Qualidade da IA | Taxa de aceitação, cobertura e calibração da confiança. Critério de aceitação nº 5 passa a ser verificável |
 | Cadastro de equipe | Gestor cadastra pessoa e define o que ela pode receber, pela tela. Quem fica sem categoria aparece em destaque |
 | API REST | 23 rotas, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **215 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
+| Testes | **224 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
 
+**Entrou o recorte de período no painel** (`H-D5`). Detalhe em `DECISOES.md`, seção *Painel com recorte de período*.
+
+O painel contava desde a fundação e chamava isso de "pendente". A planilha tem uma aba por mês. Na rodada de comparação lado a lado — que é como este sistema se prova — os dois nunca bateriam, e a conclusão natural de quem olha seria que o substituto está errado.
+
+**Cada coluna agora tem correspondente na planilha**, e a tela diz isso no rodapé: `Saldo` · `Entrou` (Mov. do Dia) · `Aberto` (ABERTO) · `Concluído` (Realizado) · `Pendente` (Pend.). Sem esse mapeamento a conferência vira discussão sobre o que cada palavra significa.
+
+**O carry-over deixou de ser digitado.** A planilha faz `Saldo(d) = Pend.(d−1)` à mão, sem fórmula, e por isso erra em ~10% dos dias. Verificado com histórico atravessando a virada do mês: julho fechou com pendência 2, e agosto abriu com saldo 2 — sem ninguém digitar.
+
+**Uma divergência é deliberada e vai aparecer.** A planilha grampeia `Pend.` em zero, e quem limpa backlog antigo tem o excedente descartado (`RN-09`). Aqui não há grampo e nem precisa: só entra em "concluído" o que estava em "aberto". Quando os números divergirem num dia de limpeza de backlog, **o certo é o do sistema** — registrado para não virar discussão na hora.
+
+`Item.canceladoEm` é coluna nova. Sem ela, cancelar hoje mudaria retroativamente a pendência do mês passado, e o painel mudaria de número sozinho entre duas consultas. Conclusão não precisou de equivalente: já vive em `Execucao.concluidoEm`, e item concluído nunca reabre.
+
+E o painel ganhou o invariante que faltava: `pendente` sai de uma subtração, `conferirPendencia` conta direto, e os dois têm de bater. Mesmo espírito de `conferirConservacao` — número que só existe de uma forma não tem como se provar errado.
+
+Testes: 215 → **224**.
+
+---
+
+## O que veio antes
 **Entrou o tratamento de proxy confiável** (`H-D16`), da lista de *obrigatório antes de expor fora da rede local*. Detalhe em `DECISOES.md`, seção *Origem da requisição e proxy confiável*.
 
 **O item saiu na frente do `H-D18` porque a justificativa do `H-D18` não se sustenta mais.** Ele existia para garantir que métrica sobrevivesse a um expurgo — mas depois da separação entre conteúdo e histórico, o que a retenção pode apagar é `EmailConteudo` e bytes de anexo, e nenhuma métrica lê essas linhas. Painel, conservação e acerto da IA saem todos de `Item`, `Atribuicao`, `SaldoCarga` e `Revisao`, que o invariante 11 proíbe apagar. `H-D18` continua valendo por recorte histórico barato, mas deixou de bloquear a retenção. Reclassificado.
@@ -85,9 +104,6 @@ A revisão também desmentiu uma afirmação minha: eu tinha escrito que o teto 
 
 Testes: 204 → **215**.
 
----
-
-## O que veio antes
 **Entrou o cadastro de pessoa pela tela** (`H-D17`), junto com a habilitação. Detalhe em `DECISOES.md`, seção *Cadastro de pessoa e habilitação*.
 
 Até aqui só o seed criava colaborador — montar a equipe exigia terminal e banco, o que na prática significa que o gestor não montava equipe nenhuma.
@@ -220,7 +236,7 @@ Na ordem em que eu retomaria:
 2. ~~**Taxa de acerto da IA** (`H-D3`)~~ — **feito em 27/08/2026.** A seção *Acerto da IA* no Painel responde o critério nº 5. Com o adapter real rodando, é o primeiro lugar para olhar: ela diz se a confiança do modelo separa acerto de erro, e portanto se faz sentido mexer no limiar.
 3. **Camada de agregados de métrica** (`H-D18`) — **reclassificado**: nenhuma métrica lê linha expurgável, então isto não bloqueia mais a política de retenção. Continua valendo por recorte histórico barato e por segurança contra uma retenção futura mais ampla.
 4. ~~**Cadastro de colaborador pela tela** (`H-D17`)~~ — **feito em 27/08/2026.** Cadastro e habilitação estão na tela de Acesso.
-5. Demais itens de `DECISOES.md § H.2` (H-D2 a H-D19). O gatilho que resta: **H-D19** (bytes de anexo sem criptografia em repouso) é obrigatório antes de documento real de associado entrar. **H-D5** (painel sem recorte de data, com definição própria de "pendente") tende a divergir da planilha na rodada paralela — vale antes da comparação lado a lado.
+5. Demais itens de `DECISOES.md § H.2` (H-D2 a H-D19). O gatilho que resta: **H-D19** (bytes de anexo sem criptografia em repouso) é obrigatório antes de documento real de associado entrar.
 
 ---
 
@@ -284,7 +300,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 215 testes |
+| `npm run verificar` | Typecheck + 224 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

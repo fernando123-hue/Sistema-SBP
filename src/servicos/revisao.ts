@@ -140,6 +140,11 @@ export async function resolver(
         // Aprovado por humano entra na próxima rodada. Recusado sai da fila
         // sem sumir do banco — cancelado é estado, não exclusão.
         status: dados.aprovar ? 'aprovado' : 'cancelado',
+        // Carimba QUANDO saiu. Sem isto, um cancelamento feito hoje mudaria
+        // retroativamente a pendência do mês passado no painel: o número
+        // mudaria sozinho entre duas consultas, e a comparação com a planilha
+        // deixaria de significar coisa alguma.
+        canceladoEm: dados.aprovar ? null : new Date(),
       },
     })
 

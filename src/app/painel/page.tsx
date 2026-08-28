@@ -17,12 +17,16 @@ interface LinhaPainel {
   categoriaCodigo: string
   rotulo: string
   grupo: string
-  recebido: number
+  saldoInicial: number
+  entrouNoPeriodo: number
+  aberto: number
+  concluidoNoPeriodo: number
+  canceladoNoPeriodo: number
+  pendente: number
   aguardandoRevisao: number
   aprovado: number
   distribuido: number
-  concluido: number
-  pendente: number
+  emAndamento: number
 }
 
 interface LinhaPorPessoa {
@@ -34,7 +38,13 @@ interface LinhaPorPessoa {
   creditoGlobal: number
 }
 
+interface Periodo {
+  de: string
+  ate: string
+}
+
 interface Painel {
+  periodo: Periodo
   categorias: LinhaPainel[]
   pessoas: LinhaPorPessoa[]
   conservacao: { rodadas: number; divergentes: { rodadaId: string }[] }
@@ -108,10 +118,14 @@ export default function PainelPagina() {
   const [dados, setDados] = useState<Painel | null>(null)
   const [qualidade, setQualidade] = useState<Qualidade | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  /** Vazio = deixa o servidor escolher o mês corrente, a unidade da planilha. */
+  const [de, setDe] = useState('')
+  const [ate, setAte] = useState('')
 
   useEffect(() => {
+    const recorte = de && ate ? `?de=${de}&ate=${ate}` : ''
     Promise.all([
-      api.buscar<Painel>('/painel'),
+      api.buscar<Painel>(`/painel${recorte}`),
       // Janela padrão, NUNCA `dias=tudo`. Esta é a tela mais visitada do
       // sistema; pedir a série inteira faria a consulta crescer com o tempo de
       // vida da instalação. `conferirConservacao` já documenta a mesma regra —
@@ -123,20 +137,21 @@ export default function PainelPagina() {
         setQualidade(medida)
       })
       .catch((causa) => setErro(mensagemDoErro(causa)))
-  }, [])
+  }, [de, ate])
 
   if (erro) return <Aviso>{erro}</Aviso>
   if (!dados) return <Carregando />
 
-  const comDados = dados.categorias.filter((linha) => linha.recebido > 0)
+  const comDados = dados.categorias.filter((linha) => linha.aberto > 0)
   const total = comDados.reduce(
     (soma, linha) => ({
-      recebido: soma.recebido + linha.recebido,
-      concluido: soma.concluido + linha.concluido,
+      aberto: soma.aberto + linha.aberto,
+      entrou: soma.entrou + linha.entrouNoPeriodo,
+      concluido: soma.concluido + linha.concluidoNoPeriodo,
       pendente: soma.pendente + linha.pendente,
       revisao: soma.revisao + linha.aguardandoRevisao,
     }),
-    { recebido: 0, concluido: 0, pendente: 0, revisao: 0 },
+    { aberto: 0, entrou: 0, concluido: 0, pendente: 0, revisao: 0 },
   )
 
   const conservacaoOk = dados.conservacao.divergentes.length === 0
@@ -146,17 +161,52 @@ export default function PainelPagina() {
       <CabecalhoDeSecao
         titulo="Painel"
         descricao="Todo número desta tela é calculado. Não existe campo digitável."
+        acao={
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-tinta-suave">Período</span>
+            <input
+              type="date"
+              value={de || dados.periodo.de}
+              onChange={(evento) => {
+                setDe(evento.target.value)
+                if (!ate) setAte(dados.periodo.ate)
+              }}
+              className="numerico rounded-md border border-borda-forte bg-papel px-2.5 py-2 text-sm"
+            />
+            <span className="text-tinta-fraca">até</span>
+            <input
+              type="date"
+              value={ate || dados.periodo.ate}
+              onChange={(evento) => {
+                setAte(evento.target.value)
+                if (!de) setDe(dados.periodo.de)
+              }}
+              className="numerico rounded-md border border-borda-forte bg-papel px-2.5 py-2 text-sm"
+            />
+          </div>
+        }
       />
 
+      {/*
+        Os rótulos citam a coluna equivalente da planilha de propósito: na
+        rodada de comparação, alguém vai pôr as duas lado a lado, e sem esse
+        mapeamento a conferência vira discussão sobre o que cada palavra
+        significa.
+      */}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <Metrica rotulo="Recebido" valor={total.recebido} detalhe="itens no período" />
-        <Metrica rotulo="Concluído" valor={total.concluido} tom="ok" detalhe="com carimbo" />
-        <Metrica rotulo="Pendente" valor={total.pendente} detalhe="ainda em aberto" />
+        <Metrica rotulo="Aberto" valor={total.aberto} detalhe="saldo + entrou no período" />
+        <Metrica
+          rotulo="Concluído"
+          valor={total.concluido}
+          tom="ok"
+          detalhe="fechado dentro do período"
+        />
+        <Metrica rotulo="Pendente" valor={total.pendente} detalhe="aberto no fim do período" />
         <Metrica
           rotulo="Em revisão"
           valor={total.revisao}
           tom={total.revisao > 0 ? 'atencao' : 'neutro'}
-          detalhe="aguardando decisão humana"
+          detalhe="aguardando decisão humana · estado atual"
         />
       </div>
 
@@ -197,10 +247,38 @@ export default function PainelPagina() {
                 ),
               },
               {
-                chave: 'recebido',
-                cabecalho: 'Recebido',
+                chave: 'saldo',
+                cabecalho: 'Saldo',
                 alinhamento: 'direita',
-                conteudo: (linha) => <span className="numerico">{linha.recebido}</span>,
+                conteudo: (linha) => <span className="numerico">{linha.saldoInicial}</span>,
+              },
+              {
+                chave: 'entrou',
+                cabecalho: 'Entrou',
+                alinhamento: 'direita',
+                conteudo: (linha) => <span className="numerico">{linha.entrouNoPeriodo}</span>,
+              },
+              {
+                chave: 'aberto',
+                cabecalho: 'Aberto',
+                alinhamento: 'direita',
+                conteudo: (linha) => (
+                  <span className="numerico font-medium">{linha.aberto}</span>
+                ),
+              },
+              {
+                chave: 'concluido',
+                cabecalho: 'Concluído',
+                alinhamento: 'direita',
+                conteudo: (linha) => (
+                  <span className="numerico text-ok">{linha.concluidoNoPeriodo}</span>
+                ),
+              },
+              {
+                chave: 'pendente',
+                cabecalho: 'Pendente',
+                alinhamento: 'direita',
+                conteudo: (linha) => <span className="numerico">{linha.pendente}</span>,
               },
               {
                 chave: 'revisao',
@@ -212,27 +290,18 @@ export default function PainelPagina() {
                   </span>
                 ),
               },
-              {
-                chave: 'distribuido',
-                cabecalho: 'Distribuído',
-                alinhamento: 'direita',
-                conteudo: (linha) => <span className="numerico">{linha.distribuido}</span>,
-              },
-              {
-                chave: 'concluido',
-                cabecalho: 'Concluído',
-                alinhamento: 'direita',
-                conteudo: (linha) => <span className="numerico text-ok">{linha.concluido}</span>,
-              },
-              {
-                chave: 'pendente',
-                cabecalho: 'Pendente',
-                alinhamento: 'direita',
-                conteudo: (linha) => <span className="numerico">{linha.pendente}</span>,
-              },
             ]}
           />
         )}
+        <p className="mt-3 text-xs text-tinta-fraca">
+          <strong>Saldo</strong> atravessou a virada do período · <strong>Entrou</strong> chegou
+          dentro dele · <strong>Aberto</strong> = saldo + entrou · <strong>Concluído</strong>{' '}
+          fechou dentro do período · <strong>Pendente</strong> = aberto − concluído − cancelado.
+          São as colunas <em>Saldo</em>, <em>Mov. do Dia</em>, <em>ABERTO</em>,{' '}
+          <em>Realizado</em> e <em>Pend.</em> da planilha, na mesma ordem. A diferença: lá a
+          pendência é grampeada em zero e o excedente de quem limpa backlog antigo é descartado;
+          aqui a conta fecha sozinha.
+        </p>
       </section>
 
       {qualidade ? <QualidadeDaIa medida={qualidade} /> : null}

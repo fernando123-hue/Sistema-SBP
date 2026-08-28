@@ -1,0 +1,11 @@
+-- Itens ja cancelados antes de `canceladoEm` existir.
+--
+-- `atualizadoEm` e a melhor aproximacao disponivel para eles, e e explicitamente
+-- uma APROXIMACAO: aquela coluna muda a cada escrita. O carimbo exato desses
+-- cancelamentos antigos so existe em `LogAuditoria`, e reconstrui-lo aqui seria
+-- ler tabela de auditoria dentro de migracao.
+--
+-- Sem o backfill eles ficariam com `canceladoEm` nulo e o painel os contaria
+-- como ABERTOS para sempre: pendencia que nunca fecha, pior do que uma data
+-- aproximada. Itens cancelados a partir daqui recebem o carimbo exato.
+UPDATE "Item" SET "canceladoEm" = "atualizadoEm" WHERE "status" = 'cancelado' AND "canceladoEm" IS NULL;
