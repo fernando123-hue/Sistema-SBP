@@ -97,6 +97,23 @@ export const LIMITE_ITENS_POR_EMAIL = 500
  */
 export const LIMITE_ITENS_POR_DIVISAO_MANUAL = 20
 
+/**
+ * Teto de itens que um único registro manual pode criar de uma vez.
+ *
+ * A planilha lança `INADIMP.` como número — em `CAD-MAIO`, `Mov.Extra = 11`
+ * digitado direto na linha 35. Exigir onze requisições para registrar esses
+ * onze devolveria a operação à planilha na primeira semana, então o registro
+ * manual aceita quantidade. O teto existe pelo mesmo motivo dos outros: um
+ * `111` digitado no lugar de `11` precisa virar recusa visível, não cento e
+ * onze linhas no banco que alguém terá de cancelar uma a uma.
+ *
+ * Mais alto que `LIMITE_ITENS_POR_DIVISAO_MANUAL` porque aqui a quantidade é
+ * UM número, não N títulos digitados um a um — o esforço não cresce com o N,
+ * e o volume diário legítimo dessas categorias é maior que o de um
+ * desdobramento de e-mail.
+ */
+export const LIMITE_ITENS_POR_REGISTRO_MANUAL = 50
+
 export const TAMANHO_MAXIMO_CORPO = 200_000
 export const TAMANHO_MAXIMO_ANEXO_BYTES = 25 * 1024 * 1024
 
@@ -226,6 +243,51 @@ export const ResolucaoRevisaoSchema = z.object({
    */
   itensExtras: z.array(ItemDivididoSchema).max(LIMITE_ITENS_POR_DIVISAO_MANUAL).default([]),
 })
+
+// ─── Registro manual de item ─────────────────────────────────
+
+/**
+ * Item que nasce sem e-mail.
+ *
+ * `INADIMP.` e `ISENTO` estavam semeadas, marcadas como fora do rateio, e
+ * proibidas à IA (`CategoriaClassificavelSchema`) — sem que existisse nenhum
+ * caminho para criá-las. Duas linhas da planilha não tinham correspondente
+ * nenhum aqui dentro, e a rodada de comparação lado a lado nasceria incompleta
+ * por construção.
+ *
+ * `colaboradorId` é NULO para categoria do rateio e OBRIGATÓRIO para categoria
+ * fora dele. Não é simetria quebrada por descuido — é a consequência de quem
+ * decide o quê. Dentro do rateio, quem escolhe a pessoa é o motor, e aceitar um
+ * responsável aqui abriria uma porta lateral para escolher a dedo quem recebe o
+ * trabalho, que é exatamente a fragilidade que este sistema substitui. Fora do
+ * rateio, o motor nunca vai passar por perto: sem responsável, o item ficaria
+ * `aprovado` para sempre, engordando a pendência do painel sem que ninguém
+ * pudesse concluí-lo — `concluir` exige atribuição ativa.
+ *
+ * Não carrega quem registrou: isso vem do `Ator`.
+ */
+export const RegistroManualSchema = z.object({
+  categoriaCodigo: CategoriaCodigoSchema,
+  titulo: z.string().trim().min(1).max(300),
+  /** Um lançamento pode valer N itens. Cada um continua rastreável e individual. */
+  quantidade: z.number().int().min(1).max(LIMITE_ITENS_POR_REGISTRO_MANUAL).default(1),
+  colaboradorId: z.string().min(1).nullable().default(null),
+  /**
+   * Campo em branco vira NULO, não string vazia.
+   *
+   * `""` no `payload` do item significa "existe uma observação, e ela é vazia"
+   * — que não é o mesmo que "não há observação". Quem for ler o histórico
+   * depois teria de saber, de cor, que as duas coisas são a mesma aqui.
+   */
+  observacao: z
+    .string()
+    .trim()
+    .max(1000)
+    .nullable()
+    .default(null)
+    .transform((valor) => (valor === '' ? null : valor)),
+})
+export type RegistroManual = z.infer<typeof RegistroManualSchema>
 
 // ─── Credenciais ─────────────────────────────────────────────
 

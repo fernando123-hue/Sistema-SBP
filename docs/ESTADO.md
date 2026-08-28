@@ -1,8 +1,8 @@
 # Estado do projeto — retomada
 
-Última atualização: **28/08/2026** — auditoria com agentes especializados (segurança, falhas silenciosas, banco), precedida pelo painel com recorte de período e pelo proxy confiável.
+Última atualização: **28/08/2026** — registro manual de item (`H-D4`), precedido pela auditoria com agentes especializados e pelo painel com recorte de período.
 
-> **A auditoria achou a trava de conservação sendo engolida.** `planejarCategoria` capturava `ConservacaoVioladaError` junto com "ninguém de plantão", e a violação do único invariante que o projeto descreve como razão de existir virava um log de nível `aviso`. Corrigido, com teste que força a violação. Detalhe em `DECISOES.md`, seção *Auditoria com agentes especializados*.
+> **`INADIMP.` e `ISENTO` existiam no cadastro e eram inalcançáveis.** Semeadas, marcadas fora do rateio, proibidas à IA — e sem nenhuma rota que as criasse. Duas linhas da planilha sem correspondente aqui dentro, o que faria a rodada de comparação lado a lado nascer incompleta por construção. Agora há `POST /api/itens` e um formulário na Caixa de entrada. Detalhe em `DECISOES.md`, seção *Registro manual de item*.
 
 ---
 
@@ -33,7 +33,7 @@ Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aber
 
 ## Preparar o ambiente
 
-Testado num clone limpo da `main` em 28/08/2026 — os passos abaixo levam de zero a 229 testes verdes, sem nenhuma etapa extra.
+Testado num clone limpo da `main` em 28/08/2026 — os passos abaixo levam de zero a 248 testes verdes, sem nenhuma etapa extra.
 
 ```bash
 npm install
@@ -56,7 +56,7 @@ Depois:
 npx prisma migrate deploy   # cria o banco e aplica as 6 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 229 testes
+npm run verificar           # typecheck + 248 testes
 npm run dev                 # http://localhost:3000
 ```
 
@@ -85,18 +85,43 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Revisão humana | Fila de exceções com sugestão da IA e campos editáveis |
 | Distribuição | Transacional, com trava por dia, crédito histórico, auditoria completa |
 | Fila individual | Concluir, transferir, devolver ao pool |
+| Registro manual | O que não chega por e-mail entra pela Caixa: balcão, telefone, e as categorias de exceção `INADIMP.`/`ISENTO` |
 | Painel | Agregação pura, zero campo digitável. Recorte por período, colunas mapeadas uma a uma para as da planilha |
 | Qualidade da IA | Taxa de aceitação, cobertura e calibração da confiança. Critério de aceitação nº 5 passa a ser verificável |
 | Cadastro de equipe | Gestor cadastra pessoa e define o que ela pode receber, pela tela. Quem fica sem categoria aparece em destaque |
-| API REST | 23 rotas, envelope único, limite de taxa, papéis |
+| API REST | 23 caminhos, 28 operações, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **229 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
+| Testes | **248 passando** (motor, propriedade, segurança, sessão, autenticação, registro manual, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
+
+**Entrou o registro manual de item** (`H-D4`). Detalhe em `DECISOES.md`, seção *Registro manual de item*.
+
+`INADIMP.` e `ISENTO` estavam num beco sem saída: semeadas em `config.ts`, marcadas fora do rateio, proibidas à IA — e sem nenhuma rota que as criasse. Existiam no cadastro e eram inalcançáveis. Duas linhas da planilha (`CAD-MAIO`, 35–36) sem correspondente nenhum aqui dentro. Na rodada de comparação lado a lado, essas linhas apareceriam zeradas do lado do substituto, e não haveria explicação boa para dar.
+
+O sintoma estava escrito no próprio código, meses antes: `CategoriaForaDoRateioError` termina com *"Registre manualmente"*, apontando para um caminho que não existia.
+
+**A regra do responsável é assimétrica, e é isso que protege o motor.** Categoria fora do rateio **exige** quem atendeu; categoria do rateio **recusa**. Dentro do rateio quem escolhe a pessoa é o motor — aceitar um responsável ali abriria a porta lateral que este sistema substitui. Fora do rateio o motor nunca passa perto: sem responsável, o item nasceria `aprovado` e ficaria assim para sempre, porque `concluir` exige atribuição ativa. A pendência do painel cresceria sozinha, todo dia, sem ninguém ter errado nada — o defeito da planilha entrando pela porta da funcionalidade que veio consertar outra coisa.
+
+**Um lançamento pode valer N itens.** A planilha digita `Mov.Extra = 11` numa célula; exigir onze operações aqui devolveria a equipe à planilha na primeira semana. `quantidade` cria 11 itens **rastreáveis** — a facilidade da planilha, sem a contagem anônima dela. Teto em 50, para que `111` no lugar de `11` vire recusa visível.
+
+**O item não nasce concluído**, ainda que a planilha lance `Aberto` e `Realizado` no mesmo dia. Isso seria o operador declarando a conclusão do trabalho de outra pessoa, que é exatamente o que `concluir` recusa. Nasce `distribuido` na fila do responsável; fechar continua sendo ato dele.
+
+**A verificação na tela achou um defeito meu.** O item manual aparecia com **Confiança 100%** — número de aparência ótima sobre uma classificação que modelo nenhum fez. Mesma família do `SUBTOTAL(109)`: o valor está lá, parece resultado, e não significa o que quem lê acha que significa. Agora a coluna mostra o selo `manual`, pelo mesmo critério (`modeloIa`) que a taxa de acerto usa para montar o denominador.
+
+**Uma decisão ficou provisória e é sua.** Carga de categoria fora do rateio **não** entra no crédito (`§ AT-09`): contá-la faria uma categoria de exceção inclinar a cota justa de categorias das quais ela não participa. Escolhi o lado reversível — começar a contar depois é decisão; despoluir um razão já acumulado exige recomputar histórico. A pergunta objetiva está em `DECISOES.md § H.4`, item 6.
+
+Testes: 229 → **248**.
+
+**Os PRs [#1](https://github.com/fernando123-hue/Sistema-SBP/pull/1) e [#2](https://github.com/fernando123-hue/Sistema-SBP/pull/2) foram mesclados.** `actions/checkout` e `actions/setup-node` agora em `v7` nos três jobs e no CodeQL. O prazo de 16/09, quando o Node 20 sai dos runners do GitHub, está resolvido.
+
+---
+
+## O que veio antes
 
 **Entrou o recorte de período no painel** (`H-D5`). Detalhe em `DECISOES.md`, seção *Painel com recorte de período*.
 
@@ -114,9 +139,6 @@ E o painel ganhou o invariante que faltava: `pendente` sai de uma subtração, `
 
 Testes: 215 → **226**. A revisão desta entrega achou pendência NEGATIVA na fronteira exata do período — o defeito `E.9` reconstruído — e foi o próprio invariante das duas contagens que pegou.
 
----
-
-## O que veio antes
 **Entrou o tratamento de proxy confiável** (`H-D16`), da lista de *obrigatório antes de expor fora da rede local*. Detalhe em `DECISOES.md`, seção *Origem da requisição e proxy confiável*.
 
 **O item saiu na frente do `H-D18` porque a justificativa do `H-D18` não se sustenta mais.** Ele existia para garantir que métrica sobrevivesse a um expurgo — mas depois da separação entre conteúdo e histórico, o que a retenção pode apagar é `EmailConteudo` e bytes de anexo, e nenhuma métrica lê essas linhas. Painel, conservação e acerto da IA saem todos de `Item`, `Atribuicao`, `SaldoCarga` e `Revisao`, que o invariante 11 proíbe apagar. `H-D18` continua valendo por recorte histórico barato, mas deixou de bloquear a retenção. Reclassificado.
@@ -253,29 +275,23 @@ O quarto workflow, o do CodeQL, está **desarmado de propósito** (`workflow_dis
 | [#11](https://github.com/fernando123-hue/Sistema-SBP/pull/11) | Toda a fundação do domínio — 20 commits | ✅ mesclado |
 | [#5](https://github.com/fernando123-hue/Sistema-SBP/pull/5) | `gitleaks-action` v2 → v3 | ✅ mesclado |
 | [#9](https://github.com/fernando123-hue/Sistema-SBP/pull/9) | `@types/node` e `typescript` (dev) | ✅ mesclado |
+| [#2](https://github.com/fernando123-hue/Sistema-SBP/pull/2) | `actions/checkout` v4 → v7 | ✅ mesclado |
+| [#1](https://github.com/fernando123-hue/Sistema-SBP/pull/1) | `actions/setup-node` v4 → v7 | ✅ mesclado |
 
-### O que ficou aberto, e por quê
-
-| PR | O quê | Situação |
-|---|---|---|
-| [#2](https://github.com/fernando123-hue/Sistema-SBP/pull/2) | `actions/checkout` v4 → v7 | **Verde e pronto.** Falta um clique |
-| [#1](https://github.com/fernando123-hue/Sistema-SBP/pull/1) | `actions/setup-node` v4 → v7 | **Verde e pronto.** Falta um clique |
-| [#4](https://github.com/fernando123-hue/Sistema-SBP/pull/4) | `codeql-action` v3 → v4 | Se recusa a rebasear; checagens vermelhas são de execuções antigas. **Inócuo** — o workflow do CodeQL está desarmado, então a versão da ação não muda nada hoje |
-
-**#1 e #2 não foram mesclados por limitação de permissão, não por defeito.** Os dois alteram `.github/workflows/ci.yml`, e o token usado aqui não tem escopo para escrever arquivo de workflow — o GitHub recusa com `refusing to allow an OAuth App to create or update workflow`. Os dois estão rebaseados sobre a `main` atual e com as checagens verdes: basta abrir cada um e clicar em *Merge*.
-
-### Por que #1 e #2 têm prazo
-
-> **16 de setembro de 2026** — o GitHub remove o Node 20 dos runners. As notas de versão do próprio gitleaks-action v3 dizem: *"Node 20 is removed from GitHub-hosted runners entirely."*
-
-O log do CI já avisa hoje:
+**O prazo do Node 20 está resolvido.** #1 e #2 tinham data marcada: em **16 de setembro de 2026** o GitHub remove o Node 20 dos runners, e o log do CI já avisava —
 
 ```
 Node.js 20 is deprecated. The following actions target Node.js 20 but are
 being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4
 ```
 
-`gitleaks-action@v3` já resolveu esse ponto (foi por isso que o #5 entrou). Faltam `checkout` e `setup-node` — que é exatamente o que #2 e #1 fazem.
+Os dois estavam parados por limitação de permissão (alteram arquivo de workflow), não por defeito. Foram mesclados por API em 28/08/2026, e `checkout` e `setup-node` estão em `v7` nos três jobs do CI e no workflow do CodeQL. Nenhuma ação continua apontando para o Node 20.
+
+### O que ficou aberto, e por quê
+
+| PR | O quê | Situação |
+|---|---|---|
+| [#4](https://github.com/fernando123-hue/Sistema-SBP/pull/4) | `codeql-action` v3 → v4 | Se recusa a rebasear; checagens vermelhas são de execuções antigas. **Inócuo** — o workflow do CodeQL está desarmado, então a versão da ação não muda nada hoje |
 
 ### Histórico que vale saber
 
@@ -292,7 +308,7 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ## Próximo passo sugerido
 
-**Nada de código está bloqueando.** O que falta para o sistema sair de "roda com dado sintético" e virar "roda com dado de associado" são decisões e duas ações, todas do dono. Na ordem em que eu retomaria:
+**Nada de código está bloqueando.** O que falta para o sistema sair de "roda com dado sintético" e virar "roda com dado de associado" são decisões e uma ação, todas do dono. Na ordem em que eu retomaria:
 
 ### Primeiro — a única parte nunca provada
 
@@ -306,21 +322,23 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ### Depois — o que tem gatilho real
 
-3. **Clicar em *Merge* nos PRs [#2](https://github.com/fernando123-hue/Sistema-SBP/pull/2) e [#1](https://github.com/fernando123-hue/Sistema-SBP/pull/1).** Os dois estão verdes e rebaseados; não foram mesclados aqui por limitação de permissão (alteram arquivo de workflow), não por defeito. Têm prazo: **16 de setembro**, quando o Node 20 sai dos runners do GitHub. Detalhe na seção *Situação do CI e das dependências*.
+3. **`H-D19` — cifrar os bytes de anexo em repouso.** Obrigatório antes de documento real de associado entrar. Depende da aprovação formal da associação, que ainda não veio.
 
-4. **`H-D19` — cifrar os bytes de anexo em repouso.** Obrigatório antes de documento real de associado entrar. Depende da aprovação formal da associação, que ainda não veio.
+> Os PRs #1 e #2, que estavam aqui com prazo em 16/09, foram mesclados em 28/08/2026. Ver *Situação do CI e das dependências*.
 
 ### Depois disso, por valor decrescente
+
+4. **`H-D7`** — os contratos de API redigitados à mão nas telas. Já divergiram uma vez (`emAndamento` sumiu; `Date` vs. string), e cada tela nova aumenta a superfície. Derivar os tipos dos esquemas Zod mata a família inteira de divergência silenciosa entre API e tela — e o legado do cliente vai consumir essas rotas.
 
 5. **`H-D18`** — agregados de métrica materializados. Reclassificado: nenhuma métrica lê linha expurgável, então **não bloqueia mais a política de retenção**. Continua valendo por recorte histórico barato.
 
 6. **`H-D8`** — as consultas N+1 do painel e da distribuição. Irrelevantes com 4-7 pessoas em SQLite local (medido: ~29 consultas por carregamento do painel, ~14 por categoria na distribuição). Viram problema de verdade na migração para PostgreSQL, e pior por acontecerem dentro da transação que segura a trava do dia.
 
-7. **Demais itens de `DECISOES.md § H.2`.** Treze abertos, nenhum com prazo, nenhum travando uso.
+7. **Demais itens de `DECISOES.md § H.2`.** Doze abertos, nenhum com prazo, nenhum travando uso.
 
 ---
 
-## Quatro decisões que dependem do dono do negócio
+## Cinco decisões que dependem do dono do negócio
 
 Estão registradas em `DECISOES.md § H.4`, sem resposta inventada:
 
@@ -328,8 +346,9 @@ Estão registradas em `DECISOES.md § H.4`, sem resposta inventada:
 2. **Etapa 6 da operação** — depois que o sistema distribui, o colaborador trabalha pela tela ou continua pela pasta de e-mail dele? Se for pela pasta, o `IngestaoPort` precisa deixar de ser somente-leitura.
 3. **Itens mais antigos** — devem ir para quem está mais credor, ou ser espalhados? Tem consequência de prazo.
 4. **Quem vê a caixa de entrada inteira?** *(levantada na auditoria de 28/08/2026)* Hoje `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails. O `RF-23` diz que colaborador vê *os seus*. **Não foi alterado de propósito:** a equipe já trabalha de uma caixa compartilhada, então restringir mudaria a operação em vez de corrigir defeito.
+5. **Carga de exceção conta para o balanceamento?** *(levantada em 28/08/2026, com o registro manual)* Quem atende 30 inadimplentes num dia fez trabalho real, e hoje esse trabalho **não** entra no crédito — a pessoa continua recebendo cota cheia das categorias do rateio. Contar resolveria a justiça de carga, mas faria uma categoria de exceção mexer na cota justa de categorias das quais ela não participa. Escolhi o lado reversível (`§ AT-09`) porque despoluir um razão já acumulado exige recomputar histórico; começar a contar depois, não.
 
-> Uma quinta pergunta — **"período" do desempate** — foi respondida em 27/08/2026: janela deslizante de 30 dias, já implementada.
+> Uma sexta pergunta — **"período" do desempate** — foi respondida em 27/08/2026: janela deslizante de 30 dias, já implementada.
 
 ---
 
@@ -375,6 +394,7 @@ src/
 | mudar as colunas do painel | `porCategoria` em `src/servicos/painel.ts` — mantenha `conferirPendencia` batendo |
 | mudar o critério de acerto da IA | `src/core/qualidade-ia.ts` (puro) — o serviço só lê o banco |
 | mexer em cadastro de pessoa ou habilitação | `src/servicos/colaboradores.ts` e a tela `/acesso` |
+| registrar trabalho que não veio por e-mail | `src/servicos/itens.ts` e o formulário em `/caixa` |
 | ajustar confiança em proxy | `PROXIES_CONFIAVEIS` no `.env`; confira em `/api/diagnostico/origem` |
 | implementar retenção | apagar `EmailConteudo` e bytes; **nunca** `Item`, `Atribuicao`, `SaldoCarga`, `LogAuditoria` |
 | trocar disco por nuvem | novo adapter de `ArmazenamentoPort` + `criarArmazenamentoPort()` |
@@ -385,7 +405,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 229 testes |
+| `npm run verificar` | Typecheck + 248 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

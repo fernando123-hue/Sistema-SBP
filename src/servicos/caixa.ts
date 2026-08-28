@@ -16,6 +16,17 @@ export interface ItemDaCaixa {
   grupo: string
   status: string
   confianca: number
+  /**
+   * A IA classificou este item?
+   *
+   * Sem isto, item registrado à mão aparecia com "Confiança 100%" — um número
+   * de aparência ótima sobre uma classificação que modelo nenhum fez. É a
+   * mesma família de defeito que o `SUBTOTAL(109)` da planilha: o valor está
+   * lá, parece resultado, e não significa o que quem lê acha que significa.
+   * `modeloIa` é o mesmo critério que a taxa de acerto usa para montar o
+   * denominador.
+   */
+  classificadaPorIa: boolean
   remetente: string | null
   assunto: string | null
   recebidoEm: Date | null
@@ -70,6 +81,7 @@ export async function listarCaixa(
     grupo: item.categoria.grupo,
     status: item.status,
     confianca: item.confianca,
+    classificadaPorIa: item.modeloIa !== null,
     remetente: item.email?.conteudo?.remetente ?? null,
     assunto: item.email?.conteudo?.assunto ?? null,
     recebidoEm: item.email?.recebidoEm ?? null,

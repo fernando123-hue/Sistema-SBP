@@ -182,6 +182,7 @@ O adapter mock da IA é determinístico de propósito: permite testar todo o pip
 ```
 POST /api/ingestao/sincronizar        dispara o adapter, cria Emails e Itens
 GET  /api/itens?status=&categoria=    caixa de entrada
+POST /api/itens                       registro manual (balcão, INADIMP., ISENTO)
 GET  /api/revisao                     fila abaixo do limiar
 POST /api/revisao/:id/resolver        aceita/corrige, grava valor_final
 GET  /api/escala/:data                escala do dia

@@ -157,6 +157,13 @@ Formato: hipótese · motivo · impacto · status.
 **Impacto:** a janela em que outra pessoa conhece a senha existe, mas termina no primeiro acesso do dono — e ela é a única operação permitida nesse estado.
 **Status:** ✅ implementado em 26/08/2026. Ver *Autenticação com senha* mais abaixo. Continua **insuficiente para dados reais de associado** enquanto a LGPD (§ F) não for endereçada.
 
+### AT-09 — Carga de categoria fora do rateio não entra no crédito
+
+**Hipótese:** item registrado manualmente em `INADIMP.`/`ISENTO` **não** move `SaldoCarga` nem `SaldoCargaGlobal`.
+**Motivo:** `entraNoRateio = false` é a declaração de que a categoria fica fora da matemática do rateio diário. Somar essa carga ao razão faria uma categoria de exceção inclinar a cota justa das categorias reais: quem registrasse muitos inadimplentes apareceria credor e passaria a receber **menos** `DOC_CADASTRO`. Como o razão global é por frente, e `INADIMP.` é `CADASTRO`, o efeito não seria isolado.
+**Impacto:** trabalho real fica fora do balanceamento. Não fica invisível: o painel conta **atribuição**, não crédito, então o volume aparece por pessoa em `atribuidos`, `pendentes` e `concluidos`.
+**Status:** ⏳ provisório, e escolhido por ser o lado **reversível**. Passar a contar depois é uma decisão que se toma; despoluir um razão já acumulado exige recomputar histórico — o mesmo raciocínio de `H-D6`. A pergunta objetiva para o dono está em § H.4, item 6.
+
 ---
 
 ## D. Pendências do cliente final
@@ -269,7 +276,7 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 |---|---|---|
 | H-D2 | `RegraDistribuicao` modelado e nunca lido — `RF-32` (configuração sem deploy) não existe | Os defaults estão corretos; o caminho de escrita é trabalho próprio |
 | ~~H-D3~~ | ~~Taxa de acerto da IA não é calculada em lugar nenhum~~ | **RESOLVIDO em 27/08/2026** — seção *Taxa de acerto da IA* abaixo. Critério nº 5 passa a ser verificável |
-| H-D4 | `INADIMP`/`ISENTO` sem caminho de criação manual (`POST /api/itens`) | Categorias semeadas mas inalcançáveis hoje |
+| ~~H-D4~~ | ~~`INADIMP`/`ISENTO` sem caminho de criação manual (`POST /api/itens`)~~ | **RESOLVIDO em 28/08/2026** — `POST /api/itens` e o formulário na Caixa de entrada. Seção *Registro manual de item* abaixo |
 | ~~H-D5~~ | ~~Painel sem recorte de data e com definição própria de "pendente"~~ | **RESOLVIDO em 28/08/2026** — `?de=&ate=`, colunas mapeadas uma a uma para as da planilha, e o carry-over deixa de ser digitado. Seção *Painel com recorte de período* abaixo |
 | H-D6 | Escopo do livro-razão global antes de a frente `TÍTULOS` entrar | Acrescentar escopo a um razão já acumulado exige recomputar histórico |
 | H-D7 | Contratos de API duplicados à mão nas telas — já divergiram (`emAndamento` sumiu; `Date` vs. string) | O legado vai consumir sem esquema contra o qual programar |
@@ -291,13 +298,15 @@ Motor puro e sua cobertura de testes · `Ator` como tipo marcado · snapshot com
 
 ### H.4 Precisa de decisão do dono do negócio
 
-Nenhuma resposta foi inventada. As quatro estão em `ESTADO.md`:
+Nenhuma resposta foi inventada. Estão em `ESTADO.md`:
 
 1. **Dono único** — categoria com dono fixo é *sempre a mesma pessoa*, ou apenas lote não fragmentado? Hoje o código entrega 100% a quem estiver mais credor, o que é rodízio, não dono fixo.
 2. **Etapa 6 da operação** — o colaborador trabalha pela tela ou continua pela pasta de e-mail? Define se o `IngestaoPort` precisa escrever na caixa. Sem isso, a equipe fica com duas filas na rodada paralela.
 3. **Itens mais antigos** — vão para quem está mais credor, ou são espalhados? Tem consequência de prazo.
 4. **"Período" do desempate** — hoje é o mês corrente, o que reintroduz a fronteira mensal que `RN-11` manda eliminar. Janela deslizante?
 5. **Quem vê a caixa de entrada inteira?** *(levantado na auditoria de 28/08/2026)* `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails, e quem está com cada item. O `RF-23` diz *"Colaborador vê **seus** itens reais"*. As duas leituras são defensáveis: hoje a equipe trabalha de uma caixa de e-mail compartilhada, e todo mundo já vê tudo — restringir mudaria a operação, não corrigiria defeito. Por outro lado, remetente e assunto de associado são dado pessoal, e o resto do sistema é cuidadoso com isso. **Não foi alterado**, porque a escolha é de operação.
+
+6. **Carga de exceção conta para o balanceamento?** *(levantada em 28/08/2026, com o registro manual)* Quem atende 30 inadimplentes num dia fez trabalho real, e hoje esse trabalho **não** entra no crédito — a pessoa continua recebendo cota cheia das categorias do rateio. Contar resolveria a justiça de carga, mas faria uma categoria de exceção mexer na cota justa de categorias das quais ela não participa. Ver § AT-09: o lado reversível foi escolhido de propósito, e a decisão é de operação, não de engenharia.
 
 ---
 
@@ -970,3 +979,61 @@ Não mexi, porque as duas leituras são defensáveis e a escolha é de operaçã
 - Por outro lado, remetente e assunto de e-mail de associado são dado pessoal, e o resto do sistema é cuidadoso com isso (a lista de colaboradores, por exemplo, exige gestor).
 
 Registrado em `§ H.4` como pergunta ao dono do processo.
+
+---
+
+## Registro manual de item (`H-D4`) — 28/08/2026
+
+### O beco sem saída
+
+`INADIMP.` e `ISENTO` estavam semeadas em `config.ts`, marcadas `entraNoRateio = false`, listadas em `CategoriaCodigoSchema` — e **fora** de `CategoriaClassificavelSchema`, ou seja, proibidas à IA. O motor as ignora por construção (`carregarCategorias` filtra `entraNoRateio: true`). Não existia rota que as criasse.
+
+Existiam no cadastro e eram inalcançáveis. Duas linhas da planilha (`CAD-MAIO`, linhas 35–36) sem correspondente nenhum aqui dentro — e a rodada de comparação lado a lado nasceria incompleta por construção, com uma diferença que ninguém saberia explicar.
+
+O sintoma mais claro estava na própria mensagem de erro do motor, escrita meses antes: `CategoriaForaDoRateioError` termina com *"Registre manualmente"*, apontando para um caminho que não existia.
+
+### O que entrou
+
+- `POST /api/itens` — `RegistroManualSchema`, papel `operador`/`gestor`.
+- `registrarManual` em `src/servicos/itens.ts`.
+- Formulário na **Caixa de entrada**, atrás do botão *Registrar item*.
+- A coluna *Confiança* passa a distinguir item classificado por IA de item digitado.
+
+### A assimetria do responsável, que não é descuido
+
+`colaboradorId` é **obrigatório** para categoria fora do rateio e **recusado** para categoria dentro dele. É a consequência de quem decide o quê:
+
+- **Dentro do rateio**, quem escolhe a pessoa é o motor. Aceitar um responsável aqui abriria uma porta lateral para escolher a dedo quem recebe trabalho — exatamente a fragilidade que este sistema substitui. O item nasce `aprovado`, sem dono, e entra na próxima rodada. Precisou ir para alguém específico? `transferir`, que exige justificativa e deixa rastro.
+- **Fora do rateio**, o motor nunca vai passar por perto. Sem responsável o item nasceria `aprovado` e ficaria assim para sempre: `concluir` exige atribuição ativa, então **ninguém teria como fechá-lo**. A pendência do painel cresceria todo dia, sozinha, e a divergência com a planilha aumentaria sem que ninguém tivesse errado nada. É o defeito que este projeto existe para eliminar, e ele entraria pela porta da funcionalidade que veio consertar outra coisa.
+
+Metade dos testes de `itens.test.ts` existe para provar que esse estado é inalcançável, não que é raro.
+
+### Habilitação não é exigida; `ativo` é
+
+`Habilitacao` ∩ escala do dia governa quem o **motor** pode escolher. O registro manual é outro caminho: um gestor nomeando explicitamente quem atendeu, com trilha de auditoria. Exigir habilitação inviabilizaria o recurso na prática — ninguém é semeado com `INADIMP.`/`ISENTO`, e lançar o atendimento de ontem quebraria na escala de ontem.
+
+Já `Colaborador.ativo` **é** exigido, pelo mesmo motivo do parágrafo anterior: atribuir a alguém desligado cria um item que ninguém pode concluir.
+
+### Quantidade, e por que ela existe
+
+A planilha lança `Mov.Extra = 11` numa célula. Exigir onze operações para registrar esses onze devolveria a operação à planilha na primeira semana. O registro aceita `quantidade` e cria **N itens rastreáveis** — a facilidade de digitação da planilha, sem a contagem anônima dela.
+
+`LIMITE_ITENS_POR_REGISTRO_MANUAL = 50`, mais alto que o teto da divisão de revisão (20) porque aqui a quantidade é *um* número, não N títulos digitados um a um. O teto existe para que `111` no lugar de `11` vire recusa visível em vez de cento e onze linhas para alguém cancelar depois.
+
+A conferência de categoria e de responsável acontece **antes** do laço: criar quatro e falhar no quinto deixaria o operador sem saber quantos passaram.
+
+### Não nasce concluído
+
+A planilha lança `Aberto = 11` e `Realizado = 11` no mesmo dia. Reproduzir isso seria o operador **declarando a conclusão do trabalho de outra pessoa** — que é justamente o que `concluir` recusa desde que a fila existe. O item nasce `distribuido` na fila do responsável; a conclusão continua sendo ato dele, com carimbo próprio em `Execucao`.
+
+### Confiança 100% num item que a IA nunca viu
+
+Achado ao verificar a tela: o item manual aparecia com **Confiança 100%**. `confianca: 1` é o que o banco guarda — coerente, porque não há classificação de que duvidar — mas na coluna *Confiança* aquilo lia como "a IA acertou com certeza absoluta". Um número de aparência ótima sobre uma decisão que modelo nenhum tomou; a mesma família do `SUBTOTAL(109)` da planilha, onde o valor está lá, parece resultado, e não significa o que quem lê acha que significa.
+
+`ItemDaCaixa.classificadaPorIa` (`modeloIa !== null`, o **mesmo** critério que a taxa de acerto usa para montar o denominador) resolve: item manual mostra o selo `manual`. E `modeloIa` ficar nulo é o que mantém o registro manual fora da medida de qualidade da IA — sem isso, cada item digitado entraria como um acerto de graça do modelo.
+
+### O que ficou de fora, de propósito
+
+- **Crédito.** Ver `§ AT-09` e a pergunta 6 de `§ H.4`.
+- **Cancelamento pela tela.** `Item.canceladoEm` existe e o painel já o conta, mas não há rota de cancelamento. Um lote registrado errado hoje se corrige no banco. Vale como dívida própria, não como parte desta entrega.
+- **Lista completa de pessoas para o operador.** O seletor de responsável usa `GET /api/escala?data=hoje`, que é a lista de pessoas ativas que o papel `operador` pode ler — `GET /api/colaboradores` é só do gestor, de propósito (nome, papel e e-mail da equipe são material de ataque direcionado). Efeito colateral conhecido: quem não tem **nenhuma** habilitação não aparece no seletor. Na prática a equipe toda tem; se algum dia atrapalhar, o conserto é habilitar a pessoa em alguma categoria, não afrouxar a rota do gestor.
