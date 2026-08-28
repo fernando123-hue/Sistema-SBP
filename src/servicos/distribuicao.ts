@@ -1,4 +1,5 @@
 import { ALGORITMO_VERSAO, distribuir } from '../core/distribuicao/motor'
+import { SemElegiveisError } from '../core/erros'
 import { serializar, type PedidoDistribuicao } from '../core/esquemas'
 import type { Categoria, Elegivel, ResultadoRodada } from '../core/tipos'
 import { deslocarDias, fimDoDia, inicioDoDia } from '../core/util/datas'
@@ -108,9 +109,23 @@ export async function planejarCategoria(
     const resultado = distribuir({ data, categoria, quantidade: itens.length, elegiveis })
     return { ...base, resultado, erro: null }
   } catch (erro) {
-    // Falha explícita, nunca silenciosa. Sem elegível, o trabalho FICA na fila
-    // — que é o oposto do que a planilha faz quando perde 16 itens de LIGA.
-    return { ...base, resultado: null, erro: mensagemDoErro(erro) }
+    // SÓ "ninguém de plantão" vira resultado. Todo o resto sobe.
+    //
+    // Sem elegível é situação de OPERAÇÃO: o trabalho fica na fila e a tela
+    // diz por categoria o que aconteceu — o oposto do que a planilha faz
+    // quando perde 16 itens de LIGA.
+    //
+    // Os outros erros que `distribuir` pode lançar são DEFEITO, e um deles é
+    // `ConservacaoVioladaError` — a trava que materializa o invariante nº 3,
+    // o único que o `CLAUDE.md` descreve como razão de o sistema existir.
+    // Capturá-la aqui a rebaixava a uma linha de log de nível `aviso`,
+    // indistinguível de um dia sem escala, e a categoria inteira era pulada
+    // com os itens presos na fila. A trava existe para gritar; engolir o
+    // grito é pior do que não ter trava, porque dá a impressão de que há uma.
+    if (erro instanceof SemElegiveisError) {
+      return { ...base, resultado: null, erro: mensagemDoErro(erro) }
+    }
+    throw erro
   }
 }
 

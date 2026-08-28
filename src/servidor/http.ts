@@ -232,10 +232,23 @@ export function limitar(
   )
 }
 
+/**
+ * Corpo JSON da requisição.
+ *
+ * Corpo ilegível vira `{}` para o Zod recusar com mensagem útil em vez de o
+ * servidor estourar — mas o `catch` REGISTRA. Sem o registro, uma rota cujos
+ * campos são todos opcionais (a conclusão de item, por exemplo) aceitava um
+ * corpo corrompido como se fosse um pedido legítimo sem observação, e a única
+ * evidência de que a requisição chegou quebrada desaparecia.
+ */
 export async function corpoJson(requisicao: Request): Promise<unknown> {
   try {
     return await requisicao.json()
-  } catch {
+  } catch (erro) {
+    registrarLog('aviso', 'corpo da requisição não é JSON válido', {
+      caminho: new URL(requisicao.url).pathname,
+      causa: mensagemDoErro(erro),
+    })
     return {}
   }
 }

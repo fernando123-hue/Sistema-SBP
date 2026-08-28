@@ -2,7 +2,9 @@
 
 > **Para continuar em outra máquina:** clone o repositório, siga o *Preparar o ambiente* abaixo e leia a seção *Onde parei*. Este arquivo é o ponto de entrada; ele diz o que já está pronto, o que ficou aberto e qual é o próximo passo.
 
-Última atualização: **28/08/2026** — painel com recorte de período (`H-D5`), precedido pelo proxy confiável, pelo cadastro de pessoa e pela taxa de acerto da IA.
+Última atualização: **28/08/2026** — auditoria com agentes especializados (segurança, falhas silenciosas, banco), precedida pelo painel com recorte de período e pelo proxy confiável.
+
+> **A auditoria achou a trava de conservação sendo engolida.** `planejarCategoria` capturava `ConservacaoVioladaError` junto com "ninguém de plantão", e a violação do único invariante que o projeto descreve como razão de existir virava um log de nível `aviso`. Corrigido, com teste que força a violação. Detalhe em `DECISOES.md`, seção *Auditoria com agentes especializados*.
 
 ---
 
@@ -25,7 +27,7 @@ Cole o valor em `SESSAO_SECRET`. Depois:
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
-npm run verificar    # typecheck + 226 testes
+npm run verificar    # typecheck + 229 testes
 npm run dev          # http://localhost:3000
 ```
 
@@ -56,7 +58,7 @@ Entre com **ana.operadora@exemplo.test** (operadora) e a senha provisória dela.
 | API REST | 23 rotas, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **226 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
+| Testes | **229 passando** (motor, propriedade, segurança, sessão, autenticação, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
@@ -300,7 +302,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 226 testes |
+| `npm run verificar` | Typecheck + 229 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

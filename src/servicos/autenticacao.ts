@@ -250,6 +250,16 @@ export async function definirSenhaProvisoria(
   banco: Banco,
   entrada: unknown,
   ator: Ator,
+  /**
+   * Senha fixa, SÓ para teste e seed.
+   *
+   * É quarto parâmetro, e não campo do corpo, de propósito: a rota HTTP
+   * passa só três argumentos, então não existe requisição capaz de alcançar
+   * isto. Quando era campo do esquema, um gestor podia definir senha
+   * conhecida para outra pessoa pela rede — e a regra de "sempre sorteada"
+   * valia só enquanto a tela cooperasse.
+   */
+  senhaFixa?: string,
 ): Promise<{ colaboradorId: string; senhaProvisoria: string }> {
   exigirPapel(ator, 'definir senha de outro colaborador', 'gestor')
   const dados = DefinicaoDeSenhaSchema.parse(entrada)
@@ -262,8 +272,7 @@ export async function definirSenhaProvisoria(
   if (!colaborador) throw new ErroDeNegocio(`Colaborador "${dados.colaboradorId}" não existe.`)
   if (!colaborador.ativo) throw new ErroDeNegocio('Colaborador desativado não recebe senha.')
 
-  // Omitida, o servidor sorteia. A tela sempre omite — ver `sortearSenhaProvisoria`.
-  const senhaProvisoria = dados.senhaProvisoria ?? sortearSenhaProvisoria()
+  const senhaProvisoria = senhaFixa ?? sortearSenhaProvisoria()
 
   await banco.colaborador.update({
     where: { id: colaborador.id },

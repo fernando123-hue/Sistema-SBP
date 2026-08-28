@@ -219,7 +219,7 @@ describe('desdobramento — um e-mail pode gerar N itens (decisão A1)', () => {
 
     await sincronizar(deps(datas), base.operador)
 
-    const pendente = (await listarPendentes(banco, 500)).find(
+    const pendente = (await listarPendentes(banco, 500)).itens.find(
       (item) => item.motivo === 'desdobramento',
     )
     expect(pendente).toBeDefined()
@@ -272,7 +272,7 @@ describe('desdobramento — um e-mail pode gerar N itens (decisão A1)', () => {
 
     await sincronizar(deps(datas), base.operador)
 
-    const pendente = (await listarPendentes(banco, 500)).find(
+    const pendente = (await listarPendentes(banco, 500)).itens.find(
       (item) => item.motivo === 'desdobramento',
     )
     expect(pendente).toBeDefined()
@@ -301,7 +301,7 @@ describe('segurança — conteúdo não confiável', () => {
 
     await sincronizar(deps(datas, 7, true), base.operador)
 
-    const pendentes = await listarPendentes(banco, 500)
+    const { itens: pendentes } = await listarPendentes(banco, 500)
     const suspeitos = pendentes.filter((item) => item.motivo === 'conteudo_suspeito')
 
     expect(suspeitos.length).toBe(1)
@@ -322,7 +322,7 @@ describe('segurança — conteúdo não confiável', () => {
     // O atalho de conveniência cobre só as exceções rotineiras. Antes, o filtro
     // era `resolvidoEm: null` — sem restrição — e liberava de uma vez tudo que
     // a defesa tinha acabado de segurar.
-    const restantes = await listarPendentes(banco, 500)
+    const { itens: restantes } = await listarPendentes(banco, 500)
     const motivos = new Set(restantes.map((item) => item.motivo))
 
     expect(motivos.has('conteudo_suspeito')).toBe(true)
@@ -339,7 +339,7 @@ describe('segurança — conteúdo não confiável', () => {
     // A quantidade de carga é decisão humana. Um item de lista sempre tinha
     // nome preenchido, logo confiança alta, logo entrava aprovado sem ninguém
     // ver — e uma assinatura numerada no rodapé viraria 3 unidades de trabalho.
-    const desdobrados = (await listarPendentes(banco, 500)).filter(
+    const desdobrados = (await listarPendentes(banco, 500)).itens.filter(
       (item) => item.motivo === 'desdobramento',
     )
     expect(desdobrados.length).toBeGreaterThan(0)

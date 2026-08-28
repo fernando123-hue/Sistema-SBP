@@ -297,6 +297,7 @@ Nenhuma resposta foi inventada. As quatro estão em `ESTADO.md`:
 2. **Etapa 6 da operação** — o colaborador trabalha pela tela ou continua pela pasta de e-mail? Define se o `IngestaoPort` precisa escrever na caixa. Sem isso, a equipe fica com duas filas na rodada paralela.
 3. **Itens mais antigos** — vão para quem está mais credor, ou são espalhados? Tem consequência de prazo.
 4. **"Período" do desempate** — hoje é o mês corrente, o que reintroduz a fronteira mensal que `RN-11` manda eliminar. Janela deslizante?
+5. **Quem vê a caixa de entrada inteira?** *(levantado na auditoria de 28/08/2026)* `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails, e quem está com cada item. O `RF-23` diz *"Colaborador vê **seus** itens reais"*. As duas leituras são defensáveis: hoje a equipe trabalha de uma caixa de e-mail compartilhada, e todo mundo já vê tudo — restringir mudaria a operação, não corrigiria defeito. Por outro lado, remetente e assunto de associado são dado pessoal, e o resto do sistema é cuidadoso com isso. **Não foi alterado**, porque a escolha é de operação.
 
 ---
 
@@ -884,3 +885,88 @@ Corrigido com comparação estrita. E vale registrar **como** foi encontrado: pe
 Detalhe do caminho: a primeira versão do teste usou meia-noite **UTC** e passou. A fronteira do sistema é o fuso da operação (Brasília), então o instante certo é `inicioDoDia(data)`. Teste que erra a fronteira por três horas não testa fronteira nenhuma.
 
 **R-12 — a tabela misturava período com estado atual sem dizer.** A coluna `Revisão` mostra a fila **agora**, ao lado de cinco colunas recortadas pelo período. Quem consultasse julho leria como "fila de revisão de julho". Passou a se chamar `Revisão (hoje)`, com nota no rodapé. É a mesma família de defeito que a cobertura da taxa de acerto teve (`R-05`): dois universos na mesma linha produzem um número plausível e falso.
+
+---
+
+## Auditoria com agentes especializados — 28/08/2026
+
+Três agentes varreram o projeto em paralelo: falhas silenciosas, segurança e banco de dados. Conferi cada achado no código antes de aceitar — dois foram reclassificados por exagerarem o impacto.
+
+### O achado mais grave: a trava de conservação estava sendo engolida
+
+**A-01 — `ConservacaoVioladaError` virava aviso de rotina.** 🔴
+
+`planejarCategoria` (`distribuicao.ts`) envolvia a chamada ao motor num `try/catch` genérico. O comentário falava de "sem elegível, o trabalho FICA na fila" — mas o `catch` não distinguia nada:
+
+```ts
+} catch (erro) {
+  return { ...base, resultado: null, erro: mensagemDoErro(erro) }
+}
+```
+
+`distribuir()` pode lançar `ConservacaoVioladaError` — a trava que materializa o invariante nº 3, **o único que o `CLAUDE.md` descreve como razão de o sistema existir**. Capturada ali, ela virava:
+
+- `plano.erro` com a mesma cara de "ninguém de plantão hoje"
+- log de nível **`aviso`**, não `erro`
+- evento da rodada como `reprocessavel`, nunca `falha`
+- a categoria inteira pulada, com os itens presos na fila
+
+Ou seja: se o motor algum dia produzisse uma alocação que não conserva, o sistema reagiria como num dia sem escala. **A trava existe para gritar; engolir o grito é pior do que não ter trava, porque dá a impressão de que há uma.**
+
+Corrigido: só `SemElegiveisError` — que é situação de operação — vira resultado. Todo o resto sobe. Há teste que força a violação e exige que ela chegue inteira à superfície, e um segundo que garante que "ninguém de plantão" continua sendo resultado, não exceção.
+
+### Fila de revisão que escondia o próprio tamanho
+
+**A-02 — `listarPendentes` truncava em 200 sem dizer.** 🟠
+
+A rota pedia 200 e devolvia só o array. Como a ordenação é fixa (`confianca asc, criadoEm asc`), o que ficasse além do corte ficava lá **permanentemente**: nunca subia, nunca aparecia, ninguém resolvia. E a tela dizia "200 itens" para sempre enquanto a fila crescia atrás dela.
+
+Com ~27 revisões por dia, bastam oito dias de fila parada — uma ausência prolongada — para o corte começar a esconder trabalho.
+
+Corrigido: `listarPendentes` devolve `{ itens, total }`, e a tela avisa em destaque quando `total > itens.length`, explicando que o resto só sobe conforme a fila for resolvida.
+
+### O gestor não escolhe mais a senha de ninguém
+
+**A-03 — `senhaProvisoria` era aceita pelo corpo da requisição.** 🟠
+
+`credenciais.ts` declara: *"O sistema NUNCA pede ao gestor que invente a senha de alguém — pessoa apressada escolhe `Sbp2026!` para a equipe inteira."* Mas `DefinicaoDeSenhaSchema` aceitava `senhaProvisoria` opcional, e o serviço usava o valor recebido. A regra valia **só enquanto a tela cooperasse**; o servidor obedecia a qualquer coisa que chegasse pela rota.
+
+Corrigido: o campo saiu do esquema. Senha fixa virou **quarto parâmetro** de `definirSenhaProvisoria`, alcançável por teste e seed e por nenhuma requisição HTTP.
+
+**Ressalva honesta, que o agente não fez:** isto NÃO impede um gestor de assumir a identidade de alguém. Ele sempre pôde redefinir a senha, ler a sorteada na resposta e entrar como a pessoa — é poder inerente a "gestor redefine senha", e não há como tirar sem tirar a função. O que muda é que a regra declarada passou a ser imposta pelo servidor, e o redefinir continua gravado em `LogAuditoria` como `senha_redefinida_pelo_gestor`, então a correlação "gestor redefiniu → alguém entrou como a vítima" fica reconstruível.
+
+### Corpo malformado deixou de sumir calado
+
+**A-04 — `corpoJson` devolvia `{}` sem registrar.** 🟡
+
+JSON truncado, `Content-Type` errado ou encoding quebrado viravam `{}` em silêncio. Inofensivo em rota com campo obrigatório (o Zod recusa depois), mas `POST /api/itens/[id]/concluir` tem **todos os campos opcionais**: um corpo corrompido passava como pedido legítimo sem observação. Agora o `catch` registra caminho e causa.
+
+### Reclassificados — o agente exagerou
+
+**Categoria desativada esconderia trabalho.** O mecanismo existe (`porCategoria` e `carregarCategorias` filtram `ativa: true`, e itens abertos de uma categoria desativada sumiriam do painel e de toda distribuição futura). Mas **nenhum caminho do sistema desativa categoria** — `ativa: false` não é escrito em lugar nenhum de `src/`. É armadilha para quem for implementar essa função um dia, não defeito de hoje. Registrado aqui como aviso a quem mexer.
+
+**N+1 e ausência de recorte no painel.** Reais e bem descritos: `carregarElegiveis` faz 4 consultas por colaborador elegível; `porPessoa` faz 1 + 4×N; o `groupBy` de estado atual varre `Item` inteiro sem `where`. Com 4-7 pessoas em SQLite embarcado, é irrelevante — o próprio código já documenta a dívida. Vira problema real na migração para PostgreSQL, quando cada consulta passa a ser ida e volta de rede, e pior por acontecer dentro da transação que segura a trava do dia. Continua registrado como `H-D8`, agora com a medida: ~29 consultas por carregamento do painel, ~14 por categoria na distribuição.
+
+### O que a auditoria confirmou que está sólido
+
+Vale registrar, porque cobre a maior parte do sistema:
+
+- **Identidade nunca vem do corpo.** Verificado nas 23 rotas e nos serviços que elas chamam: `usuario`, `atribuidoPor`, `resolvidoPor` e `executadoPor` saem sempre de `ator.colaboradorId`. `Ator` é tipo fantasma — não há como fabricar um fora de `atorDaSessao`.
+- **Papel é reconferido no banco a cada requisição**, nunca lido do cookie. Rebaixar ou desativar alguém tem efeito imediato.
+- **Injeção de prompt**: truncar → detectar → delimitar aplicado igual no mock e no adapter real, sempre antes do modelo; detecção nunca bloqueia sozinha, sempre chama humano; e `aprovarTodosPendentes` exclui `conteudo_suspeito` da aprovação em massa.
+- **Sem SQL bruto, sem `dangerouslySetInnerHTML`**, sem rota de escrita para métrica.
+- **Erro ≥500 nunca vaza detalhe** — inclusive `ConservacaoVioladaError`, que carrega a alocação inteira.
+- **`onDelete` protege a prova histórica**: `Restrict` nos livros-razão e em `Item.email`; `Cascade` só em tabelas de vínculo sem rota de exclusão.
+- **Anexo**: allowlist de extensão + conferência dos bytes reais + remoção de caracteres invisíveis + chave sorteada, nunca derivada do nome.
+- **Nada específico de SQLite** no caminho de dados — a migração para PostgreSQL não esbarra em tipo nem em sintaxe.
+
+### Uma pergunta que é sua, não minha
+
+**A caixa de entrada mostra a operação inteira para qualquer pessoa autenticada.** `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador`. O `RF-23` do PRD diz *"Colaborador vê **seus** itens reais"*.
+
+Não mexi, porque as duas leituras são defensáveis e a escolha é de operação, não de engenharia:
+
+- Hoje a equipe trabalha de uma **caixa de e-mail compartilhada** — todo mundo já vê tudo. Restringir seria mudar a operação, não corrigir um defeito.
+- Por outro lado, remetente e assunto de e-mail de associado são dado pessoal, e o resto do sistema é cuidadoso com isso (a lista de colaboradores, por exemplo, exige gestor).
+
+Registrado em `§ H.4` como pergunta ao dono do processo.

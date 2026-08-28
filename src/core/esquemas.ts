@@ -269,9 +269,20 @@ export const TrocaDeSenhaSchema = z.object({
  * A tela nunca envia este campo; ele existe para script e teste, onde um valor
  * fixo é o que torna o resultado verificável.
  */
+/**
+ * Gestor definindo a senha provisória de alguém.
+ *
+ * NÃO existe campo de senha aqui, e a ausência é a regra.
+ *
+ * `credenciais.ts` declara que o sistema nunca pede ao gestor que invente a
+ * senha de alguém — pessoa apressada escolhe `Sbp2026!` para a equipe
+ * inteira, e a provisória vira permanente conhecida por todos. Enquanto o
+ * campo era aceito aqui, essa regra existia só como convenção da tela: o
+ * servidor obedecia a qualquer valor que chegasse pela rota. Agora quem
+ * sorteia é sempre o servidor, e não há como pedir outra coisa por HTTP.
+ */
 export const DefinicaoDeSenhaSchema = z.object({
   colaboradorId: z.string().min(1),
-  senhaProvisoria: SenhaSchema.optional(),
 })
 
 /** Gestor tirando alguém do bloqueio por tentativas, sem esperar o tempo passar. */

@@ -77,7 +77,7 @@ async function principal(): Promise<void> {
   )
 
   titulo('3. FILA DE REVISAO')
-  const pendentes = await listarPendentes(banco, 500)
+  const { itens: pendentes } = await listarPendentes(banco, 500)
   linha(`${pendentes.length} itens aguardando olho humano`)
   for (const motivo of new Set(pendentes.map((item) => item.motivo))) {
     linha(`   ${motivo}: ${pendentes.filter((item) => item.motivo === motivo).length}`)
@@ -96,7 +96,7 @@ async function principal(): Promise<void> {
   const aprovacao = await aprovarTodosPendentes(banco, operador)
   linha(`\n${aprovacao.aprovados} revisoes rotineiras resolvidas pelo operador.`)
 
-  const retidos = await listarPendentes(banco, 500)
+  const { itens: retidos } = await listarPendentes(banco, 500)
   if (retidos.length > 0) {
     const porMotivo = new Map<string, number>()
     for (const item of retidos) porMotivo.set(item.motivo, (porMotivo.get(item.motivo) ?? 0) + 1)

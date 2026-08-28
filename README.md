@@ -126,7 +126,7 @@ Toda saída de IA passa por `InterpretacaoSchema` (Zod). Uma resposta que não v
 
 Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · adapters de IA (mock e Anthropic) · fila de revisão com divisão manual · distribuição transacional com conservação garantida · fila individual com devolução ao pool · painel derivado · auditoria e observabilidade · 19 rotas REST · 9 telas · **autenticação por e-mail e senha** com troca obrigatória da provisória, bloqueio progressivo e revogação de sessão · tela de administração de acesso · **conteúdo separado do histórico operacional**, com anexos guardados fora do banco e tipo real conferido pelos bytes · **auditoria completa com 24 correções aplicadas** (`DECISOES.md § H`).
 
-**226 testes passando.**
+**229 testes passando.**
 
 O adapter Anthropic está escrito e coberto por testes, mas **ainda não foi exercitado contra a API real** — rode `IA_ADAPTER=anthropic npm run ia:experimentar` com a chave configurada antes de confiar nele.
 

@@ -64,7 +64,7 @@ describe('leitura do que o fluxo real gravou', () => {
 
   it('trocar a categoria na tela aparece como categoria trocada', async () => {
     const base = await ingerirUmDia()
-    const pendentes = await listarPendentes(banco, 1)
+    const { itens: pendentes } = await listarPendentes(banco, 1)
     const alvo = pendentes[0]!
 
     const outra = alvo.categoriaCodigo === 'LIGANTE' ? 'DOC_CADASTRO' : 'LIGANTE'
@@ -92,7 +92,7 @@ describe('leitura do que o fluxo real gravou', () => {
 
   it('confirmar a sugestão sem mexer em nada conta como acerto', async () => {
     const base = await ingerirUmDia()
-    const pendentes = await listarPendentes(banco, 1)
+    const { itens: pendentes } = await listarPendentes(banco, 1)
     const alvo = pendentes[0]!
     const camposSugeridos = (JSON.parse(alvo.sugestaoIa) as { campos?: Record<string, string> })
       .campos

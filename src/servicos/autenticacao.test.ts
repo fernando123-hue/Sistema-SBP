@@ -103,8 +103,9 @@ describe('entrada com senha', () => {
 
     await definirSenhaProvisoria(
       banco,
-      { colaboradorId: base.pessoaId, senhaProvisoria: SENHA_PROVISORIA },
+      { colaboradorId: base.pessoaId },
       base.gestor,
+      SENHA_PROVISORIA,
     )
 
     const entrada = await autenticar(banco, {
@@ -120,8 +121,9 @@ describe('entrada com senha', () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(
       banco,
-      { colaboradorId: base.pessoaId, senhaProvisoria: SENHA_PROVISORIA },
+      { colaboradorId: base.pessoaId },
       base.gestor,
+      SENHA_PROVISORIA,
     )
 
     const inexistente = await autenticar(banco, {
@@ -149,8 +151,9 @@ describe('entrada com senha', () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(
       banco,
-      { colaboradorId: base.pessoaId, senhaProvisoria: SENHA_PROVISORIA },
+      { colaboradorId: base.pessoaId },
       base.gestor,
+      SENHA_PROVISORIA,
     )
     await banco.colaborador.update({ where: { id: base.pessoaId }, data: { ativo: false } })
 
@@ -163,8 +166,9 @@ describe('entrada com senha', () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(
       banco,
-      { colaboradorId: base.pessoaId, senhaProvisoria: SENHA_PROVISORIA },
+      { colaboradorId: base.pessoaId },
       base.gestor,
+      SENHA_PROVISORIA,
     )
 
     for (let tentativa = 0; tentativa < TENTATIVAS_ANTES_DE_TRAVAR; tentativa += 1) {
@@ -193,8 +197,9 @@ describe('entrada com senha', () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(
       banco,
-      { colaboradorId: base.pessoaId, senhaProvisoria: SENHA_PROVISORIA },
+      { colaboradorId: base.pessoaId },
       base.gestor,
+      SENHA_PROVISORIA,
     )
 
     // Regressão: o contador era lido no início da função e gravado como valor
@@ -216,8 +221,9 @@ describe('entrada com senha', () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(
       banco,
-      { colaboradorId: base.pessoaId, senhaProvisoria: SENHA_PROVISORIA },
+      { colaboradorId: base.pessoaId },
       base.gestor,
+      SENHA_PROVISORIA,
     )
 
     await autenticar(banco, { email: 'pessoa@teste.local', senha: 'errada' }).catch(() => null)
@@ -234,8 +240,9 @@ describe('entrada com senha', () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(
       banco,
-      { colaboradorId: base.pessoaId, senhaProvisoria: SENHA_PROVISORIA },
+      { colaboradorId: base.pessoaId },
       base.gestor,
+      SENHA_PROVISORIA,
     )
 
     await autenticar(banco, { email: 'pessoa@teste.local', senha: 'errada' }).catch(() => null)
@@ -258,8 +265,9 @@ describe('troca de senha', () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(
       banco,
-      { colaboradorId: base.pessoaId, senhaProvisoria: SENHA_PROVISORIA },
+      { colaboradorId: base.pessoaId },
       base.gestor,
+      SENHA_PROVISORIA,
     )
     return base
   }
@@ -364,15 +372,17 @@ describe('definição de senha pelo gestor', () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(
       banco,
-      { colaboradorId: base.pessoaId, senhaProvisoria: SENHA_PROVISORIA },
+      { colaboradorId: base.pessoaId },
       base.gestor,
+      SENHA_PROVISORIA,
     )
     await trocarSenha(banco, { senhaAtual: SENHA_PROVISORIA, senhaNova: SENHA_NOVA }, base.pessoaAtor)
 
     await definirSenhaProvisoria(
       banco,
-      { colaboradorId: base.pessoaId, senhaProvisoria: 'outra-provisoria-do-gestor' },
+      { colaboradorId: base.pessoaId },
       base.gestor,
+      'outra-provisoria-do-gestor',
     )
 
     const entrada = await autenticar(banco, {
@@ -408,8 +418,9 @@ describe('destravar conta', () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(
       banco,
-      { colaboradorId: base.pessoaId, senhaProvisoria: SENHA_PROVISORIA },
+      { colaboradorId: base.pessoaId },
       base.gestor,
+      SENHA_PROVISORIA,
     )
 
     for (let tentativa = 0; tentativa < TENTATIVAS_ANTES_DE_TRAVAR; tentativa += 1) {
@@ -447,8 +458,9 @@ describe('ativar e desativar acesso', () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(
       banco,
-      { colaboradorId: base.pessoaId, senhaProvisoria: SENHA_PROVISORIA },
+      { colaboradorId: base.pessoaId },
       base.gestor,
+      SENHA_PROVISORIA,
     )
 
     await definirAtivacao(banco, { colaboradorId: base.pessoaId, ativo: false }, base.gestor)
@@ -497,5 +509,32 @@ describe('ativar e desativar acesso', () => {
         atorDeTeste(base.pessoaId, 'operador'),
       ),
     ).rejects.toThrow(/operador/)
+  })
+})
+
+describe('o gestor não escolhe a senha de ninguém', () => {
+  it('campo de senha vindo pela rede é IGNORADO', async () => {
+    const base = await semearPessoa()
+
+    // Corpo com o campo que a rota HTTP costumava aceitar. O esquema não o
+    // conhece mais, então ele é descartado e o servidor sorteia.
+    const resultado = await definirSenhaProvisoria(
+      banco,
+      { colaboradorId: base.pessoaId, senhaProvisoria: 'SenhaEscolhida1' },
+      base.gestor,
+    )
+
+    // Enquanto o campo era aceito, a regra de "sempre sorteada" valia só
+    // enquanto a tela cooperasse: um gestor podia fixar senha conhecida para
+    // outra pessoa pela rede e depois entrar como ela — e toda ação seguinte
+    // ficaria gravada em `LogAuditoria.usuario` com o id da VÍTIMA.
+    expect(resultado.senhaProvisoria).not.toBe('SenhaEscolhida1')
+
+    const gravado = await banco.colaborador.findUniqueOrThrow({
+      where: { id: base.pessoaId },
+      select: { senhaHash: true },
+    })
+    expect(await conferirSenha('SenhaEscolhida1', gravado.senhaHash!)).toBe(false)
+    expect(await conferirSenha(resultado.senhaProvisoria, gravado.senhaHash!)).toBe(true)
   })
 })

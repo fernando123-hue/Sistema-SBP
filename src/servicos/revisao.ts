@@ -50,7 +50,23 @@ export interface ItemEmRevisao {
   sugestaoIa: string
 }
 
-export async function listarPendentes(banco: Banco, limite = 100): Promise<ItemEmRevisao[]> {
+/**
+ * A fila de revisão, com o TOTAL ao lado.
+ *
+ * Devolver só o pedaço truncado deixava a tela dizer "200 itens" para
+ * sempre enquanto a fila crescia atrás do corte. Como a ordenação é fixa
+ * (`confianca asc, criadoEm asc`), o que fica além do limite fica lá
+ * PERMANENTEMENTE: nunca sobe, nunca aparece, ninguém resolve. Fila que
+ * esconde o próprio tamanho é indistinguível de fila sob controle.
+ */
+export interface FilaDeRevisao {
+  itens: ItemEmRevisao[]
+  /** Quantas revisões pendentes existem de verdade, ignorando o limite. */
+  total: number
+}
+
+export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaDeRevisao> {
+  const total = await banco.revisao.count({ where: { resolvidoEm: null } })
   const registros = await banco.revisao.findMany({
     where: { resolvidoEm: null },
     orderBy: [{ confianca: 'asc' }, { criadoEm: 'asc' }],
@@ -65,7 +81,7 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<ItemE
     },
   })
 
-  return registros.map((registro) => ({
+  const itens = registros.map((registro) => ({
     revisaoId: registro.id,
     itemId: registro.itemId,
     motivo: registro.motivo,
@@ -77,6 +93,8 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<ItemE
     assunto: registro.item.email?.conteudo?.assunto ?? null,
     sugestaoIa: registro.sugestaoIa,
   }))
+
+  return { itens, total }
 }
 
 export async function resolver(

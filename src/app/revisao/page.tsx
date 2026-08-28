@@ -66,13 +66,17 @@ const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutr
  */
 export default function Revisao() {
   const [pendentes, setPendentes] = useState<ItemEmRevisao[] | null>(null)
+  /** Quantas existem de verdade. Maior que a lista = a fila está truncada. */
+  const [totalPendentes, setTotalPendentes] = useState(0)
   const [erro, setErro] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
   const [edicao, setEdicao] = useState<Record<string, Edicao>>({})
 
   const carregar = useCallback(async () => {
     try {
-      const lista = await api.buscar<ItemEmRevisao[]>('/revisao')
+      const fila = await api.buscar<{ itens: ItemEmRevisao[]; total: number }>('/revisao')
+      const lista = fila.itens
+      setTotalPendentes(fila.total)
       setPendentes(lista)
       setEdicao(
         Object.fromEntries(
@@ -188,9 +192,20 @@ export default function Revisao() {
             ? 'Carregando…'
             : pendentes.length === 0
               ? 'Nada aguardando decisão humana.'
-              : `${pendentes.length} itens em que a IA não teve certeza suficiente.`
+              : `${totalPendentes} itens em que a IA não teve certeza suficiente.`
         }
       />
+
+      {pendentes !== null && totalPendentes > pendentes.length ? (
+        <Aviso tom="atencao">
+          <strong>
+            {totalPendentes} revisões pendentes, e esta tela mostra {pendentes.length}.
+          </strong>{' '}
+          A ordem é fixa (menor confiança primeiro), então o que ficou além do corte não sobe
+          sozinho — resolva a fila para o resto aparecer. Sem este aviso, a tela diria
+          &ldquo;{pendentes.length} itens&rdquo; para sempre enquanto a fila crescia atrás dela.
+        </Aviso>
+      ) : null}
 
       {erro ? <Aviso>{erro}</Aviso> : null}
 
