@@ -13,12 +13,14 @@ Se um número do painel não puder ser reconstruído passo a passo a partir dos 
 ## 2. Camadas
 
 ```
-app/          Next.js — rotas, telas, componentes.        Depende de services.
+app/          Next.js — rotas, telas.                     Depende de servicos.
 api/          Endpoints REST. Toda operação existe aqui primeiro.
-services/     Transações, Prisma, orquestração.           Depende de core.
+servicos/     Transações, Prisma, orquestração.           Depende de core.
+servidor/     Sessão, ator, http, prisma, observabilidade.
 core/         Domínio puro. TypeScript, zero I/O.         Depende de NADA.
-ports/        Contratos: AiPort, IngestaoPort, ExportPort.
-adapters/     Implementações: mock | anthropic | imap | xlsx | rest
+ports/        Contratos: AiPort · IngestaoPort · ArmazenamentoPort.
+adapters/     Construídos: ia-mock · ia-anthropic · ingestao-mock
+              · armazenamento-disco. Previstos: imap · graph · gmail · nuvem
 ```
 
 **Regra de dependência:** as setas apontam só para dentro. `core/` não importa Prisma, React, Next nem `fetch`. Isso é o que torna o motor testável em milissegundos e auditável para sempre.
@@ -49,8 +51,11 @@ Categoria          id · codigo · rotulo · frente · grupo · divisivel · pes
 Habilitacao        colaborador_id · categoria_id · pode_receber · vigencia_inicio · vigencia_fim
 Escala             data · colaborador_id · disponivel · capacidade_relativa
 
-Email              id · message_id (unique) · remetente · assunto · corpo
-                   · recebido_em · anexos(json) · origem
+Email              id · message_id (unique) · recebido_em · origem · dominio
+                   · modelo_ia · versao_prompt · conteudo_expurgado_em
+EmailConteudo      email_id · remetente · assunto · corpo      ← retenção CURTA
+Anexo              email_id · nome · tipo_real · hash · chave_armazenamento
+                   · bytes_expurgados_em
 Item               id · email_id? · categoria_id · sequencia_no_email · identificador_externo
                    · payload_extraido(json) · confianca_classificacao · liga_id? · associado_id?
                    · status(novo|aguardando_revisao|aprovado|distribuido|em_andamento|concluido|devolvido)
@@ -173,31 +178,63 @@ Crédito é fracionário (`Q/n`). Comparações usam `EPSILON = 1e-9`; valores p
 |---|---|---|---|
 | `IngestaoPort` | `buscarNovos(): EmailBruto[]` idempotente por `message_id` | `mock` (seed) | `imap` · `graph` · `gmail` |
 | `AiPort` | `interpretar(email): { itens[], confianca, evidencia, modelo, versaoPrompt }` | `mock` determinístico | `anthropic` (claude-sonnet-5, structured output) |
-| `ExportPort` | `exportar(periodo, formato)` | `xlsx` · `json` | `rest` para o sistema legado |
+| `ExportPort` | `exportar(periodo, formato)` | *(nenhum — planejado, não construído)* | `rest` para o sistema legado |
 
 O adapter mock da IA é determinístico de propósito: permite testar todo o pipeline sem chamar modelo e sem custo.
 
 ## 7. API
 
+Envelope único em toda resposta: `{ sucesso, dados, erro, correlacaoId? }`.
+
+**Estado em 28/08/2026 — 24 caminhos, 29 operações.** Auditado contra o código; o que estiver aqui existe, e o que existe está aqui.
+
 ```
-POST /api/ingestao/sincronizar        dispara o adapter, cria Emails e Itens
-GET  /api/itens?status=&categoria=    caixa de entrada
-GET  /api/revisao                     fila abaixo do limiar
-POST /api/revisao/:id/resolver        aceita/corrige, grava valor_final
-GET  /api/escala/:data                escala do dia
-PUT  /api/escala/:data                define disponibilidade
-POST /api/distribuicao/previa         roda o motor SEM gravar → prévia
-POST /api/distribuicao/confirmar      roda e grava em transação
-GET  /api/rodadas/:id                 snapshot completo, auditoria
-POST /api/itens/:id/concluir          gera Execucao
-POST /api/itens/:id/devolver          justificativa obrigatória
-POST /api/itens/:id/transferir        Atribuicao motivo=transferencia
-GET  /api/painel?de=&ate=             agregações
-GET  /api/export?formato=xlsx         transição e integração
-GET  /api/config/categorias           pesos, limiares, vigências
+── Ingestão e revisão ───────────────────────────────────────
+POST   /api/ingestao                  dispara o adapter, cria Emails e Itens
+GET    /api/revisao                   fila abaixo do limiar
+POST   /api/revisao/resolver          aceita/corrige, grava valor_final (id no corpo)
+
+── Itens ────────────────────────────────────────────────────
+GET    /api/itens?status=&categoria=  caixa de entrada
+POST   /api/itens                     registro manual (balcão, INADIMP., ISENTO)
+POST   /api/itens/:id/concluir        gera Execucao
+POST   /api/itens/:id/devolver        justificativa obrigatória
+POST   /api/itens/:id/transferir      Atribuicao motivo=transferencia
+GET    /api/fila?colaborador=         fila individual
+
+── Distribuição ─────────────────────────────────────────────
+GET    /api/escala?data=              escala do dia
+PUT    /api/escala                    define disponibilidade
+POST   /api/distribuicao/previa       roda o motor SEM gravar → prévia
+POST   /api/distribuicao/confirmar    roda e grava em transação
+GET    /api/rodadas/:id               snapshot completo, auditoria
+
+── Leitura ──────────────────────────────────────────────────
+GET    /api/painel?de=&ate=           agregações; nenhuma rota de escrita
+GET    /api/qualidade                 taxa de acerto da IA, cobertura, calibração
+GET    /api/categorias                categorias ativas
+GET    /api/memoria?correlacao=       o que aconteceu num ciclo
+GET    /api/memoria?entidade=&id=     a história de um registro
+
+── Acesso ───────────────────────────────────────────────────
+POST   /api/sessao                    entrada por e-mail e senha
+GET    /api/sessao                    quem está autenticado
+DELETE /api/sessao                    sair
+POST   /api/sessao/senha              troca da própria senha
+
+── Administração (gestor) ───────────────────────────────────
+GET    /api/colaboradores             equipe, com estado de acesso
+POST   /api/colaboradores             cadastra pessoa, devolve senha provisória
+POST   /api/colaboradores/habilitacao o que a pessoa pode receber
+POST   /api/colaboradores/ativacao    liga ou desliga o acesso
+POST   /api/colaboradores/senha       senha provisória de alguém
+POST   /api/colaboradores/destravar   tira do bloqueio por tentativas
+GET    /api/diagnostico/origem        confere o tratamento de proxy
 ```
 
 `previa` e `confirmar` chamam **a mesma função pura**. O que se vê na tela é literalmente o que será gravado.
+
+**Previsto e ainda não implementado:** `GET /api/export?formato=xlsx` (`RF-30`, exportação para o sistema legado) — não existe rota, nem `ExportPort`, nem adapter. Era listado aqui como se existisse até 28/08/2026.
 
 ## 8. Telas
 
@@ -212,9 +249,11 @@ GET  /api/config/categorias           pesos, limiares, vigências
 
 ## 9. Design system
 
-Base shadcn/ui. Matrizes validadas no Storybook antes de espalhar instâncias:
+**O que este documento planejou e o que foi construído divergem aqui, e a divergência é deliberada.** O plano era shadcn/ui com matrizes validadas no Storybook. Nenhum dos dois entrou: não há `.storybook/`, não há dependência de `storybook` nem de `shadcn`, e o design system é **um arquivo**, `src/componentes/matrizes.tsx`, sobre Tailwind com `class-variance-authority`, `clsx`, `tailwind-merge` e `lucide-react`.
 
-`BadgeConfianca` · `CardItem` · `ListaResponsiva` (tabela no desktop, cards no mobile) · `PreviaDistribuicao` · `SeletorEscala` · `CampoRevisao` · `MetricaPainel` (somente leitura por construção).
+O motivo é o mesmo princípio do resto do projeto: com nove telas e um punhado de componentes, uma ferramenta de catálogo custa mais manutenção do que resolve. `RNF-05` do PRD, que pedia validação no Storybook, **não está atendido** — está sendo cumprido por revisão na tela. Se o número de componentes crescer, a decisão volta à mesa.
+
+Matrizes que existem hoje, em `src/componentes/matrizes.tsx`: `Cartao` · `CabecalhoDeSecao` · `Selo` · `SeloDeConfianca` · `SeloDeStatus` · `Botao` · `Vazio` · `Carregando` · `Aviso` · `Metrica` (somente leitura por construção) · `ListaResponsiva` (tabela no desktop, cards no mobile).
 
 ## 10. Estrutura de pastas
 
@@ -232,22 +271,28 @@ src/
       motor.ts
       motor.test.ts
       simulacao.test.ts
-    carga/peso.ts
-  ports/
-  adapters/
-  services/
+    qualidade-ia.ts
+    seguranca/
+    pureza.test.ts        guarda automática da regra de dependência
+  ports/                  ia · ingestao · armazenamento
+  adapters/               ia-mock · ia-anthropic · ingestao-mock
+                          · armazenamento-disco · fabrica
+  servicos/               transações e orquestração
+  servidor/               prisma · ambiente · ator · sessão · http
+                          · credenciais · observabilidade
   app/
-    (rotas e telas)
-    api/
-  components/
-    ui/                   shadcn
-    matrizes/             componentes do design system
-.storybook/
+    (telas)
+    api/                  rotas
+  componentes/            matrizes.tsx · api.ts · navegacao.tsx
+  generated/              cliente Prisma (não versionado)
+scripts/                  demo · experimentar-ia · limpar-transacional
 ```
+
+Os nomes são em **português** (`servicos`, `servidor`, `componentes`), como o resto do vocabulário do projeto — este documento dizia `services/` e `components/` até 28/08/2026. `carga/peso.ts` foi planejado e nunca existiu: o peso vive em `Categoria.peso`, lido pelo motor.
 
 ## 11. Stack
 
-Next.js (App Router) · TypeScript strict · shadcn/ui · Tailwind · Storybook · Prisma · Vitest · Zod nas bordas.
+Next.js (App Router) · TypeScript strict · Tailwind · Prisma · Vitest · Zod nas bordas.
 
 **Banco:** SQLite no protótipo (Docker ausente na máquina), provider trocável para Postgres em uma linha do schema. Enums como string + Zod; `json` serializado.
 

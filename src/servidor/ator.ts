@@ -1,4 +1,4 @@
-import { PapelSchema, type Papel } from '../core/esquemas'
+import { PapelSchema, type Operacao, type Papel } from '../core/esquemas'
 
 /**
  * Quem está agindo.
@@ -60,7 +60,7 @@ export const ATOR_SISTEMA: Ator = construir('sistema', 'operador')
 export class PermissaoNegadaError extends Error {
   readonly codigo = 'PERMISSAO_NEGADA'
 
-  constructor(ator: Ator, operacao: string, permitidos: readonly Papel[]) {
+  constructor(ator: Ator, operacao: Operacao, permitidos: readonly Papel[]) {
     super(
       `Papel "${ator.papel}" não pode executar "${operacao}". ` +
         `Permitidos: ${permitidos.join(', ')}.`,
@@ -69,7 +69,16 @@ export class PermissaoNegadaError extends Error {
   }
 }
 
-export function exigirPapel(ator: Ator, operacao: string, ...permitidos: Papel[]): void {
+/**
+ * `operacao` é fechada (`OperacaoSchema`), não texto livre.
+ *
+ * Antes era `string` e servia só para compor a mensagem de erro — não era
+ * chave de nada. Duas consequências: `'sincronizar ingestão'` já estava
+ * duplicada em dois arquivos sem que nada acusasse, e não havia lugar algum
+ * que respondesse "que operações existem e quem pode cada uma". Agora a
+ * própria união de tipos é essa resposta, conferida pelo compilador.
+ */
+export function exigirPapel(ator: Ator, operacao: Operacao, ...permitidos: Papel[]): void {
   if (!permitidos.includes(ator.papel)) {
     throw new PermissaoNegadaError(ator, operacao, permitidos)
   }

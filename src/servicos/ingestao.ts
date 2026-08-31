@@ -17,6 +17,7 @@ import { ATOR_SISTEMA, exigirPapel, type Ator } from '../servidor/ator'
 import type { Banco, Transacao } from '../servidor/prisma'
 import {
   mensagemDoErro,
+  mensagemPersistivel,
   novaCorrelacao,
   registrarEvento,
   registrarLog,
@@ -170,7 +171,7 @@ export async function sincronizar(
           etapa: 'ingestao',
           situacao: 'reprocessavel',
           referencia: candidato.messageId,
-          mensagem: mensagemDoErro(erro),
+          mensagem: mensagemPersistivel(erro),
         })
         throw erro
       }
@@ -188,7 +189,7 @@ export async function sincronizar(
         // nova sincronização tenta de novo sem duplicar o que já entrou.
         situacao: 'reprocessavel',
         referencia: candidato.messageId,
-        mensagem: mensagemDoErro(erro),
+        mensagem: mensagemPersistivel(erro),
       })
     }
   }

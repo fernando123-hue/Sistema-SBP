@@ -4,7 +4,14 @@ import { ErroDominio } from '../core/erros'
 import { ambiente } from './ambiente'
 import { PermissaoNegadaError } from './ator'
 import { verificarLimite } from './limite-de-taxa'
-import { mensagemDoErro, novaCorrelacao, registrarLog } from './observabilidade'
+import {
+  mensagemDoErro,
+  mensagemPersistivel,
+  novaCorrelacao,
+  registrarEvento,
+  registrarLog,
+} from './observabilidade'
+import { obterPrisma } from './prisma'
 import { SemSessaoError, SenhaProvisoriaError } from './sessao'
 
 /**
@@ -89,8 +96,51 @@ export async function rota(handler: () => Promise<Response>): Promise<Response> 
       pilha: erro instanceof Error ? erro.stack : undefined,
     })
 
+    // A resposta abaixo promete que o identificador "permite rastrear a
+    // falha". Enquanto isto aqui não existia, a promessa era falsa: o id era
+    // sorteado, entregue ao usuário e gravado SÓ em stdout — nenhuma tabela o
+    // continha e nenhuma rota o buscava. Quem da secretaria dissesse "deu
+    // erro, o código é a3f…" só podia ser atendido por alguém com o terminal
+    // do servidor à mão. Prometer rastreabilidade e não entregar é a doença
+    // que este sistema existe para curar, cometida na própria mensagem de erro.
+    //
+    // O `catch` é obrigatório e não é zelo: se a falha original FOR do banco,
+    // gravar o evento falha também. O erro que o usuário recebe tem de
+    // continuar sendo o primeiro — o segundo vira log, nunca substitui.
+    //
+    // A mensagem gravada é `mensagemPersistivel`, NUNCA a crua. Estamos no
+    // ramo dos 500, e a regra dez linhas acima diz que nada daqui cruza para o
+    // cliente — mas a consulta de memória é um cliente também, uma requisição
+    // depois. Gravar `mensagemDoErro` aqui reintroduziria como recurso
+    // consultável exatamente o vazamento que aquele comentário proíbe:
+    // `ConservacaoVioladaError` carrega o id de cada colega da rodada.
+    let registrado = true
+    try {
+      await registrarEvento(obterPrisma(), {
+        correlacaoId,
+        etapa: 'rota',
+        situacao: 'falha',
+        mensagem: mensagemPersistivel(erro),
+      })
+    } catch (aoGravar) {
+      registrado = false
+      registrarLog('erro', 'falha ao registrar o evento da falha', {
+        correlacaoId,
+        erro: mensagemDoErro(aoGravar),
+      })
+    }
+
+    // A mensagem muda quando o registro falhou.
+    //
+    // Prometer "o identificador permite rastrear" sabendo, naquele exato
+    // ponto, que ele não permite, manda a pessoa consultar, receber vazio e
+    // concluir que digitou errado. O código tem a informação; esconder é
+    // degradar em silêncio.
     return responderErro(
-      'Erro interno. O identificador abaixo permite rastrear a falha no log.',
+      registrado
+        ? 'Erro interno. O identificador abaixo permite rastrear a falha.'
+        : 'Erro interno. NÃO foi possível registrar a falha — o identificador abaixo só ' +
+            'existe no log do servidor, e a consulta de memória não vai encontrá-lo.',
       500,
       correlacaoId,
     )

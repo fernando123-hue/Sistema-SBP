@@ -1,4 +1,4 @@
-import { serializar } from '../core/esquemas'
+import { DOMINIO_ATUAL, serializar, type AcaoAuditavel } from '../core/esquemas'
 import type { Transacao } from '../servidor/prisma'
 
 /**
@@ -14,7 +14,12 @@ import type { Transacao } from '../servidor/prisma'
 export interface EntradaAuditoria {
   entidade: string
   entidadeId: string
-  acao: string
+  /**
+   * Fechada de propósito. Era `string`, e um typo entrava calado numa tabela
+   * que o projeto promete nunca reescrever — a linha errada ficaria para
+   * sempre, e a consulta que a procurasse não a acharia.
+   */
+  acao: AcaoAuditavel
   antes?: unknown
   depois?: unknown
   usuario: string
@@ -24,6 +29,7 @@ export interface EntradaAuditoria {
 export async function auditar(banco: Transacao, entrada: EntradaAuditoria): Promise<void> {
   await banco.logAuditoria.create({
     data: {
+      dominio: DOMINIO_ATUAL,
       entidade: entrada.entidade,
       entidadeId: entrada.entidadeId,
       acao: entrada.acao,
@@ -43,6 +49,7 @@ export async function auditarLote(
 
   await banco.logAuditoria.createMany({
     data: entradas.map((entrada) => ({
+      dominio: DOMINIO_ATUAL,
       entidade: entrada.entidade,
       entidadeId: entrada.entidadeId,
       acao: entrada.acao,

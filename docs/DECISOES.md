@@ -157,6 +157,13 @@ Formato: hipótese · motivo · impacto · status.
 **Impacto:** a janela em que outra pessoa conhece a senha existe, mas termina no primeiro acesso do dono — e ela é a única operação permitida nesse estado.
 **Status:** ✅ implementado em 26/08/2026. Ver *Autenticação com senha* mais abaixo. Continua **insuficiente para dados reais de associado** enquanto a LGPD (§ F) não for endereçada.
 
+### AT-09 — Carga de categoria fora do rateio não entra no crédito
+
+**Hipótese:** item registrado manualmente em `INADIMP.`/`ISENTO` **não** move `SaldoCarga` nem `SaldoCargaGlobal`.
+**Motivo:** `entraNoRateio = false` é a declaração de que a categoria fica fora da matemática do rateio diário. Somar essa carga ao razão faria uma categoria de exceção inclinar a cota justa das categorias reais: quem registrasse muitos inadimplentes apareceria credor e passaria a receber **menos** `DOC_CADASTRO`. Como o razão global é por frente, e `INADIMP.` é `CADASTRO`, o efeito não seria isolado.
+**Impacto:** trabalho real fica fora do balanceamento. Não fica invisível: o painel conta **atribuição**, não crédito, então o volume aparece por pessoa em `atribuidos`, `pendentes` e `concluidos`.
+**Status:** ⏳ provisório, e escolhido por ser o lado **reversível**. Passar a contar depois é uma decisão que se toma; despoluir um razão já acumulado exige recomputar histórico — o mesmo raciocínio de `H-D6`. A pergunta objetiva para o dono está em § H.4, item 6.
+
 ---
 
 ## D. Pendências do cliente final
@@ -269,7 +276,7 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 |---|---|---|
 | H-D2 | `RegraDistribuicao` modelado e nunca lido — `RF-32` (configuração sem deploy) não existe | Os defaults estão corretos; o caminho de escrita é trabalho próprio |
 | ~~H-D3~~ | ~~Taxa de acerto da IA não é calculada em lugar nenhum~~ | **RESOLVIDO em 27/08/2026** — seção *Taxa de acerto da IA* abaixo. Critério nº 5 passa a ser verificável |
-| H-D4 | `INADIMP`/`ISENTO` sem caminho de criação manual (`POST /api/itens`) | Categorias semeadas mas inalcançáveis hoje |
+| ~~H-D4~~ | ~~`INADIMP`/`ISENTO` sem caminho de criação manual (`POST /api/itens`)~~ | **RESOLVIDO em 28/08/2026** — `POST /api/itens` e o formulário na Caixa de entrada. Seção *Registro manual de item* abaixo |
 | ~~H-D5~~ | ~~Painel sem recorte de data e com definição própria de "pendente"~~ | **RESOLVIDO em 28/08/2026** — `?de=&ate=`, colunas mapeadas uma a uma para as da planilha, e o carry-over deixa de ser digitado. Seção *Painel com recorte de período* abaixo |
 | H-D6 | Escopo do livro-razão global antes de a frente `TÍTULOS` entrar | Acrescentar escopo a um razão já acumulado exige recomputar histórico |
 | H-D7 | Contratos de API duplicados à mão nas telas — já divergiram (`emAndamento` sumiu; `Date` vs. string) | O legado vai consumir sem esquema contra o qual programar |
@@ -279,7 +286,8 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 | H-D11 | `duplicata_suspeita` no enum e na tela, nunca produzido | `RF-07` não implementado |
 | H-D12 | Sem versionamento de caminho na API (`/v1/`) | Barato agora, caro depois de o legado plugar |
 | H-D13 | Ao migrar para PostgreSQL: `CHECK` nos domínios fechados, `jsonb` nas colunas JSON, isolamento de transação, runbook de migração de dados | O momento certo é a migração, com a tabela pequena |
-| H-D14 | Sem tela de administração de acesso — o gestor define senha só por chamada de API | A rota existe e é conferida por papel; a tela é trabalho próprio e depende de decidir se cadastro de pessoa entra junto |
+| ~~H-D14~~ | ~~Sem tela de administração de acesso — o gestor define senha só por chamada de API~~ | **RESOLVIDO em 26/08/2026** — seção *Tela de administração de acesso* abaixo. Continuava listado como aberto até 28/08, contradizendo a própria seção que o resolvia |
+| H-D15 | *(nunca existiu)* | Salto de numeração, não dívida perdida. Registrado aqui em 28/08/2026 porque quem confere a lista pelos ids conclui que um item sumiu |
 | ~~H-D16~~ | ~~`X-Forwarded-For` aceito sem proxy confiável~~ | **RESOLVIDO em 27/08/2026** — `PROXIES_CONFIAVEIS` declara os saltos confiáveis; sem eles o código admite que não sabe a origem em vez de fingir. Seção *Origem da requisição e proxy confiável* abaixo. Publicar fora da rede local ainda exige ajustar o número |
 | ~~H-D17~~ | ~~Sem cadastro de colaborador pela tela~~ | **RESOLVIDO em 27/08/2026** — cadastro e habilitação na tela de Acesso, entregues juntos. Seção *Cadastro de pessoa e habilitação* abaixo |
 | H-D18 | Agregados de métrica não são materializados | **Reclassificado em 27/08/2026.** Nenhuma métrica lê linha expurgável — todas saem de `Item`, `Atribuicao`, `SaldoCarga` e `Revisao`, e o invariante 11 proíbe apagar dado operacional. Deixou de ser pré-requisito da retenção; continua valendo por recorte histórico barato e por segurança contra uma retenção futura mais ampla |
@@ -291,13 +299,18 @@ Motor puro e sua cobertura de testes · `Ator` como tipo marcado · snapshot com
 
 ### H.4 Precisa de decisão do dono do negócio
 
-Nenhuma resposta foi inventada. As quatro estão em `ESTADO.md`:
+Nenhuma resposta foi inventada. Estão em `ESTADO.md`:
 
 1. **Dono único** — categoria com dono fixo é *sempre a mesma pessoa*, ou apenas lote não fragmentado? Hoje o código entrega 100% a quem estiver mais credor, o que é rodízio, não dono fixo.
 2. **Etapa 6 da operação** — o colaborador trabalha pela tela ou continua pela pasta de e-mail? Define se o `IngestaoPort` precisa escrever na caixa. Sem isso, a equipe fica com duas filas na rodada paralela.
 3. **Itens mais antigos** — vão para quem está mais credor, ou são espalhados? Tem consequência de prazo.
-4. **"Período" do desempate** — hoje é o mês corrente, o que reintroduz a fronteira mensal que `RN-11` manda eliminar. Janela deslizante?
+4. ~~**"Período" do desempate**~~ — **RESPONDIDO em 27/08/2026:** janela deslizante de 30 dias, já implementada (`DIAS_DA_JANELA` em `src/servicos/distribuicao.ts`). Este item continuava descrevendo o estado antigo ("hoje é o mês corrente"); corrigido em 28/08/2026.
 5. **Quem vê a caixa de entrada inteira?** *(levantado na auditoria de 28/08/2026)* `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails, e quem está com cada item. O `RF-23` diz *"Colaborador vê **seus** itens reais"*. As duas leituras são defensáveis: hoje a equipe trabalha de uma caixa de e-mail compartilhada, e todo mundo já vê tudo — restringir mudaria a operação, não corrigiria defeito. Por outro lado, remetente e assunto de associado são dado pessoal, e o resto do sistema é cuidadoso com isso. **Não foi alterado**, porque a escolha é de operação.
+
+6. **Carga de exceção conta para o balanceamento?** *(levantada em 28/08/2026, com o registro manual)* Quem atende 30 inadimplentes num dia fez trabalho real, e hoje esse trabalho **não** entra no crédito — a pessoa continua recebendo cota cheia das categorias do rateio. Contar resolveria a justiça de carga, mas faria uma categoria de exceção mexer na cota justa de categorias das quais ela não participa. Ver § AT-09: o lado reversível foi escolhido de propósito, e a decisão é de operação, não de engenharia.
+
+7. **Um agente é ator de quê?** *(levantada em 28/08/2026, com a fundação do cérebro)* `ATOR_SISTEMA` tem papel `operador` e, com ele, `confirmar distribuição` e `aprovar revisões em massa` passam. E `'sistema'` não é `Colaborador`: não pode ser desativado, expirado nem travado. Antes de qualquer agente existir, é preciso decidir se ele é um papel novo (`agente`, sem as operações que decidem carga), um `Colaborador` de tipo próprio, ou nenhuma das duas. Tem consequência de schema.
+8. **Memória cai de que lado da retenção?** *(levantada em 28/08/2026)* `LogAuditoria` guarda `Item.titulo`, que a IA extraiu do corpo do e-mail e pode carregar nome de associado. Se a retenção expurgar `EmailConteudo`, esse título sobrevive na trilha — que o invariante 11 proíbe apagar. As duas leituras são defensáveis, e a escolha é de DPO, não de engenharia.
 
 ---
 
@@ -970,3 +983,170 @@ Não mexi, porque as duas leituras são defensáveis e a escolha é de operaçã
 - Por outro lado, remetente e assunto de e-mail de associado são dado pessoal, e o resto do sistema é cuidadoso com isso (a lista de colaboradores, por exemplo, exige gestor).
 
 Registrado em `§ H.4` como pergunta ao dono do processo.
+
+---
+
+## Registro manual de item (`H-D4`) — 28/08/2026
+
+### O beco sem saída
+
+`INADIMP.` e `ISENTO` estavam semeadas em `config.ts`, marcadas `entraNoRateio = false`, listadas em `CategoriaCodigoSchema` — e **fora** de `CategoriaClassificavelSchema`, ou seja, proibidas à IA. O motor as ignora por construção (`carregarCategorias` filtra `entraNoRateio: true`). Não existia rota que as criasse.
+
+Existiam no cadastro e eram inalcançáveis. Duas linhas da planilha (`CAD-MAIO`, linhas 35–36) sem correspondente nenhum aqui dentro — e a rodada de comparação lado a lado nasceria incompleta por construção, com uma diferença que ninguém saberia explicar.
+
+O sintoma mais claro estava na própria mensagem de erro do motor, escrita meses antes: `CategoriaForaDoRateioError` termina com *"Registre manualmente"*, apontando para um caminho que não existia.
+
+### O que entrou
+
+- `POST /api/itens` — `RegistroManualSchema`, papel `operador`/`gestor`.
+- `registrarManual` em `src/servicos/itens.ts`.
+- Formulário na **Caixa de entrada**, atrás do botão *Registrar item*.
+- A coluna *Confiança* passa a distinguir item classificado por IA de item digitado.
+
+### A assimetria do responsável, que não é descuido
+
+`colaboradorId` é **obrigatório** para categoria fora do rateio e **recusado** para categoria dentro dele. É a consequência de quem decide o quê:
+
+- **Dentro do rateio**, quem escolhe a pessoa é o motor. Aceitar um responsável aqui abriria uma porta lateral para escolher a dedo quem recebe trabalho — exatamente a fragilidade que este sistema substitui. O item nasce `aprovado`, sem dono, e entra na próxima rodada. Precisou ir para alguém específico? `transferir`, que exige justificativa e deixa rastro.
+- **Fora do rateio**, o motor nunca vai passar por perto. Sem responsável o item nasceria `aprovado` e ficaria assim para sempre: `concluir` exige atribuição ativa, então **ninguém teria como fechá-lo**. A pendência do painel cresceria todo dia, sozinha, e a divergência com a planilha aumentaria sem que ninguém tivesse errado nada. É o defeito que este projeto existe para eliminar, e ele entraria pela porta da funcionalidade que veio consertar outra coisa.
+
+Metade dos testes de `itens.test.ts` existe para provar que esse estado é inalcançável, não que é raro.
+
+### Habilitação não é exigida; `ativo` é
+
+`Habilitacao` ∩ escala do dia governa quem o **motor** pode escolher. O registro manual é outro caminho: um gestor nomeando explicitamente quem atendeu, com trilha de auditoria. Exigir habilitação inviabilizaria o recurso na prática — ninguém é semeado com `INADIMP.`/`ISENTO`, e lançar o atendimento de ontem quebraria na escala de ontem.
+
+Já `Colaborador.ativo` **é** exigido, pelo mesmo motivo do parágrafo anterior: atribuir a alguém desligado cria um item que ninguém pode concluir.
+
+### Quantidade, e por que ela existe
+
+A planilha lança `Mov.Extra = 11` numa célula. Exigir onze operações para registrar esses onze devolveria a operação à planilha na primeira semana. O registro aceita `quantidade` e cria **N itens rastreáveis** — a facilidade de digitação da planilha, sem a contagem anônima dela.
+
+`LIMITE_ITENS_POR_REGISTRO_MANUAL = 50`, mais alto que o teto da divisão de revisão (20) porque aqui a quantidade é *um* número, não N títulos digitados um a um. O teto existe para que `111` no lugar de `11` vire recusa visível em vez de cento e onze linhas para alguém cancelar depois.
+
+A conferência de categoria e de responsável acontece **antes** do laço: criar quatro e falhar no quinto deixaria o operador sem saber quantos passaram.
+
+### Não nasce concluído
+
+A planilha lança `Aberto = 11` e `Realizado = 11` no mesmo dia. Reproduzir isso seria o operador **declarando a conclusão do trabalho de outra pessoa** — que é justamente o que `concluir` recusa desde que a fila existe. O item nasce `distribuido` na fila do responsável; a conclusão continua sendo ato dele, com carimbo próprio em `Execucao`.
+
+### Confiança 100% num item que a IA nunca viu
+
+Achado ao verificar a tela: o item manual aparecia com **Confiança 100%**. `confianca: 1` é o que o banco guarda — coerente, porque não há classificação de que duvidar — mas na coluna *Confiança* aquilo lia como "a IA acertou com certeza absoluta". Um número de aparência ótima sobre uma decisão que modelo nenhum tomou; a mesma família do `SUBTOTAL(109)` da planilha, onde o valor está lá, parece resultado, e não significa o que quem lê acha que significa.
+
+`ItemDaCaixa.classificadaPorIa` (`modeloIa !== null`, o **mesmo** critério que a taxa de acerto usa para montar o denominador) resolve: item manual mostra o selo `manual`. E `modeloIa` ficar nulo é o que mantém o registro manual fora da medida de qualidade da IA — sem isso, cada item digitado entraria como um acerto de graça do modelo.
+
+### O que ficou de fora, de propósito
+
+- **Crédito.** Ver `§ AT-09` e a pergunta 6 de `§ H.4`.
+- **Cancelamento pela tela.** `Item.canceladoEm` existe e o painel já o conta, mas não há rota de cancelamento. Um lote registrado errado hoje se corrige no banco. Vale como dívida própria, não como parte desta entrega.
+- **Lista completa de pessoas para o operador.** O seletor de responsável usa `GET /api/escala?data=hoje`, que é a lista de pessoas ativas que o papel `operador` pode ler — `GET /api/colaboradores` é só do gestor, de propósito (nome, papel e e-mail da equipe são material de ataque direcionado). Efeito colateral conhecido: quem não tem **nenhuma** habilitação não aparece no seletor. Na prática a equipe toda tem; se algum dia atrapalhar, o conserto é habilitar a pessoa em alguma categoria, não afrouxar a rota do gestor.
+
+---
+
+## Fundação do cérebro operacional — 28/08/2026
+
+Diretriz do dono do negócio: este sistema é o **primeiro módulo** de um ecossistema, e deve nascer compatível com uma camada central futura de contexto, memória, capacidades e feedback — **sem virar um monstro**. A ordem foi explícita: implementar só o necessário hoje, ou o que, ausente, criaria bloqueio arquitetural sério depois.
+
+### Avaliação: a maior parte da diretriz já estava atendida
+
+Levantamento com agentes especializados (inventário, risco, consumidores reais):
+
+| Pedido da diretriz | Estado antes desta entrega |
+|---|---|
+| Gateway de modelos, domínio não acoplado a fornecedor | **Pronto.** `AiPort` fala só tipos do domínio; a fábrica falha alto em vez de cair no mock em silêncio |
+| Memória de feedback humano sobre a IA | **Pronto e em uso.** `Revisao` guarda `sugestaoIa` × `valorFinal`, e `qualidade-ia.ts` já lê isso para taxa de aceitação, cobertura e calibração |
+| Histórico operacional | **Pronto.** Snapshot reproduzível da rodada, livro-razão diário, `Execucao` com carimbo |
+| Separação entre dado de domínio e memória | **Pronto.** `EmailConteudo` (expurgável) contra `Email`; `LogAuditoria` (negócio) contra `registrarLog` (técnico) |
+| Memória ≠ treinamento | **Pronto** como invariante 9 |
+| Auditoria das operações importantes | **Pronto.** `LogAuditoria` append-only, com identidade vinda do `Ator` |
+
+### O buraco real: memória que ninguém conseguia ler
+
+`LogAuditoria` e `EventoProcessamento` eram gravados em **27 pontos** do código e **não tinham um único leitor em produção** — nenhuma rota, nenhuma tela, nenhuma consulta. As únicas leituras do repositório estavam em arquivos `.test.ts`. A trilha de auditoria de um sistema cuja razão de existir é acabar com erro silencioso só era alcançável por `prisma studio`.
+
+**O caso que obrigou a entrega:** numa falha 500, `http.ts` sorteia um `correlacaoId`, entrega ao usuário dizendo que ele *"permite rastrear a falha no log"* — e gravava **só em stdout**. Nenhuma tabela o continha, nenhuma rota o buscava. Quem da secretaria dissesse "deu erro, o código é `a3f…`" só podia ser atendido por alguém com o terminal do servidor à mão. O sistema prometia rastreabilidade **na própria mensagem de erro** e não entregava.
+
+### O que entrou
+
+**1. Identidade de domínio.** Coluna `dominio` em `LogAuditoria` e `EventoProcessamento`, com `DominioSchema` fechado.
+
+É a peça que fica mais cara a cada dia, e por um motivo que não vale para as outras tabelas: **a trilha é append-only por invariante**. Acrescentar a coluna depois preencheria as linhas antigas por `UPDATE` — exatamente a escrita que `auditoria.ts` promete nunca fazer. Mesmo raciocínio de `SaldoCargaGlobal.escopo` (`H-D6`), aceito em 27/08, e de `H-D13` ("o momento certo é a migração, com a tabela pequena").
+
+`dominio` **não** é `frente`. `frente` (CADASTRO/TITULOS) separa operações dentro deste sistema; `dominio` separa este sistema dos outros. Eixos ortogonais — uma frente nova não é um domínio novo. `Email`, `Item` e `Atribuicao` **não** receberam a coluna: são dado operacional, não memória, e o domínio deles é derivável.
+
+**2. Vocabulário fechado.** `AcaoAuditavelSchema` (21 ações) e `OperacaoSchema` (20 operações) substituem `string` livre.
+
+Eram 41 literais espalhados por 10 arquivos. Um `concluido` digitado `concluído` entrava calado numa tabela que o projeto promete nunca corrigir, e a consulta que fosse procurá-lo simplesmente não o acharia. Fechar o vocabulário é também o que torna esta memória **legível por máquina** — pré-condição de qualquer camada de orquestração futura, e de qualquer consulta de hoje. O compilador casou com as 19 chamadas de produção de primeira; só um teste usava uma operação fictícia (`'testar'`).
+
+**3. Interface de consulta** — `src/servicos/memoria.ts` e `GET /api/memoria`. Duas perguntas, e nada além:
+
+- `?correlacao=<id>` — tudo que aconteceu num ciclo, costurando auditoria e evento em ordem crescente. É a que resolve o identificador do erro 500.
+- `?entidade=Item&id=<id>` — a história de um registro.
+
+**Não existe listagem geral, de propósito:** a trilha carrega quem fez o quê sobre a operação inteira, e uma rota que a despeje em página transforma auditoria em vigilância. Memória se consulta por um caso. Papel exigido: `operador` ou `gestor`.
+
+**4. Dois buracos de memória fechados.** O 500 passa a gravar `EventoProcessamento` (`etapa: 'rota'`), e a distribuição passa a gravar **quais** categorias não foram distribuídas e por quê — antes o evento dizia só "N rodadas · M itens" e o motivo morava no stdout.
+
+**5. Teste de pureza de `core/`.** A regra mais citada do projeto — `app → servicos → core`, núcleo sem Prisma, React, Next ou `fetch` — era sustentada **só por disciplina**: não havia teste, e o CI não checava. `src/core/pureza.test.ts` varre o núcleo, resolve cada import por caminho (não por casamento de string, para pegar camadas que ainda não existem) e falha nomeando arquivo, linha e regra. Provado com um violador temporário de 8 casos. **Nenhuma violação real no código atual** — a regra estava intacta, e agora está defendida.
+
+### O que deliberadamente NÃO foi construído
+
+**Tabela de memória genérica com texto livre.** `Categoria` já é a memória de domínio e já é lida em runtime pelo motor e pela ingestão. Uma camada chave/valor por cima seria a **terceira** cópia dos mesmos números — a família de divergência silenciosa que `H-D7` já registra.
+
+**`MemoriaPort`.** Port existe quando há segunda implementação plausível (mock/anthropic, disco/nuvem, imap/graph). Não há para memória. Criado agora, seria outro `RegraDistribuicao`: modelado e nunca lido — que a auditoria de 26/08 registrou como **dívida**, não como preparo.
+
+**Barramento de eventos.** O *registro* já existe e é completo, com `correlacaoId` atravessando ingestão, IA, revisão e distribuição do mesmo ciclo. O que não existe é *reação*, e nada hoje precisa reagir. Fica a regra, de graça: **evento futuro é gravado na mesma `Transacao`, ou não é gravado** — publicar antes do commit deixaria a memória afirmando uma distribuição que a transação abortou.
+
+**Registro de capacidades com metadados e política dinâmica.** `OperacaoSchema` entrega a metade que se paga hoje — identificação e autorização. Finalidade, escopo e registro de uso viram burocracia sobre 20 linhas enquanto não existir agente.
+
+**Montagem de contexto para a IA, e recuperação de "casos parecidos".** Recusado, e este é o item que mais parecia central na diretriz. Três motivos:
+
+1. **Injeção de prompt persistente.** Hoje a cadeia é sem estado, e o código afirma por escrito que *"mesmo uma injeção 100% bem-sucedida não consegue mais do que classificar um e-mail na categoria errada"*. Memória que guarda texto derivado de e-mail e o devolve ao prompt torna essa frase falsa: a carga sobrevive ao e-mail e passa a agir sobre remetentes futuros. A detecção roda na ingestão, sobre o texto cru — entre "ler memória" e "montar prompt" não haveria portão nenhum.
+2. **É treinar sem decidir.** Selecionar as correções humanas mais parecidas e injetá-las no prompt é aprendizado em contexto. O par `sugestaoIa` × `valorFinal` já é, materialmente, um corpus rotulado; falta-lhe só a porta de saída — e montagem de contexto é essa porta, apontada para dentro. O invariante 9 diz que isso é decisão do dono, nunca efeito colateral.
+3. **É infalsificável hoje.** O adapter real nunca foi exercitado contra a API. Contra o mock, as confianças de acerto e erro saem coladas (0,91 / 0,90) — o próprio sinal de "este número ainda não separa nada". Sem linha de base, acrescentar contexto compra a maior superfície de risco do sistema em troca de uma melhoria que ninguém consegue medir. **Medir o modelo real é pré-requisito, não etapa seguinte.**
+
+### Um achado que não é do cérebro, e é anterior a ele
+
+**`ATOR_SISTEMA` tem papel `operador`.** Das 20 operações sujeitas a papel, a maioria aceita `operador` — inclusive `confirmar distribuição` e `aprovar revisões em massa`. Um agente futuro empunhando essa identidade confirmaria distribuição, e a trilha registraria `sistema`, indistinguível do cron de ingestão. Além disso, `'sistema'` não é `Colaborador`: não pode ser desativado, expirado nem travado, porque todo o maquinário de `autenticacao.ts` opera sobre a tabela.
+
+Isto é verdade **antes** desta entrega; o cérebro é o que tornaria o caminho alcançável na prática. **Não foi alterado**, porque a resposta tem consequência de schema e é decisão do dono. Registrado em `§ H.4`, item 7.
+
+### Revisão do próprio trabalho — quatro defeitos na primeira versão
+
+Revisão adversarial contra os 11 invariantes, feita depois de a entrega estar verde. Achou quatro coisas, e duas eram graves.
+
+**1. A rota reintroduzia, uma requisição depois, o vazamento que `http.ts` proíbe três linhas acima.** O comentário do ramo de 500 diz, sem meias palavras, que `ConservacaoVioladaError` carrega a alocação inteira — o id de cada colega da rodada — e que houve um ramo especial devolvendo isso ao cliente, removido de propósito. A primeira versão gravava `mensagemDoErro(erro)` no evento; a consulta de memória devolvia. O ramo especial tinha sido tirado da resposta e recolocado como **recurso consultável**. Vale para qualquer 500: erro do SDK de IA, erro do Prisma com o caminho do arquivo do banco.
+
+Pior: o teste que escrevi **consagrava o defeito**, afirmando `toBe('defeito inesperado no servidor')` — ou seja, exigia como requisito que o texto interno chegasse ao chamador.
+
+Corrigido com `mensagemPersistivel`, que reaproveita a regra que `http.ts` já usava para decidir o que cruza: erro de domínio tem mensagem escrita para humano e vai inteiro; qualquer outro vira o nome da classe. `ConservacaoVioladaError` é a exceção explícita — é erro de domínio e mesmo assim não sai, exatamente como lá. A mesma correção fechou duas gravações **preexistentes** em `ingestao.ts`, que já escreviam mensagem crua e ninguém notava porque a tabela nunca era lida.
+
+**2. `entidade` como texto livre dava a `operador` o que a rota de colaboradores exige `gestor` para ver.** Com `?entidade=Colaborador&id=<id>` vinham e-mail e papel de uma colega — e mais o que rota nenhuma expõe hoje: quantas vezes ela errou a senha, por quanto tempo ficou trancada, quando o gestor redefiniu o acesso. Os ids saem de graça de `GET /api/painel`, que não exige papel. Escalonamento de privilégio por caminho lateral, e auditoria virando vigilância no lugar exato onde o invariante 10 dói.
+
+Corrigido com lista fechada de entidades consultáveis. `Colaborador` ficou **de fora**, não restrito a gestor: ninguém pediu essa consulta, e liberá-la a gestor resolveria a permissão sem resolver o propósito.
+
+**3. Truncamento silencioso.** O teto de 200 por tabela cortava sem dizer. Uma sincronização usa **um** `correlacaoId` para o lote inteiro: num dia de 250 e-mails, a consulta devolveria os 200 primeiros e calaria sobre os 50 finais — justamente onde o lote quebrou. Numa ferramenta cujo texto de abertura diz que erro silencioso é a doença que o sistema existe para curar, é o defeito mais fora de lugar possível. Agora o retorno é `{ linhas, truncado }`.
+
+**4. A ordem "de causa e efeito" mentia no empate.** Ordenar só por instante deixava a estabilidade do `sort` decidir, e como a auditoria era concatenada antes dos eventos, a história exibia o e-mail sendo *ingerido* antes de a ingestão *começar* — empate de milissegundo é comum numa transação SQLite local. Desempate explícito: `iniciado` antes, auditoria no meio, `sucesso`/`falha` depois.
+
+**E o teste de pureza estava calado, não correto.** A mesma revisão apontou que ele era um *denylist* de Prisma/React/Next: `import Anthropic from '@anthropic-ai/sdk'` dentro de `src/core/` passaria verde — e o SDK **já está instalado no projeto**, então o falso negativo era alcançável hoje, não hipotético. Invertido para *allowlist*: em produção o núcleo só importa `zod`; em teste, mais `vitest` e três builtins nominais (`node:fs`, `node:path`, `node:url`), nunca `node:` por prefixo. O denylist não sumiu — virou a escolha da **mensagem** de erro, que é onde uma lista de suspeitos é segura. Barrar por lista de suspeitos e explicar por lista de suspeitos são coisas diferentes.
+
+A inversão revelou dois falsos positivos que o denylist escondia por omissão: o padrão de import de efeito colateral casava com o **nome de um teste** terminado na palavra `import`, emendando na aspa seguinte. Corrigido ancorando as formas estáticas em início de sentença. Que esse lixo passasse antes é mais uma evidência de que o guarda estava calado.
+
+Também saíram os dois índices `[dominio, …]`: com um domínio só a cardinalidade é 1, e eles eram duplicatas dos índices existentes, encarecendo a escrita nas duas tabelas mais escritas do sistema. O índice entra quando existir um segundo domínio — e aí custa o mesmo que hoje, ao contrário da coluna.
+
+### O que esta entrega NÃO resolveu, e eu havia afirmado que resolvia
+
+**O identificador do 500 não costura o ciclo.** `http.ts` sorteia um `correlacaoId` **novo**, sem relação com o que o serviço gerou internamente — `sincronizar`, `confirmar` e `resolver` chamam `novaCorrelacao()` cada um por conta própria. Então `?correlacao=<id do 500>` devolve **uma linha**: a falha da rota. Os eventos que diriam *quais e-mails ficaram para trás* continuam sob a correlação interna, inalcançáveis para quem só tem o id da tela.
+
+O caso que este módulo cita como sua razão de existir foi, portanto, resolvido pela metade. O id deixou de ser órfão — antes não estava em tabela nenhuma; agora responde "às 14:32, a rota X falhou com erro do tipo Y", o que já é mais do que o stdout dava. Mas não entrega a história do ciclo, e eu afirmei que entregava.
+
+A correção estrutural é propagar a correlação de dentro para fora (`AsyncLocalStorage`, ou um parâmetro em `rota()`) e toca todos os serviços. **Não foi feita agora** porque é refatoração própria, não fundação. Fica registrada para não virar promessa esquecida. `porCorrelacao` e `porEntidade` funcionam inteiros para as correlações de serviço, que são as que atravessam ingestão, IA, revisão e distribuição.
+
+
+### Limite conhecido, registrado em vez de contornado
+
+`LogAuditoria.antes`/`depois` guardam o JSON do que mudou, e a nova rota devolve esses campos. Em `revisao_aprovada`/`revisao_recusada`, o JSON inclui `Item.titulo` — que a IA **extraiu do corpo do e-mail** e pode carregar nome de associado.
+
+Não é vazamento novo: a rota exige `operador` ou `gestor`, e esses papéis já veem o mesmo título na Caixa de entrada e na fila de Revisão. Mas é o ponto exato em que o invariante 11 avisa — conteúdo vestido de linha operacional. Se a política de retenção um dia expurgar `EmailConteudo`, o título **sobrevive** dentro da trilha (e dentro de `Item.titulo`, que é operacional por decisão anterior). Quem for definir o prazo precisa decidir isto de olhos abertos. Registrado em `§ H.4`, item 8.

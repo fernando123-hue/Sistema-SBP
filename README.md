@@ -44,6 +44,8 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 | `/painel` | Recebido/distribuído/concluído/pendente. Zero campo digitável |
 | `/acesso` | Só gestor: estado de acesso da equipe, senha provisória, destravar, ligar/desligar |
 | `/senha` | Troca da própria senha. Obrigatória enquanto a provisória valer |
+| `/entrar` | E-mail e senha. Única porta de entrada |
+| `/` | Raiz: manda para a tela certa conforme o papel |
 
 ## Scripts
 
@@ -67,7 +69,7 @@ api/          endpoints REST — toda operação existe aqui primeiro
 servicos/     transações, Prisma, orquestração          -> depende de core
 core/         domínio puro: motor, esquemas, segurança  -> NÃO depende de nada
 ports/        contratos: AiPort, IngestaoPort, ArmazenamentoPort
-adapters/     mock | anthropic | disco | imap | xlsx
+adapters/     mock | anthropic | disco   (imap, gmail, nuvem: previstos)
 ```
 
 **Regra de dependência:** as setas apontam só para dentro. `core/` não importa Prisma, React, Next nem `fetch`. É isso que torna o motor testável em milissegundos e auditável para sempre.
@@ -124,12 +126,12 @@ Toda saída de IA passa por `InterpretacaoSchema` (Zod). Uma resposta que não v
 
 ## Estado atual
 
-Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · adapters de IA (mock e Anthropic) · fila de revisão com divisão manual · distribuição transacional com conservação garantida · fila individual com devolução ao pool · painel derivado · auditoria e observabilidade · 19 rotas REST · 9 telas · **autenticação por e-mail e senha** com troca obrigatória da provisória, bloqueio progressivo e revogação de sessão · tela de administração de acesso · **conteúdo separado do histórico operacional**, com anexos guardados fora do banco e tipo real conferido pelos bytes · **auditoria completa com 24 correções aplicadas** (`DECISOES.md § H`).
+Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · adapters de IA (mock e Anthropic) · fila de revisão com divisão manual · distribuição transacional com conservação garantida · fila individual com devolução ao pool · painel derivado com recorte de período · **registro manual do que não chega por e-mail** (balcão, telefone, `INADIMP.`/`ISENTO`) · qualidade da IA medida · auditoria e observabilidade · **memória operacional consultável** (a trilha de auditoria deixa de ser write-only) · 24 caminhos REST em 29 operações · 9 telas · **autenticação por e-mail e senha** com troca obrigatória da provisória, bloqueio progressivo e revogação de sessão · tela de administração de acesso · **conteúdo separado do histórico operacional**, com anexos guardados fora do banco e tipo real conferido pelos bytes · **auditoria completa com 24 correções aplicadas** (`DECISOES.md § H`).
 
-**229 testes passando.**
+**271 testes passando.**
 
 O adapter Anthropic está escrito e coberto por testes, mas **ainda não foi exercitado contra a API real** — rode `IA_ADAPTER=anthropic npm run ia:experimentar` com a chave configurada antes de confiar nele.
 
-A seguir, em ordem: validar o adapter contra a API · tela de administração de acesso · medir a taxa de acerto da IA · exportação para o sistema legado.
+A seguir, em ordem: validar o adapter contra a API · cifrar anexos em repouso (`H-D19`) · contratos de API derivados dos esquemas Zod (`H-D7`) · exportação para o sistema legado.
 
 Retomando o trabalho em outra máquina? Leia [docs/ESTADO.md](docs/ESTADO.md).

@@ -38,6 +38,111 @@ export const CategoriaClassificavelSchema = z.enum([
   'EMAIL_LIGA',
 ])
 
+/**
+ * A qual sistema do ecossistema uma linha de memória pertence.
+ *
+ * Hoje há um só, e a lista tem um valor só. Ela existe assim mesmo porque a
+ * trilha de auditoria é APPEND-ONLY por invariante: corrigir um dado gera
+ * linha nova, nunca reescreve a anterior. Uma linha que nasce sem dizer de
+ * onde veio só ganharia essa informação por um `UPDATE` na trilha — a única
+ * escrita que este sistema promete nunca fazer.
+ *
+ * É irmão de `SaldoCargaGlobal.escopo` (`H-D6`), e vale o mesmo raciocínio
+ * que o dono do negócio já aceitou em 27/08: acrescentar escopo a um razão
+ * já acumulado exige recomputar histórico. Aqui nem recomputar resolve.
+ *
+ * NÃO confunda com `Frente`. `frente` (CADASTRO/TITULOS) separa operações
+ * DENTRO deste sistema; `dominio` separa este sistema dos outros. Os dois
+ * eixos são ortogonais — uma frente nova não é um domínio novo.
+ */
+export const DominioSchema = z.enum(['distribuicao'])
+export type Dominio = z.infer<typeof DominioSchema>
+
+/** O domínio deste sistema. Todo registro de memória nasce com ele. */
+export const DOMINIO_ATUAL: Dominio = 'distribuicao'
+
+/**
+ * Vocabulário fechado da trilha de auditoria.
+ *
+ * Era `string` livre em 21 literais espalhados por 8 arquivos. Um `concluido`
+ * digitado `concluído` entrava calado, e a consulta que fosse procurá-lo
+ * simplesmente não o encontraria — sem erro, sem aviso, sem nada. Numa trilha
+ * append-only isso é permanente: a linha errada não pode ser corrigida, só
+ * acompanhada de outra.
+ *
+ * Fechar o vocabulário é também o que torna esta memória LEGÍVEL POR MÁQUINA.
+ * Enquanto a ação for texto livre, ninguém — nem uma camada de orquestração
+ * futura, nem uma consulta de hoje — consegue perguntar "o que aconteceu com
+ * este item" sem adivinhar como a pergunta foi escrita.
+ */
+export const AcaoAuditavelSchema = z.enum([
+  // Ingestão e interpretação
+  'ingerido',
+  // Revisão humana
+  'revisao_aprovada',
+  'revisao_recusada',
+  'revisao_aprovada_em_massa',
+  'item_criado_por_divisao_de_revisao',
+  // Item
+  'item_registrado_manualmente',
+  'concluido',
+  'devolvido',
+  'transferencia',
+  // Distribuição
+  'distribuido',
+  'escala_definida',
+  // Pessoas e acesso
+  'colaborador_criado',
+  'habilitacao_definida',
+  'acesso_reativado',
+  'acesso_desativado',
+  'entrada_autorizada',
+  'entrada_recusada',
+  'senha_trocada',
+  'senha_inicial_definida',
+  'senha_redefinida_pelo_gestor',
+  'conta_destravada',
+])
+export type AcaoAuditavel = z.infer<typeof AcaoAuditavelSchema>
+
+/**
+ * Vocabulário fechado das operações sujeitas a papel.
+ *
+ * A string já existia em cada chamada de `exigirPapel`, mas servia SÓ para
+ * compor a mensagem de erro — não era chave de nada, e `'sincronizar ingestão'`
+ * já aparecia duplicada em dois arquivos. Fechada, ela vira a resposta única
+ * para "que operações existem e quem pode cada uma", que hoje está espalhada
+ * por três lugares mantidos à mão: as chamadas de `exigirPapel`, o mapa de
+ * telas em `navegacao.tsx` e a checagem duplicada em `caixa/page.tsx`.
+ *
+ * É a primeira metade de uma "capacidade" no sentido da diretriz do cérebro:
+ * identificação e autorização. Finalidade, escopo e registro de uso ficam
+ * para quando existir um agente — hoje seriam burocracia sobre 20 linhas.
+ */
+export const OperacaoSchema = z.enum([
+  'sincronizar ingestão',
+  'ver fila de revisão',
+  'resolver revisão',
+  'aprovar revisões em massa',
+  'ver prévia da distribuição',
+  'confirmar distribuição',
+  'ver auditoria de rodada',
+  'definir escala',
+  'registrar item manualmente',
+  'ver a fila de outra pessoa',
+  'transferir item de outra pessoa',
+  'devolver item de outra pessoa',
+  'listar colaboradores',
+  'cadastrar colaborador',
+  'definir habilitação',
+  'definir senha de outro colaborador',
+  'destravar conta',
+  'ativar ou desativar colaborador',
+  'consultar diagnóstico de origem',
+  'consultar memória operacional',
+])
+export type Operacao = z.infer<typeof OperacaoSchema>
+
 export const StatusItemSchema = z.enum([
   'novo',
   'aguardando_revisao',
@@ -96,6 +201,23 @@ export const LIMITE_ITENS_POR_EMAIL = 500
  * de silencioso), só que a ameaça é erro de clique, não alucinação de IA.
  */
 export const LIMITE_ITENS_POR_DIVISAO_MANUAL = 20
+
+/**
+ * Teto de itens que um único registro manual pode criar de uma vez.
+ *
+ * A planilha lança `INADIMP.` como número — em `CAD-MAIO`, `Mov.Extra = 11`
+ * digitado direto na linha 35. Exigir onze requisições para registrar esses
+ * onze devolveria a operação à planilha na primeira semana, então o registro
+ * manual aceita quantidade. O teto existe pelo mesmo motivo dos outros: um
+ * `111` digitado no lugar de `11` precisa virar recusa visível, não cento e
+ * onze linhas no banco que alguém terá de cancelar uma a uma.
+ *
+ * Mais alto que `LIMITE_ITENS_POR_DIVISAO_MANUAL` porque aqui a quantidade é
+ * UM número, não N títulos digitados um a um — o esforço não cresce com o N,
+ * e o volume diário legítimo dessas categorias é maior que o de um
+ * desdobramento de e-mail.
+ */
+export const LIMITE_ITENS_POR_REGISTRO_MANUAL = 50
 
 export const TAMANHO_MAXIMO_CORPO = 200_000
 export const TAMANHO_MAXIMO_ANEXO_BYTES = 25 * 1024 * 1024
@@ -226,6 +348,51 @@ export const ResolucaoRevisaoSchema = z.object({
    */
   itensExtras: z.array(ItemDivididoSchema).max(LIMITE_ITENS_POR_DIVISAO_MANUAL).default([]),
 })
+
+// ─── Registro manual de item ─────────────────────────────────
+
+/**
+ * Item que nasce sem e-mail.
+ *
+ * `INADIMP.` e `ISENTO` estavam semeadas, marcadas como fora do rateio, e
+ * proibidas à IA (`CategoriaClassificavelSchema`) — sem que existisse nenhum
+ * caminho para criá-las. Duas linhas da planilha não tinham correspondente
+ * nenhum aqui dentro, e a rodada de comparação lado a lado nasceria incompleta
+ * por construção.
+ *
+ * `colaboradorId` é NULO para categoria do rateio e OBRIGATÓRIO para categoria
+ * fora dele. Não é simetria quebrada por descuido — é a consequência de quem
+ * decide o quê. Dentro do rateio, quem escolhe a pessoa é o motor, e aceitar um
+ * responsável aqui abriria uma porta lateral para escolher a dedo quem recebe o
+ * trabalho, que é exatamente a fragilidade que este sistema substitui. Fora do
+ * rateio, o motor nunca vai passar por perto: sem responsável, o item ficaria
+ * `aprovado` para sempre, engordando a pendência do painel sem que ninguém
+ * pudesse concluí-lo — `concluir` exige atribuição ativa.
+ *
+ * Não carrega quem registrou: isso vem do `Ator`.
+ */
+export const RegistroManualSchema = z.object({
+  categoriaCodigo: CategoriaCodigoSchema,
+  titulo: z.string().trim().min(1).max(300),
+  /** Um lançamento pode valer N itens. Cada um continua rastreável e individual. */
+  quantidade: z.number().int().min(1).max(LIMITE_ITENS_POR_REGISTRO_MANUAL).default(1),
+  colaboradorId: z.string().min(1).nullable().default(null),
+  /**
+   * Campo em branco vira NULO, não string vazia.
+   *
+   * `""` no `payload` do item significa "existe uma observação, e ela é vazia"
+   * — que não é o mesmo que "não há observação". Quem for ler o histórico
+   * depois teria de saber, de cor, que as duas coisas são a mesma aqui.
+   */
+  observacao: z
+    .string()
+    .trim()
+    .max(1000)
+    .nullable()
+    .default(null)
+    .transform((valor) => (valor === '' ? null : valor)),
+})
+export type RegistroManual = z.infer<typeof RegistroManualSchema>
 
 // ─── Credenciais ─────────────────────────────────────────────
 
