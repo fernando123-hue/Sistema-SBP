@@ -1,33 +1,23 @@
 # Estado do projeto — retomada
 
-Última atualização: **28/08/2026** — fundação do cérebro operacional, precedida pelo registro manual de item (`H-D4`).
+Última atualização: **31/08/2026** — consolidação: o `PR #12` entrou na `main` e nove decisões do dono do negócio (A4–A12) foram resgatadas de um branch órfão.
 
-> **O sistema tinha memória e nenhuma forma de lê-la.** `LogAuditoria` e `EventoProcessamento` eram gravados em 27 pontos do código e não tinham **um único leitor em produção**. O caso que obrigou a entrega: numa falha 500, o sistema entrega ao usuário um identificador dizendo que ele "permite rastrear a falha" — e esse id não estava em tabela nenhuma e nenhuma rota o buscava. A promessa estava na própria mensagem de erro. Detalhe em `DECISOES.md`, seção *Fundação do cérebro operacional*.
+> **Nove decisões do dono do negócio estavam fora da `main` havia cinco dias, e nada acusava.** Foram tomadas em 26/08 e ficaram num branch que nunca foi mesclado (`claude/prototipo-em-progresso-unesv2`). Enquanto isso o `DECISOES.md § A` parava em A3 e este arquivo listava como *"aguardando o dono do negócio"* **três perguntas já respondidas**. Ninguém apagou nada e ninguém errou: a perda aconteceu sozinha, que é exatamente a forma do defeito que este projeto existe para eliminar. Detalhe em `DECISOES.md`, seção *Reconciliação: A4–A12*.
 
 ---
 
 ## Continuando em outra máquina
 
-**Confira primeiro se o [PR #12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) já foi mesclado.** Ele carrega o trabalho de 28/08 — registro manual de item e a fundação do cérebro operacional — e enquanto estiver aberto, a `main` está três commits atrás.
-
-**Se o #12 já estiver mesclado**, a `main` basta:
+Tudo está na **`main`**. O [PR #12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) foi mesclado em 31/08/2026, e com ele o aviso que esta seção carregava deixou de ter função.
 
 ```bash
 git clone https://github.com/fernando123-hue/Sistema-SBP.git
 cd Sistema-SBP
 ```
 
-**Se ainda estiver aberto**, clone a branch dele:
+Não há branch para trocar, nem etapa escondida.
 
-```bash
-git clone --branch claude/sistema-sbp-continuacao-czey81 \
-  https://github.com/fernando123-hue/Sistema-SBP.git
-cd Sistema-SBP
-```
-
-Nos dois casos, o resto dos passos é idêntico e não há etapa escondida.
-
-> **Por que este aviso existe.** Até 28/08 esta seção dizia "tudo está na `main`", e isso deixou de ser verdade no instante em que o trabalho foi para uma branch. Quem seguisse a instrução ao pé da letra clonaria a `main` e perderia o dia inteiro sem que nada acusasse — a versão de documentação do defeito que este sistema existe para eliminar. Quando o #12 entrar na `main`, apague este aviso e volte ao texto simples.
+> **A lição fica, mesmo com o aviso removido.** Duas vezes trabalho terminado ficou fora da `main` enquanto este arquivo dizia o contrário: o #12 por dois dias, e as decisões A4–A12 por cinco — essas últimas ninguém tinha notado. Antes de escrever aqui que "tudo está na `main`", confira a lista de branches do repositório, não a memória da sessão.
 
 Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aberto e qual é o próximo passo.
 
@@ -47,7 +37,7 @@ Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aber
 
 ## Preparar o ambiente
 
-Testado num clone limpo em 28/08/2026 — clone da branch do PR #12, `npm install`, `.env`, migrações, seed e `npm run verificar` levam de zero a **271 testes verdes**, sem nenhuma etapa extra. O caminho abaixo é exatamente o que foi executado.
+Testado num ambiente limpo da `main` em 31/08/2026, já com o PR #12 mesclado: `npm install`, `.env`, `migrate deploy`, `generate` e `npm run verificar` levam de zero a **271 testes verdes**, sem nenhuma etapa extra. O caminho abaixo é exatamente o que foi executado.
 
 ```bash
 npm install
@@ -114,6 +104,28 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 
 ## Onde parei
 
+**Duas consolidações, nenhuma linha de regra nova.** Esta sessão não construiu funcionalidade: fechou duas divergências entre o que o repositório fazia e o que a documentação dizia que ele fazia.
+
+### 1. O `PR #12` entrou na `main`
+
+Estava aberto, verde e mesclável desde 28/08 — 6 commits, +2.971/−95 em 24 arquivos, os três checks passando. Enquanto ele esperava, a `main` não tinha o registro manual (`H-D4`), a fundação do cérebro operacional, nem as duas correções de segurança que a revisão adversarial daquela branch achou. Mesclado, e a `main` verificada num ambiente limpo: `npm install`, `.env`, `migrate deploy`, `generate` e **271 testes verdes**, sem etapa extra.
+
+### 2. As decisões A4–A12 voltaram para a `main`
+
+**Este é o achado que importa.** Nove decisões do dono do negócio, tomadas em 26/08, viviam só no branch `claude/prototipo-em-progresso-unesv2`. A `main` seguiu dois dias de construção sem saber delas.
+
+O sintoma era visível e ninguém tinha olhado: este arquivo listava **três perguntas como "aguardando o dono do negócio"** — etapa 6, itens mais antigos, dono único — e as três já tinham resposta escrita, com data, a cinco dias dali. A documentação não estava desatualizada por descuido de alguém; ela ficou errada sozinha, porque o trabalho foi para um lugar e o índice ficou em outro.
+
+O que entrou: agrupamento por liga (A4), etapa 6 e conclusão pelo app (A5), relatório da rodada (A6), prioridade por idade (A7), lembrete semanal (A8), janela do desempate (A9), cadastro de afastamento (A10), peso por categoria (A11) e limiar por categoria (A12).
+
+**Um conflito real apareceu, e ele é de número.** O A9 (26/08) decidiu janela de **15 dias**; o *Complemento arquitetural* (27/08), também diretriz do dono, decidiu **30 dias** — que é o implementado. Concordam no essencial (janela deslizante no lugar do mês corrente, como a `RN-11` exige) e divergem só no tamanho. **Resolvido pela data:** 27/08 é posterior, então 30 vigora e o código não foi tocado. As duas ficam registradas, para a revisão ser visível em vez de o número menor sumir sem rastro. Se 15 era o certo, a troca é decisão do dono — mexe no crédito acumulado de todo mundo de uma vez.
+
+**O que foi registrado e NÃO foi implementado, de propósito:** A4, A10, A11 e A12 pedem código que não existe. A11 (peso `DOC = 4`, `FICHA = 1,75`) parece troca de constante e não é — o peso entra na cota justa em `motor.ts`, então mudá-lo muda toda a divisão entre categorias e a suíte de distribuição junto. Está na tabela *O que destas decisões ainda não existe em código*, em `DECISOES.md § A`, e virou item do próximo passo. Registrar não é implementar, e a distância entre as duas coisas precisa ficar escrita.
+
+---
+
+## O que veio antes
+
 **Entrou a fundação do cérebro operacional.** Detalhe em `DECISOES.md`, seção *Fundação do cérebro operacional*.
 
 A diretriz era grande — memória, eventos, capacidades, contexto, isolamento de domínio, ecossistema futuro — e a análise com agentes especializados devolveu a resposta que interessava: **a maior parte já estava atendida**. O gateway de IA está limpo desde 26/08, a memória de feedback (`sugestaoIa` × `valorFinal`) existe e já é lida por `qualidade-ia.ts`, o histórico é reproduzível, e conteúdo já está separado de histórico operacional.
@@ -143,8 +155,6 @@ Testes: 248 → **271**.
 **E preciso corrigir uma afirmação minha.** Eu disse que o identificador do erro 500 passa a resolver o ciclo. Resolve pela metade: `http.ts` sorteia uma correlação NOVA, sem relação com a que o serviço gerou por dentro, então a consulta devolve uma linha — "às 14:32 a rota X falhou com erro do tipo Y" — e não a história. É mais do que o stdout dava, e menos do que eu afirmei. Costurar de verdade exige propagar a correlação de dentro para fora, o que toca todos os serviços; ficou registrado como trabalho próprio, não como fundação.
 
 ---
-
-## O que veio antes
 
 **Entrou o registro manual de item** (`H-D4`). Detalhe em `DECISOES.md`, seção *Registro manual de item*.
 
@@ -332,9 +342,21 @@ Os dois estavam parados por limitação de permissão (alteram arquivo de workfl
 
 ### O que ficou aberto, e por quê
 
-**Nenhum PR de dependência está aberto.** O [#4](https://github.com/fernando123-hue/Sistema-SBP/pull/4) (`codeql-action` v3 → v4) foi **fechado sem merge** em 28/08/2026: ele se recusava a rebasear, e é inócuo de qualquer forma — o workflow do CodeQL está desarmado, então a versão da ação não muda nada hoje. Quando o CodeQL for reativado, o Dependabot abre outro.
+**O [#12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) foi mesclado em 31/08/2026.** Era o único PR de trabalho aberto.
 
-O único PR aberto é o [#12](https://github.com/fernando123-hue/Sistema-SBP/pull/12), que carrega o trabalho de 28/08 e está verde.
+O [#4](https://github.com/fernando123-hue/Sistema-SBP/pull/4) (`codeql-action` v3 → v4) foi **fechado sem merge** em 28/08/2026: ele se recusava a rebasear, e é inócuo de qualquer forma — o workflow do CodeQL está desarmado, então a versão da ação não muda nada hoje. Quando o CodeQL for reativado, o Dependabot abre outro.
+
+**Três PRs do Dependabot estão abertos**, todos de rotina e nenhum com prazo. Não foram avaliados nesta sessão:
+
+| PR | O quê |
+|---|---|
+| [#15](https://github.com/fernando123-hue/Sistema-SBP/pull/15) | `lucide-react` 1.34.0 → 1.35.0 |
+| [#14](https://github.com/fernando123-hue/Sistema-SBP/pull/14) | `@anthropic-ai/sdk` 0.121.0 → 0.122.0 |
+| [#13](https://github.com/fernando123-hue/Sistema-SBP/pull/13) | `@types/node` 26.3.0 → 26.4.0 (dev) |
+
+### Branches que não podem ser apagados sem olhar
+
+`claude/prototipo-em-progresso-unesv2` é o branch órfão de onde A4–A12 foram resgatadas em 31/08/2026. **O conteúdo dele já está na `main`** — as decisões estão em `DECISOES.md § A`, e o código dele é anterior a 27 commits, portanto obsoleto. Pode ser apagado. Está registrado aqui porque, até 31/08, apagá-lo teria destruído nove decisões do dono do negócio sem nenhum aviso.
 
 ### Histórico que vale saber
 
@@ -351,7 +373,21 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ## Próximo passo sugerido
 
-**Nada de código está bloqueando.** O que falta para o sistema sair de "roda com dado sintético" e virar "roda com dado de associado" são decisões e uma ação, todas do dono. Na ordem em que eu retomaria:
+**Isto mudou em 31/08/2026.** Até aqui a frase era *"nada de código está bloqueando"* — e ela valia, porque as decisões que pedem código estavam invisíveis num branch órfão. Com A4–A12 de volta, **há trabalho de código decidido e não feito**, e ele passa na frente do que era o topo da lista.
+
+### Zero — o que foi decidido em 26/08 e nunca construído
+
+Quatro decisões do dono estão registradas e não existem no código. A tabela completa está em `DECISOES.md § A`, em *O que destas decisões ainda não existe em código*. Em ordem de custo:
+
+0a. **A11 e A12 — peso e limiar por categoria.** `DOC = 4`, `FICHA = 1,75`, resto `1`; limiar `0,95` / `0,90` / `0,85`. Parecem duas constantes em `src/core/config.ts` e não são: o peso entra na cota justa em `motor.ts`, então **toda a divisão entre categorias muda** e a suíte de distribuição, que assume `peso = 1`, precisa ser revista junto. O A12 é mais barato — é o corte antes do motor, não mexe nele. **Faça os dois na mesma entrega**, porque os dois vêm da mesma frase do cliente ("documento e ficha demandam mais atenção") e separá-los deixaria metade da intenção no ar.
+
+0b. **A10 — entidade `Afastamento`.** Hoje a indisponibilidade é `Escala.disponivel` marcada dia a dia na mão. Vira entidade de primeira classe (tipo, início, fim), com o crédito congelado durante a ausência — sem isso, quem volta de férias retorna como credor gigante e leva tudo. Precisa de migração e tela.
+
+0c. **A4 — agrupamento por liga.** O mais caro, e o único que **muda o contrato do motor**: `distribuir()` recebe quantidade escalar e não conhece `liga_id`. Precisa de uma unidade de entrada nova (grupos liga/tamanho) com alocação gulosa maior-primeiro, mantendo a trava de conservação intacta. **Vai para `docs/03-SPEC.md` antes de tocar em código** — é a regra da casa para mudança de motor.
+
+> **Antes de começar qualquer um destes, confirme com o dono.** As decisões têm cinco dias e nunca foram relidas com ele; A11 em particular redistribui carga entre pessoas reais. E o A9 tem o conflito 15 × 30 dias descrito acima.
+
+**O que segue valendo, e agora vem depois:** o sistema ainda não trocou uma palavra com o modelo real, e continua sendo a única parte nunca provada.
 
 ### Primeiro — a única parte nunca provada
 
@@ -383,20 +419,18 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ---
 
-## Sete decisões que dependem do dono do negócio
+## Quatro decisões que dependem do dono do negócio
 
 Estão registradas em `DECISOES.md § H.4`, sem resposta inventada:
 
-1. **Dono único** — quando uma categoria tem dono fixo (o caso `E-MAIL LIGA`), a intenção é *sempre a mesma pessoa*, ou apenas que o lote não seja fragmentado no mesmo dia? Hoje o código entrega 100% a quem estiver mais credor, o que é rodízio, não dono fixo.
-2. **Etapa 6 da operação** — depois que o sistema distribui, o colaborador trabalha pela tela ou continua pela pasta de e-mail dele? Se for pela pasta, o `IngestaoPort` precisa deixar de ser somente-leitura.
-3. **Itens mais antigos** — devem ir para quem está mais credor, ou ser espalhados? Tem consequência de prazo.
-4. **Quem vê a caixa de entrada inteira?** *(levantada na auditoria de 28/08/2026)* Hoje `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails. O `RF-23` diz que colaborador vê *os seus*. **Não foi alterado de propósito:** a equipe já trabalha de uma caixa compartilhada, então restringir mudaria a operação em vez de corrigir defeito.
-5. **Carga de exceção conta para o balanceamento?** *(levantada em 28/08/2026, com o registro manual)* Quem atende 30 inadimplentes num dia fez trabalho real, e hoje esse trabalho **não** entra no crédito — a pessoa continua recebendo cota cheia das categorias do rateio. Contar resolveria a justiça de carga, mas faria uma categoria de exceção mexer na cota justa de categorias das quais ela não participa. Escolhi o lado reversível (`§ AT-09`) porque despoluir um razão já acumulado exige recomputar histórico; começar a contar depois, não.
+1. **Quem vê a caixa de entrada inteira?** *(levantada na auditoria de 28/08/2026)* Hoje `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails. O `RF-23` diz que colaborador vê *os seus*. **Não foi alterado de propósito:** a equipe já trabalha de uma caixa compartilhada, então restringir mudaria a operação em vez de corrigir defeito.
+2. **Carga de exceção conta para o balanceamento?** *(levantada em 28/08/2026, com o registro manual)* Quem atende 30 inadimplentes num dia fez trabalho real, e hoje esse trabalho **não** entra no crédito — a pessoa continua recebendo cota cheia das categorias do rateio. Contar resolveria a justiça de carga, mas faria uma categoria de exceção mexer na cota justa de categorias das quais ela não participa. Escolhi o lado reversível (`§ AT-09`) porque despoluir um razão já acumulado exige recomputar histórico; começar a contar depois, não.
+3. **Um agente é ator de quê?** *(levantada em 28/08/2026, com a fundação do cérebro)* Hoje `ATOR_SISTEMA` tem papel **`operador`** — e com esse papel passam `confirmar distribuição` e `aprovar revisões em massa`. Um agente futuro empunhando essa identidade decidiria distribuição, e a trilha registraria `sistema`, indistinguível do cron de ingestão. Pior: `'sistema'` não é `Colaborador`, então não pode ser desativado, expirado nem travado. Isto é verdade **antes** do cérebro; o cérebro só torna o caminho alcançável. Tem consequência de schema.
+4. **Memória cai de que lado da retenção?** *(levantada em 28/08/2026)* `LogAuditoria` guarda `Item.titulo`, que a IA extraiu do corpo do e-mail e pode carregar nome de associado. Se a retenção expurgar `EmailConteudo`, o título **sobrevive** na trilha — que o invariante 11 proíbe apagar. Decisão de DPO, não de engenharia.
 
-6. **Um agente é ator de quê?** *(levantada em 28/08/2026, com a fundação do cérebro)* Hoje `ATOR_SISTEMA` tem papel **`operador`** — e com esse papel passam `confirmar distribuição` e `aprovar revisões em massa`. Um agente futuro empunhando essa identidade decidiria distribuição, e a trilha registraria `sistema`, indistinguível do cron de ingestão. Pior: `'sistema'` não é `Colaborador`, então não pode ser desativado, expirado nem travado. Isto é verdade **antes** do cérebro; o cérebro só torna o caminho alcançável. Tem consequência de schema.
-7. **Memória cai de que lado da retenção?** *(levantada em 28/08/2026)* `LogAuditoria` guarda `Item.titulo`, que a IA extraiu do corpo do e-mail e pode carregar nome de associado. Se a retenção expurgar `EmailConteudo`, o título **sobrevive** na trilha — que o invariante 11 proíbe apagar. Decisão de DPO, não de engenharia.
-
-> Uma oitava pergunta — **"período" do desempate** — foi respondida em 27/08/2026: janela deslizante de 30 dias, já implementada.
+> **Eram sete até 31/08/2026.** Três saíram da lista sem ninguém decidir nada de novo: *dono único*, *etapa 6* e *itens mais antigos* já tinham sido respondidas em 26/08 (A4, A5 e A7), numa sessão cujo trabalho ficou num branch órfão. A lista aqui continuou pedindo resposta para pergunta já respondida por cinco dias. Ver `DECISOES.md`, seção *Reconciliação: A4–A12*.
+>
+> Uma oitava — **"período" do desempate** — foi respondida em 27/08/2026: janela deslizante de 30 dias, já implementada. O resgate mostrou que ela tinha sido respondida **duas** vezes, com números diferentes (15 em 26/08, 30 em 27/08); vale a mais recente.
 
 ---
 
@@ -478,7 +512,7 @@ Dados são 100% sintéticos. Nenhum nome, CPF ou e-mail real entra no repositór
 - **Login recusado com a senha certa:** confira se a conta não está desativada ou travada por tentativas. A mensagem é genérica de propósito — ela não revela qual dos casos é. Use a tela `/acesso` como gestor.
 - **`Cannot find module ... src/generated/prisma`:** o cliente do Prisma não é versionado. Rode `npx prisma generate`.
 - **O `CLAUDE.md` aparece modificado sem você ter mexido:** é o `next dev` escrevendo um bloco sozinho a cada execução. Esperado até a decisão de aceitar ou desligar.
-- **Clonou e falta código (sem `src/servicos/memoria.ts`, sem registro manual, 6 migrações em vez de 7):** você está na `main`, e o trabalho de 28/08 está no [PR #12](https://github.com/fernando123-hue/Sistema-SBP/pull/12). Veja a primeira seção deste arquivo. Enquanto o #12 estiver aberto, `git clone` sem parâmetro entrega a versão anterior — **e a `main` carrega uma cópia antiga deste arquivo, que ainda diz "tudo está na `main`"**. Confie no PR, não naquele texto.
-- **`migration ... was modified after it was applied` ao rodar `prisma migrate deploy`:** acontece se você aplicou as migrações num commit intermediário da branch do PR #12 e depois pulou para outro. A migração `20260828185851_identidade_de_dominio_na_memoria` foi **editada depois de aplicada**, em 28/08/2026, para colapsar duas migrações numa só — ela criava dois índices que saíram na mesma tarde, e duas migrações onde uma bastava seria ruído permanente no histórico. Como ela nunca saiu da branch nem tocou banco de produção, editar era seguro; o preço é este aviso. **Conserto:** apague o banco local e reconstrua — `rm -f dev.db && npx prisma migrate deploy && npm run db:seed`. O banco de teste se recria sozinho a cada suíte. Se você clonar a branch já na cabeça, nada disso acontece.
+- **Clonou e falta código (sem `src/servicos/memoria.ts`, sem registro manual, 6 migrações em vez de 7):** era o sintoma de o PR #12 estar aberto, e ele foi mesclado em 31/08/2026. Se você vê isso hoje, seu clone é anterior a essa data: `git pull origin main`. A `main` atual tem 7 migrações e 271 testes.
+- **`migration ... was modified after it was applied` ao rodar `prisma migrate deploy`:** acontece se você aplicou as migrações num commit intermediário da antiga branch do PR #12 e depois pulou para outro — só alcançável em clone antigo, já que o #12 foi mesclado. A migração `20260828185851_identidade_de_dominio_na_memoria` foi **editada depois de aplicada**, em 28/08/2026, para colapsar duas migrações numa só — ela criava dois índices que saíram na mesma tarde, e duas migrações onde uma bastava seria ruído permanente no histórico. Como ela nunca saiu da branch nem tocou banco de produção, editar era seguro; o preço é este aviso. **Conserto:** apague o banco local e reconstrua — `rm -f dev.db && npx prisma migrate deploy && npm run db:seed`. O banco de teste se recria sozinho a cada suíte. Clonando a `main` de hoje, nada disso acontece.
 
 - **Testes lentos ou estourando tempo:** a simulação de 30 dias roda contra SQLite de verdade. `testTimeout` está em 90s para dar margem em máquina mais lenta; o arquivo pesado leva ~50s.

@@ -11,6 +11,61 @@ Nenhuma hipótese vira regra silenciosamente. Este arquivo é a fonte da verdade
 | A1 | Unidade atômica de trabalho | **Um e-mail pode gerar N itens.** O motor distribui itens extraídos, não e-mails recebidos. Um e-mail de liga com 30 ligantes vale 30 unidades de carga. |
 | A2 | Balanceamento | **Por categoria (primário) + crédito global ponderado como desempate secundário.** Ligante compara com ligante; o total só desempata. |
 | A3 | Alvo do sistema | Substituir a planilha por completo, **integrando com o sistema legado** do cliente (antigo, a ser trocado no futuro). Consequência: arquitetura **API-first**, integração como adapter plugável. |
+| A4 | Unidade de agrupamento em `LIGANTE` / `E-MAIL LIGA` | **A liga é a unidade que não se separa; o e-mail não é.** Dentro de um mesmo e-mail, todos os ligantes de uma liga vão inteiros para uma única pessoa. Ligas diferentes do mesmo e-mail podem ir para pessoas diferentes. Atribuição gulosa: as ligas do e-mail entram **da maior para a menor**; cada uma vai inteira para quem estiver com **menos carga acumulada na categoria** naquele instante (recalculado a cada liga entregue). O desequilíbrio de um dia (uma pessoa leva 30 ligantes, outra 20) se resolve pelo crédito acumulado nos dias seguintes (A2) — não por afinidade fixa por liga entre dias, que foi **explicitamente descartada**: o objetivo é carga equilibrada ao longo da semana, não continuidade de atendimento por liga. |
+| A5 | Etapa 6 — execução e conclusão | **A execução continua no Outlook por enquanto; a conclusão passa a ser marcada no app.** Não eliminamos o Outlook agora, nem implementamos resposta/envio de e-mail. Durante a rodada paralela o funcionário faz o trabalho no Outlook como hoje e **também** clica *Concluir* na tela *Minha Fila* (dupla marcação temporária, aceita). Consequência de arquitetura: **`IngestaoPort` permanece só-leitura** — nunca escreve na caixa de ninguém, nunca vigia pastas. A pasta "OK" do Outlook e as pastas por funcionário são substituídas, aos poucos, pela fila do app; a substituição só se completa quando a equipe confiar no app mais que na pasta. |
+| A6 | Distribuição automática com relatório | Desejo do cliente: o sistema **analisa e já distribui** (o operador não redigita nada) e deixa um **relatório legível do que fez, como fez e por quê**. Encaixa no que já existe: a `RodadaDistribuicao` grava o snapshot (`elegiveis`, `ordem_desempate`, `criterio`, crédito antes/depois) — o "porquê" em dados. Falta a **camada de leitura** que narra isso em português. Regra de ouro preservada: **o algoritmo decide; a narrativa só descreve**. A IA pode redigir a frase, nunca recalcular a divisão. Escopo de tela/serviço de leitura, não muda o motor nem a fonte da verdade. |
+| A7 | Prioridade por idade | **Setor de cadastro não tem tarefa com prazo/urgência.** Não há item que "não pode esperar". Mas os **mais antigos têm prioridade**, para impedir que backlog envelheça e vire sobrecarga. Já implementado em parte: a distribuição escolhe os itens concretos por chegada (`distribuicao.ts` → `orderBy: criadoEm asc`), e item devolvido mantém a data original, então sai na frente. **Falta:** (1) ordenar *Minha Fila* pelo mais antigo no topo (hoje é por `atribuidoEm`), e (2) um indicador de atraso no painel — "item mais velho parado há N dias" — que é o que torna a sobrecarga visível. Prioridade por idade **não** altera o equilíbrio de carga do motor (A2): decide *qual* item sai e em que ordem, nunca *quantos* cada pessoa recebe. |
+| A8 | Lembrete semanal de e-mail *(futuro)* | Desejo do cliente, **para etapa posterior**: ligantes/associados que não respondem devem receber um e-mail de cobrança **1×/semana**. Registrado agora porque tem dependência de arquitetura: **exige capacidade de envio de e-mail** — exatamente o lado de escrita que A5 adiou (`IngestaoPort` é só-leitura). Quando entrar, ou o `IngestaoPort` ganha um par de escrita (`EnvioPort`), ou é um adapter novo. Também precisa de estado por destinatário ("último contato em", "aguardando resposta desde") e de um agendador semanal. Nada disso entra no protótipo agora; fica em backlog com a dependência marcada. |
+| A9 | Janela do desempate | **Janela deslizante, no lugar do mês corrente.** O crédito acumulado (desempate secundário, A2) passa a contar sempre os últimos N dias corridos, rolando dia a dia — nunca zera numa data de calendário. Elimina a fronteira mensal que `RN-11` manda eliminar: o esforço extra do fim de um mês continua valendo no começo do seguinte. **O tamanho da janela foi decidido duas vezes:** 15 dias em 26/08, revisto para **30 dias** na diretriz de 27/08 — que é a que vigora e está implementada (`DIAS_DA_JANELA` em `src/servicos/distribuicao.ts`). Ver a nota de reconciliação abaixo. **Impacto:** muda como o "recebido no período" e o crédito acumulado são calculados e lidos (`carregarElegiveis` / `SaldoCarga`), não a lógica de divisão do motor. |
+| A10 | Cadastro de afastamento | Em vez de marcar `Escala.disponivel` dia a dia na mão, o sistema ganha **afastamentos** de primeira classe: **tipo** (`ferias`, `falta`, `atestado`, `licenca`, `outro`), **início**, **fim** (aberto para falta de um dia), observação. A elegibilidade do dia (`carregarElegiveis`) exclui automaticamente quem tem afastamento cobrindo a data. **Por que resolve imprevistos sem distorcer:** quem está afastado não entra no rateio e **seu crédito fica congelado** (não acumula durante a ausência); somado à janela deslizante (A9), quem volta de férias **não** retorna como credor gigante levando tudo. Nova entidade `Afastamento` (deriva a indisponibilidade); o motor não muda — continua recebendo só a lista de elegíveis. Precisa de tela de gestão e de exibição no painel de quem está fora. |
+| A11 | Peso por categoria (esforço) | **Documento e ficha dão mais trabalho — passam a pesar mais no equilíbrio.** Fecha a hipótese AT-02 (era `peso = 1` para todas). Valores: `DOC_CADASTRO = 4`, `FICHA_CADASTRO = 1,75`, e o resto (`EMAIL_CADASTRO`, `LIGA`, `LIGANTE`, `EMAIL_LIGA`) na base `1`. Configurável sem deploy (`RegraDistribuicao`); `1,75` pode virar `1,5` a pedido. **Efeito real:** o peso conta no equilíbrio **entre categorias** — o "total" que serve de desempate secundário (A2) e de medida de esforço. Dentro de uma mesma categoria a divisão não muda (documento já compara só com documento, peso constante). Consequência desejada: quem passa o dia em documentos pesados **não** recebe também um monte de trabalho leve por cima. |
+| A12 | Cuidado por categoria (revisão) | **Documento e ficha exigem mais cuidado — mais itens vão para revisão humana.** É o segundo lado do "demandam mais atenção". Mexe no `limiar_confianca` por categoria (default `0,85`: abaixo disso o item vai para a fila de Revisão). Valores propostos: `DOC_CADASTRO = 0,95`, `FICHA_CADASTRO = 0,90`, demais `0,85`. Limiar mais alto = a IA precisa estar mais segura para aprovar sozinha, logo **mais** documentos/fichas caem na revisão humana. Já é campo por categoria, configurável sem deploy. Não toca no motor — é o corte antes dele. |
+
+**Impacto em A4 — não é só configuração, é mudança no motor.** Hoje `distribuir()` (`src/core/distribuicao/motor.ts`) recebe uma `quantidade` escalar por categoria e reparte por resto-maior (RN-04); ele não sabe que um lote de ligantes se divide em grupos por `liga_id`. Para cumprir A4, a categoria `LIGANTE`/`E-MAIL LIGA` precisa de uma unidade de entrada nova — grupos (liga, tamanho) em vez de uma contagem plana — com alocação gulosa por maior-grupo-primeiro, mantendo a mesma trava de conservação (`Σ atribuições == quantidade de entrada`) e o mesmo livro-razão de crédito. Isso vai para `docs/03-SPEC.md` (contrato do motor) antes de mexer no código. Ver `ESTADO.md` → *Próximo passo sugerido*.
+
+### Etapa 6 — fluxo atual e mapeamento (base de A5)
+
+O fluxo de hoje, na secretaria, e o que cada passo vira no sistema:
+
+| Passo hoje (Outlook + planilha) | No sistema | Papel |
+|---|---|---|
+| Uma pessoa lê todos os e-mails do dia | `IngestaoPort.buscarNovos()` traz os e-mails; IA classifica e extrai | **substituído** (com revisão humana abaixo do limiar) |
+| Digita as contagens na planilha | Não existe: contagem é consequência de itens reais, nunca digitada | **eliminado** (é a doença que o projeto cura) |
+| A planilha calcula a divisão | Motor `distribuir()` — determinístico, com conservação garantida | **substituído** |
+| Uma pessoa olha a planilha e reencaminha para a caixa de cada funcionário | Confirmação da rodada cria as `Atribuicao`; cada um vê a própria *Minha Fila* | **substituído** (a fila do app é o "reencaminhar") |
+| Funcionário realiza o trabalho na própria caixa | Continua no Outlook **por enquanto** | **mantido** (alvo futuro: executar pela tela) |
+| Funcionário move o item para a pasta "OK" | Botão *Concluir* na *Minha Fila* grava `Execucao` + `status=concluido` | **substituído** — durante a rodada paralela convive com a pasta "OK" (dupla marcação) |
+| — | Relatório legível do que foi distribuído e por quê (A6) | **novo** |
+
+**O que NÃO entra agora:** enviar/responder e-mail pelo sistema, escrever em pastas do Outlook, e-mail como caixa de execução. O `IngestaoPort` fica só-leitura até o cliente decidir migrar a execução para dentro do app.
+
+### Reconciliação: A4–A12 vinham de fora da `main` — 31/08/2026
+
+**Estas nove decisões foram tomadas em 26/08/2026 e ficaram órfãs num branch (`claude/prototipo-em-progresso-unesv2`) que nunca foi mesclado.** A `main` seguiu dois dias de construção sem elas: o `§ A` parava em A3, e o `ESTADO.md` continuava listando como *"aguardando o dono do negócio"* três perguntas **já respondidas** — etapa 6 (A5), itens mais antigos (A7) e dono único (A4).
+
+É o mesmo defeito que o projeto existe para eliminar, na camada de documentação: a resposta existia, ninguém tinha apagado nada, e mesmo assim o documento oficial dizia o contrário. Ninguém erra nesse tipo de perda — ela acontece sozinha.
+
+**Um conflito real apareceu no resgate, e ele não é de texto: é de número.** O A9 (26/08) decidiu janela de **15 dias**; o *Complemento arquitetural* (27/08), também diretriz do dono, decidiu **30 dias**, e é o que está implementado. As duas concordam no que importa — janela deslizante substituindo o mês corrente, que é o que a `RN-11` exige. Diverge só o tamanho.
+
+**Resolvido pela data, não por preferência:** 27/08 é posterior a 26/08, então 30 dias vigora e o código fica como está. O A9 registra as duas para que a revisão fique visível em vez de o número menor desaparecer sem rastro. **Se 15 era o certo e 30 entrou por engano, é uma constante — mas o crédito acumulado de todos muda junto, então a troca é decisão, não ajuste.**
+
+### O que destas decisões ainda não existe em código
+
+Registrar não é implementar, e a distância precisa ficar explícita — senão o `DECISOES.md` passa a descrever um sistema que não é este:
+
+| Decisão | Estado no código hoje |
+|---|---|
+| A4 — agrupamento por liga | ❌ **Não implementado.** `distribuir()` recebe quantidade escalar; não conhece `liga_id`. Muda o contrato do motor |
+| A5 — conclusão pelo app | ✅ Já é assim. O botão *Concluir* da *Minha Fila* existe, e o `IngestaoPort` é só-leitura |
+| A6 — relatório da rodada | ⚠️ Os dados estão gravados (snapshot da `RodadaDistribuicao`); falta a camada de leitura que narra |
+| A7 — prioridade por idade | ⚠️ Parcial. A distribuição já escolhe por `criadoEm asc`; falta ordenar *Minha Fila* e o indicador de atraso no painel |
+| A8 — lembrete semanal | ❌ Backlog declarado. Depende de capacidade de **envio**, que o A5 adiou |
+| A9 — janela deslizante | ✅ Implementada, com 30 dias (ver acima) |
+| A10 — `Afastamento` | ❌ **Não implementado.** Entidade não existe; hoje a indisponibilidade é `Escala.disponivel` marcada na mão |
+| A11 — peso por categoria | ❌ **Decidido, não aplicado.** `PESO_PADRAO = 1` para todas em `src/core/config.ts`. Os testes de distribuição assumem peso `1` e precisam ser revistos junto |
+| A12 — limiar por categoria | ❌ **Decidido, não aplicado.** `LIMIAR_CONFIANCA_PADRAO = 0,85` para todas |
+
+A11 e A12 parecem troca de constante e não são: o peso entra na cota justa (`motor.ts`), então mudá-lo muda **toda** a divisão entre categorias e a suíte inteira de distribuição junto. Entram como trabalho próprio, com a rodada de comparação lado a lado refeita — nunca como ajuste de configuração de passagem.
 
 ---
 
@@ -113,7 +168,7 @@ Formato: hipótese · motivo · impacto · status.
 **Hipótese:** `peso = 1` para todas as categorias.
 **Motivo:** o único modelo de esforço do arquivo é `documentos = 7 × inscrições`, e pertence à frente `TÍTULOS`, fora da V1.
 **Impacto:** o balanceamento equaliza contagem, não esforço real. Um `DOC` pesa igual a um `E-MAIL`.
-**Status:** ⏳ campo modelado e configurável sem deploy. **Pendente do cliente final.**
+**Status:** ✅ **respondida em 26/08/2026 (ver A11)** — não é igual: `DOC = 4`, `FICHA = 1,75`, resto `1`. Junto veio o cuidado por categoria (A12). ⚠️ **A resposta ainda não está no código:** `PESO_PADRAO = 1` para todas em `src/core/config.ts`. A hipótese deixou de valer; o comportamento dela ainda é o que roda. Ver *Reconciliação: A4–A12* em § A.
 
 ### AT-03 — `INADIMP.` e `ISENTO`
 
@@ -168,17 +223,18 @@ Formato: hipótese · motivo · impacto · status.
 
 ## D. Pendências do cliente final
 
-Sete questões que só a equipe da secretaria responde. Nenhuma bloqueia a construção — todas têm default configurável.
+Oito questões que só a equipe da secretaria responde. Nenhuma bloqueia a construção — todas têm default configurável.
 
 | # | Questão | Default assumido |
 |---|---|---|
 | 1 | Como se decide hoje quem leva a unidade extra? | Maior crédito da categoria → maior crédito global → menor recebido |
 | 2 | Existe limiar formal para "tudo para um só"? | `3`, por categoria (AT-01) |
-| 3 | Um `DOC` custa o mesmo que um `E-MAIL`? | `peso = 1` (AT-02) |
+| 3 | Um `DOC` custa o mesmo que um `E-MAIL`? | **Respondida (A11):** não — `DOC = 4`, `FICHA = 1,75`, resto `1`; e mais revisão em DOC/FICHA (A12). Ainda não aplicada no código |
 | 4 | O que são `INADIMP.` e `ISENTO`? | Fora do rateio (AT-03) |
 | 5 | Quem faz a triagem é quem distribui? | Mesmo perfil `operador`; papéis já separados |
 | 6 | `LIGA` / `LIGANTE` / `E-MAIL LIGA` são independentes? | Independentes, 3 categorias, com desdobramento N (A1) |
 | 7 | Onde os e-mails moram? | Ingestão mockada; adapter pronto |
+| 8 | Etapa 6 — trabalha pela tela ou pela pasta do Outlook? | **Respondida (A5):** execução no Outlook por ora, conclusão pelo app; `IngestaoPort` segue só-leitura |
 
 ## E. Divergências históricas a explicar
 
@@ -299,12 +355,14 @@ Motor puro e sua cobertura de testes · `Ator` como tipo marcado · snapshot com
 
 ### H.4 Precisa de decisão do dono do negócio
 
-Nenhuma resposta foi inventada. Estão em `ESTADO.md`:
+Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
-1. **Dono único** — categoria com dono fixo é *sempre a mesma pessoa*, ou apenas lote não fragmentado? Hoje o código entrega 100% a quem estiver mais credor, o que é rodízio, não dono fixo.
-2. **Etapa 6 da operação** — o colaborador trabalha pela tela ou continua pela pasta de e-mail? Define se o `IngestaoPort` precisa escrever na caixa. Sem isso, a equipe fica com duas filas na rodada paralela.
-3. **Itens mais antigos** — vão para quem está mais credor, ou são espalhados? Tem consequência de prazo.
-4. ~~**"Período" do desempate**~~ — **RESPONDIDO em 27/08/2026:** janela deslizante de 30 dias, já implementada (`DIAS_DA_JANELA` em `src/servicos/distribuicao.ts`). Este item continuava descrevendo o estado antigo ("hoje é o mês corrente"); corrigido em 28/08/2026.
+**Três já tinham resposta e a lista não sabia** — os itens 1 a 3, que estavam no branch órfão resgatado em 31/08/2026 (ver *Reconciliação: A4–A12* em § A). O item 4 já constava resolvido; os itens **5 a 8 seguem abertos**.
+
+1. ~~**Dono único**~~ — **RESPONDIDA em 26/08/2026 (A4).** Não é dono fixo nem lote atômico por e-mail: a unidade que não se separa é a **liga**. Todos os ligantes de uma liga vão inteiros para uma pessoa; ligas diferentes do mesmo e-mail podem ir para pessoas diferentes. Atribuição gulosa, da maior liga para a menor, cada uma para quem tiver menos carga na categoria naquele instante. Afinidade fixa por liga entre dias foi **explicitamente descartada**. ⚠️ Muda o contrato do motor e **não está implementada**.
+2. ~~**Etapa 6 da operação**~~ — **RESPONDIDA em 26/08/2026 (A5).** A execução continua no Outlook por ora; a conclusão passa a ser marcada no app, com dupla marcação aceita durante a rodada paralela. O `IngestaoPort` **permanece só-leitura** — nunca escreve na caixa de ninguém. Já é o comportamento de hoje. Daí saiu também o A6 (relatório legível da rodada).
+3. ~~**Itens mais antigos**~~ — **RESPONDIDA em 26/08/2026 (A7).** O setor não tem prazo nem urgência, mas os mais antigos têm prioridade contra envelhecimento de backlog. A distribuição já escolhe por `criadoEm asc`; falta ordenar *Minha Fila* pelo mais antigo e o indicador de atraso no painel.
+4. ~~**"Período" do desempate**~~ — **RESPONDIDO em 27/08/2026:** janela deslizante de 30 dias, já implementada (`DIAS_DA_JANELA` em `src/servicos/distribuicao.ts`). Este item continuava descrevendo o estado antigo ("hoje é o mês corrente"); corrigido em 28/08/2026. Em 31/08/2026 o resgate revelou que a mesma pergunta tinha sido respondida em 26/08 com **15 dias** (A9); 27/08 é posterior e vigora — ver a nota de reconciliação em § A.
 5. **Quem vê a caixa de entrada inteira?** *(levantado na auditoria de 28/08/2026)* `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails, e quem está com cada item. O `RF-23` diz *"Colaborador vê **seus** itens reais"*. As duas leituras são defensáveis: hoje a equipe trabalha de uma caixa de e-mail compartilhada, e todo mundo já vê tudo — restringir mudaria a operação, não corrigiria defeito. Por outro lado, remetente e assunto de associado são dado pessoal, e o resto do sistema é cuidadoso com isso. **Não foi alterado**, porque a escolha é de operação.
 
 6. **Carga de exceção conta para o balanceamento?** *(levantada em 28/08/2026, com o registro manual)* Quem atende 30 inadimplentes num dia fez trabalho real, e hoje esse trabalho **não** entra no crédito — a pessoa continua recebendo cota cheia das categorias do rateio. Contar resolveria a justiça de carga, mas faria uma categoria de exceção mexer na cota justa de categorias das quais ela não participa. Ver § AT-09: o lado reversível foi escolhido de propósito, e a decisão é de operação, não de engenharia.
