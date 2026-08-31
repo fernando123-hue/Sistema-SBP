@@ -142,7 +142,15 @@ O incômodo não era o peso: a `03-SPEC.md` **afirmava** que o design system era
 | `dataDoEmail` | Invólucro de uma linha sobre `paraDataIso`, nunca chamado. Apagá-lo deixou o import órfão, e o typecheck pegou |
 | `FrenteSchema` / `GrupoSchema` | Duplicavam as uniões `Frente` e `Grupo` de `tipos.ts`, sem leitor |
 
+Mais **sete aliases de tipo** em `esquemas.ts` (`CategoriaCodigo`, `StatusItem`, `MotivoAtribuicao`, `Anexo`, `ItemDividido`, `RegistroManual`, `PayloadDoItem`) sem nenhum consumidor — nem em outro arquivo, nem no próprio. Não é convenção do arquivo: 17 dos 31 esquemas têm tipo pareado, ou seja, o tipo é criado quando alguém precisa. Agora todo símbolo exportado de `esquemas.ts` tem consumidor, o que é uma propriedade conferível.
+
 **Um caso não era código morto e não foi apagado.** `SituacaoEventoSchema` parecia sobra, mas a lista `'iniciado' | 'sucesso' | 'falha' | 'reprocessavel'` estava escrita **duas vezes** — como enum Zod em `esquemas.ts` e como união TypeScript em `observabilidade.ts`. Duas fontes para o mesmo vocabulário fechado é exatamente o que o PR #12 corrigiu para `acao` e `operacao`. Em vez de apagar, `observabilidade.ts` passou a derivar o tipo do esquema. Sobrou uma fonte.
+
+**A maior duplicação que sobrou já tem nome: `H-D7`.** As telas redigitam à mão os tipos que os serviços já declaram — `caixa/page.tsx` × `servicos/caixa.ts`, `fila` × `fila`, `painel` × `painel`, `revisao` × `revisao`, `distribuicao` × `resumo.ts`. **Não mexi:** é dívida registrada, com abordagem já escolhida (derivar dos esquemas Zod), e o conserto é refatoração que atravessa a fronteira servidor/cliente — não é apagar coisa morta. Ela já cobrou uma vez (`emAndamento` sumiu; `Date` contra string). Continua no *Próximo passo*.
+
+**Três casos pareceram duplicação e não eram, conferidos um a um:** `conferirAssinatura` existe duas vezes com significados diferentes (HMAC do cookie de sessão × bytes mágicos de anexo); `linhaDe` são dois auxiliares de teste sem relação; `mensagemDoErro` tem versão de servidor e de cliente, e a do cliente acrescenta o identificador de correlação — mesma assinatura, responsabilidades distintas nos dois lados do fio.
+
+**A varredura do schema deu falso positivo e nada foi tocado lá.** Oito colunas apareceram como "nunca referenciadas", e nenhuma era morta: `revisoesFeitas` e os `ligaId` são **relações**, `atualizadoEm` é `@updatedAt` gerido pelo Prisma, e `Item.ligaId` é justamente o que o `A4` vai precisar. Apagar coluna exige migração e esbarra no invariante 11 — o custo de errar é alto e o ganho era zero.
 
 **O que foi conferido e está limpo:** nenhum arquivo órfão em `src/` (todos os cinco sem import são entradas legítimas — `npm scripts` e o `globalSetup` do vitest); zero `TODO`, `FIXME` ou `@deprecated`; zero bloco de código comentado; zero `console.log` solto. Os números que a documentação afirma foram medidos de novo e batem: 7 migrações, 20 modelos, 9 telas, 24 arquivos de rota, 13 invariantes, 271 testes.
 
