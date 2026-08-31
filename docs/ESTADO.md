@@ -124,6 +124,34 @@ O que entrou: agrupamento por liga (A4), etapa 6 e conclusão pelo app (A5), rel
 
 ---
 
+### 3. Revisão geral e limpeza
+
+Varredura do repositório inteiro atrás do que não serve mais. O que saiu:
+
+**Quatro dependências de produção que nunca foram importadas** — `class-variance-authority`, `clsx`, `tailwind-merge` e `lucide-react`. Sobra do plano shadcn/ui, abandonado ainda no começo. `matrizes.tsx` importa **só `react`** e resolve composição de classe com a própria função `juntar()`, de duas linhas.
+
+O incômodo não era o peso: a `03-SPEC.md` **afirmava** que o design system era construído sobre os quatro. Documentação descrevendo um sistema que não é este — e ninguém descobre até ir procurar o uso e não achar. Corrigido no SPEC, com o motivo. De quebra, o [PR #15](https://github.com/fernando123-hue/Sistema-SBP/pull/15) do Dependabot (`lucide-react` 1.34 → 1.35) ficou sem objeto: era manutenção sobre pacote que ninguém usava.
+
+**Cinco símbolos exportados e inalcançáveis:**
+
+| Símbolo | Por que saiu |
+|---|---|
+| `LIMIAR_CONFIANCA_PADRAO` | Duplicava o `@default(0.85)` do schema, que é de onde o limiar sai de verdade (`ingestao.ts` lê `categoria.limiarConfianca`). O tipo `Categoria` do core nem carrega o campo |
+| `categoriaPorCodigo` | Função sem nenhum chamador |
+| `inicioDaSemana` | Sem chamador — **e o comentário dizia "usado só na leitura do painel"**, uso que não existia |
+| `dataDoEmail` | Invólucro de uma linha sobre `paraDataIso`, nunca chamado. Apagá-lo deixou o import órfão, e o typecheck pegou |
+| `FrenteSchema` / `GrupoSchema` | Duplicavam as uniões `Frente` e `Grupo` de `tipos.ts`, sem leitor |
+
+**Um caso não era código morto e não foi apagado.** `SituacaoEventoSchema` parecia sobra, mas a lista `'iniciado' | 'sucesso' | 'falha' | 'reprocessavel'` estava escrita **duas vezes** — como enum Zod em `esquemas.ts` e como união TypeScript em `observabilidade.ts`. Duas fontes para o mesmo vocabulário fechado é exatamente o que o PR #12 corrigiu para `acao` e `operacao`. Em vez de apagar, `observabilidade.ts` passou a derivar o tipo do esquema. Sobrou uma fonte.
+
+**O que foi conferido e está limpo:** nenhum arquivo órfão em `src/` (todos os cinco sem import são entradas legítimas — `npm scripts` e o `globalSetup` do vitest); zero `TODO`, `FIXME` ou `@deprecated`; zero bloco de código comentado; zero `console.log` solto. Os números que a documentação afirma foram medidos de novo e batem: 7 migrações, 20 modelos, 9 telas, 24 arquivos de rota, 13 invariantes, 271 testes.
+
+**O que NÃO foi apagado, de propósito:** os comentários que registram o defeito que cada linha previne (são memória cara, e o `CLAUDE.md` manda preservá-los) · o histórico deste arquivo e do `DECISOES.md` · `CONTEXTO.md` e `ENGENHARIA_REVERSA` (documentos de origem) · o workflow do CodeQL, desarmado de propósito e com plano de religar · `AdapterIndisponivelError`, que parece sem uso porque é lançado e capturado genericamente.
+
+`npm run verificar`: **271 testes verdes**, antes e depois. Nenhum comportamento mudou — nada aqui era alcançável.
+
+---
+
 ## O que veio antes
 
 **Entrou a fundação do cérebro operacional.** Detalhe em `DECISOES.md`, seção *Fundação do cérebro operacional*.

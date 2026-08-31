@@ -14,9 +14,6 @@ export const LIMIAR_INDIVISIVEL_PADRAO = 3
 /** Ver DECISOES.md § AT-02. Campo modelado, valor pendente do cliente. */
 export const PESO_PADRAO = 1
 
-/** Abaixo disto, o item vai para a fila de Revisão humana. Por categoria. */
-export const LIMIAR_CONFIANCA_PADRAO = 0.85
-
 type DefinicaoCategoria = Pick<Categoria, 'codigo' | 'rotulo' | 'grupo'> &
   Partial<Pick<Categoria, 'divisivel' | 'peso' | 'limiarIndivisivel' | 'entraNoRateio'>>
 
@@ -52,9 +49,3 @@ export const CATEGORIAS_CADASTRO: readonly Categoria[] = DEFINICOES.map((definic
   limiarIndivisivel: definicao.limiarIndivisivel ?? LIMIAR_INDIVISIVEL_PADRAO,
   entraNoRateio: definicao.entraNoRateio ?? true,
 }))
-
-export function categoriaPorCodigo(codigo: string): Categoria {
-  const encontrada = CATEGORIAS_CADASTRO.find((categoria) => categoria.codigo === codigo)
-  if (!encontrada) throw new Error(`Categoria desconhecida: ${codigo}`)
-  return encontrada
-}

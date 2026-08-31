@@ -63,7 +63,7 @@ Registrar não é implementar, e a distância precisa ficar explícita — senã
 | A9 — janela deslizante | ✅ Implementada, com 30 dias (ver acima) |
 | A10 — `Afastamento` | ❌ **Não implementado.** Entidade não existe; hoje a indisponibilidade é `Escala.disponivel` marcada na mão |
 | A11 — peso por categoria | ❌ **Decidido, não aplicado.** `PESO_PADRAO = 1` para todas em `src/core/config.ts`. Os testes de distribuição assumem peso `1` e precisam ser revistos junto |
-| A12 — limiar por categoria | ❌ **Decidido, não aplicado.** `LIMIAR_CONFIANCA_PADRAO = 0,85` para todas |
+| A12 — limiar por categoria | ❌ **Decidido, não aplicado.** `Categoria.limiarConfianca` é `@default(0.85)` no schema, igual para todas |
 
 A11 e A12 parecem troca de constante e não são: o peso entra na cota justa (`motor.ts`), então mudá-lo muda **toda** a divisão entre categorias e a suíte inteira de distribuição junto. Entram como trabalho próprio, com a rodada de comparação lado a lado refeita — nunca como ajuste de configuração de passagem.
 

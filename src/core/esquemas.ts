@@ -13,9 +13,6 @@ import { z } from 'zod'
 export const PapelSchema = z.enum(['operador', 'colaborador', 'gestor'])
 export type Papel = z.infer<typeof PapelSchema>
 
-export const FrenteSchema = z.enum(['CADASTRO', 'TITULOS'])
-export const GrupoSchema = z.enum(['ASSOCIADO', 'LIGA'])
-
 export const CategoriaCodigoSchema = z.enum([
   'DOC_CADASTRO',
   'FICHA_CADASTRO',
@@ -180,6 +177,7 @@ export const SituacaoEventoSchema = z.enum([
   'falha',
   'reprocessavel',
 ])
+export type SituacaoEvento = z.infer<typeof SituacaoEventoSchema>
 
 // ─── Limites de robustez ─────────────────────────────────────
 

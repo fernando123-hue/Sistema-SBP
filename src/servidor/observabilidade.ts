@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { ErroDominio } from '../core/erros'
-import { DOMINIO_ATUAL, serializar } from '../core/esquemas'
+import { DOMINIO_ATUAL, serializar, type SituacaoEvento } from '../core/esquemas'
 import type { Transacao } from './prisma'
 
 /**
@@ -81,7 +81,7 @@ export function registrarLog(
 export interface EventoEntrada {
   correlacaoId: string
   etapa: string
-  situacao: 'iniciado' | 'sucesso' | 'falha' | 'reprocessavel'
+  situacao: SituacaoEvento
   referencia?: string | null
   mensagem?: string | null
   detalhe?: unknown

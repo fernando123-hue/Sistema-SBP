@@ -249,7 +249,9 @@ GET    /api/diagnostico/origem        confere o tratamento de proxy
 
 ## 9. Design system
 
-**O que este documento planejou e o que foi construído divergem aqui, e a divergência é deliberada.** O plano era shadcn/ui com matrizes validadas no Storybook. Nenhum dos dois entrou: não há `.storybook/`, não há dependência de `storybook` nem de `shadcn`, e o design system é **um arquivo**, `src/componentes/matrizes.tsx`, sobre Tailwind com `class-variance-authority`, `clsx`, `tailwind-merge` e `lucide-react`.
+**O que este documento planejou e o que foi construído divergem aqui, e a divergência é deliberada.** O plano era shadcn/ui com matrizes validadas no Storybook. Nenhum dos dois entrou: não há `.storybook/`, não há dependência de `storybook` nem de `shadcn`, e o design system é **um arquivo**, `src/componentes/matrizes.tsx`, sobre Tailwind puro — o único import dele é `react`.
+
+> **Correção de 31/08/2026.** Este parágrafo afirmava que as matrizes eram construídas "sobre Tailwind com `class-variance-authority`, `clsx`, `tailwind-merge` e `lucide-react`". Os quatro pacotes estavam **instalados e nunca importados** — sobra do plano shadcn/ui que foi abandonado, e o arquivo sempre resolveu composição de classe com a própria função `juntar()`, de duas linhas. Foram removidos do `package.json` na mesma data. Era o tipo de afirmação que só se descobre falsa quando alguém vai procurar o uso e não acha.
 
 O motivo é o mesmo princípio do resto do projeto: com nove telas e um punhado de componentes, uma ferramenta de catálogo custa mais manutenção do que resolve. `RNF-05` do PRD, que pedia validação no Storybook, **não está atendido** — está sendo cumprido por revisão na tela. Se o número de componentes crescer, a decisão volta à mesa.
 
