@@ -75,11 +75,3 @@ export function deslocarDias(dataIso: string, dias: number): string {
 export function sequenciaDeDatas(inicio: string, total: number): string[] {
   return Array.from({ length: total }, (_, indice) => deslocarDias(inicio, indice))
 }
-
-/** Segunda-feira da semana ISO da data. Usado só na leitura do painel. */
-export function inicioDaSemana(dataIso: string): string {
-  const base = new Date(`${dataIso}T00:00:00.000Z`)
-  const diaDaSemana = base.getUTCDay()
-  const recuo = diaDaSemana === 0 ? 6 : diaDaSemana - 1
-  return deslocarDias(dataIso, -recuo)
-}

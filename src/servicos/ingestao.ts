@@ -9,7 +9,6 @@ import {
 import { CategoriaDesconhecidaError } from '../core/erros'
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
-import { paraDataIso } from '../core/util/datas'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import { InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
@@ -450,9 +449,4 @@ function decidirRevisao(
   if (confianca < limiar) return 'baixa_confianca'
   if (temCampoAusente) return 'campo_ausente'
   return null
-}
-
-/** Data ISO de um e-mail, para agrupar a fila do dia. */
-export function dataDoEmail(recebidoEm: Date): string {
-  return paraDataIso(recebidoEm)
 }

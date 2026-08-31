@@ -13,9 +13,6 @@ import { z } from 'zod'
 export const PapelSchema = z.enum(['operador', 'colaborador', 'gestor'])
 export type Papel = z.infer<typeof PapelSchema>
 
-export const FrenteSchema = z.enum(['CADASTRO', 'TITULOS'])
-export const GrupoSchema = z.enum(['ASSOCIADO', 'LIGA'])
-
 export const CategoriaCodigoSchema = z.enum([
   'DOC_CADASTRO',
   'FICHA_CADASTRO',
@@ -26,7 +23,6 @@ export const CategoriaCodigoSchema = z.enum([
   'INADIMP',
   'ISENTO',
 ])
-export type CategoriaCodigo = z.infer<typeof CategoriaCodigoSchema>
 
 /** Categorias que a IA pode atribuir. `INADIMP`/`ISENTO` são registro manual. */
 export const CategoriaClassificavelSchema = z.enum([
@@ -153,7 +149,6 @@ export const StatusItemSchema = z.enum([
   'devolvido',
   'cancelado',
 ])
-export type StatusItem = z.infer<typeof StatusItemSchema>
 
 export const MotivoAtribuicaoSchema = z.enum([
   'algoritmo',
@@ -161,7 +156,6 @@ export const MotivoAtribuicaoSchema = z.enum([
   'transferencia',
   'devolucao',
 ])
-export type MotivoAtribuicao = z.infer<typeof MotivoAtribuicaoSchema>
 
 export const MotivoRevisaoSchema = z.enum([
   'baixa_confianca',
@@ -180,6 +174,7 @@ export const SituacaoEventoSchema = z.enum([
   'falha',
   'reprocessavel',
 ])
+export type SituacaoEvento = z.infer<typeof SituacaoEventoSchema>
 
 // ─── Limites de robustez ─────────────────────────────────────
 
@@ -239,7 +234,6 @@ export const AnexoSchema = z.object({
    */
   conteudo: z.instanceof(Uint8Array).optional(),
 })
-export type Anexo = z.infer<typeof AnexoSchema>
 
 export const EmailBrutoSchema = z.object({
   /** Chave de idempotência. Reprocessar o mesmo e-mail nunca duplica trabalho. */
@@ -333,7 +327,6 @@ export const ItemDivididoSchema = z.object({
   titulo: z.string().min(1).max(300),
   campos: z.record(z.string().max(60), z.string().max(2000)).default({}),
 })
-export type ItemDividido = z.infer<typeof ItemDivididoSchema>
 
 export const ResolucaoRevisaoSchema = z.object({
   revisaoId: z.string().min(1),
@@ -392,7 +385,6 @@ export const RegistroManualSchema = z.object({
     .default(null)
     .transform((valor) => (valor === '' ? null : valor)),
 })
-export type RegistroManual = z.infer<typeof RegistroManualSchema>
 
 // ─── Credenciais ─────────────────────────────────────────────
 
@@ -517,7 +509,6 @@ export const PayloadDoItemSchema = z.object({
   observacao: z.string().max(1000).nullable().default(null),
   revisadoPorHumano: z.boolean().default(false),
 })
-export type PayloadDoItem = z.infer<typeof PayloadDoItemSchema>
 
 /**
  * Forma do `Revisao.sugestaoIa` — o que a IA propôs, congelado.
