@@ -1,4 +1,5 @@
 import { ALGORITMO_VERSAO, distribuir } from '../core/distribuicao/motor'
+import { narrarRodada } from '../core/distribuicao/narrativa'
 import { SemElegiveisError } from '../core/erros'
 import { serializar, type PedidoDistribuicao } from '../core/esquemas'
 import type { Categoria, Elegivel, ResultadoRodada } from '../core/tipos'
@@ -46,6 +47,51 @@ export interface RelatorioDistribuicao {
   planos: PlanoCategoria[]
   totalDistribuido: number
   rodadasGravadas: number
+  /**
+   * O que foi feito, como e por quê, em português (`A6`).
+   *
+   * Vem do snapshot que o motor acabou de produzir — nada aqui é recalculado.
+   * Ver `core/distribuicao/narrativa.ts`.
+   */
+  narrativas: NarrativaDeCategoria[]
+}
+
+export interface NarrativaDeCategoria {
+  categoriaCodigo: string
+  rotulo: string
+  linhas: string[]
+}
+
+/**
+ * Escreve a narrativa de cada plano.
+ *
+ * FORA da transação de propósito. A busca de nomes é uma consulta a mais, e
+ * `confirmar` segura a trava do dia enquanto a transação estiver aberta —
+ * enfiar leitura de conveniência ali dentro alarga a janela em que ninguém
+ * mais consegue distribuir, para produzir texto que ninguém lê antes do fim.
+ */
+async function narrar(banco: Banco, planos: PlanoCategoria[]): Promise<NarrativaDeCategoria[]> {
+  const ids = [
+    ...new Set(planos.flatMap((plano) => plano.resultado?.ordemDesempate ?? [])),
+  ]
+  if (ids.length === 0) return []
+
+  const pessoas = await banco.colaborador.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, nome: true },
+  })
+  const nomes = new Map(pessoas.map((pessoa) => [pessoa.id, pessoa.nome]))
+  // Cai no id quando o nome não vier: narrativa incompleta é melhor que
+  // narrativa ausente, e some-nome é problema de leitura, não de decisão.
+  const nomeDe = (id: string): string => nomes.get(id) ?? id
+
+  return planos
+    .filter((plano) => plano.resultado !== null)
+    .map((plano) => ({
+      categoriaCodigo: plano.categoria.codigo,
+      rotulo: plano.categoria.rotulo,
+      linhas: narrarRodada(plano.resultado!, plano.categoria.rotulo, nomeDe),
+    }))
 }
 
 // ─── Planejamento (sem efeito colateral) ─────────────────────
@@ -176,6 +222,10 @@ export async function previa(
     planos,
     totalDistribuido: somar(planos.map((plano) => (plano.resultado ? plano.quantidade : 0))),
     rodadasGravadas: 0,
+    // A narrativa acompanha a PRÉVIA também, e não só a confirmação: ler o
+    // porquê antes de gravar é o que a torna útil para conferir. Depois de
+    // confirmado, ela vira registro; antes, é revisão.
+    narrativas: await narrar(banco, planos),
   }
 }
 
@@ -223,13 +273,15 @@ export async function confirmar(
       totalDistribuido += plano.quantidade
     }
 
+    // Sai da transação SEM a narrativa: ela é leitura de conveniência e não
+    // pode alargar a janela em que a trava do dia está segurada. Ver `narrar`.
     return {
       correlacaoId,
       data: pedido.data,
       planos,
       totalDistribuido,
       rodadasGravadas,
-    } satisfies RelatorioDistribuicao
+    } satisfies Omit<RelatorioDistribuicao, 'narrativas'>
   })
 
   const comErro = relatorio.planos.filter((plano) => plano.erro)
@@ -266,7 +318,7 @@ export async function confirmar(
     duracaoMs: Date.now() - inicio,
   })
 
-  return relatorio
+  return { ...relatorio, narrativas: await narrar(banco, relatorio.planos) }
 }
 
 async function gravarRodada(

@@ -33,6 +33,8 @@ export interface ResumoDaDistribuicao {
   totalDistribuido: number
   rodadasGravadas: number
   linhas: LinhaDaPrevia[]
+  /** O que foi feito, como e por quê, em português (`A6`). */
+  narrativas: { categoriaCodigo: string; rotulo: string; linhas: string[] }[]
 }
 
 export function resumirPlanos(relatorio: RelatorioDistribuicao): ResumoDaDistribuicao {
@@ -41,6 +43,7 @@ export function resumirPlanos(relatorio: RelatorioDistribuicao): ResumoDaDistrib
     correlacaoId: relatorio.correlacaoId,
     totalDistribuido: relatorio.totalDistribuido,
     rodadasGravadas: relatorio.rodadasGravadas,
+    narrativas: relatorio.narrativas,
     linhas: relatorio.planos.map((plano) => ({
       categoriaCodigo: plano.categoria.codigo,
       rotulo: plano.categoria.rotulo,

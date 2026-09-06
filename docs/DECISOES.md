@@ -57,8 +57,8 @@ Registrar não é implementar, e a distância precisa ficar explícita — senã
 |---|---|
 | A4 — agrupamento por liga | ❌ **Não implementado.** `distribuir()` recebe quantidade escalar; não conhece `liga_id`. Muda o contrato do motor |
 | A5 — conclusão pelo app | ✅ Já é assim. O botão *Concluir* da *Minha Fila* existe, e o `IngestaoPort` é só-leitura |
-| A6 — relatório da rodada | ⚠️ Os dados estão gravados (snapshot da `RodadaDistribuicao`); falta a camada de leitura que narra |
-| A7 — prioridade por idade | ⚠️ Parcial. A distribuição já escolhe por `criadoEm asc`; falta ordenar *Minha Fila* e o indicador de atraso no painel |
+| A6 — relatório da rodada | ⚠️ **Quase.** A rodada do dia é narrada na tela de Distribuição desde 06/09/2026 (função pura, sem IA). Falta a leitura NARRADA do histórico: `GET /api/rodadas/[id]` ainda devolve só dados crus |
+| A7 — prioridade por idade | ✅ **Completo em 06/09/2026.** *Minha Fila* ordena pelo item mais antigo e o painel mostra há quantos dias o mais velho está parado |
 | A8 — lembrete semanal | ❌ Backlog declarado. Depende de capacidade de **envio**, que o A5 adiou |
 | A9 — janela deslizante | ✅ Implementada, com 30 dias (ver acima) |
 | A10 — `Afastamento` | ❌ **Não implementado.** Entidade não existe; hoje a indisponibilidade é `Escala.disponivel` marcada na mão |
@@ -1312,3 +1312,55 @@ E o A12 tem custo operacional: limiar mais alto significa **mais** documento e f
 Estes valores foram decididos em 26/08/2026 e **nunca foram relidos com o dono do negócio**. Foram implementados a pedido explícito de 06/09, com o aviso registrado. `1,75` já nasceu marcado como negociável (*"pode virar 1,5"*), e `4` para documento é a razão de quatro contra um e-mail — se a operação disser que é demais, é uma linha de migração.
 
 Testes: 271 → **278**. Sete novos em `src/servicos/peso-e-limiar.test.ts`, que prendem os valores decididos: um valor de dado que volta ao padrão não quebra nada, só passa a distribuir diferente em silêncio.
+
+---
+
+## Prioridade por idade e relatório da rodada (A7 e A6) — 06/09/2026
+
+Duas decisões que não mexem em quanto ninguém recebe: uma muda **em que ordem** o trabalho aparece, a outra **explica** o que o motor fez. Entraram juntas por serem ambas camada de leitura.
+
+### A7 — a fila ordenava pela idade errada
+
+`minhaFila` ordenava por `atribuidoEm`: a idade da **atribuição**, não a do trabalho. As duas coincidem quase sempre, e divergem exatamente no caso que importa — um item de três semanas devolvido ao pool e redistribuído hoje aparecia no **fim** da fila, como se fosse novo. O backlog envelhecia escondido atrás da ordem da tela, que é a forma mais silenciosa possível de o `A7` ser descumprido.
+
+Passou a ordenar por `item.criadoEm`, que é a **mesma** definição de idade que `planejarCategoria` usa para escolher o que entra na rodada. Duas definições de "mais antigo" no mesmo sistema seriam a divergência de sempre. `id` desempata, para itens criados no mesmo instante (um e-mail que vira N itens) não saírem em ordem instável entre duas leituras.
+
+A tela passou a exibir `criadoEm` no lugar de `recebidoEm`: sem mostrar a chave pela qual a lista é ordenada, a ordem parece arbitrária nos casos em que as duas datas divergem — item manual não tem e-mail, e item devolvido guarda a data original.
+
+**O indicador de atraso no painel não tem faixa de alerta, e isso é decisão.** O `A7` diz, com todas as letras, que o setor de cadastro **não tem tarefa com prazo**. Pintar de vermelho a partir de N dias inventaria um SLA que ninguém definiu, e a tela passaria a cobrar a equipe por uma regra que não existe. O número aparece; o julgamento é de quem lê. Se um limiar vier a ser definido, é decisão do dono.
+
+A coluna ignora o recorte de período de propósito, e ganhou o sufixo `(hoje)` que a tela já usava para colunas assim: o item de março que ninguém tocou tem de aparecer justamente para quem está olhando setembro. Verificado na tela com o item de 23 dias **fora** do período exibido — apareceu.
+
+`diasEntre` (novo, em `core/util/datas.ts`) conta dias de **calendário** sobre a chave, ancorado em meia-noite UTC como `deslocarDias`. Item criado ontem às 23h e lido hoje às 8h está parado "há 1 dia", que é como a operação fala; subtrair instantes daria `0`.
+
+### A6 — a narrativa descreve, nunca recalcula
+
+O `A6` pede que o sistema distribua sozinho e deixe um relatório legível do que fez, como fez e por quê. A regra de ouro veio junto: **o algoritmo decide; a narrativa só descreve.**
+
+`core/distribuicao/narrativa.ts` é função **pura** que lê o snapshot que `distribuir()` já produziu — critério, base, resto, cota justa, ordem, crédito antes e depois — e escreve em português. Ela não calcula nada. Se precisasse recalcular para se explicar, existiriam duas fontes para o mesmo número, e a segunda cedo ou tarde divergiria: é o `SUBTOTAL(109)` da planilha reconstruído em forma de texto.
+
+**Não há IA aqui, e a porta continua aberta.** O `A6` permite que a IA redija a frase. O texto atual é determinístico, roda em microssegundos, não custa crédito, não falha por rede e não pode alucinar um número. Trocar por um modelo tem de ser decisão, não conveniência — e o `CLAUDE.md` já proíbe a IA de recalcular divisão.
+
+**A narrativa acompanha a prévia, não só a confirmação.** Ler o porquê **antes** de gravar é o que a torna útil para conferir; depois de confirmada, ela vira registro.
+
+`narrar()` roda **fora** da transação. `confirmar` segura a trava do dia enquanto a transação está aberta, e a busca de nomes é uma consulta a mais — enfiá-la ali dentro alargaria a janela em que ninguém mais consegue distribuir, para produzir texto que ninguém lê antes do fim.
+
+Verificado na tela: a narrativa de uma rodada real apareceu acima dos números crus da mesma rodada, e os dois batem (`cota justa 2.00 · piso 2 · resto 0 · soma 4 = 4`). É a conferência que importa — se a narrativa tivesse recalculado, essa comparação lado a lado é onde apareceria.
+
+### O defeito que a verificação no navegador achou
+
+Nada disto era o objetivo, e é o achado mais valioso da entrega. O console do React acusava **chave duplicada** em `LIGA`, `LIGANTE` e `EMAIL_LIGA`, e a tela de plantão repetia o mesmo selo de categoria quatro vezes por pessoa.
+
+**Causa:** a chave do upsert de `Habilitacao` no seed incluía `vigenciaInicio`, e o seed calcula `DATA_INICIAL` como `hoje − 7` — uma data que **anda**. Cada execução num dia diferente não encontrava a linha anterior e **inseria** outra. Medido: **80 linhas para 20 pares reais**, com vigências em 19/08, 20/08, 30/08 e 01/09 — quatro execuções, quatro dias. O `ESTADO.md` manda rodar o seed de novo, e ele acumulava lixo em silêncio a cada vez.
+
+**Impacto:** a distribuição **não** foi afetada — `carregarElegiveis` recebia ids repetidos, mas a consulta de escala seguinte os reduz naturalmente. Isso é sorte de implementação, não garantia. E o React trata chave duplicada como podendo "duplicar ou **omitir**" elementos: numa tela de plantão, alguém sumir da lista sem aviso.
+
+**Correção:** múltiplas vigências para o mesmo par são **legítimas** no domínio — é assim que se revoga e reconcede uma habilitação —, então a chave única do schema fica como está. O que não é legítimo é o seed fabricar uma vigência nova a cada execução: ele agora procura qualquer habilitação do par e só cria quando não existe nenhuma.
+
+**Provado, não afirmado:** as 60 duplicatas do banco local foram removidas mantendo a mais antiga (vigência 19/08, diferente de `hoje − 7`), e o seed rodou três vezes seguidas — 20, 20 e 20. Antes da correção, a primeira execução teria inserido outras 20. Na tela, os selos repetidos sumiram e uma aba nova não registra mais nenhum erro de chave duplicada.
+
+Nenhuma migração acompanha: o único banco com as duplicatas era o de desenvolvimento, e escolher qual linha apagar em base de terceiro não é decisão de migração automática.
+
+### O que continua pendente destas duas decisões
+
+`A6` pede o relatório "do que fez, como fez e por quê" — o que existe agora é a rodada do dia, na tela de Distribuição. **Não existe leitura histórica narrada**: reler em português o que aconteceu numa rodada de três semanas atrás ainda exige `GET /api/rodadas/[id]`, que devolve dados crus. A narrativa é função pura sobre o snapshot, então aplicá-la ao histórico é trabalho de rota e tela, não de regra.
