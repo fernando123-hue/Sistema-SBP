@@ -157,7 +157,7 @@ describe('cadastro e habilitação andam juntos', () => {
       gestor,
     )
 
-    const escala = await obterEscala(banco, base.datas[0]!)
+    const escala = await obterEscala(banco, base.datas[0]!, 'operador')
     expect(escala.map((linha) => linha.colaboradorId)).toContain(criado.colaboradorId)
   })
 
@@ -174,7 +174,7 @@ describe('cadastro e habilitação andam juntos', () => {
     // habilitação é perigoso, e por que as duas coisas entraram na mesma
     // entrega. A pessoa existe, tem senha, entra no sistema — e não recebe
     // nada, sem nada acusar. A tela mostra esse estado em destaque.
-    const escala = await obterEscala(banco, base.datas[0]!)
+    const escala = await obterEscala(banco, base.datas[0]!, 'operador')
     expect(escala.map((linha) => linha.colaboradorId)).not.toContain(criado.colaboradorId)
   })
 })
@@ -276,7 +276,7 @@ describe('habilitação', () => {
 
     // Efeito imediato importa: o gestor tira a categoria justamente ANTES da
     // distribuição do dia. Uma revogação que só vale amanhã chegaria tarde.
-    const escala = await obterEscala(banco, base.datas[0]!)
+    const escala = await obterEscala(banco, base.datas[0]!, 'operador')
     expect(escala.map((linha) => linha.colaboradorId)).not.toContain(criado.colaboradorId)
   })
 

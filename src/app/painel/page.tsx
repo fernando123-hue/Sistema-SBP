@@ -9,6 +9,7 @@ import {
   Carregando,
   ListaResponsiva,
   Metrica,
+  Selo,
   Vazio,
   juntar,
 } from '../../componentes/matrizes'
@@ -90,6 +91,29 @@ const ROTULO_DO_DESFECHO: Record<string, string> = {
   campos_corrigidos: 'campos corrigidos',
 }
 
+interface Ausente {
+  colaboradorId: string
+  nome: string
+  /** Já redigido pelo servidor conforme o papel de quem pediu. */
+  rotulo: string
+}
+
+/**
+ * Como cada rótulo aparece na tela.
+ *
+ * O servidor já redigiu: quem não é gestor só recebe `ferias` ou
+ * `indisponivel`. Os demais só chegam aqui quando quem está olhando é gestor —
+ * e aí o motivo é justamente o que ele precisa ver.
+ */
+const ROTULO_AUSENCIA: Record<string, string> = {
+  ferias: 'férias',
+  indisponivel: 'indisponível',
+  atestado: 'atestado',
+  licenca: 'licença',
+  falta: 'falta',
+  outro: 'outro',
+}
+
 /** `null` vira travessão, nunca `0%` — "ainda não sei" não é "errou tudo". */
 function percentual(fracao: number | null): string {
   return fracao === null ? '—' : `${Math.round(fracao * 100)}%`
@@ -135,6 +159,7 @@ function Atraso({ dias }: { dias: number | null }) {
 export default function PainelPagina() {
   const [dados, setDados] = useState<Painel | null>(null)
   const [qualidade, setQualidade] = useState<Qualidade | null>(null)
+  const [fora, setFora] = useState<Ausente[]>([])
   const [erro, setErro] = useState<string | null>(null)
   /** Vazio = deixa o servidor escolher o mês corrente, a unidade da planilha. */
   const [de, setDe] = useState('')
@@ -149,10 +174,14 @@ export default function PainelPagina() {
       // vida da instalação. `conferirConservacao` já documenta a mesma regra —
       // nenhuma tela lê a tabela desde a fundação para se desenhar.
       api.buscar<Qualidade>('/qualidade'),
+      // Quem está fora HOJE. Sem recorte de período de propósito: é estado
+      // atual, como as outras colunas marcadas "(hoje)".
+      api.buscar<Ausente[]>('/afastamentos/hoje'),
     ])
-      .then(([painel, medida]) => {
+      .then(([painel, medida, ausentes]) => {
         setDados(painel)
         setQualidade(medida)
+        setFora(ausentes)
       })
       .catch((causa) => setErro(mensagemDoErro(causa)))
   }, [de, ate])
@@ -227,6 +256,25 @@ export default function PainelPagina() {
           detalhe="aguardando decisão humana · estado atual"
         />
       </div>
+
+      {/*
+        QUEM ESTÁ FORA HOJE (`A10`, com a decisão de privacidade de 06/09/2026).
+        A operação inteira precisa saber quem não vai receber trabalho — sem
+        isso a tela promete uma equipe que não existe. O MOTIVO fica na ficha
+        do Acesso, só para gestor: o que chega aqui já vem redigido pelo
+        servidor conforme o papel de quem pediu.
+      */}
+      {fora.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-tinta-suave">Fora hoje:</span>
+          {fora.map((ausente) => (
+            <Selo key={ausente.colaboradorId} tom="atencao">
+              {ausente.nome} · {ROTULO_AUSENCIA[ausente.rotulo] ?? 'indisponível'}
+            </Selo>
+          ))}
+          <span className="text-tinta-fraca">não recebem distribuição hoje</span>
+        </div>
+      ) : null}
 
       <Aviso tom={conservacaoOk ? 'ok' : 'alerta'}>
         {conservacaoOk ? (

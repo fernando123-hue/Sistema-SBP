@@ -1,3 +1,4 @@
+import { rotuloDeAfastamento, type RotuloDeAfastamento } from '../core/afastamento-visivel'
 import { ErroDeNegocio } from '../core/erros'
 import { AfastamentoEntradaSchema, type TipoDeAfastamento } from '../core/esquemas'
 import { hojeIso } from '../core/util/datas'
@@ -169,6 +170,45 @@ export async function cancelar(banco: Banco, afastamentoId: string, ator: Ator):
       correlacaoId,
     })
   })
+}
+
+/**
+ * Quem está fora HOJE, com o rótulo que este papel pode ver.
+ *
+ * Responde a parte do `A10` que pedia "exibição no painel de quem está fora" —
+ * e que ficou parada até o dono do negócio decidir quem pode ver o quê
+ * (06/09/2026). A resposta: a operação inteira precisa saber **quem não vai
+ * receber trabalho**, porque sem isso a tela promete uma equipe que não existe;
+ * o **motivo** fica na ficha, só para gestor.
+ *
+ * Não exige papel: todo mundo que já está autenticado pode ver a lista, porque
+ * o que ela devolve para não-gestor já vem redigido. O que protege aqui é o
+ * conteúdo, não a porta.
+ */
+export async function quemEstaFora(
+  banco: Banco,
+  ator: Ator,
+  data = hojeIso(),
+): Promise<{ colaboradorId: string; nome: string; rotulo: RotuloDeAfastamento }[]> {
+  const linhas = await banco.afastamento.findMany({
+    where: {
+      canceladoEm: null,
+      inicio: { lte: data },
+      OR: [{ fim: null }, { fim: { gte: data } }],
+    },
+    orderBy: { inicio: 'asc' },
+    include: { colaborador: { select: { id: true, nome: true, ativo: true } } },
+  })
+
+  return linhas
+    .filter((linha) => linha.colaborador.ativo)
+    .map((linha) => ({
+      colaboradorId: linha.colaborador.id,
+      nome: linha.colaborador.nome,
+      // `!` seguro: `linha.tipo` nunca é nulo no banco, e a função só devolve
+      // `null` quando recebe `null`.
+      rotulo: rotuloDeAfastamento(linha.tipo, ator.papel)!,
+    }))
 }
 
 /**

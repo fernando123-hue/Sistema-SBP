@@ -60,7 +60,7 @@ Depois:
 npx prisma migrate deploy   # cria o banco e aplica as 10 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 337 testes
+npm run verificar           # typecheck + 358 testes
 npm run dev                 # http://localhost:3000
 ```
 
@@ -94,15 +94,35 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Painel | Agregação pura, zero campo digitável. Recorte por período, colunas mapeadas uma a uma para as da planilha |
 | Qualidade da IA | Taxa de aceitação, cobertura e calibração da confiança. Critério de aceitação nº 5 passa a ser verificável |
 | Cadastro de equipe | Gestor cadastra pessoa e define o que ela pode receber, pela tela. Quem fica sem categoria aparece em destaque |
-| API REST | 26 caminhos, 32 operações, envelope único, limite de taxa, papéis |
+| API REST | 27 caminhos, 33 operações, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **337 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
+| Testes | **358 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
+
+**Entrou o A13 — quem pode ver o motivo de uma ausência.** Era a última pergunta aberta desta sessão, e você respondeu em 06/09/2026. Detalhe em `DECISOES.md § A13`.
+
+**Todo mundo vê que a pessoa está fora; só o gestor vê por quê.** Para colaborador e operador, a ausência aparece como *"de férias"* ou *"indisponível"*. Para gestor, uma ficha com o motivo real e a observação livre — onde cabe "motivos pessoais".
+
+Duas razões separam os níveis: a operação **precisa** saber quem não vai receber trabalho hoje, senão a tela promete uma equipe que não existe; e o motivo médico não é assunto de quem divide fila.
+
+Três detalhes que não são acidente:
+
+- **`férias` atravessa** porque é agenda, não saúde. Esconder produziria a pergunta *"por que fulano está indisponível?"* — a conversa que a redação existe para evitar.
+- **Todos os motivos sensíveis viram o MESMO rótulo.** Se `atestado` tivesse rótulo próprio e os outros não, a ausência do rótulo já denunciaria o motivo.
+- **A redação acontece no servidor**, nunca no componente. Mandar o tipo real e esconder na tela deixaria o dado numa resposta HTTP que qualquer pessoa autenticada lê — a tela é vitrine, não fechadura. Há teste que prova que `atestado` não sai do servidor para operador.
+
+Com isso o Painel ganhou a linha *"Fora hoje"*, que era a metade do `A10` que faltava.
+
+Testes: 337 → **358**.
+
+---
+
+### Antes disso, na mesma data — A4
 
 **Entrou o A4 — agrupamento por liga. Era a última decisão do dono pendente.** Detalhe em `DECISOES.md` § A4/A4.1, `§ AT-10` e `§ C2`; contrato do motor em `03-SPEC.md` § 5.
 
@@ -603,7 +623,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 337 testes |
+| `npm run verificar` | Typecheck + 358 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |
