@@ -26,6 +26,13 @@ export interface ItemDaFila {
   assunto: string | null
   recebidoEm: Date | null
   atribuidoEm: Date
+  /**
+   * Quando o item ENTROU no sistema — não quando caiu nesta fila.
+   *
+   * É a idade que interessa (`A7`): item transferido ou devolvido preserva a
+   * data original, então mudar de mão não rejuvenesce trabalho parado.
+   */
+  criadoEm: Date
 }
 
 /**
@@ -49,7 +56,20 @@ export async function minhaFila(
       ativa: true,
       item: { status: { in: ['distribuido', 'em_andamento'] } },
     },
-    orderBy: { atribuidoEm: 'asc' },
+    // MAIS ANTIGO NO TOPO, pela idade do ITEM (`A7`).
+    //
+    // Era `atribuidoEm asc`, que é a idade da ATRIBUIÇÃO — e as duas divergem
+    // exatamente no caso que importa: um item de três semanas devolvido ao pool
+    // e redistribuído hoje aparecia no fim da fila, como se fosse novo. O
+    // backlog envelhecia escondido atrás da ordem da tela.
+    //
+    // `criadoEm` é a MESMA definição de idade que `planejarCategoria` usa para
+    // escolher quais itens entram na rodada. Duas definições de "mais antigo"
+    // no mesmo sistema seria a divergência silenciosa de sempre.
+    //
+    // `id` desempata: sem ele, itens criados no mesmo instante (um e-mail que
+    // vira N itens) sairiam em ordem instável entre duas leituras da tela.
+    orderBy: [{ item: { criadoEm: 'asc' } }, { itemId: 'asc' }],
     include: {
       item: { include: { categoria: true, email: { include: { conteudo: true } } } },
     },
@@ -65,6 +85,7 @@ export async function minhaFila(
     assunto: atribuicao.item.email?.conteudo?.assunto ?? null,
     recebidoEm: atribuicao.item.email?.recebidoEm ?? null,
     atribuidoEm: atribuicao.atribuidoEm,
+    criadoEm: atribuicao.item.criadoEm,
   }))
 }
 

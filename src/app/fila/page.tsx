@@ -23,6 +23,7 @@ interface ItemDaFila {
   assunto: string | null
   recebidoEm: string | null
   atribuidoEm: string
+  criadoEm: string
 }
 
 function quando(valor: string | null): string {
@@ -113,8 +114,19 @@ export default function Fila() {
                             </p>
                           ) : null}
                         </div>
-                        <span className="numerico text-xs whitespace-nowrap text-tinta-fraca">
-                          {quando(item.recebidoEm)}
+                        {/*
+                          Mostra `criadoEm`, que é a chave pela qual o servidor
+                          ordena esta lista (`A7`: mais antigo no topo). Exibir
+                          `recebidoEm` aqui deixava a ordem parecendo arbitrária
+                          nos casos em que as duas datas divergem — item de
+                          origem manual não tem e-mail, e item devolvido guarda
+                          a data original.
+                        */}
+                        <span
+                          className="numerico text-xs whitespace-nowrap text-tinta-fraca"
+                          title="Entrou no sistema nesta data. A fila mostra o mais antigo primeiro."
+                        >
+                          {quando(item.criadoEm)}
                         </span>
                       </div>
 

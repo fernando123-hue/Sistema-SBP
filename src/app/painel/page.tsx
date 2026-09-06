@@ -27,6 +27,7 @@ interface LinhaPainel {
   aprovado: number
   distribuido: number
   emAndamento: number
+  diasDoMaisAntigo: number | null
 }
 
 interface LinhaPorPessoa {
@@ -104,6 +105,23 @@ function periodo(desde: string | null): string {
   if (desde === null) return 'Desde o início'
   const [ano, mes, dia] = desde.split('-')
   return `Desde ${dia}/${mes}/${ano}`
+}
+
+/**
+ * Há quantos dias o item aberto mais antigo da categoria está parado (`A7`).
+ *
+ * SEM LIMIAR DE ALERTA, e isso é decisão, não esquecimento. O `A7` diz, com
+ * todas as letras, que o setor de cadastro **não tem tarefa com prazo** — não
+ * existe item que "não pode esperar". Pintar de vermelho a partir de N dias
+ * inventaria um SLA que ninguém decidiu, e a tela passaria a cobrar a equipe
+ * por uma regra que não existe. O número aparece; o julgamento é de quem lê.
+ *
+ * Se um limiar vier a ser definido, é decisão do dono do negócio e entra aqui.
+ */
+function Atraso({ dias }: { dias: number | null }) {
+  if (dias === null) return <span className="text-tinta-fraca">—</span>
+  // `0` é hoje: dizer "há 0 dias" é pior do que dizer "hoje".
+  return <span className="numerico">{dias === 0 ? 'hoje' : `${dias}d`}</span>
 }
 
 /**
@@ -295,6 +313,16 @@ export default function PainelPagina() {
                   </span>
                 ),
               },
+              {
+                chave: 'atraso',
+                // Indicador de atraso (`A7`). Também é estado atual, daí o
+                // "(hoje)" — e por isso ignora o período de propósito: o item
+                // de março que ninguém tocou tem de aparecer justamente quando
+                // alguém está olhando o recorte de setembro.
+                cabecalho: 'Mais antigo (hoje)',
+                alinhamento: 'direita',
+                conteudo: (linha) => <Atraso dias={linha.diasDoMaisAntigo} />,
+              },
             ]}
           />
         )}
@@ -305,8 +333,15 @@ export default function PainelPagina() {
           São as colunas <em>Saldo</em>, <em>Mov. do Dia</em>, <em>ABERTO</em>,{' '}
           <em>Realizado</em> e <em>Pend.</em> da planilha, na mesma ordem. A diferença: lá a
           pendência é grampeada em zero e o excedente de quem limpa backlog antigo é descartado;
-          aqui a conta fecha sozinha. <strong>Revisão (hoje)</strong> é a única coluna que não
-          segue o período — ela mostra a fila neste momento, não a de quando o período correu.
+          aqui a conta fecha sozinha. <strong>Revisão (hoje)</strong> e{' '}
+          <strong>Mais antigo (hoje)</strong> são as duas colunas que não seguem o período — elas
+          mostram este momento, não o que valia quando o período correu.
+        </p>
+        <p className="mt-2 text-xs text-tinta-fraca">
+          <strong>Mais antigo</strong> é há quantos dias está parado o item aberto mais velho da
+          categoria — o que torna backlog envelhecendo visível antes de virar sobrecarga. Não há
+          faixa de alerta: o setor de cadastro não trabalha com prazo, e colorir a partir de um
+          número inventaria uma cobrança que ninguém definiu.
         </p>
       </section>
 

@@ -75,3 +75,17 @@ export function deslocarDias(dataIso: string, dias: number): string {
 export function sequenciaDeDatas(inicio: string, total: number): string[] {
   return Array.from({ length: total }, (_, indice) => deslocarDias(inicio, indice))
 }
+
+/**
+ * Quantos dias de calendário separam duas chaves.
+ *
+ * Mesma escolha de `deslocarDias`: aritmética sobre a CHAVE, ancorada em
+ * meia-noite UTC, para o resultado não depender do fuso do servidor. Conta
+ * dias de calendário, não períodos de 24h — item criado ontem às 23h e lido
+ * hoje às 8h está parado "há 1 dia", que é como a operação fala.
+ */
+export function diasEntre(inicio: string, fim: string): number {
+  const de = new Date(`${inicio}T00:00:00.000Z`).getTime()
+  const ate = new Date(`${fim}T00:00:00.000Z`).getTime()
+  return Math.round((ate - de) / 86_400_000)
+}
