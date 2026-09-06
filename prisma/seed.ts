@@ -147,17 +147,41 @@ async function principal(): Promise<void> {
       const categoria = await banco.categoria.findUniqueOrThrow({ where: { codigo } })
       const vigenciaInicio = new Date(`${DATA_INICIAL}T00:00:00.000Z`)
 
-      await banco.habilitacao.upsert({
-        where: {
-          colaboradorId_categoriaId_vigenciaInicio: {
-            colaboradorId: colaborador.id,
-            categoriaId: categoria.id,
-            vigenciaInicio,
-          },
-        },
-        create: { colaboradorId: colaborador.id, categoriaId: categoria.id, vigenciaInicio },
-        update: { podeReceber: true },
+      // A CHAVE DO UPSERT NÃO PODE INCLUIR `vigenciaInicio`, e este é o
+      // defeito que estava aqui.
+      //
+      // `DATA_INICIAL` é `hoje − 7`, então ela ANDA. Com ela na chave, cada
+      // execução do seed num dia diferente não encontrava a linha anterior e
+      // INSERIA outra: quatro execuções em quatro dias deixavam quatro
+      // habilitações para o mesmo par (pessoa, categoria). Medido: 80 linhas
+      // para 20 pares reais.
+      //
+      // O `ESTADO.md` manda rodar o seed de novo, e ele acumulava lixo em
+      // silêncio — a tela de plantão passou a repetir o mesmo selo de
+      // categoria quatro vezes, e o React avisou de chave duplicada, que ele
+      // trata como podendo "duplicar ou OMITIR" elementos.
+      //
+      // A distribuição não foi afetada (a consulta de escala reduz os
+      // duplicados naturalmente), mas isso é sorte de implementação, não
+      // garantia.
+      //
+      // Múltiplas vigências para o mesmo par são LEGÍTIMAS no domínio — é
+      // assim que se revoga e reconcede uma habilitação, e por isso a chave
+      // única do schema continua como está. O que não é legítimo é o seed
+      // fabricar uma vigência nova a cada execução. Ele agora só cria quando
+      // não existe nenhuma habilitação para o par.
+      const existente = await banco.habilitacao.findFirst({
+        where: { colaboradorId: colaborador.id, categoriaId: categoria.id },
+        select: { id: true },
       })
+
+      if (existente) {
+        await banco.habilitacao.update({ where: { id: existente.id }, data: { podeReceber: true } })
+      } else {
+        await banco.habilitacao.create({
+          data: { colaboradorId: colaborador.id, categoriaId: categoria.id, vigenciaInicio },
+        })
+      }
     }
 
     if (pessoa.categorias.length === 0) continue
