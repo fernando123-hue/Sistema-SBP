@@ -4,6 +4,7 @@ import { deslocarDias } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
 import { cancelar, listar, registrar } from './afastamentos'
+import { obterEscala } from './escala'
 import { confirmar } from './distribuicao'
 import { registrarManual } from './itens'
 
@@ -291,6 +292,71 @@ describe('efeito no rateio — o ponto da decisão', () => {
     )
     await confirmar(banco, { data: DATA_BASE, categorias: ['DOC_CADASTRO'] }, base.operador)
 
+    expect(
+      await banco.atribuicao.count({ where: { colaboradorId: pessoa.id, ativa: true } }),
+    ).toBe(2)
+  })
+})
+
+describe('a tela de plantão e a distribuição têm de concordar', () => {
+  it('a escala marca quem está afastado, para a tela não prometer o que não vai acontecer', async () => {
+    const base = await comGestor()
+    const afastada = base.colaboradores[0]!
+
+    await registrar(
+      banco,
+      { colaboradorId: afastada.id, tipo: 'ferias', inicio: DATA_BASE, fim: deslocarDias(DATA_BASE, 14) },
+      base.gestor,
+    )
+
+    const escala = await obterEscala(banco, DATA_BASE)
+    const linha = escala.find((item) => item.colaboradorId === afastada.id)!
+
+    // Sem este campo a tela deixava marcar a caixa, `carregarElegiveis`
+    // excluía a pessoa do rateio de qualquer jeito, e a prévia vinha com uma
+    // pessoa a menos sem NADA explicar. Marcar e não acontecer nada é a
+    // divergência silenciosa que este sistema existe para eliminar.
+    expect(linha.afastamento).toBe('ferias')
+  })
+
+  it('quem não está afastado continua sem marca', async () => {
+    const base = await comGestor()
+
+    const escala = await obterEscala(banco, DATA_BASE)
+    for (const linha of escala) {
+      expect(linha.afastamento).toBeNull()
+    }
+    expect(base.colaboradores.length).toBeGreaterThan(0)
+  })
+
+  it('a marca da escala usa a MESMA cobertura de data que o rateio', async () => {
+    const base = await comGestor()
+    const pessoa = base.colaboradores[0]!
+
+    // Afastamento que termina ONTEM: não cobre hoje, nos dois lugares.
+    await registrar(
+      banco,
+      {
+        colaboradorId: pessoa.id,
+        tipo: 'falta',
+        inicio: deslocarDias(DATA_BASE, -3),
+        fim: deslocarDias(DATA_BASE, -1),
+      },
+      base.gestor,
+    )
+
+    const escala = await obterEscala(banco, DATA_BASE)
+    expect(escala.find((item) => item.colaboradorId === pessoa.id)!.afastamento).toBeNull()
+
+    await registrarManual(
+      banco,
+      { categoriaCodigo: 'DOC_CADASTRO', titulo: 'Documento', quantidade: 4 },
+      base.operador,
+    )
+    await confirmar(banco, { data: DATA_BASE, categorias: ['DOC_CADASTRO'] }, base.operador)
+
+    // Se as duas condições divergissem, a tela diria uma coisa e a
+    // distribuição faria outra — e ninguém saberia qual acreditar.
     expect(
       await banco.atribuicao.count({ where: { colaboradorId: pessoa.id, ativa: true } }),
     ).toBe(2)

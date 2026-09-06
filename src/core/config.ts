@@ -31,7 +31,12 @@ export const LIMIAR_CONFIANCA_PADRAO = 0.85
  * que conhecê-lo. Ele vive aqui só como semente, e em `Categoria` no banco.
  */
 type DefinicaoCategoria = Pick<Categoria, 'codigo' | 'rotulo' | 'grupo'> &
-  Partial<Pick<Categoria, 'divisivel' | 'peso' | 'limiarIndivisivel' | 'entraNoRateio'>> & {
+  Partial<
+    Pick<
+      Categoria,
+      'divisivel' | 'peso' | 'limiarIndivisivel' | 'entraNoRateio' | 'agrupaPorLiga'
+    >
+  > & {
     limiarConfianca?: number
   }
 
@@ -69,8 +74,9 @@ const DEFINICOES: readonly DefinicaoCategoria[] = [
   },
   { codigo: 'EMAIL_CADASTRO', rotulo: 'E-mail Cadastro', grupo: 'ASSOCIADO' },
   { codigo: 'LIGA', rotulo: 'Liga', grupo: 'LIGA' },
-  { codigo: 'LIGANTE', rotulo: 'Ligante', grupo: 'LIGA' },
-  { codigo: 'EMAIL_LIGA', rotulo: 'E-mail Liga', grupo: 'LIGA' },
+  // A liga e a unidade que nao se separa nestas duas (A4).
+  { codigo: 'LIGANTE', rotulo: 'Ligante', grupo: 'LIGA', agrupaPorLiga: true },
+  { codigo: 'EMAIL_LIGA', rotulo: 'E-mail Liga', grupo: 'LIGA', agrupaPorLiga: true },
   // Exceções: recebem valor, mas fora do rateio diário (RN-15, DECISOES.md § AT-03).
   { codigo: 'INADIMP', rotulo: 'Inadimplente', grupo: 'ASSOCIADO', entraNoRateio: false },
   { codigo: 'ISENTO', rotulo: 'Isento', grupo: 'ASSOCIADO', entraNoRateio: false },
@@ -86,6 +92,7 @@ export const CATEGORIAS_CADASTRO: readonly Categoria[] = DEFINICOES.map((definic
   peso: definicao.peso ?? PESO_PADRAO,
   limiarIndivisivel: definicao.limiarIndivisivel ?? LIMIAR_INDIVISIVEL_PADRAO,
   entraNoRateio: definicao.entraNoRateio ?? true,
+  agrupaPorLiga: definicao.agrupaPorLiga ?? false,
 }))
 
 const LIMIARES_DE_CONFIANCA = new Map(

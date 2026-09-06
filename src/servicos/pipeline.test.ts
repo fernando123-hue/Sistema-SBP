@@ -124,11 +124,77 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
     }
 
     const saldos = await banco.saldoCarga.findMany({
-      select: { creditoAcumulado: true, categoria: { select: { codigo: true, peso: true } } },
+      select: {
+        creditoAcumulado: true,
+        categoria: { select: { codigo: true, peso: true, agrupaPorLiga: true } },
+      },
     })
     expect(saldos.length).toBeGreaterThan(0)
-    for (const saldo of saldos) {
+
+    // CATEGORIA QUE AGRUPA FICA DE FORA, e isso é consequência declarada do
+    // `A4`, não afrouxamento.
+    //
+    // O invariante forte pressupõe que a unidade divisível é o ITEM. Onde a
+    // liga é indivisível (`LIGANTE`, `EMAIL_LIGA`), a menor coisa que se pode
+    // entregar é uma liga inteira — e uma liga de 30 numa equipe de 3 desloca
+    // o crédito em 20 de uma vez. O próprio `A4` diz isso com todas as letras:
+    // "uma pessoa leva 30 ligantes, outra 20", e o equilíbrio vem do crédito
+    // nos dias seguintes.
+    //
+    // O limite dessas categorias é o TAMANHO DA MAIOR LIGA, não um item — e
+    // que ele não cresce sem parar é provado no teste de não-deriva abaixo.
+    const semAgrupamento = saldos.filter((saldo) => !saldo.categoria.agrupaPorLiga)
+    expect(semAgrupamento.length).toBeGreaterThan(0)
+    for (const saldo of semAgrupamento) {
       expect(Math.abs(saldo.creditoAcumulado)).toBeLessThan(saldo.categoria.peso)
+    }
+  })
+
+  it('com agrupamento por liga, o crédito oscila mas NÃO deriva (A4)', async () => {
+    // O `A4` troca equilíbrio diário por equilíbrio ao longo da semana. Isso é
+    // aceitável apenas se o crédito VOLTAR — se ele crescesse a cada dia, a
+    // mesma pessoa acumularia dívida para sempre e o rateio estaria quebrado,
+    // só que devagar. Ninguém tinha provado essa parte.
+    const base = await semearBase(banco, { totalDeDias: 24, pessoasDePlantao: 3 })
+    const datas = sequenciaDeDatas(DATA_BASE, 24)
+
+    await sincronizar(deps(datas, 120), base.operador)
+    await aprovarTudoNoBanco(banco)
+
+    const extremos: number[] = []
+    for (const [indice, data] of datas.entries()) {
+      await confirmar(banco, { data, categorias: [] }, base.operador)
+
+      // A partir da metade, mede o pior crédito das categorias que agrupam.
+      if (indice >= 12) {
+        const saldos = await banco.saldoCarga.findMany({
+          where: { categoria: { agrupaPorLiga: true } },
+          select: { creditoAcumulado: true },
+        })
+        if (saldos.length > 0) {
+          extremos.push(Math.max(...saldos.map((s) => Math.abs(s.creditoAcumulado))))
+        }
+      }
+    }
+
+    expect(extremos.length).toBeGreaterThan(0)
+
+    // NÃO DERIVA: o pior crédito da segunda metade não é sistematicamente
+    // maior que o da primeira metade dela. Uma dívida que cresce todo dia
+    // apareceria aqui como um último valor muito acima do começo.
+    const metade = Math.floor(extremos.length / 2)
+    const inicio = Math.max(...extremos.slice(0, metade))
+    const fim = Math.max(...extremos.slice(metade))
+    expect(fim).toBeLessThanOrEqual(inicio * 2 + 1)
+
+    // E a soma dos créditos de cada categoria continua ZERO: o agrupamento
+    // desloca carga entre pessoas, nunca cria nem destrói crédito. É o § C9.
+    const porCategoria = await banco.saldoCarga.groupBy({
+      by: ['categoriaId'],
+      _sum: { creditoAcumulado: true },
+    })
+    for (const linha of porCategoria) {
+      expect(Math.abs(linha._sum.creditoAcumulado ?? 0)).toBeLessThan(0.000001)
     }
   })
 
@@ -154,9 +220,14 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
 
     // Mesma razão do teste acima: o teto é o lote inteiro medido em unidades
     // ponderadas — `LIMIAR` itens da categoria, não `LIMIAR` unidades cruas.
+    //
+    // E, também como acima, as categorias que agrupam por liga ficam de fora:
+    // lá o lote não é o limiar, é a liga inteira (`A4`).
     const saldos = await banco.saldoCarga.findMany({
+      where: { categoria: { agrupaPorLiga: false } },
       select: { creditoAcumulado: true, categoria: { select: { codigo: true, peso: true } } },
     })
+    expect(saldos.length).toBeGreaterThan(0)
     for (const saldo of saldos) {
       expect(Math.abs(saldo.creditoAcumulado)).toBeLessThanOrEqual(LIMIAR * saldo.categoria.peso)
     }

@@ -57,10 +57,10 @@ Os outros vêm prontos do `.env.example`. `PROXIES_CONFIAVEIS="0"` é o correto 
 Depois:
 
 ```bash
-npx prisma migrate deploy   # cria o banco e aplica as 9 migrações
+npx prisma migrate deploy   # cria o banco e aplica as 10 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 309 testes
+npm run verificar           # typecheck + 337 testes
 npm run dev                 # http://localhost:3000
 ```
 
@@ -81,7 +81,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Camada | Estado |
 |---|---|
 | Motor de distribuição | Função pura, determinística, versionada. Conservação garantida por transação |
-| Modelo de dados | 21 modelos, constraints reais, 9 migrações |
+| Modelo de dados | 21 modelos, constraints reais, 10 migrações |
 | Retenção | Conteúdo do e-mail e bytes de anexo em linhas próprias, expurgáveis sem tocar no histórico operacional |
 | Ingestão | Idempotente por `message-id`, IA atrás de port, tipo real do anexo conferido pelos bytes |
 | Armazenamento | Arquivos fora do banco, atrás de port. Disco local hoje, nuvem trocando o adapter |
@@ -94,15 +94,33 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Painel | Agregação pura, zero campo digitável. Recorte por período, colunas mapeadas uma a uma para as da planilha |
 | Qualidade da IA | Taxa de aceitação, cobertura e calibração da confiança. Critério de aceitação nº 5 passa a ser verificável |
 | Cadastro de equipe | Gestor cadastra pessoa e define o que ela pode receber, pela tela. Quem fica sem categoria aparece em destaque |
-| API REST | 24 caminhos, 29 operações, envelope único, limite de taxa, papéis |
+| API REST | 26 caminhos, 32 operações, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **309 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
+| Testes | **337 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
+
+**Entrou o A4 — agrupamento por liga. Era a última decisão do dono pendente.** Detalhe em `DECISOES.md` § A4/A4.1, `§ AT-10` e `§ C2`; contrato do motor em `03-SPEC.md` § 5.
+
+**A liga é a unidade que não se separa; o e-mail não é.** Você respondeu a pergunta que faltava em 06/09 (`A4.1`): a unidade é `(liga, DIA)`, não `(liga, e-mail)`. Dois e-mails da mesma liga no mesmo dia vão para a mesma pessoa; entre dias, ela não fica presa a ninguém.
+
+**O A4 era maior do que a documentação dizia.** Estava escrito como "mudança no contrato do motor". É — mas faltava a metade de baixo: **`Item.ligaId` nunca era preenchido por ninguém.** As tabelas `Liga` e `Ligante` existiam desde a fundação, vazias, sem um único escritor. O que existia era `ligaMencionada`, texto livre que a IA extrai. Sem transformar esse texto em identidade, o motor não teria o que agrupar.
+
+**A identidade é por nome normalizado, e a comparação é exata — nunca aproximada** (`AT-10`). Separar uma liga em duas é erro que o operador vê e corrige; unir duas ligas diferentes entrega o trabalho de uma como se fosse da outra, e ninguém descobre. Os dois erros não custam a mesma coisa.
+
+**Dois testes do critério de aceitação nº 1 ficaram vermelhos, e não eram defeito.** O crédito chegou a `15,33` onde se exigia `< 1`. O invariante forte pressupõe que a menor coisa entregável é um item; o `A4` diz que é uma liga inteira, e uma liga de 30 numa equipe de 3 desloca o crédito em 20 de uma vez — o próprio texto do `A4` já assumia isso.
+
+**Mas afrouxar o teste até passar seria trocar uma garantia por nada.** "Equilíbrio na semana" só vale se o crédito **voltar**; se crescesse todo dia, a mesma pessoa acumularia dívida para sempre, devagar e em silêncio. Ninguém tinha provado essa parte. Entrou o teste que faltava: 24 dias simulados, medindo se o pior crédito da segunda metade é sistematicamente maior que o da primeira. **Não é** — o crédito oscila e volta, e a soma por categoria continua zero.
+
+Testes: 312 → **337**.
+
+---
+
+### Antes disso, na mesma data — A10
 
 **Entrou o A10 — afastamento como entidade.** Detalhe em `DECISOES.md`, seção *Afastamento (A10)*.
 
@@ -473,9 +491,9 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ~~**A10 — entidade `Afastamento`.**~~ **Entrou em 06/09/2026.** Entidade, migração, exclusão automática do rateio e tela no Acesso.
 
-**Resta uma:**
+~~**A4 — agrupamento por liga.**~~ **Entrou em 06/09/2026**, com a SPEC escrita antes do código, como manda a regra da casa.
 
-0a. **A4 — agrupamento por liga.** O mais caro, e o único que **muda o contrato do motor**: `distribuir()` recebe quantidade escalar e não conhece `liga_id`. Precisa de uma unidade de entrada nova (grupos liga/tamanho) com alocação gulosa maior-primeiro, mantendo a trava de conservação intacta. **Vai para `docs/03-SPEC.md` antes de tocar em código** — é a regra da casa para mudança de motor.
+**Nenhuma decisão do dono está pendente de código.** As nove (A4 a A12) estão implementadas, exceto os pedaços registrados abaixo: a leitura narrada do histórico (`A6`), a exibição de afastamento no Painel (que virou pergunta de privacidade, § H.4 item 9) e o `A8`, que depende de capacidade de envio de e-mail — adiada pelo próprio `A5`.
 
 ~~Além dessas, duas parciais: **A6** e **A7**.~~ **As duas entraram em 06/09/2026.** O `A7` está completo. Do `A6` falta só a leitura **narrada do histórico**: a rodada do dia é narrada na tela, mas reler em português uma rodada de três semanas atrás ainda exige `GET /api/rodadas/[id]`, que devolve dados crus. Como a narrativa é função pura sobre o snapshot, aplicá-la ao histórico é trabalho de rota e tela, não de regra.
 
@@ -513,9 +531,11 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ---
 
-## Quatro decisões que dependem do dono do negócio
+## Cinco decisões que dependem do dono do negócio
 
 Estão registradas em `DECISOES.md § H.4`, sem resposta inventada:
+
+0. **Quem pode ver que alguém está de atestado?** *(levantada em 06/09/2026, com o `A10`)* O `A10` pede "exibição no painel de quem está fora". Foi feita **onde a ausência muda a operação** — a tela de plantão marca quem está afastado e recusa a marcação. **Não foi levada ao Painel**, e a diferença não é de esforço: o Painel é visível a `colaborador`, e `atestado`/`licença` são **informação de saúde**. Publicar isso para os colegas é decisão de privacidade. Opções: não mostrar · mostrar só "fora hoje", sem o tipo · mostrar completo só para gestor. **Nada implementado** até você escolher.
 
 1. **Quem vê a caixa de entrada inteira?** *(levantada na auditoria de 28/08/2026)* Hoje `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails. O `RF-23` diz que colaborador vê *os seus*. **Não foi alterado de propósito:** a equipe já trabalha de uma caixa compartilhada, então restringir mudaria a operação em vez de corrigir defeito.
 2. **Carga de exceção conta para o balanceamento?** *(levantada em 28/08/2026, com o registro manual)* Quem atende 30 inadimplentes num dia fez trabalho real, e hoje esse trabalho **não** entra no crédito — a pessoa continua recebendo cota cheia das categorias do rateio. Contar resolveria a justiça de carga, mas faria uma categoria de exceção mexer na cota justa de categorias das quais ela não participa. Escolhi o lado reversível (`§ AT-09`) porque despoluir um razão já acumulado exige recomputar histórico; começar a contar depois, não.
@@ -583,7 +603,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 309 testes |
+| `npm run verificar` | Typecheck + 337 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

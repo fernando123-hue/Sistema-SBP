@@ -2,7 +2,12 @@ import { ALGORITMO_VERSAO, distribuir } from '../core/distribuicao/motor'
 import { narrarRodada } from '../core/distribuicao/narrativa'
 import { SemElegiveisError } from '../core/erros'
 import { serializar, type PedidoDistribuicao } from '../core/esquemas'
-import type { Categoria, Elegivel, ResultadoRodada } from '../core/tipos'
+import type {
+  Categoria,
+  Elegivel,
+  GrupoIndivisivel,
+  ResultadoRodada,
+} from '../core/tipos'
 import { deslocarDias, fimDoDia, inicioDoDia } from '../core/util/datas'
 import { somar } from '../core/util/numero'
 import { exigirPapel, type Ator } from '../servidor/ator'
@@ -137,7 +142,7 @@ export async function planejarCategoria(
       ],
     },
     orderBy: [{ criadoEm: 'asc' }, { id: 'asc' }],
-    select: { id: true },
+    select: { id: true, ligaId: true },
   })
 
   if (itens.length === 0) return null
@@ -152,7 +157,15 @@ export async function planejarCategoria(
   const base = { categoria, quantidade: itens.length, itensIds: itens.map((item) => item.id) }
 
   try {
-    const resultado = distribuir({ data, categoria, quantidade: itens.length, elegiveis })
+    const resultado = distribuir({
+      data,
+      categoria,
+      quantidade: itens.length,
+      elegiveis,
+      // Só as categorias que agrupam recebem grupos. Nas demais o campo fica
+      // ausente e o motor se comporta exatamente como sempre.
+      ...(categoria.agrupaPorLiga ? { grupos: agruparPorLiga(itens) } : {}),
+    })
     return { ...base, resultado, erro: null }
   } catch (erro) {
     // SÓ "ninguém de plantão" vira resultado. Todo o resto sobe.
@@ -173,6 +186,34 @@ export async function planejarCategoria(
     }
     throw erro
   }
+}
+
+/**
+ * Monta os lotes que não se separam (`A4`).
+ *
+ * A UNIDADE É `(liga, dia)`, NÃO `(liga, e-mail)` — decisão `A4.1`. Esta função
+ * recebe os itens do dia inteiro para a categoria, então dois e-mails da mesma
+ * liga no mesmo dia caem no mesmo grupo naturalmente: é o agrupamento por
+ * `ligaId` que faz isso, sem precisar saber de e-mail nenhum.
+ *
+ * Entre DIAS não há vínculo: cada rodada monta os grupos do zero e a escolha é
+ * de quem está mais credor naquele momento. É o que impede a liga de ficar
+ * presa a uma pessoa, que o `A4` descarta explicitamente.
+ *
+ * Item SEM liga vira grupo de um item só — indivisível por definição, e
+ * portanto neutro. A chave leva o id do item para não colidir com outra.
+ */
+function agruparPorLiga(itens: readonly { id: string; ligaId: string | null }[]): GrupoIndivisivel[] {
+  const porLiga = new Map<string, number>()
+
+  for (const item of itens) {
+    // `item:` e `liga:` são prefixos de espaço de nomes: sem eles, um id de
+    // item igual a um id de liga fundiria dois grupos que não têm relação.
+    const chave = item.ligaId === null ? `item:${item.id}` : `liga:${item.ligaId}`
+    porLiga.set(chave, (porLiga.get(chave) ?? 0) + 1)
+  }
+
+  return [...porLiga].map(([chave, tamanho]) => ({ chave, tamanho }))
 }
 
 /**
@@ -516,6 +557,7 @@ async function carregarCategorias(
     grupo: registro.grupo as Categoria['grupo'],
     divisivel: registro.divisivel,
     peso: registro.peso,
+    agrupaPorLiga: registro.agrupaPorLiga,
     limiarIndivisivel: registro.limiarIndivisivel,
     entraNoRateio: registro.entraNoRateio,
   }))

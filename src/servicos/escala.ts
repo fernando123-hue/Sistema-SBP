@@ -21,6 +21,16 @@ export interface LinhaDaEscala {
   capacidadeRelativa: number
   /** Categorias em que a pessoa está habilitada nesta data. */
   categorias: string[]
+  /**
+   * Tipo do afastamento que cobre esta data, ou `null` (`A10`).
+   *
+   * Sem este campo a tela deixava marcar como de plantão alguém que está de
+   * férias: `carregarElegiveis` a excluiria do rateio de qualquer jeito, a
+   * prévia viria com uma pessoa a menos, e NADA na tela explicaria por quê.
+   * Marcar uma caixa e não acontecer nada é a divergência silenciosa que este
+   * sistema existe para eliminar.
+   */
+  afastamento: string | null
 }
 
 export async function obterEscala(banco: Banco, data: string): Promise<LinhaDaEscala[]> {
@@ -39,6 +49,17 @@ export async function obterEscala(banco: Banco, data: string): Promise<LinhaDaEs
         include: { categoria: { select: { codigo: true } } },
       },
       escalas: { where: { data } },
+      // Mesma condição de cobertura que `carregarElegiveis` usa para excluir do
+      // rateio (`A10`). As duas TÊM de concordar: se divergissem, a tela diria
+      // uma coisa e a distribuição faria outra.
+      afastamentos: {
+        where: {
+          canceladoEm: null,
+          inicio: { lte: data },
+          OR: [{ fim: null }, { fim: { gte: data } }],
+        },
+        select: { tipo: true },
+      },
     },
   })
 
@@ -48,6 +69,7 @@ export async function obterEscala(banco: Banco, data: string): Promise<LinhaDaEs
       colaboradorId: colaborador.id,
       nome: colaborador.nome,
       papel: colaborador.papel,
+      afastamento: colaborador.afastamentos[0]?.tipo ?? null,
       // Sem registro para o dia, a pessoa NÃO entra no rateio. O padrão é
       // conservador de propósito: distribuir para quem não está trabalhando é
       // exatamente o defeito que a planilha corrige à mão com `Mov. Extra`.

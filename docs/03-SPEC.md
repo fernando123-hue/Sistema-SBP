@@ -172,6 +172,59 @@ INDIVISÍVEL    FICHA = 3, limiar 3 → 3 ≤ 3 → tudo para um: 3 + 0 ✔
 
 Crédito é fracionário (`Q/n`). Comparações usam `EPSILON = 1e-9`; valores persistidos são arredondados a 6 casas. Impede drift em `n = 3` sem sacrificar determinismo.
 
+### Agrupamento por liga (`A4`) — segundo modo do motor
+
+Decisão `A4` + `A4.1`: **a liga é a unidade que não se separa; o e-mail não é.** Todos os ligantes de uma liga **num mesmo dia** vão inteiros para uma pessoa, inclusive quando chegaram em e-mails diferentes. Ligas diferentes podem ir para pessoas diferentes. Entre dias, nenhuma afinidade fixa.
+
+#### Contrato estendido
+
+```
+IN  … + grupos?: [{ chave: string, tamanho: inteiro ≥ 1 }]   // opcional
+
+    PRÉ-CONDIÇÃO: Σ tamanhos == Q
+```
+
+`grupos` **refina** `Q`, não o substitui: a trava de conservação continua sendo `Σ alocacao == Q`, exatamente a mesma. Sem `grupos`, o motor se comporta como sempre — este modo não altera nenhuma rodada existente.
+
+#### Algoritmo — guloso maior-primeiro
+
+```
+5b. categoria agrupa E grupos presentes E Q > limiar_indivisivel:
+      criterio = 'por_grupo'
+      ordena grupos por tamanho DESC, chave ASC   (determinismo em empate)
+      recebido[c] = 0 para todos
+      para cada grupo g:
+          alvo = ordenar(elegiveis, projetando credito − recebido × peso)[0]
+          alocacao[alvo] += g.tamanho
+          recebido[alvo] += g.tamanho
+```
+
+**"Menos carga acumulada" é lido como "maior crédito".** O `A4` diz que cada liga vai para quem estiver com menos carga naquele instante. Isso **não** vira um segundo critério: crédito já é a medida de quem está devendo trabalho no resto do sistema (`A2`, `RN-13`), e criar uma segunda definição de "quem é o próximo" produziria dois números que discordam. O que muda é a **frequência**: a ordem é recalculada a cada liga entregue, projetando o que a pessoa já levou nesta rodada.
+
+**O corte de lote pequeno vem antes.** Se `Q <= limiar_indivisivel`, vale a regra de sempre (tudo para o primeiro da ordem), mesmo com várias ligas. `A4` permite ligas diferentes irem para pessoas diferentes; não obriga.
+
+#### O desequilíbrio do dia é intencional
+
+Uma pessoa leva 30 e outra 20 — e isso está certo. O `A4` descarta explicitamente afinidade fixa por liga; o equilíbrio vem do crédito acumulado nos dias seguintes (`A2`), somado à janela deslizante de 30 dias (`A9`).
+
+#### De onde vêm os grupos — e o que não existe hoje
+
+`Item.ligaId` é a chave do grupo, e **em 06/09/2026 nada o preenche.** As tabelas `Liga` e `Ligante` existem no schema desde a fundação e estão vazias: zero escritores, zero leitores. O que existe é `ligaMencionada` — **texto livre** que a IA extrai e guarda no payload do item.
+
+Então o `A4` exige um passo que a documentação anterior não mencionava: **transformar um nome em identidade**. Ele acontece na ingestão, não no motor.
+
+```
+ligaMencionada: "Liga de Cardiologia da UFMG"   (texto livre da IA)
+        ↓ normalizar: minúsculas, sem acento, espaços colapsados
+"liga de cardiologia da ufmg"                    (chave de comparação)
+        ↓ buscar exata; criar se não existir
+Liga { id, nome }  →  Item.ligaId
+```
+
+**A comparação é exata sobre o nome normalizado. Nunca aproximada.** Duas grafias diferentes viram duas ligas, e possivelmente duas pessoas. É o lado visível e corrigível do erro: um operador percebe "a mesma liga apareceu duas vezes" e junta. O erro oposto — casar por semelhança e unir duas ligas que são diferentes — entrega a liga errada para a pessoa errada **sem nada acusar**, e é a classe de defeito que este sistema existe para eliminar. Registrado como hipótese em `DECISOES.md § AT-10`.
+
+Item **sem** liga (`ligaId` nulo) é grupo de tamanho 1 — indivisível por definição, e portanto neutro no algoritmo.
+
 ## 6. Ports e adapters
 
 | Port | Contrato | Adapter V1 | Depois |
@@ -186,7 +239,7 @@ O adapter mock da IA é determinístico de propósito: permite testar todo o pip
 
 Envelope único em toda resposta: `{ sucesso, dados, erro, correlacaoId? }`.
 
-**Estado em 28/08/2026 — 24 caminhos, 29 operações.** Auditado contra o código; o que estiver aqui existe, e o que existe está aqui.
+**Estado em 06/09/2026 — 26 caminhos, 32 operações.** Auditado contra o código; o que estiver aqui existe, e o que existe está aqui.
 
 ```
 ── Ingestão e revisão ───────────────────────────────────────
@@ -229,6 +282,9 @@ POST   /api/colaboradores/habilitacao o que a pessoa pode receber
 POST   /api/colaboradores/ativacao    liga ou desliga o acesso
 POST   /api/colaboradores/senha       senha provisória de alguém
 POST   /api/colaboradores/destravar   tira do bloqueio por tentativas
+GET    /api/afastamentos              férias, atestados e faltas não cancelados
+POST   /api/afastamentos              registra ausência (tira do rateio no período)
+DELETE /api/afastamentos/:id          cancela — CARIMBA, não apaga
 GET    /api/diagnostico/origem        confere o tratamento de proxy
 ```
 

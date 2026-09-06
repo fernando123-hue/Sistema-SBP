@@ -37,6 +37,15 @@ export interface Categoria {
   limiarIndivisivel: number
   /** `INADIMP.` e `ISENTO` ficam fora do rateio diário (RN-15). */
   entraNoRateio: boolean
+  /**
+   * A liga é a unidade que não se separa nesta categoria (`A4`).
+   *
+   * `true` em `LIGANTE` e `EMAIL_LIGA`: todos os ligantes de uma liga no
+   * mesmo dia vão inteiros para uma pessoa, ainda que tenham chegado em
+   * e-mails diferentes (`A4.1`). Nas demais categorias o item é a unidade, e
+   * o rateio continua sendo resto-maior.
+   */
+  agrupaPorLiga: boolean
 }
 
 /**
@@ -57,7 +66,22 @@ export interface Elegivel {
   capacidadeRelativa: number
 }
 
-export type CriterioRodada = 'sem_demanda' | 'indivisivel' | 'resto_maior'
+export type CriterioRodada = 'sem_demanda' | 'indivisivel' | 'resto_maior' | 'por_grupo'
+
+/**
+ * Lote que não se separa (`A4`).
+ *
+ * Hoje é sempre uma liga num dia, mas o motor não sabe disso: para ele é só
+ * "um punhado de itens que vai inteiro para alguém". Manter o núcleo alheio ao
+ * que a chave significa é o que permite outra categoria ganhar agrupamento
+ * amanhã sem tocar no motor.
+ */
+export interface GrupoIndivisivel {
+  /** Identidade do lote. Determinística — desempata tamanho igual. */
+  chave: string
+  /** Quantos itens. Sempre ≥ 1. */
+  tamanho: number
+}
 
 export interface EntradaRodada {
   /** ISO date (`YYYY-MM-DD`). */
@@ -66,6 +90,14 @@ export interface EntradaRodada {
   /** Q — quantidade de ITENS, não de e-mails. Ver DECISOES.md § A1. */
   quantidade: number
   elegiveis: Elegivel[]
+  /**
+   * Lotes indivisíveis (`A4`). Opcional.
+   *
+   * REFINA `quantidade`, não a substitui: `Σ tamanhos` tem de ser igual a `Q`,
+   * e a trava de conservação continua sendo a mesma de sempre. Ausente, o
+   * motor se comporta exatamente como antes — nenhuma rodada existente muda.
+   */
+  grupos?: GrupoIndivisivel[]
 }
 
 /**

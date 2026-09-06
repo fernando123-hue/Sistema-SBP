@@ -11,7 +11,8 @@ Nenhuma hipótese vira regra silenciosamente. Este arquivo é a fonte da verdade
 | A1 | Unidade atômica de trabalho | **Um e-mail pode gerar N itens.** O motor distribui itens extraídos, não e-mails recebidos. Um e-mail de liga com 30 ligantes vale 30 unidades de carga. |
 | A2 | Balanceamento | **Por categoria (primário) + crédito global ponderado como desempate secundário.** Ligante compara com ligante; o total só desempata. |
 | A3 | Alvo do sistema | Substituir a planilha por completo, **integrando com o sistema legado** do cliente (antigo, a ser trocado no futuro). Consequência: arquitetura **API-first**, integração como adapter plugável. |
-| A4 | Unidade de agrupamento em `LIGANTE` / `E-MAIL LIGA` | **A liga é a unidade que não se separa; o e-mail não é.** Dentro de um mesmo e-mail, todos os ligantes de uma liga vão inteiros para uma única pessoa. Ligas diferentes do mesmo e-mail podem ir para pessoas diferentes. Atribuição gulosa: as ligas do e-mail entram **da maior para a menor**; cada uma vai inteira para quem estiver com **menos carga acumulada na categoria** naquele instante (recalculado a cada liga entregue). O desequilíbrio de um dia (uma pessoa leva 30 ligantes, outra 20) se resolve pelo crédito acumulado nos dias seguintes (A2) — não por afinidade fixa por liga entre dias, que foi **explicitamente descartada**: o objetivo é carga equilibrada ao longo da semana, não continuidade de atendimento por liga. |
+| A4 | Unidade de agrupamento em `LIGANTE` / `E-MAIL LIGA` | **A liga é a unidade que não se separa; o e-mail não é.** Todos os ligantes de uma liga **naquele dia** vão inteiros para uma única pessoa — inclusive quando chegaram em e-mails diferentes (ver `A4.1`). Ligas diferentes podem ir para pessoas diferentes. Atribuição gulosa: as ligas do dia entram **da maior para a menor**; cada uma vai inteira para quem estiver com **menos carga acumulada na categoria** naquele instante (recalculado a cada liga entregue). O desequilíbrio de um dia (uma pessoa leva 30 ligantes, outra 20) se resolve pelo crédito acumulado nos dias seguintes (A2) — não por afinidade fixa por liga entre dias, que foi **explicitamente descartada**: o objetivo é carga equilibrada ao longo da semana, não continuidade de atendimento por liga. |
+| A4.1 | A mesma liga em vários e-mails *(respondida em 06/09/2026)* | **A unidade de agrupamento é `(liga, dia)`, não `(liga, e-mail)`.** Se a mesma liga mandar dois ou mais e-mails **no mesmo dia**, tudo vai para a **mesma pessoa** — os e-mails se juntam num lote só. O que **não** pode acontecer é a liga ficar **presa** a uma pessoa **entre dias diferentes**: amanhã ela pode cair com outra, e a escolha é sempre de quem está com menos carga naquele momento. Consolidar dentro do dia evita que a mesma pessoa converse com a mesma liga duas vezes por caminhos separados; não persistir entre dias é o que impede a afinidade fixa que `A4` descarta. |
 | A5 | Etapa 6 — execução e conclusão | **A execução continua no Outlook por enquanto; a conclusão passa a ser marcada no app.** Não eliminamos o Outlook agora, nem implementamos resposta/envio de e-mail. Durante a rodada paralela o funcionário faz o trabalho no Outlook como hoje e **também** clica *Concluir* na tela *Minha Fila* (dupla marcação temporária, aceita). Consequência de arquitetura: **`IngestaoPort` permanece só-leitura** — nunca escreve na caixa de ninguém, nunca vigia pastas. A pasta "OK" do Outlook e as pastas por funcionário são substituídas, aos poucos, pela fila do app; a substituição só se completa quando a equipe confiar no app mais que na pasta. |
 | A6 | Distribuição automática com relatório | Desejo do cliente: o sistema **analisa e já distribui** (o operador não redigita nada) e deixa um **relatório legível do que fez, como fez e por quê**. Encaixa no que já existe: a `RodadaDistribuicao` grava o snapshot (`elegiveis`, `ordem_desempate`, `criterio`, crédito antes/depois) — o "porquê" em dados. Falta a **camada de leitura** que narra isso em português. Regra de ouro preservada: **o algoritmo decide; a narrativa só descreve**. A IA pode redigir a frase, nunca recalcular a divisão. Escopo de tela/serviço de leitura, não muda o motor nem a fonte da verdade. |
 | A7 | Prioridade por idade | **Setor de cadastro não tem tarefa com prazo/urgência.** Não há item que "não pode esperar". Mas os **mais antigos têm prioridade**, para impedir que backlog envelheça e vire sobrecarga. Já implementado em parte: a distribuição escolhe os itens concretos por chegada (`distribuicao.ts` → `orderBy: criadoEm asc`), e item devolvido mantém a data original, então sai na frente. **Falta:** (1) ordenar *Minha Fila* pelo mais antigo no topo (hoje é por `atribuidoEm`), e (2) um indicador de atraso no painel — "item mais velho parado há N dias" — que é o que torna a sobrecarga visível. Prioridade por idade **não** altera o equilíbrio de carga do motor (A2): decide *qual* item sai e em que ordem, nunca *quantos* cada pessoa recebe. |
@@ -55,13 +56,13 @@ Registrar não é implementar, e a distância precisa ficar explícita — senã
 
 | Decisão | Estado no código hoje |
 |---|---|
-| A4 — agrupamento por liga | ❌ **Não implementado.** `distribuir()` recebe quantidade escalar; não conhece `liga_id`. Muda o contrato do motor |
+| A4 — agrupamento por liga | ✅ **Implementado em 06/09/2026.** Motor com segundo modo (grupos indivisíveis, guloso maior-primeiro), agrupamento por `(liga, dia)` no serviço, e `Item.ligaId` finalmente preenchido pela ingestão |
 | A5 — conclusão pelo app | ✅ Já é assim. O botão *Concluir* da *Minha Fila* existe, e o `IngestaoPort` é só-leitura |
 | A6 — relatório da rodada | ⚠️ **Quase.** A rodada do dia é narrada na tela de Distribuição desde 06/09/2026 (função pura, sem IA). Falta a leitura NARRADA do histórico: `GET /api/rodadas/[id]` ainda devolve só dados crus |
 | A7 — prioridade por idade | ✅ **Completo em 06/09/2026.** *Minha Fila* ordena pelo item mais antigo e o painel mostra há quantos dias o mais velho está parado |
 | A8 — lembrete semanal | ❌ Backlog declarado. Depende de capacidade de **envio**, que o A5 adiou |
 | A9 — janela deslizante | ✅ Implementada, com 30 dias (ver acima) |
-| A10 — `Afastamento` | ✅ **Implementado em 06/09/2026.** Entidade, migração, exclusão automática do rateio e tela no Acesso. O crédito congela por consequência, não por mecanismo |
+| A10 — `Afastamento` | ✅ **Implementado em 06/09/2026.** Entidade, migração, exclusão automática do rateio, tela no Acesso e marcação na tela de plantão. O crédito congela por consequência, não por mecanismo. **Falta só a exibição no Painel**, que virou pergunta de privacidade (§ H.4, item 9) |
 | A11 — peso por categoria | ✅ **Implementado em 06/09/2026.** `DOC = 4`, `FICHA = 1,75`, resto `1`. Ver *Peso e limiar por categoria* abaixo |
 | A12 — limiar por categoria | ✅ **Implementado em 06/09/2026.** `DOC = 0,95`, `FICHA = 0,90`, resto `0,85` |
 
@@ -87,6 +88,28 @@ A evidência que originou a regra (`CAD-AGOSTO` dia 12, `FICHA = 3`, `J = 2` →
 Só vale se todos trabalharem todos os dias. Mas `J = 2` em quase todos os dias com 4–7 colaboradores cadastrados, e Fernando/Ester só operam `LIGANTE`. Quem não está de plantão tem desvio bruto grande — e correto.
 
 **Correção:** o invariante é sobre **crédito**, não volume bruto: `|credito_acumulado| < 1 unidade ponderada` por colaborador × categoria, **a todo momento**. É estritamente mais forte que a versão semanal.
+
+#### Onde este invariante NÃO vale, e por decisão do cliente *(06/09/2026)*
+
+O invariante forte pressupõe que a menor coisa entregável é **um item**. O `A4` diz que em `LIGANTE` e `EMAIL_LIGA` a menor coisa entregável é **uma liga inteira** — e uma liga de 30 numa equipe de 3 desloca o crédito em 20 de uma vez. O próprio texto do `A4` assume isso: *"uma pessoa leva 30 ligantes, outra 20"*.
+
+Então, nessas duas categorias:
+
+| | Limite do crédito |
+|---|---|
+| Categorias comuns | `< 1 item` (`peso`) — **inalterado** |
+| Lote pequeno (`Q <= limiar`) | `<= limiar × peso` — já era assim (`AT-01`) |
+| **Agrupa por liga (`A4`)** | **`<= maior liga do dia × peso`** |
+
+**Isto foi encontrado pelos testes, não previsto.** A implementação do `A4` deixou dois testes do critério de aceitação nº 1 vermelhos, com crédito em `15,33` onde se esperava `< 1`. Não era defeito: era o invariante antigo medindo um sistema que o cliente mandou mudar.
+
+**O que substitui a garantia perdida.** Trocar "equilíbrio a todo momento" por "equilíbrio ao longo da semana" só é aceitável se o crédito **voltar**. Se ele crescesse a cada dia, a mesma pessoa acumularia dívida para sempre e o rateio estaria quebrado — devagar, em silêncio, que é o pior jeito. Ninguém tinha provado essa parte, então entrou um teste que:
+
+- roda 24 dias simulados e mede o pior crédito das categorias que agrupam;
+- exige que a segunda metade **não** seja sistematicamente pior que a primeira (não-deriva);
+- confere que a soma dos créditos de cada categoria continua **zero** — agrupar desloca carga entre pessoas, nunca cria nem destrói crédito (§ C9).
+
+O critério de aceitação nº 1 continua valendo integralmente onde a unidade é o item. Onde o cliente decidiu que a unidade é a liga, ele passa a ser o par *"limitado pela maior liga"* + *"sem deriva"*.
 
 ### C3 — RN-01 contradizia o briefing 🟠 resolvido por A2
 
@@ -218,6 +241,25 @@ Formato: hipótese · motivo · impacto · status.
 **Motivo:** `entraNoRateio = false` é a declaração de que a categoria fica fora da matemática do rateio diário. Somar essa carga ao razão faria uma categoria de exceção inclinar a cota justa das categorias reais: quem registrasse muitos inadimplentes apareceria credor e passaria a receber **menos** `DOC_CADASTRO`. Como o razão global é por frente, e `INADIMP.` é `CADASTRO`, o efeito não seria isolado.
 **Impacto:** trabalho real fica fora do balanceamento. Não fica invisível: o painel conta **atribuição**, não crédito, então o volume aparece por pessoa em `atribuidos`, `pendentes` e `concluidos`.
 **Status:** ⏳ provisório, e escolhido por ser o lado **reversível**. Passar a contar depois é uma decisão que se toma; despoluir um razão já acumulado exige recomputar histórico — o mesmo raciocínio de `H-D6`. A pergunta objetiva para o dono está em § H.4, item 6.
+
+### AT-10 — Identidade de liga por nome normalizado, nunca por semelhança
+
+**Hipótese:** duas menções de liga são a **mesma** liga quando os nomes coincidem depois de normalizar (minúsculas, sem acento, espaços colapsados, pontuação de borda removida). Qualquer diferença além disso cria uma liga nova.
+
+**Motivo:** o `A4` precisa de uma identidade de liga, e o que existe hoje é `ligaMencionada` — **texto livre** que a IA extrai. Transformar texto em identidade é casamento de nomes, e os dois erros possíveis não custam a mesma coisa:
+
+| Erro | O que acontece | Como se descobre |
+|---|---|---|
+| **Separar** uma liga em duas (grafias diferentes) | Duas pessoas podem atender a mesma liga no mesmo dia | O operador **vê** a liga repetida na tela e junta |
+| **Unir** duas ligas diferentes (nomes parecidos) | Trabalho da liga A entregue como se fosse da liga B | **Ninguém descobre** — a tela mostra um grupo só, coerente e errado |
+
+Casar por semelhança troca um erro visível e corrigível por um invisível e permanente. Este projeto existe para eliminar o segundo tipo.
+
+**Impacto:** com a IA escrevendo o nome de formas diferentes, a mesma liga pode se fragmentar — e a garantia central do `A4` ("a liga não se separa") falha, sem alarme. É o risco real desta escolha, e ele é **assimétrico a favor da correção**: fragmentar quebra a conveniência; unir quebra a correção.
+
+**Impacto sobre a carga:** nenhum. Fragmentar não perde item nem quebra conservação — só produz grupos menores.
+
+**Status:** ⏳ provisório. Duas evoluções possíveis quando houver dado real: (a) tela para o operador **fundir** duas ligas, que é o caminho seguro; (b) sugestão de possível duplicata **para revisão humana**, nunca fusão automática. Nenhuma das duas foi implementada.
 
 ---
 
@@ -369,6 +411,8 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 7. **Um agente é ator de quê?** *(levantada em 28/08/2026, com a fundação do cérebro)* `ATOR_SISTEMA` tem papel `operador` e, com ele, `confirmar distribuição` e `aprovar revisões em massa` passam. E `'sistema'` não é `Colaborador`: não pode ser desativado, expirado nem travado. Antes de qualquer agente existir, é preciso decidir se ele é um papel novo (`agente`, sem as operações que decidem carga), um `Colaborador` de tipo próprio, ou nenhuma das duas. Tem consequência de schema.
 8. **Memória cai de que lado da retenção?** *(levantada em 28/08/2026)* `LogAuditoria` guarda `Item.titulo`, que a IA extraiu do corpo do e-mail e pode carregar nome de associado. Se a retenção expurgar `EmailConteudo`, esse título sobrevive na trilha — que o invariante 11 proíbe apagar. As duas leituras são defensáveis, e a escolha é de DPO, não de engenharia.
+
+9. **Quem pode ver que alguém está de atestado?** *(levantada em 06/09/2026, com o `A10`)* O texto do `A10` pede "exibição no painel de quem está fora". Foi feita **onde a ausência muda a operação**: a tela de plantão marca quem está afastado e recusa a marcação, porque marcar e não acontecer nada seria a divergência silenciosa de sempre. **Não foi levada ao Painel**, e a diferença não é de esforço: o Painel é visível a `colaborador`, e `atestado` e `licença` são **informação de saúde**. Publicá-la para os colegas é decisão de privacidade, não de engenharia — e o invariante 10 já diz que métrica por pessoa é observabilidade, nunca julgamento. Três saídas possíveis, todas defensáveis: (a) não mostrar no Painel; (b) mostrar só "fora hoje", sem o tipo; (c) mostrar completo só para `gestor`. **Nada foi implementado** enquanto a escolha não for sua.
 
 ---
 
