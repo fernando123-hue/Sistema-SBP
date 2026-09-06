@@ -27,8 +27,16 @@ interface LinhaDaEscala {
   afastamento: string | null
 }
 
+/**
+ * O servidor já redigiu conforme o papel de quem pediu (decisão de 06/09/2026).
+ *
+ * Operador e colaborador só recebem `ferias` ou `indisponivel` — o motivo
+ * médico não sai do servidor para eles. Os outros rótulos só chegam aqui
+ * quando quem está olhando é gestor.
+ */
 const AFASTAMENTO: Record<string, string> = {
   ferias: 'de férias',
+  indisponivel: 'indisponível',
   atestado: 'de atestado',
   falta: 'ausente',
   licenca: 'de licença',

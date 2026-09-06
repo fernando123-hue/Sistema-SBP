@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { deslocarDias } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
-import { cancelar, listar, registrar } from './afastamentos'
+import { cancelar, listar, quemEstaFora, registrar } from './afastamentos'
 import { obterEscala } from './escala'
 import { confirmar } from './distribuicao'
 import { registrarManual } from './itens'
@@ -309,7 +309,7 @@ describe('a tela de plantão e a distribuição têm de concordar', () => {
       base.gestor,
     )
 
-    const escala = await obterEscala(banco, DATA_BASE)
+    const escala = await obterEscala(banco, DATA_BASE, 'gestor')
     const linha = escala.find((item) => item.colaboradorId === afastada.id)!
 
     // Sem este campo a tela deixava marcar a caixa, `carregarElegiveis`
@@ -322,7 +322,7 @@ describe('a tela de plantão e a distribuição têm de concordar', () => {
   it('quem não está afastado continua sem marca', async () => {
     const base = await comGestor()
 
-    const escala = await obterEscala(banco, DATA_BASE)
+    const escala = await obterEscala(banco, DATA_BASE, 'gestor')
     for (const linha of escala) {
       expect(linha.afastamento).toBeNull()
     }
@@ -345,7 +345,7 @@ describe('a tela de plantão e a distribuição têm de concordar', () => {
       base.gestor,
     )
 
-    const escala = await obterEscala(banco, DATA_BASE)
+    const escala = await obterEscala(banco, DATA_BASE, 'gestor')
     expect(escala.find((item) => item.colaboradorId === pessoa.id)!.afastamento).toBeNull()
 
     await registrarManual(
@@ -360,6 +360,105 @@ describe('a tela de plantão e a distribuição têm de concordar', () => {
     expect(
       await banco.atribuicao.count({ where: { colaboradorId: pessoa.id, ativa: true } }),
     ).toBe(2)
+  })
+})
+
+describe('o motivo não sai do servidor para quem não é gestor', () => {
+  it('a escala mostra "indisponivel" para operador e o motivo para gestor', async () => {
+    const base = await comGestor()
+    const pessoa = base.colaboradores[0]!
+
+    await registrar(
+      banco,
+      { colaboradorId: pessoa.id, tipo: 'atestado', inicio: DATA_BASE, fim: DATA_BASE },
+      base.gestor,
+    )
+
+    const paraOperador = await obterEscala(banco, DATA_BASE, 'operador')
+    const paraGestor = await obterEscala(banco, DATA_BASE, 'gestor')
+
+    // A REDAÇÃO ACONTECE NO SERVIDOR. Mandar o tipo real e esconder na tela
+    // deixaria "atestado" numa resposta HTTP que qualquer pessoa autenticada
+    // consegue ler — a tela é vitrine, não fechadura.
+    expect(paraOperador.find((l) => l.colaboradorId === pessoa.id)!.afastamento).toBe('indisponivel')
+    expect(paraGestor.find((l) => l.colaboradorId === pessoa.id)!.afastamento).toBe('atestado')
+  })
+
+  it('quem está fora hoje aparece para todo mundo, com o motivo só para gestor', async () => {
+    const base = await comGestor()
+    const pessoa = base.colaboradores[0]!
+
+    await registrar(
+      banco,
+      { colaboradorId: pessoa.id, tipo: 'licenca', inicio: DATA_BASE, fim: null },
+      base.gestor,
+    )
+
+    const paraColaborador = await quemEstaFora(banco, base.colaboradores[1]!.ator, DATA_BASE)
+    const paraGestor = await quemEstaFora(banco, base.gestor, DATA_BASE)
+
+    // A operação inteira precisa saber QUEM não recebe hoje — esconder a
+    // pessoa faria a tela prometer uma equipe que não existe.
+    expect(paraColaborador).toHaveLength(1)
+    expect(paraColaborador[0]!.nome).toBe(pessoa.nome)
+    expect(paraColaborador[0]!.rotulo).toBe('indisponivel')
+
+    expect(paraGestor[0]!.rotulo).toBe('licenca')
+  })
+
+  it('férias atravessa como férias — agenda não é saúde', async () => {
+    const base = await comGestor()
+
+    await registrar(
+      banco,
+      {
+        colaboradorId: base.colaboradores[0]!.id,
+        tipo: 'ferias',
+        inicio: DATA_BASE,
+        fim: deslocarDias(DATA_BASE, 10),
+      },
+      base.gestor,
+    )
+
+    const lista = await quemEstaFora(banco, base.operador, DATA_BASE)
+    expect(lista[0]!.rotulo).toBe('ferias')
+  })
+
+  it('afastamento cancelado some da lista de hoje', async () => {
+    const base = await comGestor()
+
+    const feito = await registrar(
+      banco,
+      { colaboradorId: base.colaboradores[0]!.id, tipo: 'ferias', inicio: DATA_BASE },
+      base.gestor,
+    )
+    expect(await quemEstaFora(banco, base.operador, DATA_BASE)).toHaveLength(1)
+
+    await cancelar(banco, feito.id, base.gestor)
+    expect(await quemEstaFora(banco, base.operador, DATA_BASE)).toHaveLength(0)
+  })
+
+  it('a observação — a ficha — só existe na listagem de gestor', async () => {
+    const base = await comGestor()
+
+    await registrar(
+      banco,
+      {
+        colaboradorId: base.colaboradores[0]!.id,
+        tipo: 'outro',
+        inicio: DATA_BASE,
+        observacao: 'motivos pessoais',
+      },
+      base.gestor,
+    )
+
+    // `listar` exige gestor e devolve a ficha inteira.
+    const ficha = await listar(banco, base.gestor)
+    expect(ficha[0]!.observacao).toBe('motivos pessoais')
+
+    // A rota que a operação consulta não carrega observação nenhuma.
+    const publico = await quemEstaFora(banco, base.operador, DATA_BASE)
+    expect(JSON.stringify(publico)).not.toContain('motivos pessoais')
   })
 })
 

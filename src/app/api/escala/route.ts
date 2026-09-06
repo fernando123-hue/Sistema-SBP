@@ -5,12 +5,15 @@ import { exigirAtor } from '../../../servidor/sessao'
 
 export async function GET(requisicao: Request): Promise<Response> {
   return rota(async () => {
-    await exigirAtor()
+    // O papel decide o que a resposta pode dizer sobre a ausência de cada um:
+    // gestor vê o motivo, o resto vê "de férias" ou "indisponível". A redação
+    // acontece no serviço, antes de a resposta existir.
+    const ator = await exigirAtor()
 
     const data = new URL(requisicao.url).searchParams.get('data')
     if (!data) return responderErro('Parâmetro "data" é obrigatório (YYYY-MM-DD).', 400)
 
-    return responder(await obterEscala(obterPrisma(), data))
+    return responder(await obterEscala(obterPrisma(), data, ator.papel))
   })
 }
 

@@ -516,7 +516,7 @@ function Afastamentos({
   const [lista, setLista] = useState<Afastamento[] | null>(null)
   const [abrindo, setAbrindo] = useState(false)
   const [salvando, setSalvando] = useState(false)
-  const [novo, setNovo] = useState({ colaboradorId: '', tipo: 'ferias', inicio: '', fim: '' })
+  const [novo, setNovo] = useState({ colaboradorId: '', tipo: 'ferias', inicio: '', fim: '', observacao: '' })
 
   const carregar = useCallback(async () => {
     try {
@@ -541,8 +541,9 @@ function Afastamentos({
         // Campo vazio é ausência EM ABERTO, não string vazia: o servidor
         // distingue os dois, e mandar `''` viraria erro de formato de data.
         fim: novo.fim === '' ? null : novo.fim,
+        observacao: novo.observacao.trim() === '' ? null : novo.observacao.trim(),
       })
-      setNovo({ colaboradorId: '', tipo: 'ferias', inicio: '', fim: '' })
+      setNovo({ colaboradorId: '', tipo: 'ferias', inicio: '', fim: '', observacao: '' })
       setAbrindo(false)
       await carregar()
       await aoMudar()
@@ -640,6 +641,23 @@ function Afastamentos({
                 className="rounded border border-borda bg-transparent px-2 py-1.5 text-sm"
               />
             </label>
+
+            {/*
+              A observação é a FICHA, e só o gestor a lê. É onde cabe "motivos
+              pessoais" sem que isso vire rótulo público: as outras telas
+              recebem "de férias" ou "indisponível", e nunca este texto.
+            */}
+            <label className="flex flex-col gap-1 text-xs sm:col-span-2">
+              Observação <span className="text-tinta-fraca">(só o gestor vê)</span>
+              <input
+                type="text"
+                value={novo.observacao}
+                maxLength={500}
+                placeholder="motivos pessoais, previsão de retorno…"
+                onChange={(evento) => setNovo({ ...novo, observacao: evento.target.value })}
+                className="rounded border border-borda bg-transparent px-2 py-1.5 text-sm"
+              />
+            </label>
           </div>
 
           <div className="mt-3 flex justify-end">
@@ -674,6 +692,17 @@ function Afastamentos({
                       {dia(afastamento.inicio)}
                       {afastamento.fim ? ` a ${dia(afastamento.fim)}` : ' — sem data de volta'}
                     </span>
+                    {/*
+                      A FICHA do gestor (decisão de 06/09/2026): aqui, e só
+                      aqui, aparece o motivo por extenso. As outras telas
+                      recebem "de férias" ou "indisponível" — redigido no
+                      servidor, não escondido no componente.
+                    */}
+                    {afastamento.observacao ? (
+                      <span className="mt-0.5 block text-xs text-tinta-fraca">
+                        {afastamento.observacao}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-2">
                     {/*

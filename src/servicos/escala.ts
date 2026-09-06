@@ -1,4 +1,5 @@
-import { DataIsoSchema, EscalaEntradaSchema } from '../core/esquemas'
+import { rotuloDeAfastamento, type RotuloDeAfastamento } from '../core/afastamento-visivel'
+import { DataIsoSchema, EscalaEntradaSchema, type Papel } from '../core/esquemas'
 import { fimDoDia, inicioDoDia } from '../core/util/datas'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import { novaCorrelacao } from '../servidor/observabilidade'
@@ -22,18 +23,24 @@ export interface LinhaDaEscala {
   /** Categorias em que a pessoa está habilitada nesta data. */
   categorias: string[]
   /**
-   * Tipo do afastamento que cobre esta data, ou `null` (`A10`).
+   * A ausência que cobre esta data, **já redigida para quem está lendo**.
    *
-   * Sem este campo a tela deixava marcar como de plantão alguém que está de
-   * férias: `carregarElegiveis` a excluiria do rateio de qualquer jeito, a
-   * prévia viria com uma pessoa a menos, e NADA na tela explicaria por quê.
-   * Marcar uma caixa e não acontecer nada é a divergência silenciosa que este
-   * sistema existe para eliminar.
+   * Existe porque sem ela a tela deixava marcar como de plantão alguém que
+   * está de férias: `carregarElegiveis` a excluiria do rateio de qualquer
+   * jeito, a prévia viria com uma pessoa a menos, e NADA explicaria por quê.
+   *
+   * NÃO é o tipo cru. Para quem não é gestor, `atestado`, `licença`, `falta` e
+   * `outro` chegam todos como `indisponivel` — a operação precisa saber quem
+   * não recebe hoje, não o motivo médico. Ver `core/afastamento-visivel.ts`.
    */
-  afastamento: string | null
+  afastamento: RotuloDeAfastamento | null
 }
 
-export async function obterEscala(banco: Banco, data: string): Promise<LinhaDaEscala[]> {
+export async function obterEscala(
+  banco: Banco,
+  data: string,
+  papel: Papel,
+): Promise<LinhaDaEscala[]> {
   DataIsoSchema.parse(data)
 
   const colaboradores = await banco.colaborador.findMany({
@@ -69,7 +76,10 @@ export async function obterEscala(banco: Banco, data: string): Promise<LinhaDaEs
       colaboradorId: colaborador.id,
       nome: colaborador.nome,
       papel: colaborador.papel,
-      afastamento: colaborador.afastamentos[0]?.tipo ?? null,
+      // Redigido AQUI, no servidor: mandar o tipo real e esconder na tela
+      // deixaria o motivo numa resposta HTTP que qualquer pessoa autenticada
+      // consegue ler.
+      afastamento: rotuloDeAfastamento(colaborador.afastamentos[0]?.tipo ?? null, papel),
       // Sem registro para o dia, a pessoa NÃO entra no rateio. O padrão é
       // conservador de propósito: distribuir para quem não está trabalhando é
       // exatamente o defeito que a planilha corrige à mão com `Mov. Extra`.
@@ -122,5 +132,5 @@ export async function definirEscala(
     })
   })
 
-  return obterEscala(banco, dados.data)
+  return obterEscala(banco, dados.data, ator.papel)
 }
