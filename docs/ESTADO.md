@@ -94,7 +94,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Painel | Agregação pura, zero campo digitável. Recorte por período, colunas mapeadas uma a uma para as da planilha |
 | Qualidade da IA | Taxa de aceitação, cobertura e calibração da confiança. Critério de aceitação nº 5 passa a ser verificável |
 | Cadastro de equipe | Gestor cadastra pessoa e define o que ela pode receber, pela tela. Quem fica sem categoria aparece em destaque |
-| API REST | 24 caminhos, 29 operações, envelope único, limite de taxa, papéis |
+| API REST | 26 caminhos, 32 operações, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
 | Testes | **309 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
@@ -513,9 +513,11 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ---
 
-## Quatro decisões que dependem do dono do negócio
+## Cinco decisões que dependem do dono do negócio
 
 Estão registradas em `DECISOES.md § H.4`, sem resposta inventada:
+
+0. **Quem pode ver que alguém está de atestado?** *(levantada em 06/09/2026, com o `A10`)* O `A10` pede "exibição no painel de quem está fora". Foi feita **onde a ausência muda a operação** — a tela de plantão marca quem está afastado e recusa a marcação. **Não foi levada ao Painel**, e a diferença não é de esforço: o Painel é visível a `colaborador`, e `atestado`/`licença` são **informação de saúde**. Publicar isso para os colegas é decisão de privacidade. Opções: não mostrar · mostrar só "fora hoje", sem o tipo · mostrar completo só para gestor. **Nada implementado** até você escolher.
 
 1. **Quem vê a caixa de entrada inteira?** *(levantada na auditoria de 28/08/2026)* Hoje `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails. O `RF-23` diz que colaborador vê *os seus*. **Não foi alterado de propósito:** a equipe já trabalha de uma caixa compartilhada, então restringir mudaria a operação em vez de corrigir defeito.
 2. **Carga de exceção conta para o balanceamento?** *(levantada em 28/08/2026, com o registro manual)* Quem atende 30 inadimplentes num dia fez trabalho real, e hoje esse trabalho **não** entra no crédito — a pessoa continua recebendo cota cheia das categorias do rateio. Contar resolveria a justiça de carga, mas faria uma categoria de exceção mexer na cota justa de categorias das quais ela não participa. Escolhi o lado reversível (`§ AT-09`) porque despoluir um razão já acumulado exige recomputar histórico; começar a contar depois, não.

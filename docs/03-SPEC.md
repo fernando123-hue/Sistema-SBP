@@ -186,7 +186,7 @@ O adapter mock da IA é determinístico de propósito: permite testar todo o pip
 
 Envelope único em toda resposta: `{ sucesso, dados, erro, correlacaoId? }`.
 
-**Estado em 28/08/2026 — 24 caminhos, 29 operações.** Auditado contra o código; o que estiver aqui existe, e o que existe está aqui.
+**Estado em 06/09/2026 — 26 caminhos, 32 operações.** Auditado contra o código; o que estiver aqui existe, e o que existe está aqui.
 
 ```
 ── Ingestão e revisão ───────────────────────────────────────
@@ -229,6 +229,9 @@ POST   /api/colaboradores/habilitacao o que a pessoa pode receber
 POST   /api/colaboradores/ativacao    liga ou desliga o acesso
 POST   /api/colaboradores/senha       senha provisória de alguém
 POST   /api/colaboradores/destravar   tira do bloqueio por tentativas
+GET    /api/afastamentos              férias, atestados e faltas não cancelados
+POST   /api/afastamentos              registra ausência (tira do rateio no período)
+DELETE /api/afastamentos/:id          cancela — CARIMBA, não apaga
 GET    /api/diagnostico/origem        confere o tratamento de proxy
 ```
 

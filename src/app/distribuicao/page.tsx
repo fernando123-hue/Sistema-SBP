@@ -23,6 +23,16 @@ interface LinhaDaEscala {
   disponivel: boolean
   capacidadeRelativa: number
   categorias: string[]
+  /** Tipo do afastamento que cobre esta data, ou `null` (`A10`). */
+  afastamento: string | null
+}
+
+const AFASTAMENTO: Record<string, string> = {
+  ferias: 'de férias',
+  atestado: 'de atestado',
+  falta: 'ausente',
+  licenca: 'de licença',
+  outro: 'afastada',
 }
 
 interface Fatia {
@@ -121,7 +131,11 @@ export default function Distribuicao() {
   }, [data, carregarEscala])
 
   const nomePor = new Map((escala ?? []).map((linha) => [linha.colaboradorId, linha.nome]))
-  const dePlantao = (escala ?? []).filter((linha) => linha.disponivel)
+  // Afastado NÃO conta como de plantão, ainda que a escala tenha ficado
+  // marcada de antes (`A10`). O contador tem de dizer quantas pessoas vão
+  // receber de verdade — senão a tela promete "3 de 5" e a prévia entrega
+  // duas, sem explicação.
+  const dePlantao = (escala ?? []).filter((linha) => linha.disponivel && linha.afastamento === null)
 
   async function alternar(linha: LinhaDaEscala) {
     setErro(null)
@@ -228,16 +242,40 @@ export default function Distribuicao() {
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {escala.map((linha) => (
               <li key={linha.colaboradorId}>
-                <Cartao destaque={linha.disponivel} className="px-3 py-2.5">
-                  <label className="flex cursor-pointer items-start gap-3">
+                <Cartao
+                  destaque={linha.disponivel && linha.afastamento === null}
+                  className={juntar('px-3 py-2.5', linha.afastamento !== null && 'opacity-60')}
+                >
+                  {/*
+                    QUEM ESTÁ AFASTADO NÃO PODE SER MARCADO (`A10`).
+                    Sem isto a caixa marcava, a pessoa continuava fora do rateio
+                    — porque `carregarElegiveis` a exclui —, e a prévia vinha
+                    com uma pessoa a menos sem nada explicar. Marcar e não
+                    acontecer nada é a divergência silenciosa que este sistema
+                    existe para eliminar.
+                  */}
+                  <label
+                    className={juntar(
+                      'flex items-start gap-3',
+                      linha.afastamento === null ? 'cursor-pointer' : 'cursor-not-allowed',
+                    )}
+                  >
                     <input
                       type="checkbox"
-                      checked={linha.disponivel}
+                      checked={linha.disponivel && linha.afastamento === null}
+                      disabled={linha.afastamento !== null}
                       onChange={() => alternar(linha)}
                       className="mt-1 size-4 accent-[var(--color-acento)]"
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">{linha.nome}</span>
+                      {linha.afastamento !== null ? (
+                        <span className="mt-1 block">
+                          <Selo tom="atencao">
+                            {AFASTAMENTO[linha.afastamento] ?? 'afastada'} · não recebe hoje
+                          </Selo>
+                        </span>
+                      ) : null}
                       <span className="mt-1 flex flex-wrap gap-1">
                         {linha.categorias.map((codigo) => (
                           <Selo key={codigo}>{codigo.toLowerCase().replace('_', ' ')}</Selo>
