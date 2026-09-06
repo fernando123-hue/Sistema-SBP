@@ -1,8 +1,24 @@
-import { deslocarDias, fimDoDia, hojeIso, inicioDoDia } from '../core/util/datas'
+import {
+  deslocarDias,
+  diasEntre,
+  fimDoDia,
+  hojeIso,
+  inicioDoDia,
+  paraDataIso,
+} from '../core/util/datas'
 import type { Banco } from '../servidor/prisma'
 
 /** Janela padrão da conferência de conservação exibida no painel. */
 export const JANELA_PADRAO_DE_DIAS = 90
+
+/**
+ * Os status em que um item ainda está na mesa de alguém.
+ *
+ * Fonte única do que "aberto" significa no painel: os contadores de estado
+ * atual e o indicador de atraso do `A7` leem esta mesma lista. Item concluído
+ * ou cancelado saiu da mesa e, por definição, parou de envelhecer.
+ */
+const ABERTOS = ['aguardando_revisao', 'aprovado', 'distribuido', 'em_andamento']
 
 /**
  * Painel.
@@ -61,6 +77,15 @@ export interface LinhaPainel {
   aprovado: number
   distribuido: number
   emAndamento: number
+  /**
+   * Há quantos dias está parado o item aberto mais antigo desta categoria.
+   * `null` quando não há nada aberto.
+   *
+   * É o indicador de atraso do `A7`. Também é estado AGORA, e por isso ignora
+   * o recorte de período: a pergunta é "o que está envelhecendo neste momento",
+   * e um recorte de mês esconderia justamente o item de março que ninguém tocou.
+   */
+  diasDoMaisAntigo: number | null
 }
 
 export interface Periodo {
@@ -91,6 +116,9 @@ export function periodoPadrao(): Periodo {
 export async function porCategoria(banco: Banco, periodo = periodoPadrao()): Promise<LinhaPainel[]> {
   const abertura = inicioDoDia(periodo.de)
   const fechamento = fimDoDia(periodo.ate)
+  // Lido UMA vez: com uma chamada por categoria, uma consulta que atravessasse
+  // a virada da meia-noite produziria linhas medidas contra dias diferentes.
+  const hoje = hojeIso()
 
   const categorias = await banco.categoria.findMany({
     where: { ativa: true },
@@ -121,6 +149,7 @@ export async function porCategoria(banco: Banco, periodo = periodoPadrao()): Pro
     concluidoAntes,
     canceladoAntes,
     estadoAtual,
+    maisAntigoAberto,
   ] = await Promise.all([
     banco.item.groupBy({
       by: ['categoriaId'],
@@ -155,6 +184,17 @@ export async function porCategoria(banco: Banco, periodo = periodoPadrao()): Pro
       _count: { _all: true },
     }),
     banco.item.groupBy({ by: ['categoriaId', 'status'], _count: { _all: true } }),
+    // Item aberto mais antigo por categoria — o indicador de atraso do `A7`.
+    //
+    // "Aberto" aqui são exatamente os quatro status de `estadoAtual`: o que já
+    // fechou (`concluido`) e o que foi retirado (`cancelado`) não envelhece.
+    // Usar a mesma lista dos contadores ao lado mantém uma definição só de
+    // "aberto" na tela inteira.
+    banco.item.groupBy({
+      by: ['categoriaId'],
+      where: { status: { in: ABERTOS } },
+      _min: { criadoEm: true },
+    }),
   ])
 
   // O tipo que o `groupBy` do Prisma devolve marca `_count` como opcional,
@@ -206,8 +246,28 @@ export async function porCategoria(banco: Banco, periodo = periodoPadrao()): Pro
       aprovado: contarStatus('aprovado'),
       distribuido: contarStatus('distribuido'),
       emAndamento: contarStatus('em_andamento'),
+      diasDoMaisAntigo: idadeDoMaisAntigo(maisAntigoAberto, categoria.id, hoje),
     }
   })
+}
+
+/**
+ * Idade, em dias, do item aberto mais antigo de uma categoria.
+ *
+ * A conta é feita sobre a CHAVE de data no fuso da operação, não sobre o
+ * instante bruto: um item criado ontem às 23h está parado "há 1 dia" às 8h de
+ * hoje, que é como a operação fala. Subtrair instantes daria `0`, e o número
+ * que serve para enxergar backlog não pode arredondar para baixo o dia inteiro.
+ */
+function idadeDoMaisAntigo(
+  linhas: { categoriaId: string; _min?: { criadoEm?: Date | null } }[],
+  categoriaId: string,
+  hoje: string,
+): number | null {
+  const achado = linhas.find((linha) => linha.categoriaId === categoriaId)
+  const criadoEm = achado?._min?.criadoEm
+  if (!criadoEm) return null
+  return diasEntre(paraDataIso(criadoEm), hoje)
 }
 
 /**

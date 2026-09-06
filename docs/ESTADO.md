@@ -104,6 +104,22 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 
 ## Onde parei
 
+**Entraram A7 e A6 — prioridade por idade e relatório da rodada.** Detalhe em `DECISOES.md`, seção *Prioridade por idade e relatório da rodada*.
+
+**A fila ordenava pela idade errada.** Era `atribuidoEm` — a idade da *atribuição*, não a do trabalho. As duas divergem exatamente no caso que importa: item de três semanas devolvido ao pool e redistribuído hoje aparecia no **fim** da fila, como se fosse novo. Agora ordena por `item.criadoEm`, a mesma definição que a distribuição já usava.
+
+**O painel ganhou a coluna "Mais antigo (hoje)"**, com há quantos dias está parado o item aberto mais velho de cada categoria. **Sem faixa de alerta, de propósito:** o `A7` diz que o setor não trabalha com prazo, e colorir a partir de N dias inventaria um SLA que ninguém definiu.
+
+**A narrativa da rodada descreve, nunca recalcula.** `core/distribuicao/narrativa.ts` é função pura sobre o snapshot que o motor já gravou. Sem IA — o `A6` permite que ela redija a frase, mas o texto determinístico não custa crédito, não falha por rede e não pode alucinar um número. Verificado na tela: a narrativa apareceu acima dos números crus da mesma rodada, e os dois batem.
+
+**A verificação no navegador achou um defeito que não era o objetivo.** O seed criava uma habilitação **nova a cada dia**, porque a chave do upsert incluía `DATA_INICIAL` (`hoje − 7`), que anda. Medido: 80 linhas para 20 pares reais. A tela de plantão repetia o mesmo selo quatro vezes e o React acusava chave duplicada — que ele trata como podendo *omitir* elementos. A distribuição não foi afetada, mas por sorte de implementação. Corrigido e provado: seed rodou três vezes seguidas, 20/20/20.
+
+Testes: 278 → **295**.
+
+---
+
+### Antes disso, na mesma data — A11 e A12
+
 **Entraram A11 e A12 — peso e limiar de confiança por categoria.** Detalhe em `DECISOES.md`, seção *Peso e limiar por categoria*.
 
 `DOC = 4` e `FICHA = 1,75` no peso; `0,95` e `0,90` no limiar; resto na base (`1` e `0,85`). As duas vieram da mesma frase do cliente e entraram juntas: uma trata do esforço (equilíbrio entre categorias), a outra do cuidado (quanto vai para a revisão humana).
@@ -445,7 +461,7 @@ Restam duas, em ordem de custo:
 
 0b. **A4 — agrupamento por liga.** O mais caro, e o único que **muda o contrato do motor**: `distribuir()` recebe quantidade escalar e não conhece `liga_id`. Precisa de uma unidade de entrada nova (grupos liga/tamanho) com alocação gulosa maior-primeiro, mantendo a trava de conservação intacta. **Vai para `docs/03-SPEC.md` antes de tocar em código** — é a regra da casa para mudança de motor.
 
-Além dessas, duas parciais: **A6** (relatório da rodada — os dados estão gravados, falta a camada que narra) e **A7** (metade feita; falta ordenar *Minha Fila* pelo mais antigo e o indicador de atraso no painel).
+~~Além dessas, duas parciais: **A6** e **A7**.~~ **As duas entraram em 06/09/2026.** O `A7` está completo. Do `A6` falta só a leitura **narrada do histórico**: a rodada do dia é narrada na tela, mas reler em português uma rodada de três semanas atrás ainda exige `GET /api/rodadas/[id]`, que devolve dados crus. Como a narrativa é função pura sobre o snapshot, aplicá-la ao histórico é trabalho de rota e tela, não de regra.
 
 > **Uma lição do A11, para as próximas estimativas.** Este arquivo dizia que A11 mexeria no motor. Não mexia — `motor.ts` já multiplicava por `categoria.peso`. O custo real estava num lugar que ninguém tinha previsto: a mudança de **unidade** do livro-razão, que quebrou dois testes de invariante escritos quando "um item" e "1 unidade" eram o mesmo número. Antes de estimar pelo que está escrito aqui, abra o código.
 

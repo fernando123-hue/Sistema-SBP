@@ -61,16 +61,28 @@ interface ResumoDaIngestao {
   falhas: number
 }
 
+interface Narrativa {
+  categoriaCodigo: string
+  rotulo: string
+  linhas: string[]
+}
+
 interface Resumo {
   data: string
   totalDistribuido: number
   rodadasGravadas: number
   linhas: LinhaDaPrevia[]
+  narrativas: Narrativa[]
 }
 
 // `hojeIso` vem do núcleo puro (pode ser importado no cliente) e resolve no
 // fuso da operação. Com `toISOString()`, a tela abria em amanhã depois das 21h.
 const hoje = hojeIso
+
+/** As frases da rodada de uma categoria. Vazio quando não houve rodada. */
+function narrativaDe(resumo: Resumo | null, categoriaCodigo: string): string[] {
+  return resumo?.narrativas.find((n) => n.categoriaCodigo === categoriaCodigo)?.linhas ?? []
+}
 
 const CRITERIO: Record<string, { texto: string; explicacao: string }> = {
   resto_maior: {
@@ -318,6 +330,21 @@ export default function Distribuicao() {
                     ) : null}
                   </div>
                 </div>
+
+                {/*
+                  Relatório legível da rodada (`A6`). O texto vem pronto do
+                  servidor, escrito por uma função PURA a partir do snapshot que
+                  o motor gravou — a tela não recalcula nada para se explicar,
+                  senão existiriam duas fontes para o mesmo número.
+                */}
+                {narrativaDe(mostrado, linha.categoriaCodigo).map((frase, indice) => (
+                  <p
+                    key={`${linha.categoriaCodigo}-${indice}`}
+                    className="mt-2 text-xs leading-relaxed text-tinta-suave"
+                  >
+                    {frase}
+                  </p>
+                ))}
 
                 {linha.erro ? (
                   <p className="mt-2 text-sm text-alerta">{linha.erro}</p>
