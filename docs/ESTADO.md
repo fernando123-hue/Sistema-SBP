@@ -1,8 +1,8 @@
 # Estado do projeto — retomada
 
-Última atualização: **31/08/2026** — consolidação: o `PR #12` entrou na `main` e nove decisões do dono do negócio (A4–A12) foram resgatadas de um branch órfão.
+Última atualização: **06/09/2026** — sessão de manutenção: um defeito real e ativo na suíte de testes (não no produto), `node_modules` fora de sincronia com o lockfile, duas dependências atualizadas, repositório sem PR aberto. Detalhe em `DECISOES.md`, seção *Manutenção de sessão — 06/09/2026*.
 
-> **Nove decisões do dono do negócio estavam fora da `main` havia cinco dias, e nada acusava.** Foram tomadas em 26/08 e ficaram num branch que nunca foi mesclado (`claude/prototipo-em-progresso-unesv2`). Enquanto isso o `DECISOES.md § A` parava em A3 e este arquivo listava como *"aguardando o dono do negócio"* **três perguntas já respondidas**. Ninguém apagou nada e ninguém errou: a perda aconteceu sozinha, que é exatamente a forma do defeito que este projeto existe para eliminar. Detalhe em `DECISOES.md`, seção *Reconciliação: A4–A12*.
+> **Um teste que passava por coincidência de calendário parou de passar.** `DATA_BASE` era uma string fixa no passado (`'2026-09-01'`); itens criados por teste nascem com `criadoEm` do relógio real; o corte temporal do motor (correto, deliberado) descartava esses itens assim que o relógio real passasse da data fixa — o que aconteceu entre a última sessão e esta. Dois testes ficaram vermelhos sem nenhuma mudança de código ter acontecido no meio. Corrigido ancorando `DATA_BASE` em `hojeIso()`. Não é o primeiro defeito deste projeto que só aparece com o tempo passando; é o primeiro que aparece **no arnês de teste** em vez do produto.
 
 ---
 
@@ -104,13 +104,29 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 
 ## Onde parei
 
-**Duas consolidações, nenhuma linha de regra nova.** Esta sessão não construiu funcionalidade: fechou duas divergências entre o que o repositório fazia e o que a documentação dizia que ele fazia.
+**Sessão de manutenção, zero regra nova.** Conferência do repositório de ponta a ponta — código, dependências, branches, segurança — e correção do que estava quebrado ou defasado. Nenhuma decisão de negócio nova foi tomada; nenhum comportamento do produto mudou. Detalhe completo em `DECISOES.md`, seção *Manutenção de sessão — 06/09/2026*.
 
-### 1. O `PR #12` entrou na `main`
+**O achado que importa: um teste que dependia do calendário.** `src/testes/apoio.ts` fixava `DATA_BASE = '2026-09-01'`. Item criado por teste recebe `criadoEm` do relógio real (`@default(now())` do Prisma — por design, não dá para um teste fingir que criou algo no passado). O corte temporal do motor (`criadoEm <= fimDoDia(data)`, deliberado e correto) passou a descartar esses itens assim que o relógio real avançou além de 1º/09 — o que já tinha acontecido quando esta sessão começou. Dois testes vermelhos (`itens.test.ts`, `pipeline.test.ts`), sem ninguém ter tocado em código de produção no meio do caminho. Corrigido ancorando `DATA_BASE` em `hojeIso()`.
+
+**`node_modules` estava desalinhado do lockfile.** `typescript` instalado era `5.9.3`; o projeto pede `7.0.2`. `@types/node` instalado era `22.20.1`; o projeto pede `26.3.0`. O typecheck rodava com compilador dois majors atrás, sem aviso nenhum. `npm ci` corrigiu — a primeira tentativa corrompeu a instalação (`node_modules/.bin` sumiu), reinstalação limpa resolveu.
+
+**Dependências e GitHub em dia.** Os dois PRs do Dependabot que estavam abertos e verdes (`#13`, `#14`) foram mesclados — zero PR aberto agora. Dois branches locais órfãos apagados; os sete branches remotos obsoletos já não existiam de verdade (o repositório apaga branch ao mesclar; só o cache local (`git fetch --prune`) estava desatualizado).
+
+**`npm audit` acusa 2 vulnerabilidades — avaliadas, não corrigidas.** `mysql2` vulnerável é dependência do **CLI do Prisma** (suporte a MySQL que o Prisma empacota sempre), nunca importado por este projeto, que usa SQLite. Corrigir via `--force` rebaixaria o Prisma de `7.10.0` para `6.19.3` para fechar uma porta que não existe aqui. Não mexido; revisitar se o projeto um dia conectar a MySQL de verdade.
+
+`npm run verificar`: **271 testes verdes**, typecheck limpo.
+
+---
+
+### 31/08/2026 — consolidação: `PR #12` e as decisões A4–A12
+
+**Duas consolidações, nenhuma linha de regra nova.** Aquela sessão não construiu funcionalidade: fechou duas divergências entre o que o repositório fazia e o que a documentação dizia que ele fazia.
+
+#### 1. O `PR #12` entrou na `main`
 
 Estava aberto, verde e mesclável desde 28/08 — 6 commits, +2.971/−95 em 24 arquivos, os três checks passando. Enquanto ele esperava, a `main` não tinha o registro manual (`H-D4`), a fundação do cérebro operacional, nem as duas correções de segurança que a revisão adversarial daquela branch achou. Mesclado, e a `main` verificada num ambiente limpo: `npm install`, `.env`, `migrate deploy`, `generate` e **271 testes verdes**, sem etapa extra.
 
-### 2. As decisões A4–A12 voltaram para a `main`
+#### 2. As decisões A4–A12 voltaram para a `main`
 
 **Este é o achado que importa.** Nove decisões do dono do negócio, tomadas em 26/08, viviam só no branch `claude/prototipo-em-progresso-unesv2`. A `main` seguiu dois dias de construção sem saber delas.
 
@@ -124,7 +140,7 @@ O que entrou: agrupamento por liga (A4), etapa 6 e conclusão pelo app (A5), rel
 
 ---
 
-### 3. Revisão geral e limpeza
+#### 3. Revisão geral e limpeza
 
 Varredura do repositório inteiro atrás do que não serve mais. O que saiu:
 
@@ -376,23 +392,13 @@ being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4
 
 Os dois estavam parados por limitação de permissão (alteram arquivo de workflow), não por defeito. Foram mesclados por API em 28/08/2026, e `checkout` e `setup-node` estão em `v7` nos três jobs do CI e no workflow do CodeQL. Nenhuma ação continua apontando para o Node 20.
 
-### O que ficou aberto, e por quê
+### PRs — nenhum aberto
 
-**O [#12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) foi mesclado em 31/08/2026.** Era o único PR de trabalho aberto.
+**Zero PRs abertos em 06/09/2026.** Histórico: [#12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) mesclado em 31/08; [#15](https://github.com/fernando123-hue/Sistema-SBP/pull/15) (`lucide-react`) fechado sem merge — ficou sem objeto quando a dependência foi removida do projeto por não ter uso (seção *Revisão geral e limpeza*, 31/08); [#4](https://github.com/fernando123-hue/Sistema-SBP/pull/4) (`codeql-action` v3 → v4) fechado sem merge em 28/08 — inócuo, o workflow do CodeQL está desarmado; [#13](https://github.com/fernando123-hue/Sistema-SBP/pull/13) (`@types/node` 26.3.0 → 26.4.0) e [#14](https://github.com/fernando123-hue/Sistema-SBP/pull/14) (`@anthropic-ai/sdk` 0.121.0 → 0.122.0) mesclados em 06/09/2026, rotina, verdes.
 
-O [#4](https://github.com/fernando123-hue/Sistema-SBP/pull/4) (`codeql-action` v3 → v4) foi **fechado sem merge** em 28/08/2026: ele se recusava a rebasear, e é inócuo de qualquer forma — o workflow do CodeQL está desarmado, então a versão da ação não muda nada hoje. Quando o CodeQL for reativado, o Dependabot abre outro.
+### Branches — limpos
 
-**Três PRs do Dependabot estão abertos**, todos de rotina e nenhum com prazo. Não foram avaliados nesta sessão:
-
-| PR | O quê |
-|---|---|
-| [#15](https://github.com/fernando123-hue/Sistema-SBP/pull/15) | `lucide-react` 1.34.0 → 1.35.0 |
-| [#14](https://github.com/fernando123-hue/Sistema-SBP/pull/14) | `@anthropic-ai/sdk` 0.121.0 → 0.122.0 |
-| [#13](https://github.com/fernando123-hue/Sistema-SBP/pull/13) | `@types/node` 26.3.0 → 26.4.0 (dev) |
-
-### Branches que não podem ser apagados sem olhar
-
-`claude/prototipo-em-progresso-unesv2` é o branch órfão de onde A4–A12 foram resgatadas em 31/08/2026. **O conteúdo dele já está na `main`** — as decisões estão em `DECISOES.md § A`, e o código dele é anterior a 27 commits, portanto obsoleto. Pode ser apagado. Está registrado aqui porque, até 31/08, apagá-lo teria destruído nove decisões do dono do negócio sem nenhum aviso.
+`claude/prototipo-em-progresso-unesv2` (órfão de onde A4–A12 foram resgatadas em 31/08) e os seis branches do Dependabot de PRs já mesclados/fechados **não existem mais no remoto** — o repositório apaga o branch de origem ao mesclar/fechar um PR, e isso já tinha acontecido; só o cache local (`git branch -r`) mostrava fantasma até um `git fetch --prune` em 06/09/2026. Os locais órfãos `feat/fundacao-dominio` e `pr5` também foram apagados — mesmo conteúdo já estava na `main`.
 
 ### Histórico que vale saber
 

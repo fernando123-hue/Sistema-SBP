@@ -1208,3 +1208,42 @@ A correção estrutural é propagar a correlação de dentro para fora (`AsyncLo
 `LogAuditoria.antes`/`depois` guardam o JSON do que mudou, e a nova rota devolve esses campos. Em `revisao_aprovada`/`revisao_recusada`, o JSON inclui `Item.titulo` — que a IA **extraiu do corpo do e-mail** e pode carregar nome de associado.
 
 Não é vazamento novo: a rota exige `operador` ou `gestor`, e esses papéis já veem o mesmo título na Caixa de entrada e na fila de Revisão. Mas é o ponto exato em que o invariante 11 avisa — conteúdo vestido de linha operacional. Se a política de retenção um dia expurgar `EmailConteudo`, o título **sobrevive** dentro da trilha (e dentro de `Item.titulo`, que é operacional por decisão anterior). Quem for definir o prazo precisa decidir isto de olhos abertos. Registrado em `§ H.4`, item 8.
+
+---
+
+## Manutenção de sessão — 06/09/2026
+
+Sem funcionalidade nova. Sessão de conferência: estado real do repositório contra o que a documentação dizia, dependências, e uma varredura de segurança e limpeza. Achou um defeito real, ativo, que a suíte não estava acusando por coincidência de calendário.
+
+### O achado: `DATA_BASE` fixa era bomba-relógio
+
+`src/testes/apoio.ts` fixava `DATA_BASE = '2026-09-01'` — usado por `semearBase` em quatro arquivos de teste para datar habilitação, escala e as rodadas que os testes confirmam. Enquanto o relógio real da máquina estava em ou antes de 1º/09, o esquema funcionava. A sessão começou em 06/09 e dois testes já estavam vermelhos: `itens.test.ts` ("sem responsável, entra no pool") e `pipeline.test.ts` ("item de origem manual, sem e-mail").
+
+**Causa raiz, não sintoma.** `planejarCategoria` (`distribuicao.ts`) tem um corte temporal deliberado e correto: só distribui item com `criadoEm <= fimDoDia(data)` — sem isso, confirmar hoje varreria o futuro inteiro. `registrarManual` e a criação direta de item em teste não aceitam `criadoEm` como parâmetro (por design: um operador real não pode datar retroativamente um lançamento), então a coluna nasce do relógio real via `@default(now())` do Prisma. Com `DATA_BASE` fixa no passado, todo item criado por um teste depois de 1º/09 nascia com `criadoEm` **depois** de `fimDoDia('2026-09-01')` — o próprio corte que a linha acima existe para impor descartava o item do teste, silenciosamente, exatamente a família de defeito que este projeto existe para eliminar, só que dentro do arnês de teste em vez do produto.
+
+Não é falha de hoje isolada: a cada dia que passasse sem alguém notar, mais testes cairiam nesse buraco, e ninguém teria motivo para suspeitar de uma constante de teste como causa — o primeiro instinto seria desconfiar do motor.
+
+**Correção:** `DATA_BASE` passou a ser `hojeIso()`, calculada uma vez na carga do módulo, em vez de string fixa. Nenhum teste depende do valor literal — todos usam `sequenciaDeDatas`/`deslocarDias` a partir dela — então trocar por uma data relativa não muda nenhuma asserção, só remove a data de validade embutida. `npm run verificar`: **271 → 271**, os dois testes voltaram a passar contra o relógio real de qualquer dia.
+
+### `node_modules` fora de sincronia com o lockfile
+
+Antes de rodar qualquer coisa, `typescript` instalado era `5.9.3` e `@types/node` era `22.20.1` — mas `package-lock.json` (e `package.json`) pediam `7.0.2` e `26.3.0`. O typecheck estava rodando com um compilador dois majors atrás do que o projeto declara usar, sem nenhum aviso. `npm ci` resolveu; na primeira tentativa a reinstalação corrompeu (`node_modules/.bin` sumiu, `node_modules/typescript` ficou sem `bin/`), reinstalação limpa (`rm -rf node_modules && npm ci`) resolveu de vez.
+
+### Dependências e branches
+
+- Mesclados os dois PRs do Dependabot que estavam abertos e verdes: [#13](https://github.com/fernando123-hue/Sistema-SBP/pull/13) (`@types/node` 26.3.0 → 26.4.0) e [#14](https://github.com/fernando123-hue/Sistema-SBP/pull/14) (`@anthropic-ai/sdk` 0.121.0 → 0.122.0). Zero PRs abertos ao final da sessão.
+- Os 7 branches obsoletos (`claude/prototipo-em-progresso-unesv2` e 6 branches do Dependabot de PRs já mesclados/fechados) já não existiam no remoto — o repositório tem "apagar branch ao mesclar" ativado, e eles tinham sido removidos automaticamente quando cada PR fechou. Só a referência local (`git fetch --prune`) estava desatualizada. Dois branches locais órfãos (`feat/fundacao-dominio`, `pr5`) apagados — conteúdo dos dois já estava na `main` por squash-merge.
+
+### `npm audit`: 2 vulnerabilidades, avaliadas e não corrigidas — por quê
+
+`mysql2 <=3.23.0` aparece com uma severidade alta (downgrade de plugin de autenticação) e uma moderada (DoS por descompressão). É dependência do **CLI do Prisma** (`node_modules/prisma`), não do projeto — puxada porque o Prisma dá suporte a MySQL, e este projeto usa `@prisma/adapter-better-sqlite3`. Nunca há conexão MySQL neste código; o pacote fica instalado e nunca é importado por nenhuma linha nossa. `npm audit fix --force` rebaixaria `prisma` de `7.10.0` para `6.19.3` — troca ruim (perde duas versões maiores) para fechar uma porta que não está aberta aqui. Não corrigido. Revisitar quando o Prisma publicar uma versão que não arraste o `mysql2` vulnerável, ou se este projeto algum dia conectar a MySQL de verdade — nesse caso a avaliação muda.
+
+### O que foi conferido e está limpo
+
+`npm outdated`: só `next` (patch), `@types/react-dom` (patch) e `tsx` (patch) atrás — nenhum com risco. `vitest`/`@vitest/coverage-v8` (4→5) e `prisma` (7→8-rc) têm major novo disponível, nenhum deles necessário e ambos fora do escopo de uma sessão de manutenção — major bump é decisão própria, não limpeza. `.gitignore` cobre `dev.db`, `*.tsbuildinfo`, `armazenamento/`, `src/generated/`, `.env` — nada desses está versionado. `tailwindcss`/`@tailwindcss/postcss` seguem em uso real (`globals.css`, `postcss.config.mjs`) — não são sobra do plano shadcn descartado em 31/08.
+
+### O que ficou de fora, de propósito
+
+Nada do roteiro de código do dono do negócio (A4/A10/A11/A12, `docs/ESTADO.md` § *Próximo passo*) foi tocado — são decisões que pedem confirmação antes de mexer em carga real de pessoas, e esta sessão foi conferência e limpeza, não construção. Também não rodei o adapter Anthropic contra a API real (continua sendo a única parte nunca provada) — exigiria a chave em `.env`, que não está nesta máquina.
+
+**Aviso operacional:** a sessão rodou `cp .env.example .env` sem checar antes se já havia um `.env` real configurado nesta máquina. Se havia, foi sobrescrito — não há como recuperar o conteúdo anterior a partir daqui, porque `.env` nunca entra no git. `SESSAO_SECRET` foi gerado de novo para permitir a verificação local; se este `.env` já servia alguma instância rodando, gere um novo valor de produção e confira `ANTHROPIC_API_KEY`/demais campos antes de considerar o ambiente local pronto.
