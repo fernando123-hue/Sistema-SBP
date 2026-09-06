@@ -1,8 +1,14 @@
 # Estado do projeto — retomada
 
-Última atualização: **06/09/2026** — sessão de manutenção: um defeito real e ativo na suíte de testes (não no produto), `node_modules` fora de sincronia com o lockfile, duas dependências atualizadas, repositório sem PR aberto. Detalhe em `DECISOES.md`, seção *Manutenção de sessão — 06/09/2026*.
+Última atualização: **06/09/2026** — **o roteiro de decisões do dono do negócio foi fechado.** As nove decisões de 26/08 (A4 a A12) e a de privacidade (A13) estão implementadas. Seis entregas mescladas: A11/A12, A7, A6, A10, A4 e A13.
 
-> **Um teste que passava por coincidência de calendário parou de passar.** `DATA_BASE` era uma string fixa no passado (`'2026-09-01'`); itens criados por teste nascem com `criadoEm` do relógio real; o corte temporal do motor (correto, deliberado) descartava esses itens assim que o relógio real passasse da data fixa — o que aconteceu entre a última sessão e esta. Dois testes ficaram vermelhos sem nenhuma mudança de código ter acontecido no meio. Corrigido ancorando `DATA_BASE` em `hojeIso()`. Não é o primeiro defeito deste projeto que só aparece com o tempo passando; é o primeiro que aparece **no arnês de teste** em vez do produto.
+> **Não há nenhuma decisão sua esperando código.** O que resta são dois pedaços registrados (a leitura narrada do histórico, do `A6`; e o lembrete semanal do `A8`, que depende de envio de e-mail), mais o que sempre esteve pendente: **o adapter da Anthropic nunca rodou contra a API real.** Ver *Próximo passo sugerido*.
+
+### Se você está retomando agora, leia isto primeiro
+
+1. **`npm run verificar` tem de dar 358 verdes.** Se der menos, algo quebrou entre as sessões — comece por aí, não pelo próximo passo.
+2. **Os valores do `A11` nunca foram relidos com o cliente.** `DOC = 4` e `FICHA = 1,75` redistribuem carga entre pessoas reais. `1,75` nasceu marcado como negociável.
+3. **Uma armadilha conhecida:** a CSP quebra a verificação de tela em modo de desenvolvimento (`eval() is not supported`, HMR caindo, formulários controlados sem reagir). Não é defeito de produção. Para conferir tela, o caminho confiável hoje é por HTTP com sessão real — ver `DECISOES.md`, seção *Afastamento (A10)*.
 
 ---
 
@@ -503,23 +509,30 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ## Próximo passo sugerido
 
-**Isto mudou em 31/08/2026.** Até aqui a frase era *"nada de código está bloqueando"* — e ela valia, porque as decisões que pedem código estavam invisíveis num branch órfão. Com A4–A12 de volta, **há trabalho de código decidido e não feito**, e ele passa na frente do que era o topo da lista.
+**O roteiro de decisões fechou em 06/09/2026.** Até aqui esta seção começava com "há trabalho de código decidido e não feito". Não há mais: **A4 a A13 estão implementadas.** O que sobrou está listado abaixo, e o topo da lista voltou a ser o de sempre — a parte que nunca foi provada.
 
-### Zero — o que foi decidido em 26/08 e ainda não construído
+### O que foi construído em 06/09/2026
 
-~~**A11 e A12 — peso e limiar por categoria.**~~ **Entraram em 06/09/2026.** Ver *Onde parei* e `DECISOES.md` → *Peso e limiar por categoria*. **Os valores continuam sem ter sido relidos com o dono do negócio** — `1,75` nasceu negociável, e trocar qualquer um deles é uma linha de migração.
+| | Entrega |
+|---|---|
+| `A11` · `A12` | Peso e limiar por categoria — `DOC = 4`, `FICHA = 1,75`; limiar `0,95` / `0,90` |
+| `A7` | Fila pelo mais antigo + indicador de atraso no painel |
+| `A6` | Narrativa da rodada, função pura, sem IA |
+| `A10` | `Afastamento` como entidade, com exclusão automática do rateio |
+| `A4` | Agrupamento por liga — SPEC antes do código |
+| `A13` | Motivo da ausência só para gestor |
 
-~~**A10 — entidade `Afastamento`.**~~ **Entrou em 06/09/2026.** Entidade, migração, exclusão automática do rateio e tela no Acesso.
+### O que ficou pendente destas decisões, e por quê
 
-~~**A4 — agrupamento por liga.**~~ **Entrou em 06/09/2026**, com a SPEC escrita antes do código, como manda a regra da casa.
+- **`A6` — leitura narrada do histórico.** A rodada do dia é narrada na tela; reler em português uma rodada de três semanas atrás ainda exige `GET /api/rodadas/[id]`, que devolve dados crus. A narrativa é função pura sobre o snapshot, então aplicá-la ao histórico é trabalho de rota e tela, não de regra.
+- **`A8` — lembrete semanal.** Depende de capacidade de **envio** de e-mail, que o próprio `A5` adiou: o `IngestaoPort` é só-leitura por decisão.
+- **`A11` — os valores nunca foram relidos com o cliente.** `DOC = 4` e `FICHA = 1,75` redistribuem carga entre pessoas reais. Trocar qualquer um é uma linha de migração.
 
-**Nenhuma decisão do dono está pendente de código.** As nove (A4 a A12) estão implementadas, exceto os pedaços registrados abaixo: a leitura narrada do histórico (`A6`), a exibição de afastamento no Painel (que virou pergunta de privacidade, § H.4 item 9) e o `A8`, que depende de capacidade de envio de e-mail — adiada pelo próprio `A5`.
-
-~~Além dessas, duas parciais: **A6** e **A7**.~~ **As duas entraram em 06/09/2026.** O `A7` está completo. Do `A6` falta só a leitura **narrada do histórico**: a rodada do dia é narrada na tela, mas reler em português uma rodada de três semanas atrás ainda exige `GET /api/rodadas/[id]`, que devolve dados crus. Como a narrativa é função pura sobre o snapshot, aplicá-la ao histórico é trabalho de rota e tela, não de regra.
-
-> **Uma lição do A11, para as próximas estimativas.** Este arquivo dizia que A11 mexeria no motor. Não mexia — `motor.ts` já multiplicava por `categoria.peso`. O custo real estava num lugar que ninguém tinha previsto: a mudança de **unidade** do livro-razão, que quebrou dois testes de invariante escritos quando "um item" e "1 unidade" eram o mesmo número. Antes de estimar pelo que está escrito aqui, abra o código.
-
-**O que segue valendo:** o sistema ainda não trocou uma palavra com o modelo real, e continua sendo a única parte nunca provada.
+> **Duas lições desta sessão, para as próximas estimativas.**
+>
+> **O documento errou o custo nas duas direções.** Disse que `A11` mexeria no motor — não mexia, `motor.ts` já multiplicava por `categoria.peso`. E descreveu `A4` como mudança de motor, escondendo que **`Item.ligaId` nunca era preenchido por ninguém**: metade do trabalho era transformar o texto da IA em identidade de liga. Antes de estimar pelo que está escrito aqui, abra o código.
+>
+> **Duas vezes um teste vermelho não era defeito.** No `A11` e no `A4`, o invariante antigo media um sistema que o cliente mandou mudar. Nos dois casos a saída não foi afrouxar o teste: foi entender o que a garantia perdida protegia e escrever a garantia nova — no `A4`, o teste de **não-deriva** do crédito ao longo de 24 dias.
 
 ### Primeiro — a única parte nunca provada
 
@@ -551,11 +564,11 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ---
 
-## Cinco decisões que dependem do dono do negócio
+## Quatro decisões que dependem do dono do negócio
 
 Estão registradas em `DECISOES.md § H.4`, sem resposta inventada:
 
-0. **Quem pode ver que alguém está de atestado?** *(levantada em 06/09/2026, com o `A10`)* O `A10` pede "exibição no painel de quem está fora". Foi feita **onde a ausência muda a operação** — a tela de plantão marca quem está afastado e recusa a marcação. **Não foi levada ao Painel**, e a diferença não é de esforço: o Painel é visível a `colaborador`, e `atestado`/`licença` são **informação de saúde**. Publicar isso para os colegas é decisão de privacidade. Opções: não mostrar · mostrar só "fora hoje", sem o tipo · mostrar completo só para gestor. **Nada implementado** até você escolher.
+> ~~**Quem pode ver que alguém está de atestado?**~~ **Respondida em 06/09/2026** e implementada como `A13`: todo mundo vê que a pessoa está fora, só o gestor vê por quê. Saiu desta lista.
 
 1. **Quem vê a caixa de entrada inteira?** *(levantada na auditoria de 28/08/2026)* Hoje `GET /api/itens` exige sessão mas não exige papel, e a navegação oferece a tela a `colaborador` — então qualquer pessoa autenticada vê remetente e assunto de TODOS os e-mails. O `RF-23` diz que colaborador vê *os seus*. **Não foi alterado de propósito:** a equipe já trabalha de uma caixa compartilhada, então restringir mudaria a operação em vez de corrigir defeito.
 2. **Carga de exceção conta para o balanceamento?** *(levantada em 28/08/2026, com o registro manual)* Quem atende 30 inadimplentes num dia fez trabalho real, e hoje esse trabalho **não** entra no crédito — a pessoa continua recebendo cota cheia das categorias do rateio. Contar resolveria a justiça de carga, mas faria uma categoria de exceção mexer na cota justa de categorias das quais ela não participa. Escolhi o lado reversível (`§ AT-09`) porque despoluir um razão já acumulado exige recomputar histórico; começar a contar depois, não.
