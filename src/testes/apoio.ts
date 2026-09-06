@@ -1,12 +1,21 @@
 import { CATEGORIAS_CADASTRO } from '../core/config'
 import type { Papel } from '../core/esquemas'
-import { sequenciaDeDatas } from '../core/util/datas'
+import { hojeIso, sequenciaDeDatas } from '../core/util/datas'
 import { atorDaSessao, type Ator } from '../servidor/ator'
 import type { Banco } from '../servidor/prisma'
 
 /** Apoio aos testes de integração. Dados 100% sintéticos. */
 
-export const DATA_BASE = '2026-09-01'
+/**
+ * Antes era uma string fixa no passado ('2026-09-01'). `planejarCategoria`
+ * corta itens por `criadoEm <= fimDoDia(data)` — de propósito, é o corte
+ * temporal que impede uma rodada de varrer o futuro inteiro. Como `criadoEm`
+ * nasce do relógio real (`@default(now())`), toda vez que o relógio real
+ * passava da data fixa, itens criados pelos testes nasciam "no futuro" em
+ * relação a ela e o corte os excluía — bomba-relógio, não defeito de
+ * produção. Ancorado em `hojeIso()` para nunca ficar para trás.
+ */
+export const DATA_BASE = hojeIso()
 
 /** Ator de teste. Equivale ao que a camada de sessão produzirá em produção. */
 export function atorDeTeste(colaboradorId: string, papel: Papel): Ator {
