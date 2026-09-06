@@ -42,6 +42,7 @@
     "zod": "^4.4.3"
   },
   "overrides": {
-    "deepmerge-ts": "^8.0.0"
+    "deepmerge-ts": "^8.0.0",
+    "mysql2": "^3.24.3"
   }
 }

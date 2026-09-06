@@ -112,9 +112,9 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 
 **Dependências e GitHub em dia.** Os dois PRs do Dependabot que estavam abertos e verdes (`#13`, `#14`) foram mesclados — zero PR aberto agora. Dois branches locais órfãos apagados; os sete branches remotos obsoletos já não existiam de verdade (o repositório apaga branch ao mesclar; só o cache local (`git fetch --prune`) estava desatualizado).
 
-**`npm audit` acusa 2 vulnerabilidades — avaliadas, não corrigidas.** `mysql2` vulnerável é dependência do **CLI do Prisma** (suporte a MySQL que o Prisma empacota sempre), nunca importado por este projeto, que usa SQLite. Corrigir via `--force` rebaixaria o Prisma de `7.10.0` para `6.19.3` para fechar uma porta que não existe aqui. Não mexido; revisitar se o projeto um dia conectar a MySQL de verdade.
+**O CI estava vermelho e a documentação dizia que estava verde.** O job `Auditoria de dependências` (`npm audit --audit-level=high`) falhava por duas vulnerabilidades em `mysql2` — uma alta —, enquanto este arquivo afirmava "npm audit acusa zero vulnerabilidades". `mysql2` é dependência do **CLI do Prisma** (que empacota suporte a MySQL sempre), nunca importado por este projeto, que usa SQLite; mas vermelho permanente ensina a equipe a ignorar vermelho, e isso o projeto já tinha registrado como inaceitável. Como o Prisma fixa `mysql2` em versão **exata**, subir o Prisma não resolveria e `--force` o rebaixaria dois majors. Corrigido com `overrides` no `package.json` — padrão que o projeto já usava para `deepmerge-ts` —, subindo `mysql2` para a versão corrigida `3.24.3`. `npm audit`: **0 vulnerabilidades**.
 
-`npm run verificar`: **271 testes verdes**, typecheck limpo.
+`npm run verificar`: **271 testes verdes**, typecheck limpo, `npx prisma generate` funcionando.
 
 ---
 
@@ -369,7 +369,7 @@ As mais graves que foram corrigidas:
 
 ## Situação do CI e das dependências
 
-**O CI roda e passa em três jobs:** `verificar` (typecheck, testes e sincronia entre schema e migrações — a sincronia é um passo dentro dele, não um job próprio), `segredos` (gitleaks) e `dependencias`. `npm audit` acusa **zero vulnerabilidades**.
+**O CI roda e passa em três jobs:** `verificar` (typecheck, testes e sincronia entre schema e migrações — a sincronia é um passo dentro dele, não um job próprio), `segredos` (gitleaks) e `dependencias`. `npm audit` acusa **zero vulnerabilidades** — voltou a zero em 06/09/2026, com o `override` de `mysql2`; entre 31/08 e essa data o job `dependencias` estava vermelho e este arquivo dizia o contrário. Antes de repetir a frase "o CI está verde" aqui, olhe o CI, não a memória da sessão — é a mesma lição que os branches órfãos já tinham dado.
 
 O segundo arquivo de workflow, o do CodeQL, está **desarmado de propósito** (`workflow_dispatch` apenas). A análise funciona, mas o upload do resultado exige "code scanning", que o GitHub só oferece em repositório público ou com Advanced Security — e workflow eternamente vermelho ensina a equipe a ignorar vermelho. Reativar é descomentar os gatilhos quando o plano permitir.
 

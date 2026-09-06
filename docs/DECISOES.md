@@ -1234,9 +1234,17 @@ Antes de rodar qualquer coisa, `typescript` instalado era `5.9.3` e `@types/node
 - Mesclados os dois PRs do Dependabot que estavam abertos e verdes: [#13](https://github.com/fernando123-hue/Sistema-SBP/pull/13) (`@types/node` 26.3.0 → 26.4.0) e [#14](https://github.com/fernando123-hue/Sistema-SBP/pull/14) (`@anthropic-ai/sdk` 0.121.0 → 0.122.0). Zero PRs abertos ao final da sessão.
 - Os 7 branches obsoletos (`claude/prototipo-em-progresso-unesv2` e 6 branches do Dependabot de PRs já mesclados/fechados) já não existiam no remoto — o repositório tem "apagar branch ao mesclar" ativado, e eles tinham sido removidos automaticamente quando cada PR fechou. Só a referência local (`git fetch --prune`) estava desatualizada. Dois branches locais órfãos (`feat/fundacao-dominio`, `pr5`) apagados — conteúdo dos dois já estava na `main` por squash-merge.
 
-### `npm audit`: 2 vulnerabilidades, avaliadas e não corrigidas — por quê
+### `npm audit`: 2 vulnerabilidades — e o CI já estava vermelho por elas
 
-`mysql2 <=3.23.0` aparece com uma severidade alta (downgrade de plugin de autenticação) e uma moderada (DoS por descompressão). É dependência do **CLI do Prisma** (`node_modules/prisma`), não do projeto — puxada porque o Prisma dá suporte a MySQL, e este projeto usa `@prisma/adapter-better-sqlite3`. Nunca há conexão MySQL neste código; o pacote fica instalado e nunca é importado por nenhuma linha nossa. `npm audit fix --force` rebaixaria `prisma` de `7.10.0` para `6.19.3` — troca ruim (perde duas versões maiores) para fechar uma porta que não está aberta aqui. Não corrigido. Revisitar quando o Prisma publicar uma versão que não arraste o `mysql2` vulnerável, ou se este projeto algum dia conectar a MySQL de verdade — nesse caso a avaliação muda.
+`mysql2 <=3.23.0` com uma severidade **alta** (downgrade de plugin de autenticação vaza credencial em texto puro) e uma moderada (DoS por descompressão). É dependência do **CLI do Prisma** (`node_modules/prisma`), não do projeto — puxada porque o Prisma dá suporte a MySQL, e este projeto usa `@prisma/adapter-better-sqlite3`. Nunca há conexão MySQL neste código.
+
+**A primeira avaliação parou em "não é alcançável aqui", e isso estava incompleto.** O job `Auditoria de dependências` do CI roda `npm audit --audit-level=high` e falha em severidade alta — ou seja, o CI **já estava vermelho**, e ficaria vermelho para sempre. A `ESTADO.md` afirmava "npm audit acusa zero vulnerabilidades", o que deixou de ser verdade em algum momento entre 31/08 e hoje sem ninguém notar. Vermelho permanente é o que este projeto já registrou como o pior estado possível de um workflow: ensina a equipe a ignorar vermelho.
+
+`npm audit fix --force` rebaixaria `prisma` de `7.10.0` para `6.19.3` — perder duas versões maiores para fechar uma porta que não está aberta. Recusado.
+
+**Corrigido pelo caminho certo: `overrides`.** O `prisma` fixa `mysql2` em versão **exata** (`3.15.3`), então subir o Prisma não resolveria; a correção do `mysql2` está em `3.24.3`. O `package.json` já usava `overrides` para `deepmerge-ts`, então o padrão já existia no projeto — acrescentado `"mysql2": "^3.24.3"`. O pacote continua sem ser importado por nenhuma linha nossa; a diferença é que a árvore instalada deixou de conter a versão vulnerável, o que é a correção de verdade e não a supressão do alerta.
+
+Conferido depois da troca: `mysql2` resolvido em `3.24.3`, `npx prisma generate` funcionando, `npm run verificar` com **271 testes verdes**, e `npm audit` em **0 vulnerabilidades**. A alternativa preguiçosa — `npm audit --omit=dev` no CI — foi recusada: esconderia esta e todas as futuras vulnerabilidades da cadeia de desenvolvimento, que é por onde entra ataque de cadeia de suprimentos.
 
 ### O que foi conferido e está limpo
 
