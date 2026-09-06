@@ -561,9 +561,36 @@ async function carregarElegiveis(
     select: { colaboradorId: true, capacidadeRelativa: true },
   })
 
+  // AFASTAMENTO MANDA MAIS QUE ESCALA (`A10`).
+  //
+  // As duas respondem perguntas diferentes: a escala diz quem está de plantão
+  // hoje — decisão diária do operador —, o afastamento diz quem está fora num
+  // PERÍODO, declarado uma vez. Sem esta consulta, quem entrou de férias
+  // continuaria recebendo trabalho por qualquer dia em que a escala tivesse
+  // ficado marcada, e o item só apareceria como parado dias depois.
+  //
+  // `fim: null` é ausência em aberto: cobre a data enquanto ninguém encerrar.
+  // Cancelado não conta — ausência que não aconteceu não tira ninguém do
+  // rateio, mas fica registrada (ver o modelo).
+  const afastados = await banco.afastamento.findMany({
+    where: {
+      colaboradorId: { in: candidatos },
+      canceladoEm: null,
+      inicio: { lte: data },
+      OR: [{ fim: null }, { fim: { gte: data } }],
+    },
+    select: { colaboradorId: true },
+  })
+  const estaAfastado = new Set(afastados.map((afastamento) => afastamento.colaboradorId))
+
   const elegiveis: Elegivel[] = []
 
   for (const escala of escalas) {
+    // O crédito de quem está afastado CONGELA por consequência, não por
+    // mecanismo: crédito só muda para quem entra numa rodada, e quem sai aqui
+    // não entra. Somado à janela deslizante de 30 dias (`A9`), quem volta de
+    // férias não retorna como credor gigante levando tudo.
+    if (estaAfastado.has(escala.colaboradorId)) continue
     const [saldoCategoria, saldoGlobal, doMes, doDia] = await Promise.all([
       banco.saldoCarga.findFirst({
         where: { colaboradorId: escala.colaboradorId, categoriaId, data: { lte: data } },
