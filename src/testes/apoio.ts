@@ -1,4 +1,4 @@
-import { CATEGORIAS_CADASTRO } from '../core/config'
+import { CATEGORIAS_CADASTRO, limiarConfiancaSemente } from '../core/config'
 import type { Papel } from '../core/esquemas'
 import { hojeIso, sequenciaDeDatas } from '../core/util/datas'
 import { atorDaSessao, type Ator } from '../servidor/ator'
@@ -104,6 +104,7 @@ export async function semearBase(
         divisivel: categoria.divisivel,
         peso: categoria.peso,
         limiarIndivisivel: opcoes.limiarIndivisivel ?? categoria.limiarIndivisivel,
+        limiarConfianca: limiarConfiancaSemente(categoria.codigo),
         entraNoRateio: categoria.entraNoRateio,
       },
     })

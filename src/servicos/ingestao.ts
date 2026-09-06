@@ -435,7 +435,17 @@ async function criarItens(
  * taxa de acerto MEDIDA, nunca conforme impressão. Qualquer um dos gatilhos
  * basta — eles não se anulam.
  */
-function decidirRevisao(
+/**
+ * Quando um humano precisa olhar antes de o item entrar no rateio.
+ *
+ * Exportada para teste: é a regra que o A12 move de lugar ao dar limiar
+ * próprio a documento e ficha, e sem alcançá-la direto a única forma de provar
+ * o efeito seria pela ingestão inteira. Pura — sem I/O, sem relógio.
+ *
+ * (Pelo desenho de camadas, o lugar natural dela é `src/core/`. Mover é
+ * refatoração própria, não algo para embutir numa entrega de decisão.)
+ */
+export function decidirRevisao(
   confianca: number,
   limiar: number,
   temCampoAusente: boolean,

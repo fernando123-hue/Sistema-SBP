@@ -1,0 +1,30 @@
+-- Decisoes A11 e A12 do dono do negocio (26/08/2026), aplicadas em 06/09/2026.
+--
+-- A frase do cliente foi uma so: "documento e ficha demandam mais atencao".
+-- Ela tem dois lados, e cada um mexe num lugar diferente do sistema:
+--
+--   peso            -> equilibrio ENTRE categorias. Entra na cota justa
+--                      (`motor.ts`) e no livro-razao global, entao quem passa
+--                      o dia em documento pesado nao recebe tambem um monte de
+--                      trabalho leve por cima. DENTRO da categoria nada muda:
+--                      documento sempre foi comparado so com documento, e o
+--                      peso e constante ali.
+--   limiarConfianca -> quanto a IA precisa estar segura para aprovar sozinha.
+--                      Mais alto = MAIS documento e ficha caem na revisao
+--                      humana. E o corte ANTES do motor (`ingestao.ts`), nao
+--                      toca na divisao.
+--
+-- Por que migracao e nao seed: os dois valores sao ajustaveis pelo operador
+-- sem deploy. Se o seed os reescrevesse a cada execucao, um ajuste deliberado
+-- voltaria ao padrao sozinho, sem aviso. Migracao roda uma vez, e versionada,
+-- e declara a data em que a decisao passou a valer.
+--
+-- ATENCAO AO HISTORICO: `SaldoCarga.recebidoPonderado` e o credito acumulado
+-- de antes desta data foram calculados com peso 1 para TODAS as categorias.
+-- O livro-razao nao e recomputado aqui de proposito — recomputar historico e
+-- reescrever o passado, e o projeto proibe isso (invariante 11). A consequencia
+-- e conhecida e aceita: existe uma descontinuidade de unidade nesta data.
+-- Numa base com historico real, a rodada de comparacao lado a lado precisa
+-- ser refeita a partir daqui.
+UPDATE "Categoria" SET "peso" = 4,    "limiarConfianca" = 0.95 WHERE "codigo" = 'DOC_CADASTRO';
+UPDATE "Categoria" SET "peso" = 1.75, "limiarConfianca" = 0.90 WHERE "codigo" = 'FICHA_CADASTRO';
