@@ -57,10 +57,10 @@ Os outros vêm prontos do `.env.example`. `PROXIES_CONFIAVEIS="0"` é o correto 
 Depois:
 
 ```bash
-npx prisma migrate deploy   # cria o banco e aplica as 8 migrações
+npx prisma migrate deploy   # cria o banco e aplica as 9 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 278 testes
+npm run verificar           # typecheck + 309 testes
 npm run dev                 # http://localhost:3000
 ```
 
@@ -81,7 +81,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Camada | Estado |
 |---|---|
 | Motor de distribuição | Função pura, determinística, versionada. Conservação garantida por transação |
-| Modelo de dados | 20 modelos, constraints reais, 8 migrações |
+| Modelo de dados | 21 modelos, constraints reais, 9 migrações |
 | Retenção | Conteúdo do e-mail e bytes de anexo em linhas próprias, expurgáveis sem tocar no histórico operacional |
 | Ingestão | Idempotente por `message-id`, IA atrás de port, tipo real do anexo conferido pelos bytes |
 | Armazenamento | Arquivos fora do banco, atrás de port. Disco local hoje, nuvem trocando o adapter |
@@ -97,12 +97,28 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | API REST | 24 caminhos, 29 operações, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **278 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
+| Testes | **309 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
+
+**Entrou o A10 — afastamento como entidade.** Detalhe em `DECISOES.md`, seção *Afastamento (A10)*.
+
+Férias, atestado, falta e licença deixam de ser catorze marcações de escala feitas na mão. **Escala e afastamento respondem perguntas diferentes** — quem está de plantão hoje (decisão diária do operador) contra quem está fora num período (fato, declarado uma vez pelo gestor) — e `carregarElegiveis` exige as duas. É por isso que o afastamento funciona mesmo com a escala marcada, que é exatamente o caso de esquecer de desmarcar.
+
+**O crédito congela sozinho, e não foi escrita uma linha para isso.** Crédito só muda para quem entra numa rodada, e quem está afastado não entra. Escrevi o teste que prova a propriedade em vez do código que já existia de graça — um "congelador" criaria um segundo lugar onde o crédito é manipulado, e um segundo lugar para errar.
+
+**Verificado por HTTP com A/B, e a primeira tentativa não provava nada:** pus alguém de férias e ela não recebeu — mas ela não estava escalada naquele dia de qualquer forma. Refeito com quem **estava** de plantão e recebendo: Dora sai, a carga é absorvida pelos outros, a conservação fecha, e a narrativa do `A6` acompanha sozinha ("com 1 pessoa de plantão" no lugar de 2).
+
+**Um obstáculo de ambiente ficou registrado:** a CSP quebra a verificação de tela em desenvolvimento (`eval() is not supported`, HMR caindo), e a hidratação do React fica intermitente. Não é defeito do produto — em produção o React não usa `eval` — mas torna o `npm run dev` pouco confiável para conferir tela, e esta entrega teve de ser verificada por HTTP. Não corrigido de propósito: afrouxar a CSP em desenvolvimento é decisão própria, não carona.
+
+Testes: 295 → **309**.
+
+---
+
+### Antes disso, na mesma data — A7 e A6
 
 **Entraram A7 e A6 — prioridade por idade e relatório da rodada.** Detalhe em `DECISOES.md`, seção *Prioridade por idade e relatório da rodada*.
 
@@ -455,11 +471,11 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ~~**A11 e A12 — peso e limiar por categoria.**~~ **Entraram em 06/09/2026.** Ver *Onde parei* e `DECISOES.md` → *Peso e limiar por categoria*. **Os valores continuam sem ter sido relidos com o dono do negócio** — `1,75` nasceu negociável, e trocar qualquer um deles é uma linha de migração.
 
-Restam duas, em ordem de custo:
+~~**A10 — entidade `Afastamento`.**~~ **Entrou em 06/09/2026.** Entidade, migração, exclusão automática do rateio e tela no Acesso.
 
-0a. **A10 — entidade `Afastamento`.** Hoje a indisponibilidade é `Escala.disponivel` marcada dia a dia na mão. Vira entidade de primeira classe (tipo, início, fim), com o crédito congelado durante a ausência — sem isso, quem volta de férias retorna como credor gigante e leva tudo. Precisa de migração e tela.
+**Resta uma:**
 
-0b. **A4 — agrupamento por liga.** O mais caro, e o único que **muda o contrato do motor**: `distribuir()` recebe quantidade escalar e não conhece `liga_id`. Precisa de uma unidade de entrada nova (grupos liga/tamanho) com alocação gulosa maior-primeiro, mantendo a trava de conservação intacta. **Vai para `docs/03-SPEC.md` antes de tocar em código** — é a regra da casa para mudança de motor.
+0a. **A4 — agrupamento por liga.** O mais caro, e o único que **muda o contrato do motor**: `distribuir()` recebe quantidade escalar e não conhece `liga_id`. Precisa de uma unidade de entrada nova (grupos liga/tamanho) com alocação gulosa maior-primeiro, mantendo a trava de conservação intacta. **Vai para `docs/03-SPEC.md` antes de tocar em código** — é a regra da casa para mudança de motor.
 
 ~~Além dessas, duas parciais: **A6** e **A7**.~~ **As duas entraram em 06/09/2026.** O `A7` está completo. Do `A6` falta só a leitura **narrada do histórico**: a rodada do dia é narrada na tela, mas reler em português uma rodada de três semanas atrás ainda exige `GET /api/rodadas/[id]`, que devolve dados crus. Como a narrativa é função pura sobre o snapshot, aplicá-la ao histórico é trabalho de rota e tela, não de regra.
 
@@ -567,7 +583,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 278 testes |
+| `npm run verificar` | Typecheck + 309 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

@@ -98,6 +98,8 @@ export const AcaoAuditavelSchema = z.enum([
   'senha_inicial_definida',
   'senha_redefinida_pelo_gestor',
   'conta_destravada',
+  'afastamento_registrado',
+  'afastamento_cancelado',
 ])
 export type AcaoAuditavel = z.infer<typeof AcaoAuditavelSchema>
 
@@ -136,6 +138,8 @@ export const OperacaoSchema = z.enum([
   'ativar ou desativar colaborador',
   'consultar diagnóstico de origem',
   'consultar memória operacional',
+  'registrar afastamento',
+  'cancelar afastamento',
 ])
 export type Operacao = z.infer<typeof OperacaoSchema>
 
@@ -305,6 +309,44 @@ export const EscalaEntradaSchema = z.object({
     .describe('Capacidade parcial ainda não é aplicada pelo motor de distribuição.'),
   observacao: z.string().max(500).nullable().default(null),
 })
+
+export const TipoDeAfastamentoSchema = z.enum([
+  'ferias',
+  'falta',
+  'atestado',
+  'licenca',
+  'outro',
+])
+export type TipoDeAfastamento = z.infer<typeof TipoDeAfastamentoSchema>
+
+/**
+ * Ausência declarada de um colaborador (`A10`).
+ *
+ * `fim` nulo é ausência EM ABERTO — quem sai de licença sem data de volta
+ * definida. Não é o mesmo que ausência de um dia: essa tem `fim` igual a
+ * `inicio`. A diferença importa porque a primeira tira a pessoa do rateio até
+ * alguém encerrar, e a segunda se resolve sozinha no dia seguinte.
+ */
+export const AfastamentoEntradaSchema = z
+  .object({
+    colaboradorId: z.string().min(1),
+    tipo: TipoDeAfastamentoSchema,
+    inicio: DataIsoSchema,
+    fim: DataIsoSchema.nullable().default(null),
+    observacao: z.string().trim().max(500).nullable().default(null),
+  })
+  .refine((entrada) => entrada.fim === null || entrada.fim >= entrada.inicio, {
+    // Chave ISO é ordenável como texto, então a comparação é direta.
+    //
+    // Sem esta trava, um fim anterior ao início criaria um afastamento que
+    // NUNCA cobre data nenhuma: a consulta de elegibilidade pede
+    // `inicio <= data AND fim >= data`, e nenhum dia satisfaz as duas. O gestor
+    // registraria as férias, veria a linha na tela, e a pessoa continuaria
+    // recebendo trabalho — erro de digitação virando distribuição errada, sem
+    // nada que acusasse.
+    message: 'o fim do afastamento não pode ser anterior ao início',
+    path: ['fim'],
+  })
 
 /**
  * NENHUM esquema de entrada carrega "quem fez".

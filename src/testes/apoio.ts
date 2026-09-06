@@ -36,6 +36,7 @@ export async function limparTudo(banco: Banco): Promise<void> {
   await banco.eventoProcessamento.deleteMany()
   await banco.logAuditoria.deleteMany()
   await banco.escala.deleteMany()
+  await banco.afastamento.deleteMany()
   await banco.habilitacao.deleteMany()
   await banco.colaborador.deleteMany()
   await banco.regraDistribuicao.deleteMany()

@@ -61,7 +61,7 @@ Registrar não é implementar, e a distância precisa ficar explícita — senã
 | A7 — prioridade por idade | ✅ **Completo em 06/09/2026.** *Minha Fila* ordena pelo item mais antigo e o painel mostra há quantos dias o mais velho está parado |
 | A8 — lembrete semanal | ❌ Backlog declarado. Depende de capacidade de **envio**, que o A5 adiou |
 | A9 — janela deslizante | ✅ Implementada, com 30 dias (ver acima) |
-| A10 — `Afastamento` | ❌ **Não implementado.** Entidade não existe; hoje a indisponibilidade é `Escala.disponivel` marcada na mão |
+| A10 — `Afastamento` | ✅ **Implementado em 06/09/2026.** Entidade, migração, exclusão automática do rateio e tela no Acesso. O crédito congela por consequência, não por mecanismo |
 | A11 — peso por categoria | ✅ **Implementado em 06/09/2026.** `DOC = 4`, `FICHA = 1,75`, resto `1`. Ver *Peso e limiar por categoria* abaixo |
 | A12 — limiar por categoria | ✅ **Implementado em 06/09/2026.** `DOC = 0,95`, `FICHA = 0,90`, resto `0,85` |
 
@@ -1364,3 +1364,59 @@ Nenhuma migração acompanha: o único banco com as duplicatas era o de desenvol
 ### O que continua pendente destas duas decisões
 
 `A6` pede o relatório "do que fez, como fez e por quê" — o que existe agora é a rodada do dia, na tela de Distribuição. **Não existe leitura histórica narrada**: reler em português o que aconteceu numa rodada de três semanas atrás ainda exige `GET /api/rodadas/[id]`, que devolve dados crus. A narrativa é função pura sobre o snapshot, então aplicá-la ao histórico é trabalho de rota e tela, não de regra.
+
+---
+
+## Afastamento (A10) — 06/09/2026
+
+O que a decisão substitui: marcar `Escala.disponivel = false` **dia a dia, na mão**. Duas semanas de férias eram catorze marcações que alguém precisava lembrar de fazer, e esquecer uma significa mandar trabalho para quem não está — com o item aparecendo como parado só dias depois.
+
+### Escala e afastamento não são a mesma pergunta
+
+Foi a decisão de modelagem principal, e ela justifica a entidade nova em vez de um campo:
+
+| | Pergunta | Quem decide | Quando |
+|---|---|---|---|
+| `Escala` | quem está de plantão **hoje** | operador | todo dia |
+| `Afastamento` | quem está fora **num período** | gestor | uma vez |
+
+`carregarElegiveis` exige as duas coisas: estar escalado **e** não estar afastado. É por isso que o afastamento funciona mesmo com a escala marcada — que é exatamente o caso real de esquecer de desmarcar.
+
+### O crédito congela sozinho — e por isso não há mecanismo
+
+O `A10` pede que o crédito de quem está afastado fique congelado. **Nenhuma linha foi escrita para isso**, porque não era preciso: crédito só muda para quem entra numa rodada, e quem está afastado não entra. Somado à janela deslizante de 30 dias (`A9`), quem volta de férias não retorna como credor gigante levando tudo.
+
+Escrevi o **teste** que prova a propriedade em vez do código que já existia de graça. Construir um "congelador" teria criado um segundo lugar onde o crédito é manipulado — e um segundo lugar para errar.
+
+### Três escolhas que não são acidente
+
+**`fim` nulo é ausência em aberto, não ausência de um dia.** Licença sem data de volta é caso real; obrigar uma data faria o gestor inventar uma. Falta de um dia tem `fim` igual a `inicio`. A diferença importa porque a primeira tira a pessoa do rateio até alguém encerrar.
+
+**Fim anterior ao início é recusado.** Sem a trava, o afastamento nunca cobriria data nenhuma — a consulta pede `inicio <= data AND fim >= data`, e nenhum dia satisfaz as duas. O gestor registraria as férias, veria a linha na tela, e a pessoa continuaria recebendo trabalho: erro de digitação virando distribuição errada, sem nada que acusasse.
+
+**Sobreposição é recusada, e não é preciosismo.** Dois afastamentos cobrindo o mesmo dia não mudam a elegibilidade — a pessoa sai do rateio de qualquer jeito —, mas quebram a leitura: cancelar **um** deixaria a pessoa ainda fora do rateio sem que a tela explicasse por quê. A mensagem de recusa nomeia o período que já existe, para o gestor saber o que cancelar.
+
+**Cancelar carimba, nunca apaga.** Ausência que não aconteceu (férias adiadas, atestado corrigido) precisa parar de tirar a pessoa do rateio, mas a trilha tem de continuar respondendo por que alguém ficou fora na terça-feira passada.
+
+### Verificado por HTTP, com A/B — e a primeira tentativa não provava nada
+
+A verificação inicial pôs uma pessoa de férias e mostrou que ela não recebia. **Isso não provava o afastamento:** ela não estava escalada naquele dia de qualquer forma. Refeito com alguém que **estava** de plantão e recebendo:
+
+| | Liga | Ligante |
+|---|---|---|
+| Antes | Ana 2 · Dora 2 | Ana 3 · Dora 3 · Elias 3 |
+| Dora de férias | Ana 4 | Ana 5 · Elias 4 |
+
+Dora sai, a carga é absorvida, e a conservação fecha (`4 = 4`, `9 = 5 + 4`). A narrativa do `A6` acompanhou sozinha: "com 1 pessoa de plantão" no lugar de 2. Cancelar o afastamento devolve a pessoa ao rateio.
+
+As validações foram exercitadas pela rota real: fim anterior ao início e sobreposição voltaram recusadas, com mensagem em português.
+
+### Um obstáculo de ambiente que vale registrar
+
+**A CSP quebra a verificação no navegador em modo de desenvolvimento.** O `CLAUDE.md` manda subir `npm run dev` e conferir de verdade o que muda na tela — e o console mostra `eval() is not supported ... make sure that 'unsafe-eval' is included`, além do WebSocket do HMR falhando. O React em desenvolvimento usa `eval` para recursos de depuração, e a hidratação fica intermitente: formulários controlados param de responder a clique e digitação.
+
+**Não é defeito do produto:** em produção o React não usa `eval`, e a CSP restritiva está certa lá. Mas em desenvolvimento ela torna a verificação de tela pouco confiável — nesta entrega o login pela interface simplesmente não submetia, sem erro visível, e a verificação teve de ser feita por HTTP com sessão real.
+
+Registrado, **não corrigido**: afrouxar a CSP em desenvolvimento é mexer numa defesa que está funcionando, e a decisão de como fazer isso (variar por `NODE_ENV`) merece ser própria, não carona numa entrega de outra coisa. Enquanto isso, verificação de tela neste projeto tende a precisar do caminho por HTTP.
+
+Testes: 295 → **309**.

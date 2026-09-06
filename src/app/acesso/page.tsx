@@ -455,6 +455,253 @@ export default function Acesso() {
         Desligar o acesso encerra a sessão aberta na mesma hora e não apaga nada: o histórico de
         carga da pessoa continua de pé, porque a auditoria precisa dele.
       </p>
+
+      <Afastamentos
+        equipe={equipe ?? []}
+        aoMudar={carregar}
+        aoFalhar={setErro}
+        ocupado={ocupado !== null}
+      />
     </div>
+  )
+}
+
+const TIPOS: { valor: string; rotulo: string }[] = [
+  { valor: 'ferias', rotulo: 'Férias' },
+  { valor: 'atestado', rotulo: 'Atestado' },
+  { valor: 'falta', rotulo: 'Falta' },
+  { valor: 'licenca', rotulo: 'Licença' },
+  { valor: 'outro', rotulo: 'Outro' },
+]
+
+interface Afastamento {
+  id: string
+  colaboradorId: string
+  nome: string
+  tipo: string
+  inicio: string
+  fim: string | null
+  observacao: string | null
+  vigente: boolean
+}
+
+function dia(iso: string): string {
+  const [ano, mes, data] = iso.split('-')
+  return `${data}/${mes}/${ano}`
+}
+
+/**
+ * Afastamentos — férias, atestado, falta (`A10`).
+ *
+ * O que isto substitui: desmarcar `disponível` na escala, dia a dia. Duas
+ * semanas de férias eram catorze marcações que alguém precisava lembrar de
+ * fazer — e esquecer uma significa mandar trabalho para quem não está, com o
+ * item aparecendo como parado só dias depois.
+ *
+ * A tela deixa `fim` opcional de propósito: ausência sem data de volta
+ * definida é caso real (licença), e obrigar uma data faria o gestor inventar
+ * uma. Quem está fora sai do rateio até alguém encerrar.
+ */
+function Afastamentos({
+  equipe,
+  aoMudar,
+  aoFalhar,
+  ocupado,
+}: {
+  equipe: Colaborador[]
+  aoMudar: () => Promise<void>
+  aoFalhar: (mensagem: string | null) => void
+  ocupado: boolean
+}) {
+  const [lista, setLista] = useState<Afastamento[] | null>(null)
+  const [abrindo, setAbrindo] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [novo, setNovo] = useState({ colaboradorId: '', tipo: 'ferias', inicio: '', fim: '' })
+
+  const carregar = useCallback(async () => {
+    try {
+      setLista(await api.buscar<Afastamento[]>('/afastamentos'))
+    } catch (causa) {
+      aoFalhar(mensagemDoErro(causa))
+    }
+  }, [aoFalhar])
+
+  useEffect(() => {
+    void carregar()
+  }, [carregar])
+
+  async function registrar() {
+    setSalvando(true)
+    aoFalhar(null)
+    try {
+      await api.enviar('/afastamentos', {
+        colaboradorId: novo.colaboradorId,
+        tipo: novo.tipo,
+        inicio: novo.inicio,
+        // Campo vazio é ausência EM ABERTO, não string vazia: o servidor
+        // distingue os dois, e mandar `''` viraria erro de formato de data.
+        fim: novo.fim === '' ? null : novo.fim,
+      })
+      setNovo({ colaboradorId: '', tipo: 'ferias', inicio: '', fim: '' })
+      setAbrindo(false)
+      await carregar()
+      await aoMudar()
+    } catch (causa) {
+      aoFalhar(mensagemDoErro(causa))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  async function cancelar(afastamento: Afastamento) {
+    setSalvando(true)
+    aoFalhar(null)
+    try {
+      await api.remover(`/afastamentos/${afastamento.id}`)
+      await carregar()
+      await aoMudar()
+    } catch (causa) {
+      aoFalhar(mensagemDoErro(causa))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  const podeSalvar = novo.colaboradorId !== '' && novo.inicio !== ''
+
+  return (
+    <section className="mt-2">
+      <CabecalhoDeSecao
+        titulo="Afastamentos"
+        descricao="Quem está fora não recebe trabalho, sem ninguém precisar desmarcar a escala dia a dia. O crédito de quem está afastado fica parado — quem volta de férias não volta levando tudo."
+        acao={
+          <Botao
+            variante={abrindo ? 'secundario' : 'principal'}
+            onClick={() => setAbrindo(!abrindo)}
+            desabilitado={ocupado || salvando}
+          >
+            {abrindo ? 'cancelar' : 'Registrar afastamento'}
+          </Botao>
+        }
+      />
+
+      {abrindo ? (
+        <Cartao className="mb-3 px-4 py-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-xs">
+              Pessoa
+              <select
+                value={novo.colaboradorId}
+                onChange={(evento) => setNovo({ ...novo, colaboradorId: evento.target.value })}
+                className="rounded border border-borda bg-transparent px-2 py-1.5 text-sm"
+              >
+                <option value="">selecione…</option>
+                {equipe
+                  .filter((pessoa) => pessoa.ativo)
+                  .map((pessoa) => (
+                    <option key={pessoa.id} value={pessoa.id}>
+                      {pessoa.nome}
+                    </option>
+                  ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-xs">
+              Tipo
+              <select
+                value={novo.tipo}
+                onChange={(evento) => setNovo({ ...novo, tipo: evento.target.value })}
+                className="rounded border border-borda bg-transparent px-2 py-1.5 text-sm"
+              >
+                {TIPOS.map((tipo) => (
+                  <option key={tipo.valor} value={tipo.valor}>
+                    {tipo.rotulo}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-xs">
+              Início
+              <input
+                type="date"
+                value={novo.inicio}
+                onChange={(evento) => setNovo({ ...novo, inicio: evento.target.value })}
+                className="rounded border border-borda bg-transparent px-2 py-1.5 text-sm"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-xs">
+              Fim <span className="text-tinta-fraca">(vazio = sem data de volta)</span>
+              <input
+                type="date"
+                value={novo.fim}
+                onChange={(evento) => setNovo({ ...novo, fim: evento.target.value })}
+                className="rounded border border-borda bg-transparent px-2 py-1.5 text-sm"
+              />
+            </label>
+          </div>
+
+          <div className="mt-3 flex justify-end">
+            <Botao
+              variante="principal"
+              tamanho="pequeno"
+              onClick={registrar}
+              desabilitado={!podeSalvar || salvando}
+            >
+              {salvando ? 'salvando…' : 'Salvar'}
+            </Botao>
+          </div>
+        </Cartao>
+      ) : null}
+
+      {lista === null ? (
+        <Carregando />
+      ) : lista.length === 0 ? (
+        <Vazio titulo="Ninguém afastado" descricao="Férias e atestados registrados aparecem aqui." />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {lista.map((afastamento) => (
+            <li key={afastamento.id}>
+              <Cartao className="px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium">{afastamento.nome}</span>
+                    <span className="ml-2 text-xs text-tinta-suave">
+                      {TIPOS.find((tipo) => tipo.valor === afastamento.tipo)?.rotulo ??
+                        afastamento.tipo}
+                      {' · '}
+                      {dia(afastamento.inicio)}
+                      {afastamento.fim ? ` a ${dia(afastamento.fim)}` : ' — sem data de volta'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/*
+                      "fora hoje" é o que muda a distribuição AGORA. Sem esta
+                      marca, férias que ainda não começaram e férias em curso
+                      ficariam visualmente iguais, e quem olha a tela para
+                      entender por que alguém não recebeu não teria resposta.
+                    */}
+                    {afastamento.vigente ? <Selo tom="atencao">fora hoje</Selo> : null}
+                    <Botao
+                      tamanho="pequeno"
+                      onClick={() => cancelar(afastamento)}
+                      desabilitado={salvando || ocupado}
+                    >
+                      Cancelar
+                    </Botao>
+                  </div>
+                </div>
+              </Cartao>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="mt-3 text-xs text-tinta-fraca">
+        Cancelar um afastamento não apaga o registro: a trilha precisa continuar respondendo por que
+        alguém ficou fora do rateio numa data passada.
+      </p>
+    </section>
   )
 }

@@ -46,6 +46,7 @@ model Colaborador {
 
   habilitacoes     Habilitacao[]
   escalas          Escala[]
+  afastamentos     Afastamento[]
   atribuicoes      Atribuicao[]
   execucoes        Execucao[]
   saldosCarga      SaldoCarga[]
@@ -112,6 +113,48 @@ model Escala {
 
   @@unique([data, colaboradorId])
   @@index([data, disponivel])
+}
+
+/// Ausência declarada de um colaborador — férias, atestado, falta (decisão A10).
+///
+/// Existe porque a alternativa era marcar `Escala.disponivel = false` dia a dia,
+/// na mão. Duas semanas de férias eram catorze marcações que alguém precisava
+/// lembrar de fazer; esquecer uma significa distribuir trabalho para quem não
+/// está — e o item só aparece como parado dias depois.
+///
+/// NÃO substitui `Escala`: são perguntas diferentes. A escala diz quem está de
+/// plantão HOJE (decisão diária, do operador); o afastamento diz quem está fora
+/// NUM PERÍODO (fato, declarado uma vez). `carregarElegiveis` exige as duas
+/// coisas — estar escalado e não estar afastado.
+///
+/// O CRÉDITO CONGELA SOZINHO, e é por isso que a entidade não tem campo para
+/// isso: crédito só muda para quem entra numa rodada, e quem está afastado não
+/// entra. Somado à janela deslizante de 30 dias (A9), quem volta de férias não
+/// retorna como credor gigante levando tudo.
+model Afastamento {
+  id            String    @id @default(cuid())
+  colaboradorId String
+  /// ferias | falta | atestado | licenca | outro
+  tipo          String
+  /// ISO date `YYYY-MM-DD`, inclusivo.
+  inicio        String
+  /// ISO date `YYYY-MM-DD`, inclusivo. NULO = ausência em aberto (sem data de
+  /// volta definida). Falta de um dia tem `fim` igual a `inicio`.
+  fim           String?
+  observacao    String?
+
+  registradoPor String
+  registradoEm  DateTime  @default(now())
+  /// Quando o afastamento foi cancelado. Ausência que não aconteceu é
+  /// CANCELADA, nunca apagada: a trilha precisa responder por que alguém ficou
+  /// fora do rateio na terça-feira passada.
+  canceladoEm   DateTime?
+  canceladoPor  String?
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
+
+  @@index([colaboradorId, inicio])
+  @@index([inicio, fim])
 }
 
 // ─────────────────────────────────────────────────────────────
