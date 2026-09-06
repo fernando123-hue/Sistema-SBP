@@ -62,10 +62,10 @@ Registrar não é implementar, e a distância precisa ficar explícita — senã
 | A8 — lembrete semanal | ❌ Backlog declarado. Depende de capacidade de **envio**, que o A5 adiou |
 | A9 — janela deslizante | ✅ Implementada, com 30 dias (ver acima) |
 | A10 — `Afastamento` | ❌ **Não implementado.** Entidade não existe; hoje a indisponibilidade é `Escala.disponivel` marcada na mão |
-| A11 — peso por categoria | ❌ **Decidido, não aplicado.** `PESO_PADRAO = 1` para todas em `src/core/config.ts`. Os testes de distribuição assumem peso `1` e precisam ser revistos junto |
-| A12 — limiar por categoria | ❌ **Decidido, não aplicado.** `Categoria.limiarConfianca` é `@default(0.85)` no schema, igual para todas |
+| A11 — peso por categoria | ✅ **Implementado em 06/09/2026.** `DOC = 4`, `FICHA = 1,75`, resto `1`. Ver *Peso e limiar por categoria* abaixo |
+| A12 — limiar por categoria | ✅ **Implementado em 06/09/2026.** `DOC = 0,95`, `FICHA = 0,90`, resto `0,85` |
 
-A11 e A12 parecem troca de constante e não são: o peso entra na cota justa (`motor.ts`), então mudá-lo muda **toda** a divisão entre categorias e a suíte inteira de distribuição junto. Entram como trabalho próprio, com a rodada de comparação lado a lado refeita — nunca como ajuste de configuração de passagem.
+A11 e A12 parecem troca de constante e não são: o peso entra na cota justa (`motor.ts`), então mudá-lo muda **toda** a divisão entre categorias e a suíte inteira de distribuição junto. Entraram como trabalho próprio; **a rodada de comparação lado a lado precisa ser refeita a partir de 06/09/2026** — ver a nota sobre descontinuidade do livro-razão na seção dedicada.
 
 ---
 
@@ -1255,3 +1255,60 @@ Conferido depois da troca: `mysql2` resolvido em `3.24.3`, `npx prisma generate`
 Nada do roteiro de código do dono do negócio (A4/A10/A11/A12, `docs/ESTADO.md` § *Próximo passo*) foi tocado — são decisões que pedem confirmação antes de mexer em carga real de pessoas, e esta sessão foi conferência e limpeza, não construção. Também não rodei o adapter Anthropic contra a API real (continua sendo a única parte nunca provada) — exigiria a chave em `.env`, que não está nesta máquina.
 
 **Aviso operacional:** a sessão rodou `cp .env.example .env` sem checar antes se já havia um `.env` real configurado nesta máquina. Se havia, foi sobrescrito — não há como recuperar o conteúdo anterior a partir daqui, porque `.env` nunca entra no git. `SESSAO_SECRET` foi gerado de novo para permitir a verificação local; se este `.env` já servia alguma instância rodando, gere um novo valor de produção e confira `ANTHROPIC_API_KEY`/demais campos antes de considerar o ambiente local pronto.
+
+---
+
+## Peso e limiar por categoria (A11 e A12) — 06/09/2026
+
+As duas decisões saíram da **mesma frase** do cliente — *"documento e ficha demandam mais atenção"* — e por isso entraram na mesma entrega. Separá-las deixaria metade da intenção no ar: uma trata do esforço, a outra do cuidado.
+
+| | O que muda | Onde |
+|---|---|---|
+| **A11 · peso** | `DOC = 4`, `FICHA = 1,75`, resto `1` | Cota justa e livro-razão ponderado |
+| **A12 · limiar** | `DOC = 0,95`, `FICHA = 0,90`, resto `0,85` | Corte da fila de revisão, **antes** do motor |
+
+### O `ESTADO.md` superestimava o custo, e vale dizer por quê
+
+Estava escrito que A11 *"parece troca de constante e não é"*, porque mexeria no motor. Fui ler: **`motor.ts` já multiplicava por `categoria.peso`** desde sempre (`cotaJusta = quantidade × peso / n`, e `recebidoPonderado = alocado × peso`), e `distribuicao.ts` já gravava `recebidoPonderado`. `ingestao.ts` já lia `categoria.limiarConfianca` da linha da categoria. As duas decisões eram **valor de dado**, não lógica ausente.
+
+Isso não torna a entrega trivial — torna o risco diferente do que estava previsto. O trabalho real não foi escrever motor: foi descobrir **o que a mudança de unidade quebra**, e um teste de invariante mostrou exatamente isso.
+
+### O que quebrou, e por que não era defeito
+
+Dois testes do critério de aceitação nº 1 falharam:
+
+```
+expected 2.666666666666667 to be less than 1
+expected 3.5 to be less than or equal to 3
+```
+
+Nenhum era regressão. `2,667` é `0,667 × 4` e `3,5` é `2 × 1,75`: o **crédito é um livro-razão em unidades ponderadas** (§ C6), e o teto estava escrito como a constante `1`. Enquanto todo peso era `1`, *"um item"* e *"1 unidade"* eram o mesmo número — a ambiguidade existia e ninguém tinha como notar.
+
+O invariante do § C2 sempre foi *"ninguém fica atrasado mais do que **um item**"*. Comparar contra `1` depois do A11 passaria a exigir de `DOC_CADASTRO` um equilíbrio **quatro vezes mais apertado** que o de e-mail — regra que ninguém decidiu e que teria entrado de carona. Os testes passaram a ler o peso da própria categoria e comparar contra `peso` (e contra `limiar × peso` no caso do lote indivisível). O invariante não afrouxou: ele passou a **nomear a unidade** que sempre usou.
+
+### Semente, migração e o que NÃO se sobrescreve
+
+`peso` e `limiarConfianca` são ajustáveis pelo operador sem deploy. Então:
+
+- O **seed** planta os valores só no `create`. Ficaram **fora do `update`** de propósito: se o seed os reescrevesse, um ajuste deliberado (*"1,75 pesou demais, põe 1,5"*) voltaria ao padrão sozinho na próxima execução, sem aviso. Sobrescrever decisão humana em silêncio é a doença que este sistema cura.
+- Mudança de valor **por decisão do dono** entra por **migração** — explícita, versionada, roda uma vez, e carimba a data em que a decisão passou a valer. `20260906190000_peso_e_limiar_por_categoria`. Verificado numa base que já existia com peso `1`: os valores novos entraram.
+
+`limiarConfianca` **não** entrou no tipo `Categoria` do núcleo. Ele é o corte antes do motor, e o motor não tem por que conhecê-lo — a limpeza de 31/08 tinha removido essa duplicação exatamente por isso, e reintroduzi-la para semear seria desfazer a decisão sem discutir. A semente vive em `limiarConfiancaSemente()`, que é função (e não mapa exposto) para que o retorno seja sempre `number`: categoria sem valor próprio nasce no padrão, e não existe caminho que entregue `undefined` a um `create`. O typecheck pegou justamente essa forma na primeira tentativa.
+
+### A consequência que precisa ficar escrita: descontinuidade no livro-razão
+
+`SaldoCarga.recebidoPonderado` e o crédito acumulado **de antes de 06/09/2026** foram calculados com peso `1` para todas as categorias. O histórico **não** foi recomputado — recomputar é reescrever o passado, e o invariante 11 proíbe.
+
+Consequência aceita e conhecida: existe uma **descontinuidade de unidade nesta data**. Numa base com histórico real, a rodada de comparação lado a lado precisa ser refeita a partir daqui — comparar crédito de agosto com crédito de setembro passa a ser comparar coisas medidas em réguas diferentes.
+
+### O que estes números fazem com gente real
+
+Vale dizer sem eufemismo, porque a decisão redistribui trabalho entre pessoas: **dentro de uma categoria nada muda** (documento sempre foi comparado só com documento, e o peso ali é constante). O que muda é o **desempate entre categorias**: quem passa o dia em documento agora aparece como mais carregado no razão global e **não recebe também um monte de trabalho leve por cima** — que é literalmente o que o cliente pediu.
+
+E o A12 tem custo operacional: limiar mais alto significa **mais** documento e ficha caindo na fila de revisão humana. É o efeito desejado ("mais cuidado"), mas é fila de gente. Se a fila incomodar antes de o modelo real ter sido medido, o botão a girar é este número — e ele é configurável sem deploy.
+
+### Ainda pendente de confirmação
+
+Estes valores foram decididos em 26/08/2026 e **nunca foram relidos com o dono do negócio**. Foram implementados a pedido explícito de 06/09, com o aviso registrado. `1,75` já nasceu marcado como negociável (*"pode virar 1,5"*), e `4` para documento é a razão de quatro contra um e-mail — se a operação disser que é demais, é uma linha de migração.
+
+Testes: 271 → **278**. Sete novos em `src/servicos/peso-e-limiar.test.ts`, que prendem os valores decididos: um valor de dado que volta ao padrão não quebra nada, só passa a distribuir diferente em silêncio.

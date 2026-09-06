@@ -1,4 +1,4 @@
-import { CATEGORIAS_CADASTRO } from '../src/core/config'
+import { CATEGORIAS_CADASTRO, limiarConfiancaSemente } from '../src/core/config'
 import { deslocarDias, hojeIso, sequenciaDeDatas } from '../src/core/util/datas'
 import { gerarHash, sortearSenhaProvisoria } from '../src/servidor/credenciais'
 import { obterPrisma } from '../src/servidor/prisma'
@@ -92,8 +92,17 @@ async function principal(): Promise<void> {
         divisivel: categoria.divisivel,
         peso: categoria.peso,
         limiarIndivisivel: categoria.limiarIndivisivel,
+        limiarConfianca: limiarConfiancaSemente(categoria.codigo),
         entraNoRateio: categoria.entraNoRateio,
       },
+      // `peso` e `limiarConfianca` ficam DE FORA do update de propósito.
+      //
+      // Os dois são ajustáveis pelo operador sem deploy. Se o seed os
+      // reescrevesse, um ajuste deliberado ("1,75 ficou pesado demais, põe
+      // 1,5") voltaria ao padrão sozinho na próxima execução do seed, sem
+      // aviso — sobrescrever decisão humana em silêncio é exatamente a doença
+      // que este sistema existe para curar. Mudança de valor por decisão do
+      // dono entra por MIGRAÇÃO, que é explícita, versionada e roda uma vez.
       update: { rotulo: categoria.rotulo, ordem: posicao },
     })
   }

@@ -57,10 +57,10 @@ Os outros vêm prontos do `.env.example`. `PROXIES_CONFIAVEIS="0"` é o correto 
 Depois:
 
 ```bash
-npx prisma migrate deploy   # cria o banco e aplica as 7 migrações
+npx prisma migrate deploy   # cria o banco e aplica as 8 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 271 testes
+npm run verificar           # typecheck + 278 testes
 npm run dev                 # http://localhost:3000
 ```
 
@@ -81,7 +81,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Camada | Estado |
 |---|---|
 | Motor de distribuição | Função pura, determinística, versionada. Conservação garantida por transação |
-| Modelo de dados | 20 modelos, constraints reais, 7 migrações |
+| Modelo de dados | 20 modelos, constraints reais, 8 migrações |
 | Retenção | Conteúdo do e-mail e bytes de anexo em linhas próprias, expurgáveis sem tocar no histórico operacional |
 | Ingestão | Idempotente por `message-id`, IA atrás de port, tipo real do anexo conferido pelos bytes |
 | Armazenamento | Arquivos fora do banco, atrás de port. Disco local hoje, nuvem trocando o adapter |
@@ -97,12 +97,30 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | API REST | 24 caminhos, 29 operações, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **271 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
+| Testes | **278 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
+
+**Entraram A11 e A12 — peso e limiar de confiança por categoria.** Detalhe em `DECISOES.md`, seção *Peso e limiar por categoria*.
+
+`DOC = 4` e `FICHA = 1,75` no peso; `0,95` e `0,90` no limiar; resto na base (`1` e `0,85`). As duas vieram da mesma frase do cliente e entraram juntas: uma trata do esforço (equilíbrio entre categorias), a outra do cuidado (quanto vai para a revisão humana).
+
+**O custo estava superestimado aqui, e a correção importa para as próximas estimativas.** Este arquivo dizia que A11 mexeria no motor. Não mexeu: `motor.ts` já multiplicava por `categoria.peso`, e `ingestao.ts` já lia `categoria.limiarConfianca`. As duas decisões eram **valor de dado**, não lógica ausente.
+
+**O risco real estava em outro lugar — na unidade.** Dois testes do critério de aceitação nº 1 falharam com `2,667 < 1` e `3,5 <= 3`. Nenhum era regressão: `2,667 = 0,667 × 4`. O crédito é um livro-razão em unidades **ponderadas**, e o teto estava escrito como a constante `1`; enquanto todo peso era `1`, "um item" e "1 unidade" eram o mesmo número. Manter `1` teria exigido de documento um equilíbrio quatro vezes mais apertado que o de e-mail — regra que ninguém decidiu. Os testes passaram a comparar contra o peso da própria categoria.
+
+**Duas consequências que ficam registradas:** o histórico anterior a 06/09/2026 foi calculado com peso `1` e **não** foi recomputado (o invariante 11 proíbe reescrever o passado), então há descontinuidade de unidade nesta data e a comparação lado a lado precisa ser refeita a partir daqui. E o A12 significa **mais** documento e ficha na fila de revisão humana — é o efeito desejado, mas é fila de gente; se incomodar, o número é configurável sem deploy.
+
+**Estes valores ainda não foram relidos com o dono do negócio.** Foram decididos em 26/08 e implementados a pedido explícito de 06/09, com o aviso registrado. `1,75` já nasceu negociável.
+
+Testes: 271 → **278**.
+
+---
+
+### Antes disso, na mesma data — sessão de manutenção
 
 **Sessão de manutenção, zero regra nova.** Conferência do repositório de ponta a ponta — código, dependências, branches, segurança — e correção do que estava quebrado ou defasado. Nenhuma decisão de negócio nova foi tomada; nenhum comportamento do produto mudou. Detalhe completo em `DECISOES.md`, seção *Manutenção de sessão — 06/09/2026*.
 
@@ -417,19 +435,21 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 **Isto mudou em 31/08/2026.** Até aqui a frase era *"nada de código está bloqueando"* — e ela valia, porque as decisões que pedem código estavam invisíveis num branch órfão. Com A4–A12 de volta, **há trabalho de código decidido e não feito**, e ele passa na frente do que era o topo da lista.
 
-### Zero — o que foi decidido em 26/08 e nunca construído
+### Zero — o que foi decidido em 26/08 e ainda não construído
 
-Quatro decisões do dono estão registradas e não existem no código. A tabela completa está em `DECISOES.md § A`, em *O que destas decisões ainda não existe em código*. Em ordem de custo:
+~~**A11 e A12 — peso e limiar por categoria.**~~ **Entraram em 06/09/2026.** Ver *Onde parei* e `DECISOES.md` → *Peso e limiar por categoria*. **Os valores continuam sem ter sido relidos com o dono do negócio** — `1,75` nasceu negociável, e trocar qualquer um deles é uma linha de migração.
 
-0a. **A11 e A12 — peso e limiar por categoria.** `DOC = 4`, `FICHA = 1,75`, resto `1`; limiar `0,95` / `0,90` / `0,85`. Parecem duas constantes em `src/core/config.ts` e não são: o peso entra na cota justa em `motor.ts`, então **toda a divisão entre categorias muda** e a suíte de distribuição, que assume `peso = 1`, precisa ser revista junto. O A12 é mais barato — é o corte antes do motor, não mexe nele. **Faça os dois na mesma entrega**, porque os dois vêm da mesma frase do cliente ("documento e ficha demandam mais atenção") e separá-los deixaria metade da intenção no ar.
+Restam duas, em ordem de custo:
 
-0b. **A10 — entidade `Afastamento`.** Hoje a indisponibilidade é `Escala.disponivel` marcada dia a dia na mão. Vira entidade de primeira classe (tipo, início, fim), com o crédito congelado durante a ausência — sem isso, quem volta de férias retorna como credor gigante e leva tudo. Precisa de migração e tela.
+0a. **A10 — entidade `Afastamento`.** Hoje a indisponibilidade é `Escala.disponivel` marcada dia a dia na mão. Vira entidade de primeira classe (tipo, início, fim), com o crédito congelado durante a ausência — sem isso, quem volta de férias retorna como credor gigante e leva tudo. Precisa de migração e tela.
 
-0c. **A4 — agrupamento por liga.** O mais caro, e o único que **muda o contrato do motor**: `distribuir()` recebe quantidade escalar e não conhece `liga_id`. Precisa de uma unidade de entrada nova (grupos liga/tamanho) com alocação gulosa maior-primeiro, mantendo a trava de conservação intacta. **Vai para `docs/03-SPEC.md` antes de tocar em código** — é a regra da casa para mudança de motor.
+0b. **A4 — agrupamento por liga.** O mais caro, e o único que **muda o contrato do motor**: `distribuir()` recebe quantidade escalar e não conhece `liga_id`. Precisa de uma unidade de entrada nova (grupos liga/tamanho) com alocação gulosa maior-primeiro, mantendo a trava de conservação intacta. **Vai para `docs/03-SPEC.md` antes de tocar em código** — é a regra da casa para mudança de motor.
 
-> **Antes de começar qualquer um destes, confirme com o dono.** As decisões têm cinco dias e nunca foram relidas com ele; A11 em particular redistribui carga entre pessoas reais. E o A9 tem o conflito 15 × 30 dias descrito acima.
+Além dessas, duas parciais: **A6** (relatório da rodada — os dados estão gravados, falta a camada que narra) e **A7** (metade feita; falta ordenar *Minha Fila* pelo mais antigo e o indicador de atraso no painel).
 
-**O que segue valendo, e agora vem depois:** o sistema ainda não trocou uma palavra com o modelo real, e continua sendo a única parte nunca provada.
+> **Uma lição do A11, para as próximas estimativas.** Este arquivo dizia que A11 mexeria no motor. Não mexia — `motor.ts` já multiplicava por `categoria.peso`. O custo real estava num lugar que ninguém tinha previsto: a mudança de **unidade** do livro-razão, que quebrou dois testes de invariante escritos quando "um item" e "1 unidade" eram o mesmo número. Antes de estimar pelo que está escrito aqui, abra o código.
+
+**O que segue valendo:** o sistema ainda não trocou uma palavra com o modelo real, e continua sendo a única parte nunca provada.
 
 ### Primeiro — a única parte nunca provada
 
@@ -531,7 +551,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 271 testes |
+| `npm run verificar` | Typecheck + 278 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |
@@ -554,7 +574,7 @@ Dados são 100% sintéticos. Nenhum nome, CPF ou e-mail real entra no repositór
 - **Login recusado com a senha certa:** confira se a conta não está desativada ou travada por tentativas. A mensagem é genérica de propósito — ela não revela qual dos casos é. Use a tela `/acesso` como gestor.
 - **`Cannot find module ... src/generated/prisma`:** o cliente do Prisma não é versionado. Rode `npx prisma generate`.
 - **O `CLAUDE.md` aparece modificado sem você ter mexido:** é o `next dev` escrevendo um bloco sozinho a cada execução. Esperado até a decisão de aceitar ou desligar.
-- **Clonou e falta código (sem `src/servicos/memoria.ts`, sem registro manual, 6 migrações em vez de 7):** era o sintoma de o PR #12 estar aberto, e ele foi mesclado em 31/08/2026. Se você vê isso hoje, seu clone é anterior a essa data: `git pull origin main`. A `main` atual tem 7 migrações e 271 testes.
+- **Clonou e falta código (sem `src/servicos/memoria.ts`, sem registro manual, 6 migrações em vez de 7):** era o sintoma de o PR #12 estar aberto, e ele foi mesclado em 31/08/2026. Se você vê isso hoje, seu clone é anterior a essa data: `git pull origin main`. A `main` atual tem 8 migrações e 278 testes.
 - **`migration ... was modified after it was applied` ao rodar `prisma migrate deploy`:** acontece se você aplicou as migrações num commit intermediário da antiga branch do PR #12 e depois pulou para outro — só alcançável em clone antigo, já que o #12 foi mesclado. A migração `20260828185851_identidade_de_dominio_na_memoria` foi **editada depois de aplicada**, em 28/08/2026, para colapsar duas migrações numa só — ela criava dois índices que saíram na mesma tarde, e duas migrações onde uma bastava seria ruído permanente no histórico. Como ela nunca saiu da branch nem tocou banco de produção, editar era seguro; o preço é este aviso. **Conserto:** apague o banco local e reconstrua — `rm -f dev.db && npx prisma migrate deploy && npm run db:seed`. O banco de teste se recria sozinho a cada suíte. Clonando a `main` de hoje, nada disso acontece.
 
 - **Testes lentos ou estourando tempo:** a simulação de 30 dias roda contra SQLite de verdade. `testTimeout` está em 90s para dar margem em máquina mais lenta; o arquivo pesado leva ~50s.

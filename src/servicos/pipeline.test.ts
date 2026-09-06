@@ -95,9 +95,20 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
     expect(atribuicoes).toBe(distribuidos)
   })
 
-  it('com rateio sempre divisível, |crédito| fica abaixo de 1 unidade', async () => {
+  it('com rateio sempre divisível, |crédito| fica abaixo de UM ITEM da categoria', async () => {
     // `limiarIndivisivel = 1` desliga o caminho "lote pequeno vai inteiro para
-    // um só". Aí vale o invariante forte do PRD: |crédito| < 1 a todo momento.
+    // um só". Aí vale o invariante forte do PRD (DECISOES.md § C2).
+    //
+    // O LIMITE É `peso`, NÃO `1`, e isso não afrouxa nada.
+    //
+    // O crédito é um livro-razão em unidades PONDERADAS (§ C6): um item de
+    // `DOC_CADASTRO` vale 4 ali dentro, um de `EMAIL_CADASTRO` vale 1. O
+    // invariante sempre foi "ninguém fica atrasado mais do que UM item";
+    // enquanto todo peso era 1, "um item" e "1 unidade" eram o mesmo número, e
+    // o teste podia comparar com a constante sem que ninguém notasse a
+    // ambiguidade. Com A11 (`DOC = 4`, `FICHA = 1,75`) os dois se separaram.
+    // Comparar com `1` passaria a exigir de DOC um equilíbrio QUATRO VEZES
+    // mais apertado que o de e-mail — regra que ninguém decidiu.
     const base = await semearBase(banco, {
       totalDeDias: 20,
       pessoasDePlantao: 3,
@@ -112,10 +123,12 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
       await confirmar(banco, { data, categorias: [] }, base.operador)
     }
 
-    const saldos = await banco.saldoCarga.findMany({ select: { creditoAcumulado: true } })
+    const saldos = await banco.saldoCarga.findMany({
+      select: { creditoAcumulado: true, categoria: { select: { codigo: true, peso: true } } },
+    })
     expect(saldos.length).toBeGreaterThan(0)
     for (const saldo of saldos) {
-      expect(Math.abs(saldo.creditoAcumulado)).toBeLessThan(1)
+      expect(Math.abs(saldo.creditoAcumulado)).toBeLessThan(saldo.categoria.peso)
     }
   })
 
@@ -139,9 +152,13 @@ describe('conservação de totais — critério de aceitação nº 1', () => {
       await confirmar(banco, { data, categorias: [] }, base.operador)
     }
 
-    const saldos = await banco.saldoCarga.findMany({ select: { creditoAcumulado: true } })
+    // Mesma razão do teste acima: o teto é o lote inteiro medido em unidades
+    // ponderadas — `LIMIAR` itens da categoria, não `LIMIAR` unidades cruas.
+    const saldos = await banco.saldoCarga.findMany({
+      select: { creditoAcumulado: true, categoria: { select: { codigo: true, peso: true } } },
+    })
     for (const saldo of saldos) {
-      expect(Math.abs(saldo.creditoAcumulado)).toBeLessThanOrEqual(LIMIAR)
+      expect(Math.abs(saldo.creditoAcumulado)).toBeLessThanOrEqual(LIMIAR * saldo.categoria.peso)
     }
 
     // O que importa no fim: a carga acumulada por pessoa fica junta.
