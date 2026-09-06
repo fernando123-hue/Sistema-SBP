@@ -95,6 +95,27 @@ describe('narrarRodada', () => {
     expect(ordem.indexOf('Clara')).toBeLessThan(ordem.indexOf('Ana'))
   })
 
+  it('explica por que a divisão por liga sai desigual (A4)', () => {
+    const rodada = distribuir({
+      data: '2026-09-06',
+      categoria: criarCategoria({ agrupaPorLiga: true }),
+      quantidade: 50,
+      grupos: [
+        { chave: 'liga:cardio', tamanho: 30 },
+        { chave: 'liga:pediatria', tamanho: 20 },
+      ],
+      elegiveis: [criarElegivel('ana'), criarElegivel('bruno')],
+    })
+    const texto = narrarRodada(rodada, 'Ligante', nomeDe).join(' ')
+
+    // Sem esta explicação, quem vê 30 contra 20 conclui que o rateio falhou.
+    // O desequilíbrio É a regra funcionando, e a narrativa tem de dizer isso.
+    expect(texto).toContain('A liga é a unidade que não se separa')
+    expect(texto).toContain('Ana 30')
+    expect(texto).toContain('Bruno 20')
+    expect(texto).toContain('o crédito acerta nos dias seguintes')
+  })
+
   it('registra o dia sem demanda em vez de calar', () => {
     const linhas = narrarRodada(rodar(0, [['ana', 0]]), 'Ligante', nomeDe)
 

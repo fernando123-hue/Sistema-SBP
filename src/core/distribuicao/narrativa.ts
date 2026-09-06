@@ -81,6 +81,22 @@ export function narrarRodada(
       `O lote foi inteiro para ${nomeDe(unico)}: é pequeno o bastante para a categoria não fragmentar, ` +
         'e dividir volume baixo custa mais atenção do que equilibra.',
     )
+  } else if (rodada.criterio === 'por_grupo') {
+    // A4 — a divisão não foi por igual, e a narrativa TEM de dizer isso.
+    // Sem esta frase, quem lê vê uma pessoa com 30 e outra com 20 e conclui
+    // que o rateio falhou; o desequilíbrio é a regra funcionando.
+    const quem = rodada.ordemDesempate
+      .filter((id) => (rodada.alocacao[id] ?? 0) > 0)
+      .map((id) => `${nomeDe(id)} ${rodada.alocacao[id]}`)
+
+    linhas.push(
+      'A liga é a unidade que não se separa, então cada uma foi inteira para uma pessoa só: ' +
+        `${listar(quem)}.`,
+    )
+    linhas.push(
+      'As ligas maiores foram entregues primeiro, sempre a quem estava mais credor naquele ' +
+        'momento — por isso o total do dia sai desigual de propósito, e o crédito acerta nos dias seguintes.',
+    )
   } else {
     const contemplados = rodada.ordemDesempate
       .slice(0, rodada.resto)

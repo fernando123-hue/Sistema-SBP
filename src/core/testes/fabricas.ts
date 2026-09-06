@@ -29,6 +29,7 @@ export function criarCategoria(sobrescrever: Partial<Categoria> = {}): Categoria
     peso: PESO_PADRAO,
     limiarIndivisivel: LIMIAR_INDIVISIVEL_PADRAO,
     entraNoRateio: true,
+    agrupaPorLiga: false,
     ...sobrescrever,
   }
 }

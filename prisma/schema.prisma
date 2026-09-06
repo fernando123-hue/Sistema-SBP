@@ -72,6 +72,8 @@ model Categoria {
   limiarIndivisivel Int     @default(3)
   limiarConfianca   Float   @default(0.85)
   entraNoRateio     Boolean @default(true)
+  /// A liga e a unidade que nao se separa nesta categoria (A4). LIGANTE e EMAIL_LIGA.
+  agrupaPorLiga     Boolean @default(false)
   ativa             Boolean @default(true)
 
   habilitacoes  Habilitacao[]

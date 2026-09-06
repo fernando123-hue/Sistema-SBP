@@ -94,6 +94,7 @@ async function principal(): Promise<void> {
         limiarIndivisivel: categoria.limiarIndivisivel,
         limiarConfianca: limiarConfiancaSemente(categoria.codigo),
         entraNoRateio: categoria.entraNoRateio,
+        agrupaPorLiga: categoria.agrupaPorLiga,
       },
       // `peso` e `limiarConfianca` ficam DE FORA do update de propósito.
       //

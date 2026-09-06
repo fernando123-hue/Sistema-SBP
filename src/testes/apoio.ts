@@ -107,6 +107,7 @@ export async function semearBase(
         limiarIndivisivel: opcoes.limiarIndivisivel ?? categoria.limiarIndivisivel,
         limiarConfianca: limiarConfiancaSemente(categoria.codigo),
         entraNoRateio: categoria.entraNoRateio,
+        agrupaPorLiga: categoria.agrupaPorLiga,
       },
     })
   }

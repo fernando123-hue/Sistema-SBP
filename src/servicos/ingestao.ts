@@ -7,6 +7,7 @@ import {
   type MotivoRevisao,
 } from '../core/esquemas'
 import { CategoriaDesconhecidaError } from '../core/erros'
+import { chaveDaLiga } from '../core/ligas'
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
@@ -388,10 +389,19 @@ async function criarItens(
       interpretacao.itens.length > 1,
     )
 
+    // A liga vira IDENTIDADE aqui, e não no motor (`A4`).
+    //
+    // Sem isto, `Item.ligaId` continuaria nulo para sempre — as tabelas `Liga`
+    // e `Ligante` existiam no schema desde a fundação e nunca tiveram um
+    // escritor. O motor precisa saber QUAL liga é para não separar o lote
+    // dela, e `ligaMencionada` sozinho é texto, não identidade.
+    const ligaId = await resolverLiga(tx, extraido.ligaMencionada)
+
     const item = await tx.item.create({
       data: {
         emailId: contexto.emailId,
         categoriaId: categoria.id,
+        ligaId,
         sequencia: posicao + 1,
         titulo: extraido.titulo,
         payload: serializar({
@@ -426,6 +436,34 @@ async function criarItens(
   }
 
   return { criados, aprovados, paraRevisao }
+}
+
+/**
+ * Encontra ou cria a liga que o nome menciona (`A4`, `AT-10`).
+ *
+ * A busca é EXATA sobre o nome normalizado (`chaveDaLiga`), nunca aproximada:
+ * duas grafias diferentes viram duas ligas. Separar é um erro que o operador
+ * vê e corrige; unir duas ligas diferentes entrega o trabalho de uma como se
+ * fosse da outra, e ninguém descobre.
+ *
+ * O nome ORIGINAL é guardado como veio — é o que a tela mostra, e reescrevê-lo
+ * para a forma normalizada faria a liga aparecer sem acento na interface.
+ */
+async function resolverLiga(tx: Transacao, mencionada: string | null): Promise<string | null> {
+  const chave = chaveDaLiga(mencionada)
+  if (chave === null) return null
+
+  // A comparação acontece sobre a chave, então a busca traz as candidatas com
+  // o mesmo primeiro caractere e compara em memória. Com o volume desta
+  // operação (dezenas de ligas), é mais simples e mais previsível do que
+  // gravar uma coluna normalizada agora — e trocar por uma coluna indexada
+  // depois não muda o comportamento, só o custo.
+  const existentes = await tx.liga.findMany({ select: { id: true, nome: true } })
+  const achada = existentes.find((liga) => chaveDaLiga(liga.nome) === chave)
+  if (achada) return achada.id
+
+  const criada = await tx.liga.create({ data: { nome: mencionada!.trim() } })
+  return criada.id
 }
 
 /**

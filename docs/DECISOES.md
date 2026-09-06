@@ -56,7 +56,7 @@ Registrar não é implementar, e a distância precisa ficar explícita — senã
 
 | Decisão | Estado no código hoje |
 |---|---|
-| A4 — agrupamento por liga | ❌ **Não implementado.** `distribuir()` recebe quantidade escalar; não conhece `liga_id`. Muda o contrato do motor |
+| A4 — agrupamento por liga | ✅ **Implementado em 06/09/2026.** Motor com segundo modo (grupos indivisíveis, guloso maior-primeiro), agrupamento por `(liga, dia)` no serviço, e `Item.ligaId` finalmente preenchido pela ingestão |
 | A5 — conclusão pelo app | ✅ Já é assim. O botão *Concluir* da *Minha Fila* existe, e o `IngestaoPort` é só-leitura |
 | A6 — relatório da rodada | ⚠️ **Quase.** A rodada do dia é narrada na tela de Distribuição desde 06/09/2026 (função pura, sem IA). Falta a leitura NARRADA do histórico: `GET /api/rodadas/[id]` ainda devolve só dados crus |
 | A7 — prioridade por idade | ✅ **Completo em 06/09/2026.** *Minha Fila* ordena pelo item mais antigo e o painel mostra há quantos dias o mais velho está parado |
@@ -88,6 +88,28 @@ A evidência que originou a regra (`CAD-AGOSTO` dia 12, `FICHA = 3`, `J = 2` →
 Só vale se todos trabalharem todos os dias. Mas `J = 2` em quase todos os dias com 4–7 colaboradores cadastrados, e Fernando/Ester só operam `LIGANTE`. Quem não está de plantão tem desvio bruto grande — e correto.
 
 **Correção:** o invariante é sobre **crédito**, não volume bruto: `|credito_acumulado| < 1 unidade ponderada` por colaborador × categoria, **a todo momento**. É estritamente mais forte que a versão semanal.
+
+#### Onde este invariante NÃO vale, e por decisão do cliente *(06/09/2026)*
+
+O invariante forte pressupõe que a menor coisa entregável é **um item**. O `A4` diz que em `LIGANTE` e `EMAIL_LIGA` a menor coisa entregável é **uma liga inteira** — e uma liga de 30 numa equipe de 3 desloca o crédito em 20 de uma vez. O próprio texto do `A4` assume isso: *"uma pessoa leva 30 ligantes, outra 20"*.
+
+Então, nessas duas categorias:
+
+| | Limite do crédito |
+|---|---|
+| Categorias comuns | `< 1 item` (`peso`) — **inalterado** |
+| Lote pequeno (`Q <= limiar`) | `<= limiar × peso` — já era assim (`AT-01`) |
+| **Agrupa por liga (`A4`)** | **`<= maior liga do dia × peso`** |
+
+**Isto foi encontrado pelos testes, não previsto.** A implementação do `A4` deixou dois testes do critério de aceitação nº 1 vermelhos, com crédito em `15,33` onde se esperava `< 1`. Não era defeito: era o invariante antigo medindo um sistema que o cliente mandou mudar.
+
+**O que substitui a garantia perdida.** Trocar "equilíbrio a todo momento" por "equilíbrio ao longo da semana" só é aceitável se o crédito **voltar**. Se ele crescesse a cada dia, a mesma pessoa acumularia dívida para sempre e o rateio estaria quebrado — devagar, em silêncio, que é o pior jeito. Ninguém tinha provado essa parte, então entrou um teste que:
+
+- roda 24 dias simulados e mede o pior crédito das categorias que agrupam;
+- exige que a segunda metade **não** seja sistematicamente pior que a primeira (não-deriva);
+- confere que a soma dos créditos de cada categoria continua **zero** — agrupar desloca carga entre pessoas, nunca cria nem destrói crédito (§ C9).
+
+O critério de aceitação nº 1 continua valendo integralmente onde a unidade é o item. Onde o cliente decidiu que a unidade é a liga, ele passa a ser o par *"limitado pela maior liga"* + *"sem deriva"*.
 
 ### C3 — RN-01 contradizia o briefing 🟠 resolvido por A2
 
@@ -219,6 +241,25 @@ Formato: hipótese · motivo · impacto · status.
 **Motivo:** `entraNoRateio = false` é a declaração de que a categoria fica fora da matemática do rateio diário. Somar essa carga ao razão faria uma categoria de exceção inclinar a cota justa das categorias reais: quem registrasse muitos inadimplentes apareceria credor e passaria a receber **menos** `DOC_CADASTRO`. Como o razão global é por frente, e `INADIMP.` é `CADASTRO`, o efeito não seria isolado.
 **Impacto:** trabalho real fica fora do balanceamento. Não fica invisível: o painel conta **atribuição**, não crédito, então o volume aparece por pessoa em `atribuidos`, `pendentes` e `concluidos`.
 **Status:** ⏳ provisório, e escolhido por ser o lado **reversível**. Passar a contar depois é uma decisão que se toma; despoluir um razão já acumulado exige recomputar histórico — o mesmo raciocínio de `H-D6`. A pergunta objetiva para o dono está em § H.4, item 6.
+
+### AT-10 — Identidade de liga por nome normalizado, nunca por semelhança
+
+**Hipótese:** duas menções de liga são a **mesma** liga quando os nomes coincidem depois de normalizar (minúsculas, sem acento, espaços colapsados, pontuação de borda removida). Qualquer diferença além disso cria uma liga nova.
+
+**Motivo:** o `A4` precisa de uma identidade de liga, e o que existe hoje é `ligaMencionada` — **texto livre** que a IA extrai. Transformar texto em identidade é casamento de nomes, e os dois erros possíveis não custam a mesma coisa:
+
+| Erro | O que acontece | Como se descobre |
+|---|---|---|
+| **Separar** uma liga em duas (grafias diferentes) | Duas pessoas podem atender a mesma liga no mesmo dia | O operador **vê** a liga repetida na tela e junta |
+| **Unir** duas ligas diferentes (nomes parecidos) | Trabalho da liga A entregue como se fosse da liga B | **Ninguém descobre** — a tela mostra um grupo só, coerente e errado |
+
+Casar por semelhança troca um erro visível e corrigível por um invisível e permanente. Este projeto existe para eliminar o segundo tipo.
+
+**Impacto:** com a IA escrevendo o nome de formas diferentes, a mesma liga pode se fragmentar — e a garantia central do `A4` ("a liga não se separa") falha, sem alarme. É o risco real desta escolha, e ele é **assimétrico a favor da correção**: fragmentar quebra a conveniência; unir quebra a correção.
+
+**Impacto sobre a carga:** nenhum. Fragmentar não perde item nem quebra conservação — só produz grupos menores.
+
+**Status:** ⏳ provisório. Duas evoluções possíveis quando houver dado real: (a) tela para o operador **fundir** duas ligas, que é o caminho seguro; (b) sugestão de possível duplicata **para revisão humana**, nunca fusão automática. Nenhuma das duas foi implementada.
 
 ---
 

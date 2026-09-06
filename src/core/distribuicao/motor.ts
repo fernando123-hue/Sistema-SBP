@@ -8,6 +8,7 @@ import {
 import type {
   ColaboradorId,
   CriterioRodada,
+  GrupoIndivisivel,
   Elegivel,
   EntradaRodada,
   ResultadoRodada,
@@ -61,6 +62,9 @@ export function distribuir(entrada: EntradaRodada): ResultadoRodada {
   let base = 0
   let resto = 0
 
+  const grupos = entrada.grupos
+  if (grupos) garantirGruposCoerentes(grupos, quantidade)
+
   if (quantidade === 0) {
     // Rodada vazia ainda é rodada: fica o registro de que nada entrou.
     criterio = 'sem_demanda'
@@ -70,6 +74,16 @@ export function distribuir(entrada: EntradaRodada): ResultadoRodada {
     criterio = 'indivisivel'
     const primeiro = ordem[0]!
     alocacao[primeiro.colaboradorId] = quantidade
+  } else if (categoria.agrupaPorLiga && grupos && grupos.length > 0) {
+    // A4 — a liga é a unidade que não se separa.
+    //
+    // Vem DEPOIS do corte de lote pequeno de propósito: com `Q <= limiar` vale
+    // a regra de sempre (tudo para o primeiro). O `A4` permite que ligas
+    // diferentes vão para pessoas diferentes; não obriga.
+    criterio = 'por_grupo'
+    for (const [colaboradorId, quantia] of alocarPorGrupos(grupos, ordem, categoria.peso)) {
+      alocacao[colaboradorId] = quantia
+    }
   } else {
     // RN-04 — piso para todos, resto inteiro para o topo da ordem.
     // Nunca arredondar. Nunca fracionar um item.
@@ -135,6 +149,92 @@ export function distribuir(entrada: EntradaRodada): ResultadoRodada {
     creditoCategoriaDepois,
     creditoGlobalAntes,
     creditoGlobalDepois,
+  }
+}
+
+/**
+ * Reparte lotes indivisíveis, o maior primeiro (`A4`).
+ *
+ * Cada grupo vai INTEIRO para quem estiver mais credor naquele instante, e a
+ * ordem é recalculada depois de cada entrega — sem isso, o maior credor
+ * levaria todos os grupos.
+ *
+ * "MENOS CARGA ACUMULADA" É LIDO COMO "MAIOR CRÉDITO", e é a decisão de
+ * projeto aqui. O `A4` fala em carga; o resto do sistema mede quem está
+ * devendo trabalho por crédito (`A2`, `RN-13`). Criar uma segunda definição de
+ * "quem é o próximo" produziria dois números que discordam — então a ordem
+ * reusa `ordenarElegiveis`, a MESMA de todas as outras rodadas, projetando
+ * sobre o crédito o que a pessoa já levou nesta.
+ *
+ * O empate de tamanho desempata pela chave, para a saída não depender da ordem
+ * em que os grupos chegaram.
+ */
+function alocarPorGrupos(
+  grupos: readonly GrupoIndivisivel[],
+  elegiveis: readonly Elegivel[],
+  peso: number,
+): Map<ColaboradorId, number> {
+  const recebido = new Map<ColaboradorId, number>(
+    elegiveis.map((elegivel) => [elegivel.colaboradorId, 0]),
+  )
+
+  const maiorPrimeiro = [...grupos].sort(
+    (a, b) => b.tamanho - a.tamanho || (a.chave < b.chave ? -1 : a.chave > b.chave ? 1 : 0),
+  )
+
+  for (const grupo of maiorPrimeiro) {
+    // Projeção: o crédito que a pessoa TERIA agora, já descontado o que ela
+    // levou nesta rodada. É a mesma conta que o passo 4 faz no fim, adiantada.
+    const projetados = elegiveis.map((elegivel) => {
+      const jaLevou = recebido.get(elegivel.colaboradorId) ?? 0
+      return {
+        ...elegivel,
+        creditoCategoria: elegivel.creditoCategoria - jaLevou * peso,
+        creditoGlobal: elegivel.creditoGlobal - jaLevou * peso,
+        recebidoDia: elegivel.recebidoDia + jaLevou,
+      }
+    })
+
+    const alvo = ordenarElegiveis(projetados)[0]!.colaboradorId
+    recebido.set(alvo, (recebido.get(alvo) ?? 0) + grupo.tamanho)
+  }
+
+  return recebido
+}
+
+/**
+ * `grupos` REFINA `Q`; não o substitui.
+ *
+ * Se a soma dos lotes não bater com a quantidade, a rodada distribuiria um
+ * número diferente do que entrou — e a trava de conservação pegaria isso
+ * depois, já dentro da transação, com uma mensagem sobre o sintoma. Falhar
+ * aqui nomeia a causa.
+ */
+function garantirGruposCoerentes(
+  grupos: readonly GrupoIndivisivel[],
+  quantidade: number,
+): void {
+  for (const grupo of grupos) {
+    if (!ehInteiroNaoNegativo(grupo.tamanho) || grupo.tamanho < 1) {
+      throw new ElegiveisInvalidosError(
+        `grupo "${grupo.chave}" tem tamanho inválido (${grupo.tamanho})`,
+      )
+    }
+  }
+
+  const chaves = new Set(grupos.map((grupo) => grupo.chave))
+  if (chaves.size !== grupos.length) {
+    // Chave repetida significa que o mesmo lote foi montado duas vezes: a soma
+    // ainda poderia bater, e a liga seria partida entre duas pessoas — que é
+    // exatamente o que o A4 proíbe.
+    throw new ElegiveisInvalidosError('há grupos com a mesma chave')
+  }
+
+  const somado = somar(grupos.map((grupo) => grupo.tamanho))
+  if (somado !== quantidade) {
+    throw new ElegiveisInvalidosError(
+      `a soma dos grupos (${somado}) não bate com a quantidade da rodada (${quantidade})`,
+    )
   }
 }
 
