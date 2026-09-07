@@ -37,6 +37,9 @@ export async function limparTudo(banco: Banco): Promise<void> {
   await banco.logAuditoria.deleteMany()
   await banco.escala.deleteMany()
   await banco.afastamento.deleteMany()
+  // Antes de `colaborador`: `Nota.autorId` é `Restrict`, então uma nota viva
+  // impediria a limpeza do autor e derrubaria o teste seguinte, não este.
+  await banco.nota.deleteMany()
   await banco.habilitacao.deleteMany()
   await banco.colaborador.deleteMany()
   await banco.regraDistribuicao.deleteMany()

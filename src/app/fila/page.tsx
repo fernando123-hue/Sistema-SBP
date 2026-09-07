@@ -12,6 +12,7 @@ import {
   Selo,
   Vazio,
 } from '../../componentes/matrizes'
+import { NotasDoSetor } from '../../componentes/notas'
 
 interface ItemDaFila {
   itemId: string
@@ -148,6 +149,13 @@ export default function Fila() {
           ))}
         </div>
       )}
+
+      {/*
+        A memória do setor fica DEPOIS da fila, nunca antes: o trabalho do dia
+        vem primeiro. Aqui o contexto é o setor inteiro — a fila mistura
+        categorias, e recortar por uma delas esconderia o aviso das outras.
+      */}
+      <NotasDoSetor />
     </div>
   )
 }

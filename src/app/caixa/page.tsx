@@ -16,6 +16,7 @@ import {
   Vazio,
   juntar,
 } from '../../componentes/matrizes'
+import { NotasDoSetor } from '../../componentes/notas'
 import { hojeIso } from '../../core/util/datas'
 
 interface ItemDaCaixa {
@@ -424,6 +425,14 @@ export default function Caixa() {
           )}
         </>
       )}
+
+      {/*
+        A ÚNICA das quatro telas com contexto de categoria de verdade: o filtro
+        já diz em que categoria a pessoa está olhando. Sem filtro, `null` — e a
+        seleção devolve as notas do setor inteiro, que é a resposta certa para
+        "ainda não sei de que categoria este trabalho é".
+      */}
+      <NotasDoSetor contexto={{ categoriaCodigo: filtro }} />
     </div>
   )
 }

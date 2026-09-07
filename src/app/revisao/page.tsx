@@ -13,6 +13,7 @@ import {
   SeloDeConfianca,
   Vazio,
 } from '../../componentes/matrizes'
+import { NotasDoSetor } from '../../componentes/notas'
 
 interface ItemEmRevisao {
   revisaoId: string
@@ -370,6 +371,13 @@ export default function Revisao() {
           })}
         </ul>
       )}
+
+      {/*
+        Na Revisão a memória vale duas vezes: é aqui que a equipe descobre onde
+        a IA escorrega, e é a nota escrita aqui que fará mais diferença no dia
+        em que o modelo passar a lê-la — ver `core/notas.ts`.
+      */}
+      <NotasDoSetor titulo="O que o setor já aprendeu sobre a interpretação" />
     </div>
   )
 }

@@ -100,6 +100,9 @@ export const AcaoAuditavelSchema = z.enum([
   'conta_destravada',
   'afastamento_registrado',
   'afastamento_cancelado',
+  // Memória do setor
+  'nota_registrada',
+  'nota_arquivada',
 ])
 export type AcaoAuditavel = z.infer<typeof AcaoAuditavelSchema>
 
@@ -140,6 +143,8 @@ export const OperacaoSchema = z.enum([
   'consultar memória operacional',
   'registrar afastamento',
   'cancelar afastamento',
+  'registrar nota do setor',
+  'arquivar nota do setor',
 ])
 export type Operacao = z.infer<typeof OperacaoSchema>
 
@@ -347,6 +352,43 @@ export const AfastamentoEntradaSchema = z
     message: 'o fim do afastamento não pode ser anterior ao início',
     path: ['fim'],
   })
+
+/** Teto do texto de uma nota do setor. */
+export const TAMANHO_MAXIMO_DA_NOTA = 1000
+
+/**
+ * Nota do setor — o que a equipe aprendeu operando.
+ *
+ * UMA PORTA SÓ, e o esquema é onde essa decisão fica visível: `texto` é o único
+ * campo obrigatório. Não há tipo de nota, não há categoria de nota, não há
+ * escolha a fazer antes de escrever. Formulário que obriga a classificar mata a
+ * captura, e memória em que ninguém escreve não vale nada — o que a nota é se
+ * descobre depois, pelo uso.
+ *
+ * `categoriaCodigo` e `ligaId` são os dois vínculos que fazem a nota ENCONTRAR
+ * o trabalho em vez de esperar alguém ir procurá-la. Ambos opcionais: nota sem
+ * vínculo nenhum é do setor inteiro e aparece em toda tela.
+ *
+ * NÃO EXISTE VÍNCULO COM PESSOA, e a ausência é a decisão. Ver `Nota` no schema
+ * e `DECISOES.md § H.4`, item 13.
+ */
+export const NotaEntradaSchema = z.object({
+  texto: z.string().trim().min(3).max(TAMANHO_MAXIMO_DA_NOTA),
+  categoriaCodigo: CategoriaCodigoSchema.nullable().default(null),
+  ligaId: z.string().min(1).nullable().default(null),
+})
+export type NotaEntrada = z.infer<typeof NotaEntradaSchema>
+
+export const ArquivamentoDeNotaSchema = z.object({
+  /**
+   * Por que a nota deixou de valer.
+   *
+   * Opcional, mas guardado quando vem: "arquivada" sem motivo responde que a
+   * regra mudou, nunca por quê — e é justamente o porquê que a próxima pessoa
+   * a esbarrar no mesmo problema precisa ler.
+   */
+  motivo: z.string().trim().max(500).nullable().default(null),
+})
 
 /**
  * NENHUM esquema de entrada carrega "quem fez".
