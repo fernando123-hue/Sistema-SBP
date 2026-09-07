@@ -1,12 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 
-import {
-  InterpretadorEstruturado,
-  RespostaDoModeloSchema,
-  type ClienteDeInterpretacao,
-  type PerfilDoFornecedor,
-} from './ia-estruturada'
+import { InterpretadorEstruturado } from './ia-estruturada'
+import type { ClienteDeModelo, PerfilDoFornecedor } from './fornecedor'
 import { ambiente } from '../servidor/ambiente'
 
 /**
@@ -25,7 +21,7 @@ import { ambiente } from '../servidor/ambiente'
  * `IA_ADAPTER`. Nenhum serviço, rota ou tela sabe da diferença.
  */
 
-export type { ClienteDeInterpretacao } from './ia-estruturada'
+export type { ClienteDeModelo } from './fornecedor'
 
 /**
  * Esforço de raciocínio.
@@ -60,7 +56,7 @@ export const PERFIL_ANTHROPIC: PerfilDoFornecedor = {
     erro instanceof Anthropic.PermissionDeniedError,
 }
 
-export function clienteAnthropic(): ClienteDeInterpretacao {
+export function clienteAnthropic(): ClienteDeModelo {
   const chave = ambiente().ANTHROPIC_API_KEY
   // `ambiente()` já recusa `IA_ADAPTER=anthropic` sem chave; esta é a segunda
   // tranca, para o caso de alguém construir o adapter direto.
@@ -69,14 +65,17 @@ export function clienteAnthropic(): ClienteDeInterpretacao {
   const cliente = new Anthropic({ apiKey: chave })
 
   return {
-    async interpretar({ instrucoes, conteudo, modelo }) {
+    async gerar({ instrucoes, conteudo, modelo, esquema }) {
       const resposta = await cliente.messages.parse({
         model: modelo,
         max_tokens: MAXIMO_DE_TOKENS,
         system: instrucoes,
         messages: [{ role: 'user', content: conteudo }],
         output_config: {
-          format: zodOutputFormat(RespostaDoModeloSchema),
+          // O esquema vem de quem chama, não fixo aqui: é o que permite este
+          // mesmo cliente atender a interpretação de e-mail e o assistente sem
+          // uma segunda cópia da chamada ao SDK.
+          format: zodOutputFormat(esquema),
           effort: ESFORCO,
         },
       })
@@ -97,7 +96,7 @@ export function clienteAnthropic(): ClienteDeInterpretacao {
 }
 
 export class IaAnthropic extends InterpretadorEstruturado {
-  constructor(cliente: ClienteDeInterpretacao = clienteAnthropic()) {
+  constructor(cliente: ClienteDeModelo = clienteAnthropic()) {
     super(PERFIL_ANTHROPIC, cliente)
   }
 }

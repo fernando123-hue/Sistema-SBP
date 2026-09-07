@@ -1,12 +1,8 @@
 import { GoogleGenAI } from '@google/genai'
 import { z } from 'zod'
 
-import {
-  InterpretadorEstruturado,
-  RespostaDoModeloSchema,
-  type ClienteDeInterpretacao,
-  type PerfilDoFornecedor,
-} from './ia-estruturada'
+import { InterpretadorEstruturado } from './ia-estruturada'
+import { formaEsperadaEmTexto, type ClienteDeModelo, type PerfilDoFornecedor } from './fornecedor'
 import { ambiente } from '../servidor/ambiente'
 
 /**
@@ -52,7 +48,7 @@ import { ambiente } from '../servidor/ambiente'
  * do trabalho a API do fornecedor adianta.
  */
 
-export type { ClienteDeInterpretacao } from './ia-estruturada'
+export type { ClienteDeModelo } from './fornecedor'
 
 /**
  * Teto de saída.
@@ -120,26 +116,7 @@ export const PERFIL_GEMINI: PerfilDoFornecedor = {
   },
 }
 
-/**
- * A forma esperada, dita ao modelo em texto.
- *
- * Derivada do MESMO Zod que valida a resposta depois — não redigitada à mão. É
- * a diferença entre uma forma que envelhece junto com a validação e duas que
- * divergem em silêncio.
- *
- * Vai nas INSTRUÇÕES, não em `responseJsonSchema`: ver o cabeçalho do arquivo
- * para o 400 que essa tentativa rendeu. `$schema` sai porque é metadado do
- * documento, não parte da forma, e só gastaria tokens.
- */
-function formaEsperadaEmTexto(): string {
-  const { $schema: _ignorado, ...forma } = z.toJSONSchema(RespostaDoModeloSchema, {
-    io: 'output',
-  }) as Record<string, unknown>
-
-  return `\n\nFORMATO DA RESPOSTA\nResponda com UM objeto JSON, sem texto em volta, sem cercas de código, obedecendo exatamente a este JSON Schema:\n${JSON.stringify(forma)}`
-}
-
-export function clienteGemini(): ClienteDeInterpretacao {
+export function clienteGemini(): ClienteDeModelo {
   const chave = ambiente().GOOGLE_AI_KEY
   // `ambiente()` já recusa `IA_ADAPTER=gemini` sem chave; esta é a segunda
   // tranca, para o caso de alguém construir o adapter direto.
@@ -148,7 +125,7 @@ export function clienteGemini(): ClienteDeInterpretacao {
   const cliente = new GoogleGenAI({ apiKey: chave })
 
   return {
-    async interpretar({ instrucoes, conteudo, modelo }) {
+    async gerar({ instrucoes, conteudo, modelo, esquema }) {
       const resposta = await cliente.models.generateContent({
         model: modelo,
         contents: conteudo,
@@ -156,7 +133,7 @@ export function clienteGemini(): ClienteDeInterpretacao {
           // A forma vai anexada às instruções, não em `responseJsonSchema` —
           // ver o cabeçalho. `application/json` continua valendo: garante que
           // a resposta não venha embrulhada em prosa ou em cerca de código.
-          systemInstruction: `${instrucoes}${formaEsperadaEmTexto()}`,
+          systemInstruction: `${instrucoes}${formaEsperadaEmTexto(esquema)}`,
           responseMimeType: 'application/json',
           maxOutputTokens: MAXIMO_DE_TOKENS,
           temperature: TEMPERATURA,
@@ -212,7 +189,7 @@ export function clienteGemini(): ClienteDeInterpretacao {
 }
 
 export class IaGemini extends InterpretadorEstruturado {
-  constructor(cliente: ClienteDeInterpretacao = clienteGemini()) {
+  constructor(cliente: ClienteDeModelo = clienteGemini()) {
     super(PERFIL_GEMINI, cliente)
   }
 }

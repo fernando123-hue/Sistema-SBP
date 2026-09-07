@@ -5,7 +5,7 @@ import { EmailBrutoSchema, type EmailBruto } from '../core/esquemas'
 import { FalhaDeInterpretacao, InterpretacaoIndisponivelError } from '../ports/ia'
 import { IaAnthropic } from './ia-anthropic'
 import { IaGemini, PERFIL_GEMINI } from './ia-gemini'
-import type { ClienteDeInterpretacao } from './ia-estruturada'
+import type { ClienteDeModelo } from './ia-estruturada'
 
 /**
  * Testes do adapter Gemini.
@@ -50,7 +50,7 @@ const RESPOSTA_VALIDA = {
   pareceInstrucao: false,
 }
 
-function clienteFalso(respostas: (unknown | Error)[]): ClienteDeInterpretacao & {
+function clienteFalso(respostas: (unknown | Error)[]): ClienteDeModelo & {
   chamadas: { instrucoes: string; conteudo: string; modelo: string }[]
 } {
   const chamadas: { instrucoes: string; conteudo: string; modelo: string }[] = []
@@ -58,7 +58,7 @@ function clienteFalso(respostas: (unknown | Error)[]): ClienteDeInterpretacao & 
 
   return {
     chamadas,
-    async interpretar({ instrucoes, conteudo, modelo }) {
+    async gerar({ instrucoes, conteudo, modelo }) {
       chamadas.push({ instrucoes, conteudo, modelo })
       const atual = respostas[Math.min(posicao, respostas.length - 1)]
       posicao += 1
