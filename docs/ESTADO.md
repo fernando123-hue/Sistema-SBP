@@ -1,16 +1,35 @@
 # Estado do projeto — retomada
 
-Última atualização: **07/09/2026** — **abriu a memória do setor.** O sistema já guardava o que *aconteceu* (a trilha); agora guarda o que a equipe *aprendeu* com isso. Três entregas mescladas hoje: o conserto do teste de fuso (#24), a retenção em três camadas com a decisão `A14` (#25) e as notas do setor (#26).
+Última atualização: **07/09/2026** — **abriu a memória do setor, e o sistema deixou de depender de um fornecedor de IA.** Seis entregas mescladas neste dia: o conserto do teste de fuso (#24), a retenção em três camadas com a decisão `A14` (#25), as notas do setor (#26), a correção deste próprio arquivo (#27), a liga chegando à tela (#28) e o segundo adapter de IA (#29).
+
+> **O pipeline de IA rodou contra um modelo real pela primeira vez** — Gemini, camada gratuita, custo zero. Era a única parte do sistema que nunca tinha sido exercitada. Detalhe em *Onde parei*.
 
 > **Agora HÁ decisões suas esperando** — cinco, registradas em `DECISOES.md § H.4`, itens 10 a 14. Quatro são de retenção e privacidade e vão para a chefia do setor; a quinta é sua: **quando a IA passa a ler as notas.** Você já respondeu *"depois de medir o modelo real"*, e essa medição é o passo 1 de sempre. Ver *Próximo passo sugerido*.
 
 ### Se você está retomando agora, leia isto primeiro
 
-1. **`npm run verificar` tem de dar 398 verdes.** Se der menos, algo quebrou entre as sessões — comece por aí, não pelo próximo passo.
-2. **Os valores do `A11` nunca foram relidos com o cliente.** `DOC = 4` e `FICHA = 1,75` redistribuem carga entre pessoas reais. `1,75` nasceu marcado como negociável.
-3. **Uma armadilha conhecida:** a CSP quebra a verificação de tela em modo de desenvolvimento (`eval() is not supported`, HMR caindo, formulários controlados sem reagir). Não é defeito de produção. Para conferir tela, o caminho confiável hoje é por HTTP com sessão real — ver `DECISOES.md`, seção *Afastamento (A10)*.
-4. **Nada é apagado por retenção, e nenhum prazo foi definido.** A estrutura separa conteúdo de histórico e permite expurgar; **não existe nenhuma rotina de expurgo no código.** Enquanto a chefia não responder, o dado bruto acumula por omissão. Ver `DECISOES.md`, seção de 07/09/2026.
-5. **Duas dívidas nasceram com as notas, e estão nomeadas** em *Dívidas que a entrega de 07/09 criou*, abaixo. Nenhuma trava uso; as duas foram registradas em vez de escondidas.
+1. **`npm run verificar` tem de dar 403 verdes.** Se der menos, algo quebrou entre as sessões — comece por aí, não pelo próximo passo.
+2. **Zero PRs abertos, zero branches.** Tudo o que existe está na `main`. Não há trabalho pela metade em lugar nenhum.
+3. **O próximo passo NÃO é código.** É juntar amostra de acerto da IA (grátis, comando abaixo) e levar quatro perguntas à chefia do setor. As duas coisas podem correr em paralelo, e nenhuma depende de mim.
+4. **Uma armadilha conhecida:** a CSP quebra a verificação de tela em modo de desenvolvimento (`eval() is not supported`, HMR caindo, formulários controlados sem reagir). Não é defeito de produção. Para conferir tela, o caminho confiável hoje é por HTTP com sessão real — ver `DECISOES.md`, seção *Afastamento (A10)*.
+5. **Nada é apagado por retenção, e nenhum prazo foi definido.** A estrutura separa conteúdo de histórico e permite expurgar; **não existe nenhuma rotina de expurgo no código.** Enquanto a chefia não responder, o dado bruto acumula por omissão. Ver `DECISOES.md`, seção de 07/09/2026.
+6. **Os valores do `A11` nunca foram relidos com o cliente.** `DOC = 4` e `FICHA = 1,75` redistribuem carga entre pessoas reais. `1,75` nasceu marcado como negociável.
+
+### O comando que destrava mais coisa, e não custa nada
+
+```bash
+IA_ADAPTER=gemini npm run ia:experimentar
+```
+
+Quatro casos sintéticos, sem tocar no banco, sem custo. **Espere `503` de vez em quando** — a camada gratuita satura, o sistema trata como falha de transporte e manda o e-mail para revisão humana. É o comportamento certo, não defeito; só significa repetir o comando algumas vezes para juntar amostra.
+
+Por que ele destrava mais que qualquer outra coisa: sem linha de base de acerto medida contra um modelo real, *"a IA melhorou"* é afirmação que ninguém consegue provar nem desmentir — e é essa medida que autoriza, ou proíbe, a IA passar a ler as notas do setor (`§ H.4` item 14).
+
+### As quatro perguntas que só a chefia responde
+
+Estão em `DECISOES.md § H.4`, itens 10 a 13, com opções e recomendação formuladas. A mais urgente é o **prazo do motivo de afastamento** — é dado de saúde sob a LGPD, hoje guardado sem prazo e sem expurgo.
+
+> Uma folha de decisão em uma página foi preparada em 07/09/2026 e entregue como arquivo, fora do repositório. Se ela se perdeu, as perguntas cruas estão em `§ H.4` e a folha se refaz a partir delas.
 
 ---
 
@@ -68,7 +87,7 @@ Depois:
 npx prisma migrate deploy   # cria o banco e aplica as 10 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 398 testes
+npm run verificar           # typecheck + 403 testes
 npm run dev                 # http://localhost:3000
 ```
 
@@ -106,7 +125,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
 | Notas do setor | O que a equipe aprendeu operando, escrito por quem opera. Uma porta só, texto livre, vinculável a categoria e liga. Aparece nas quatro telas de trabalho |
-| Testes | **398 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, dois adapters de IA, pipeline de integração) |
+| Testes | **403 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, dois adapters de IA, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
@@ -156,9 +175,9 @@ Junto vieram três correções da mesma varredura: `Nota` cascateava com `Catego
 
 ### Dívidas que a entrega de 07/09 criou
 
-Nenhuma trava uso. As duas estão registradas porque foram escolhas, não descuidos:
+Nenhuma trava uso. Estão registradas porque foram escolhas, não descuidos:
 
-1. **A liga é inalcançável pela tela.** O vínculo existe no banco, na API e nos testes; nenhuma tela oferece criar nota ligada a uma liga. Metade da decisão `A14(b)` está construída por baixo e inacessível por cima. É a lacuna mais concreta da entrega.
+1. ~~**A liga é inalcançável pela tela.**~~ **Fechada no mesmo dia (#28).** A Caixa ganhou filtro de liga ao lado do de categoria; a liga aparece na linha do item e é clicável; escolher uma troca o bloco de memória, e o que se anota ali nasce ligado a ela. A causa era mais antiga que as notas: a liga governava o rateio desde o `A4` e nunca tinha sido vista por quem opera.
 2. **`NotaDoSetor` está declarado duas vezes** — em `servicos/notas.ts` e em `componentes/notas.tsx`. Instância nova da dívida `H-D7`, com `criadoEm` já sendo `Date` de um lado e `string` do outro, que é a forma exata que o defeito assumiu da última vez. Documentado dentro do arquivo. Corrigir a família inteira atravessa a fronteira servidor/cliente e não é carona de entrega de funcionalidade.
 
 Também registrado, e deliberado: **a leitura de `paraContexto` não tem teto.** Um `take` pareceria prudente e seria pior — ordenado por data, descartaria em silêncio a nota de liga mais antiga em favor de notas gerais recentes. Mesma classe de `H-D8`.
@@ -547,7 +566,11 @@ Os dois estavam parados por limitação de permissão (alteram arquivo de workfl
 
 ### PRs — nenhum aberto
 
-**Zero PRs abertos em 06/09/2026.** Histórico: [#12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) mesclado em 31/08; [#15](https://github.com/fernando123-hue/Sistema-SBP/pull/15) (`lucide-react`) fechado sem merge — ficou sem objeto quando a dependência foi removida do projeto por não ter uso (seção *Revisão geral e limpeza*, 31/08); [#4](https://github.com/fernando123-hue/Sistema-SBP/pull/4) (`codeql-action` v3 → v4) fechado sem merge em 28/08 — inócuo, o workflow do CodeQL está desarmado; [#13](https://github.com/fernando123-hue/Sistema-SBP/pull/13) (`@types/node` 26.3.0 → 26.4.0) e [#14](https://github.com/fernando123-hue/Sistema-SBP/pull/14) (`@anthropic-ai/sdk` 0.121.0 → 0.122.0) mesclados em 06/09/2026, rotina, verdes.
+**Zero PRs abertos em 07/09/2026.** Seis mesclados neste dia, todos com CI verde: [#24](https://github.com/fernando123-hue/Sistema-SBP/pull/24) fuso do teste · [#25](https://github.com/fernando123-hue/Sistema-SBP/pull/25) retenção e `A14` · [#26](https://github.com/fernando123-hue/Sistema-SBP/pull/26) notas do setor · [#27](https://github.com/fernando123-hue/Sistema-SBP/pull/27) este arquivo · [#28](https://github.com/fernando123-hue/Sistema-SBP/pull/28) liga na tela · [#29](https://github.com/fernando123-hue/Sistema-SBP/pull/29) adapter Gemini.
+
+**Uma dependência nova:** `@google/genai`. Entrou com o `#29` e passou pela auditoria do CI.
+
+Histórico anterior: [#12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) mesclado em 31/08; [#15](https://github.com/fernando123-hue/Sistema-SBP/pull/15) (`lucide-react`) fechado sem merge — ficou sem objeto quando a dependência foi removida do projeto por não ter uso (seção *Revisão geral e limpeza*, 31/08); [#4](https://github.com/fernando123-hue/Sistema-SBP/pull/4) (`codeql-action` v3 → v4) fechado sem merge em 28/08 — inócuo, o workflow do CodeQL está desarmado; [#13](https://github.com/fernando123-hue/Sistema-SBP/pull/13) (`@types/node` 26.3.0 → 26.4.0) e [#14](https://github.com/fernando123-hue/Sistema-SBP/pull/14) (`@anthropic-ai/sdk` 0.121.0 → 0.122.0) mesclados em 06/09/2026, rotina, verdes.
 
 ### Branches — limpos
 
@@ -624,7 +647,7 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ### Depois disso, por valor decrescente
 
-4. **A liga inalcançável pela tela.** *(nasceu em 07/09)* O vínculo de nota com liga existe no banco, na API e nos testes; nenhuma tela oferece criá-lo. Metade da decisão `A14(b)` está construída por baixo e inacessível por cima. É a lacuna mais barata de fechar desta lista, e a que mais entrega — nota de liga é o conhecimento mais caro de descobrir sozinho.
+4. ~~**A liga inalcançável pela tela.**~~ **RESOLVIDA em 07/09/2026** — a Caixa ganhou filtro de liga, a liga aparece na linha do item e escolher uma troca o bloco de memória. Saiu desta lista no mesmo dia em que entrou.
 
 5. **`H-D7`** — os contratos de API redigitados à mão nas telas. Já divergiram uma vez (`emAndamento` sumiu; `Date` vs. string), e cada tela nova aumenta a superfície. Derivar os tipos dos esquemas Zod mata a família inteira de divergência silenciosa entre API e tela — e o legado do cliente vai consumir essas rotas. **Ganhou uma instância nova em 07/09:** `NotaDoSetor` está declarado em `servicos/notas.ts` e redigitado em `componentes/notas.tsx`, com `criadoEm` já sendo `Date` de um lado e `string` do outro — a forma exata que o defeito assumiu da última vez. Está documentado dentro do arquivo, não escondido.
 
@@ -730,7 +753,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 398 testes |
+| `npm run verificar` | Typecheck + 403 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |
