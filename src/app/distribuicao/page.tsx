@@ -15,6 +15,7 @@ import {
   Vazio,
   juntar,
 } from '../../componentes/matrizes'
+import { NotasDoSetor } from '../../componentes/notas'
 
 interface LinhaDaEscala {
   colaboradorId: string
@@ -439,6 +440,13 @@ export default function Distribuicao() {
           </div>
         )}
       </section>
+
+      {/*
+        Antes de confirmar a rodada. A nota do setor não altera cota, peso nem
+        crédito — quem decide continua sendo o motor. Ela existe para quem
+        confirma saber o que a equipe já descobriu sobre o dia.
+      */}
+      <NotasDoSetor titulo="O que o setor já aprendeu sobre a rodada" />
     </div>
   )
 }

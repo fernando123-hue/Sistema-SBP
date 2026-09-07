@@ -52,6 +52,7 @@ model Colaborador {
   saldosCarga      SaldoCarga[]
   saldosGlobais    SaldoCargaGlobal[]
   revisoesFeitas   Revisao[]
+  notasEscritas    Nota[]
 
   @@index([ativo])
 }
@@ -81,6 +82,7 @@ model Categoria {
   rodadas       RodadaDistribuicao[]
   saldosCarga   SaldoCarga[]
   regras        RegraDistribuicao[]
+  notas         Nota[]
 
   @@index([frente, grupo, ordem])
 }
@@ -462,6 +464,7 @@ model Liga {
 
   ligantes Ligante[]
   itens    Item[]
+  notas    Nota[]
 
   @@unique([nome, instituicao])
 }
@@ -477,6 +480,84 @@ model Ligante {
   liga Liga @relation(fields: [ligaId], references: [id], onDelete: Cascade)
 
   @@index([ligaId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Memória do setor
+// ─────────────────────────────────────────────────────────────
+
+/// O que a equipe aprendeu operando. Retenção LONGA.
+///
+/// Distinta de `LogAuditoria` e `EventoProcessamento`, que também são memória:
+/// aquelas registram O QUE ACONTECEU, esta registra O QUE SE APRENDEU com o
+/// que aconteceu. A trilha é gerada pelo sistema e é append-only; a nota é
+/// escrita por gente, e gente se corrige — por isso esta tabela tem
+/// arquivamento, e a trilha não tem.
+///
+/// ═══ POR QUE ESTA É A MEMÓRIA MAIS LIMPA DO SISTEMA ═══
+///
+/// Texto de primeira pessoa, escrito por quem opera, sobre o próprio trabalho.
+/// Não é dado de terceiro que um associado nunca escolheu ceder — ao contrário
+/// de `Item.titulo` e `Item.payload`, que a IA extraiu do corpo do e-mail. É o
+/// que a torna elegível a retenção longa por construção, e é a razão de a
+/// memória do setor nascer aqui em vez de ser destilada do conteúdo recebido.
+///
+/// ═══ UMA PORTA SÓ ═══
+///
+/// `texto` é livre e os dois vínculos são opcionais. Não existe campo de tipo,
+/// categoria de nota, nem formulário que obrigue a classificar antes de
+/// escrever — essa exigência mata a captura, e memória em que ninguém escreve
+/// não vale nada. O que a nota É se descobre depois, pelo uso: nota que se
+/// repete vira candidata a regra, nota que ninguém abre morre por desuso.
+///
+/// ═══ NÃO HÁ VÍNCULO COM PESSOA, E ISSO É DELIBERADO ═══
+///
+/// Não existe `colaboradorId` de ASSUNTO aqui — só `autorId`, que é quem
+/// escreveu. Anotação persistente sobre um colega, escrita por outros colegas,
+/// passa por baixo do invariante 10 (métrica por pessoa é observabilidade,
+/// nunca avaliação) porque texto livre não é métrica e nada no sistema o
+/// intercepta. A pergunta está em `DECISOES.md § H.4`, item 13, aguardando a
+/// chefia. Enquanto não houver resposta, a coluna não existe — acrescentá-la
+/// depois é uma migração; retirá-la depois de povoada, não.
+model Nota {
+  id     String @id @default(cuid())
+  /// O aprendizado, como a pessoa escreveria falando. Limite em `NotaEntradaSchema`.
+  texto  String
+
+  /// Vínculos OPCIONAIS, e é por eles que a nota encontra o trabalho em vez de
+  /// esperar alguém procurá-la. Nota sem nenhum dos dois é do setor inteiro.
+  categoriaId String?
+  ligaId      String?
+
+  /// Quem escreveu. `Restrict` porque a autoria é parte do valor da nota: sem
+  /// ela, ninguém sabe a quem perguntar o que a linha quis dizer. O sistema
+  /// desativa pessoas (`Colaborador.ativo`), nunca as remove.
+  autorId  String
+  criadoEm DateTime @default(now())
+
+  /// Nota deixa de valer, nunca é apagada.
+  ///
+  /// Arquivar preserva a resposta a "por que a equipe conferia esse documento
+  /// em março?" — que sumiria com um `DELETE`. É a mesma escolha de
+  /// `Afastamento.canceladoEm`: o fato de ter valido um dia é ele próprio
+  /// história operacional.
+  arquivadaEm  DateTime?
+  arquivadaPor String?
+  motivoArquivo String?
+
+  /// Invariante 13: toda linha de memória nasce sabendo de que domínio é.
+  /// Ver `DominioSchema` e a nota em `LogAuditoria.dominio`.
+  dominio String @default("distribuicao")
+
+  autor     Colaborador @relation(fields: [autorId], references: [id], onDelete: Restrict)
+  categoria Categoria?  @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+  liga      Liga?       @relation(fields: [ligaId], references: [id], onDelete: Cascade)
+
+  /// A consulta quente é sempre "notas vivas deste vínculo": as telas leem por
+  /// categoria e por liga, e a seleção descarta arquivada antes de ordenar.
+  @@index([categoriaId, arquivadaEm])
+  @@index([ligaId, arquivadaEm])
+  @@index([arquivadaEm, criadoEm])
 }
 
 // ─────────────────────────────────────────────────────────────
