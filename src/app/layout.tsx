@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next'
 
-import { Assistente } from '../componentes/assistente'
 import { Navegacao } from '../componentes/navegacao'
 import { perfilAtual } from '../servidor/sessao'
 import Senha from './senha/page'
@@ -35,12 +34,6 @@ export default async function LayoutRaiz({ children }: { children: React.ReactNo
           <Navegacao nome={perfil.nome} papel={perfil.papel} />
         ) : null}
         <main className="mx-auto w-full max-w-6xl px-4 py-6">{conteudo}</main>
-        {/* A ajuda acompanha quem já entrou e já trocou a senha provisória.
-            Fora daí ela não aparece: na tela de entrada não há sessão para o
-            `exigirAtor` da rota, e durante a troca obrigatória de senha a única
-            operação permitida é justamente a troca — oferecer outra coisa ali
-            seria oferecer um caminho que a API recusa. */}
-        {perfil && !perfil.precisaTrocarSenha ? <Assistente papel={perfil.papel} /> : null}
       </body>
     </html>
   )

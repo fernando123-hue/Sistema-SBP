@@ -38,8 +38,47 @@ const VAZIAS = new Set([
   'nao', 'não', 'sim', 'mais', 'menos', 'muito', 'ja', 'já', 'aqui', 'ali', 'la', 'lá',
 ])
 
-/** Menor pontuação que ainda conta como resposta. Abaixo disto, dizemos que não sabemos. */
-const PONTUACAO_MINIMA = 2
+/**
+ * Menor pontuação que ainda conta como resposta.
+ *
+ * Vale 3 porque é o peso de UM acerto no título: abaixo disso, o que houve foi
+ * duas palavras comuns coincidindo no meio de um texto longo, e responder com
+ * o verbete errado é pior que dizer "não sei". Medido na tela: "como destravo a
+ * conta bloqueada de um colega" casava com o verbete do RATEIO, por causa de
+ * "conta" (a conta da divisão) e "colegas" — e o assistente respondia com ar de
+ * quem sabia, sobre outro assunto.
+ */
+const PONTUACAO_MINIMA = 3
+
+/**
+ * Quantos caracteres de cada palavra entram na comparação.
+ *
+ * Um radical curto, não a palavra inteira. Quem pergunta escreve "destravo" e o
+ * manual diz "destravar"; escreve "revisão" e o manual diz "revisar". Comparar
+ * as formas completas erra justamente nos VERBOS, que são como as pessoas
+ * descrevem o que querem fazer.
+ *
+ * Seis é o ponto em que os finais de conjugação já caíram e as palavras ainda
+ * se distinguem: `destravo`/`destravar` viram `destra`, enquanto `conta` (5,
+ * inalterada) continua diferente de `contagem` → `contag`. Cortar mais juntaria
+ * palavras que significam coisas distintas.
+ */
+const TAMANHO_DO_RADICAL = 6
+
+function radical(palavra: string): string {
+  return palavra.slice(0, TAMANHO_DO_RADICAL)
+}
+
+/** Radicais das palavras de um texto. Comparação é palavra a palavra, nunca por
+ * substring solta: `includes('conta')` casaria dentro de `contagem`. */
+function radicaisDe(texto: string): Set<string> {
+  return new Set(
+    normalizar(texto)
+      .split(/\s+/)
+      .filter((palavra) => palavra.length >= 3)
+      .map(radical),
+  )
+}
 
 /**
  * Tira acento e pontuação.
@@ -82,14 +121,19 @@ export function buscarNoManual(
   const termos = termosDe(pergunta)
   if (termos.length === 0) return []
 
+  // `id` entra junto do título porque ele é escrito como assunto
+  // (`como-distribuir`, `devolver-e-transferir`) e é exatamente o vocabulário
+  // que a pergunta usa.
+  const buscados = termos.map(radical)
+
   return verbetes
     .map((verbete) => {
-      const titulo = normalizar(`${verbete.id} ${verbete.titulo}`)
-      const corpo = normalizar(verbete.texto)
+      const titulo = radicaisDe(`${verbete.id.replaceAll('-', ' ')} ${verbete.titulo}`)
+      const corpo = radicaisDe(verbete.texto)
 
-      const pontuacao = termos.reduce((total, termo) => {
-        if (titulo.includes(termo)) return total + 3
-        if (corpo.includes(termo)) return total + 1
+      const pontuacao = buscados.reduce((total, termo) => {
+        if (titulo.has(termo)) return total + 3
+        if (corpo.has(termo)) return total + 1
         return total
       }, 0)
 

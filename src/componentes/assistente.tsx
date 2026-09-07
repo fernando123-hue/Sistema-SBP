@@ -135,13 +135,22 @@ export function Assistente({ papel }: { papel: string }) {
     [carregando],
   )
 
+  // ═══ O GATILHO MORA NA BARRA, NÃO FLUTUANDO SOBRE A PÁGINA ═══
+  //
+  // A primeira versão era um botão flutuante no canto inferior direito, e a
+  // verificação na tela mostrou o problema na hora: ele cobria o botão
+  // "Anotar" da memória do setor, na Distribuição. Folga no rodapé não
+  // resolve — um elemento `fixed` fica sobre o que estiver naquele canto em
+  // QUALQUER posição de rolagem, e sempre haverá alguma tela em que aquele
+  // canto é um botão. Além disso, não há mais nada flutuante neste sistema:
+  // um único elemento fora do fluxo destoaria do resto.
   if (!aberto) {
     return (
       <button
         ref={gatilho}
         onClick={() => setAberto(true)}
         aria-expanded={false}
-        className="fixed right-4 bottom-4 z-40 inline-flex min-h-11 items-center gap-2 rounded-full border border-borda-forte bg-papel px-4 py-2 text-sm font-medium shadow-lg transition-colors hover:bg-papel-fundo"
+        className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-borda px-2.5 py-1 text-xs font-medium text-tinta-suave transition-colors hover:bg-papel-fundo hover:text-tinta"
       >
         <span aria-hidden="true">?</span>
         Ajuda

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 
+import { Assistente } from './assistente'
 import { api, mensagemDoErro } from './api'
 import { juntar } from './matrizes'
 
@@ -91,6 +92,10 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
         </nav>
 
         <div className="order-2 ml-auto flex items-center gap-2 sm:order-3">
+          {/* A ajuda vive aqui, e não flutuando sobre a página: ver o comentário
+              em `assistente.tsx`. Ao lado do nome porque é onde a pessoa já
+              olha quando quer alguma coisa sobre si, não sobre o trabalho. */}
+          <Assistente papel={papel} />
           <span className="text-right text-xs leading-tight">
             <span className="block font-medium">{nome}</span>
             <span className="block text-tinta-fraca">{papel}</span>

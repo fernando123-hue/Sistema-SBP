@@ -146,10 +146,43 @@ describe('busca no manual', () => {
 
   it('não encontra verbete de gestor para quem não é gestor', () => {
     const pergunta = 'como destravar a conta bloqueada de alguem'
-    expect(buscarNoManual(pergunta, selecionarVerbetes('gestor'))[0]?.verbete.id).toBe(
-      'gestao-de-acesso',
-    )
+
+    // A garantia é de ALCANCE, não de ordem: o gestor consegue chegar ao
+    // verbete que é dele, e o operador não o encontra de jeito nenhum.
+    // Qual dos verbetes elegíveis vence o ranking é qualidade de busca e muda
+    // com a redação do manual; o que não pode mudar é o que cada papel alcança.
+    const paraGestor = buscarNoManual(pergunta, selecionarVerbetes('gestor'))
+    expect(paraGestor.map((achado) => achado.verbete.id)).toContain('gestao-de-acesso')
+
     const paraOperador = buscarNoManual(pergunta, selecionarVerbetes('operador'))
     expect(paraOperador.map((achado) => achado.verbete.id)).not.toContain('gestao-de-acesso')
+  })
+})
+
+describe('qualidade do casamento — regressões vistas na tela', () => {
+  it('acha o verbete certo mesmo com o verbo conjugado de outro jeito', () => {
+    // "destravo" nunca casaria com "destravar" por substring. A pergunta caía
+    // no verbete do RATEIO, por causa de "conta" e "colegas", e o assistente
+    // respondia sobre outro assunto com ar de quem sabia.
+    const achados = buscarNoManual(
+      'como destravo a conta bloqueada de um colega?',
+      selecionarVerbetes('operador'),
+    )
+    expect(achados[0]?.verbete.id).toBe('senha-e-bloqueio')
+  })
+
+  it('não confunde palavras que só começam parecido', () => {
+    // `conta` (a da divisão) e `contagem` têm radicais distintos; casar por
+    // substring juntaria as duas.
+    expect(normalizar('contagem').startsWith('conta')).toBe(true)
+    const achados = buscarNoManual('revisar item', selecionarVerbetes('operador'))
+    expect(achados[0]?.verbete.id).toBe('revisao')
+  })
+
+  it('duas palavras comuns coincidindo não valem uma resposta', () => {
+    // Abaixo do peso de um acerto no título é ruído. Dizer "não sei" é melhor
+    // que responder com o verbete errado.
+    const achados = buscarNoManual('a conta do colega', selecionarVerbetes('operador'))
+    expect(achados).toHaveLength(0)
   })
 })
