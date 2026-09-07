@@ -386,25 +386,56 @@ export async function conferirConservacao(
 
   const rodadas = await banco.rodadaDistribuicao.findMany({
     where: { data: { gte: desde } },
-    select: {
-      id: true,
-      quantidadeEntrada: true,
-      // SÓ as atribuições ATIVAS. Contando todas, uma transferência — que cria
-      // a nova sem apagar a anterior, de propósito, para o histórico ficar
-      // imutável — somava +1 e marcava a rodada como divergente. O indicador
-      // que prova o valor do sistema acusava erro justamente quando o sistema
-      // funcionava como projetado.
-      _count: { select: { atribuicoes: { where: { ativa: true } } } },
-    },
+    select: { id: true, quantidadeEntrada: true },
   })
 
+  if (rodadas.length === 0) return { rodadas: 0, desde, divergentes: [] }
+
+  // ═══ O QUE ESTA CONTAGEM PRECISA MEDIR ═══
+  //
+  // A pergunta é "a rodada entregou tantos itens quantos entraram?", e a
+  // resposta certa é o número de ITENS DISTINTOS que aquela rodada atribuiu —
+  // não o número de atribuições, nem o de atribuições vigentes.
+  //
+  // As duas formas anteriores erravam, cada uma de um jeito, e as duas em
+  // situação NORMAL de operação:
+  //
+  //   - contando TODAS as atribuições, uma transferência somava +1 (ela encerra
+  //     a anterior e cria outra, de propósito, para o histórico ficar imutável)
+  //     e a rodada aparecia divergente;
+  //   - contando só as ATIVAS — a correção que veio depois —, toda DEVOLUÇÃO ao
+  //     pool passou a subtrair 1 para sempre: `devolver` encerra a atribuição e
+  //     NÃO cria substituta, porque o item fica sem dono esperando a próxima
+  //     rodada. A devolução é um caminho previsto do sistema (`AT-07`), então
+  //     bastava alguém devolver um item para o painel passar a dizer, todo dia,
+  //     que os números não são confiáveis.
+  //
+  // Um alarme que dispara na operação normal deixa de ser alarme: quem opera
+  // aprende a ignorá-lo, e no dia de uma violação de verdade ninguém olha. Isso
+  // é degradação silenciosa da própria trava que o invariante 3 institui.
+  //
+  // Item distinto por rodada é imune aos dois: a transferência não muda o
+  // conjunto de itens que a rodada tocou, e a devolução também não — o que
+  // muda é quem é o dono AGORA, que é outra pergunta.
+  const entregas = await banco.atribuicao.findMany({
+    where: { rodadaId: { in: rodadas.map((rodada) => rodada.id) } },
+    select: { rodadaId: true, itemId: true },
+    distinct: ['rodadaId', 'itemId'],
+  })
+
+  const itensPorRodada = new Map<string, number>()
+  for (const entrega of entregas) {
+    if (!entrega.rodadaId) continue
+    itensPorRodada.set(entrega.rodadaId, (itensPorRodada.get(entrega.rodadaId) ?? 0) + 1)
+  }
+
   const divergentes = rodadas
-    .filter((rodada) => rodada._count.atribuicoes !== rodada.quantidadeEntrada)
     .map((rodada) => ({
       rodadaId: rodada.id,
       entrada: rodada.quantidadeEntrada,
-      gravado: rodada._count.atribuicoes,
+      gravado: itensPorRodada.get(rodada.id) ?? 0,
     }))
+    .filter((rodada) => rodada.gravado !== rodada.entrada)
 
   return { rodadas: rodadas.length, desde, divergentes }
 }

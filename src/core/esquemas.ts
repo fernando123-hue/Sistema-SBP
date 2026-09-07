@@ -207,6 +207,35 @@ export const LIMITE_ITENS_POR_EMAIL = 500
 export const LIMITE_ITENS_POR_DIVISAO_MANUAL = 20
 
 /**
+ * Teto de campos extraídos por item.
+ *
+ * As categorias esperam nome, cpf, crm, e-mail, telefone, instituição — meia
+ * dúzia. Trinta é folga larga para o modelo variar a nomenclatura.
+ *
+ * Existe porque `z.record` limita o tamanho de CADA chave e de CADA valor, e
+ * não a QUANTIDADE delas. Sem teto de cardinalidade, `campos` com dez mil
+ * entradas passava na validação e ia inteiro para `Item.payload`, que é uma
+ * coluna de texto: uma linha de vários megabytes por item, gravada sem que
+ * nada reclamasse. O mesmo esquema é a porta do registro manual, então isso
+ * era alcançável por requisição, não só por alucinação de modelo.
+ */
+export const LIMITE_CAMPOS_POR_ITEM = 30
+
+/**
+ * Os campos que a IA extraiu de um item. Chave curta, valor curto, poucos.
+ *
+ * Definido UMA vez e reusado nos seis esquemas que o consomem: antes a mesma
+ * expressão estava redigitada em seis lugares, e um teto acrescentado em cinco
+ * deles teria deixado o sexto aberto sem nada acusar.
+ */
+export const CamposExtraidosSchema = z
+  .record(z.string().max(60), z.string().max(2000))
+  .refine(
+    (campos) => Object.keys(campos).length <= LIMITE_CAMPOS_POR_ITEM,
+    `um item não pode ter mais de ${LIMITE_CAMPOS_POR_ITEM} campos extraídos`,
+  )
+
+/**
  * Teto de itens que um único registro manual pode criar de uma vez.
  *
  * A planilha lança `INADIMP.` como número — em `CAD-MAIO`, `Mov.Extra = 11`
@@ -269,7 +298,7 @@ export const ItemExtraidoSchema = z.object({
   titulo: z.string().min(1).max(300),
   confianca: z.number().min(0).max(1),
   /** Campos extraídos. Chaves e valores limitados — a IA não define esquema. */
-  campos: z.record(z.string().max(60), z.string().max(2000)).default({}),
+  campos: CamposExtraidosSchema.default({}),
   camposAusentes: z.array(z.string().max(60)).max(50).default([]),
   ligaMencionada: z.string().max(200).nullable().default(null),
   observacao: z.string().max(1000).nullable().default(null),
@@ -288,9 +317,42 @@ export type Interpretacao = z.infer<typeof InterpretacaoSchema>
 
 // ─── Escala e distribuição ───────────────────────────────────
 
+/**
+ * Data do calendário, `YYYY-MM-DD`.
+ *
+ * ═══ O FORMATO NÃO BASTA ═══
+ *
+ * A regex sozinha aceitava `2026-02-30`, `2026-04-31` e `2026-13-01` — datas
+ * que não existem. E esta string não é rótulo: ela é a CHAVE PRIMÁRIA de
+ * `TravaDeDistribuicao` e entra nas chaves únicas de `Escala`, `SaldoCarga` e
+ * `SaldoCargaGlobal`.
+ *
+ * O estrago não é a linha estranha no banco, é o que vem depois. Quem digitasse
+ * `2026-02-30` na tela de distribuição criaria uma trava e um livro-razão para
+ * um dia inexistente; a rodada de `2026-03-02` — a data real para onde
+ * `new Date('2026-02-30')` rola — teria dois razões concorrentes, e a janela
+ * de 30 dias do desempate somaria um dia que o calendário não tem. Nada disso
+ * dá erro: dá número errado, em silêncio, no razão que sustenta a justiça do
+ * rateio.
+ *
+ * A conferência é por reconstrução: normaliza e compara com o que entrou. Se o
+ * `Date` rolou para outro dia, a data não existia.
+ */
 export const DataIsoSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'data deve estar no formato YYYY-MM-DD')
+  .refine((valor) => {
+    // `Date.UTC` para não depender do fuso de quem roda: aqui só interessa se o
+    // trio (ano, mês, dia) sobrevive à normalização.
+    const [ano, mes, dia] = valor.split('-').map(Number) as [number, number, number]
+    if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return false
+    const reconstruida = new Date(Date.UTC(ano, mes - 1, dia))
+    return (
+      reconstruida.getUTCFullYear() === ano &&
+      reconstruida.getUTCMonth() === mes - 1 &&
+      reconstruida.getUTCDate() === dia
+    )
+  }, 'data inexistente no calendário')
 
 export const EscalaEntradaSchema = z.object({
   data: DataIsoSchema,
@@ -379,6 +441,20 @@ export const NotaEntradaSchema = z.object({
 })
 export type NotaEntrada = z.infer<typeof NotaEntradaSchema>
 
+/**
+ * `?limite=` de uma listagem.
+ *
+ * Ausente vira o padrão; texto que não é número é RECUSADO, nunca `NaN`. O
+ * teto existe porque a caixa cresce com o tempo de vida do sistema, e uma
+ * listagem sem teto é uma consulta que fica mais cara todo mês sem que ninguém
+ * mude nada.
+ */
+export const LimiteDeListagemSchema = z
+  .string()
+  .nullable()
+  .transform((valor) => (valor === null || valor === '' ? 100 : Number(valor)))
+  .pipe(z.number().int().min(1).max(500))
+
 export const ArquivamentoDeNotaSchema = z.object({
   /**
    * Por que a nota deixou de valer.
@@ -409,14 +485,14 @@ export type PedidoDistribuicao = z.infer<typeof PedidoDistribuicaoSchema>
 /** Item extra que o operador cria ao dividir uma revisão em mais de uma unidade de carga. */
 export const ItemDivididoSchema = z.object({
   titulo: z.string().min(1).max(300),
-  campos: z.record(z.string().max(60), z.string().max(2000)).default({}),
+  campos: CamposExtraidosSchema.default({}),
 })
 
 export const ResolucaoRevisaoSchema = z.object({
   revisaoId: z.string().min(1),
   categoriaCodigo: CategoriaClassificavelSchema,
   titulo: z.string().min(1).max(300),
-  campos: z.record(z.string().max(60), z.string().max(2000)).default({}),
+  campos: CamposExtraidosSchema.default({}),
   aprovar: z.boolean().default(true),
   /**
    * Itens além do original, quando a IA subestimou o N do desdobramento.
@@ -587,7 +663,7 @@ export const HabilitacaoEntradaSchema = z.object({
 
 /** Forma do `Item.payload`. Usada ao reler o que a IA extraiu. */
 export const PayloadDoItemSchema = z.object({
-  campos: z.record(z.string().max(60), z.string().max(2000)).default({}),
+  campos: CamposExtraidosSchema.default({}),
   camposAusentes: z.array(z.string().max(60)).default([]),
   ligaMencionada: z.string().max(200).nullable().default(null),
   observacao: z.string().max(1000).nullable().default(null),
@@ -606,7 +682,7 @@ export const SugestaoIaGravadaSchema = z.object({
   categoriaCodigo: z.string().min(1).max(60),
   titulo: z.string().max(300).default(""),
   confianca: z.number().min(0).max(1).default(0),
-  campos: z.record(z.string().max(60), z.string().max(2000)).default({}),
+  campos: CamposExtraidosSchema.default({}),
 })
 
 /**
@@ -621,7 +697,7 @@ export const SugestaoIaGravadaSchema = z.object({
 export const ValorFinalDaRevisaoSchema = z.object({
   categoriaCodigo: z.string().min(1).max(60).nullish(),
   titulo: z.string().max(300).nullish(),
-  campos: z.record(z.string().max(60), z.string().max(2000)).nullish(),
+  campos: CamposExtraidosSchema.nullish(),
   aprovado: z.boolean(),
   itensExtras: z.number().int().min(0).default(0),
   origem: z.string().max(60).nullish(),

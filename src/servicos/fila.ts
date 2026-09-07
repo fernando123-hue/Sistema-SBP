@@ -178,6 +178,33 @@ export async function transferir(
 
     if (atual.colaboradorId === entrada.paraColaboradorId) return
 
+    // O DESTINO PRECISA PODER ABRIR A FILA DELE.
+    //
+    // Nada conferia isto. A chave estrangeira recusa um id inventado, mas
+    // aceita de bom grado o id de alguém DESATIVADO — e `perfilAtual` recusa a
+    // sessão de quem está inativo, então o item ia parar numa fila que a pessoa
+    // não consegue mais abrir. Ninguém recebe erro, ninguém recebe aviso, e o
+    // item some do mundo por um caminho que o sistema oferece na tela.
+    //
+    // É a doença que este sistema existe para curar, reconstruída dentro dele.
+    //
+    // Só a ATIVAÇÃO é conferida aqui. Transferir para quem está afastado é
+    // outra conversa — pode ser deliberado ("ela volta amanhã e é o caso dela")
+    // e a resposta é do dono do processo, não do código. Ver `DECISOES.md § C`.
+    const destino = await tx.colaborador.findUnique({
+      where: { id: entrada.paraColaboradorId },
+      select: { id: true, nome: true, ativo: true },
+    })
+    if (!destino) {
+      throw new ErroDeNegocio(`Colaborador "${entrada.paraColaboradorId}" não existe.`)
+    }
+    if (!destino.ativo) {
+      throw new ErroDeNegocio(
+        `${destino.nome} está com o acesso desativado e não consegue abrir a própria fila. ` +
+          'Escolha outra pessoa, ou peça ao gestor para reativar o acesso antes de transferir.',
+      )
+    }
+
     // `ativa: null` libera o índice único `(itemId, ativa)` para a nova
     // atribuição — a garantia de responsável único é do banco, não do código.
     await tx.atribuicao.update({

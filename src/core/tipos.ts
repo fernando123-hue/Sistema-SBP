@@ -129,6 +129,25 @@ export interface ResultadoRodada {
    */
   elegiveis: Elegivel[]
   alocacao: Record<ColaboradorId, number>
+  /**
+   * Qual lote indivisível foi para quem. Presente só no critério `por_grupo`.
+   *
+   * ═══ POR QUE O NÚMERO NÃO BASTAVA ═══
+   *
+   * `alocacao` diz QUANTOS itens cada pessoa recebe. Enquanto o rateio era por
+   * quantidade isso era suficiente: qualquer conjunto de N itens serve. Com o
+   * `A4` deixou de ser — o motor passou a decidir por LOTE, e a identidade do
+   * lote é a decisão.
+   *
+   * Sem este campo, o serviço recebia "Ana: 5, Bruno: 3" e repartia os itens
+   * por POSIÇÃO numa lista ordenada por `criadoEm`. Duas ligas cujos e-mails
+   * chegaram intercalados eram partidas entre as duas pessoas — exatamente o
+   * que o `A4` existe para impedir —, e nada acusava, porque a soma continuava
+   * fechando e a trava de conservação só olha a soma.
+   *
+   * A decisão do motor tem de chegar inteira a quem grava. Este campo é ela.
+   */
+  atribuicaoDeGrupos?: Record<string, ColaboradorId>
   creditoCategoriaAntes: Record<ColaboradorId, number>
   creditoCategoriaDepois: Record<ColaboradorId, number>
   creditoGlobalAntes: Record<ColaboradorId, number>

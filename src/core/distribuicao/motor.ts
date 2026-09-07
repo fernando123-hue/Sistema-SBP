@@ -61,6 +61,7 @@ export function distribuir(entrada: EntradaRodada): ResultadoRodada {
   let criterio: CriterioRodada
   let base = 0
   let resto = 0
+  let atribuicaoDeGrupos: Record<ColaboradorId, ColaboradorId> | undefined
 
   const grupos = entrada.grupos
   if (grupos) garantirGruposCoerentes(grupos, quantidade)
@@ -81,9 +82,13 @@ export function distribuir(entrada: EntradaRodada): ResultadoRodada {
     // a regra de sempre (tudo para o primeiro). O `A4` permite que ligas
     // diferentes vão para pessoas diferentes; não obriga.
     criterio = 'por_grupo'
-    for (const [colaboradorId, quantia] of alocarPorGrupos(grupos, ordem, categoria.peso)) {
+    const porGrupo = alocarPorGrupos(grupos, ordem, categoria.peso)
+    for (const [colaboradorId, quantia] of porGrupo.totais) {
       alocacao[colaboradorId] = quantia
     }
+    // A decisão por LOTE tem de chegar inteira a quem grava. Ver
+    // `ResultadoRodada.atribuicaoDeGrupos`.
+    atribuicaoDeGrupos = Object.fromEntries(porGrupo.donoDoGrupo)
   } else {
     // RN-04 — piso para todos, resto inteiro para o topo da ordem.
     // Nunca arredondar. Nunca fracionar um item.
@@ -145,6 +150,7 @@ export function distribuir(entrada: EntradaRodada): ResultadoRodada {
     // Snapshot completo: é o que permite responder "por que ela levou a sobra?"
     elegiveis: ordem.map((elegivel) => ({ ...elegivel })),
     alocacao,
+    ...(atribuicaoDeGrupos ? { atribuicaoDeGrupos } : {}),
     creditoCategoriaAntes,
     creditoCategoriaDepois,
     creditoGlobalAntes,
@@ -173,10 +179,13 @@ function alocarPorGrupos(
   grupos: readonly GrupoIndivisivel[],
   elegiveis: readonly Elegivel[],
   peso: number,
-): Map<ColaboradorId, number> {
+): { totais: Map<ColaboradorId, number>; donoDoGrupo: Map<string, ColaboradorId> } {
   const recebido = new Map<ColaboradorId, number>(
     elegiveis.map((elegivel) => [elegivel.colaboradorId, 0]),
   )
+  // Quem ficou com CADA lote. Antes esta informação existia dentro do laço e
+  // era descartada na saída — e era justamente ela a decisão do `A4`.
+  const donoDoGrupo = new Map<string, ColaboradorId>()
 
   const maiorPrimeiro = [...grupos].sort(
     (a, b) => b.tamanho - a.tamanho || (a.chave < b.chave ? -1 : a.chave > b.chave ? 1 : 0),
@@ -197,9 +206,10 @@ function alocarPorGrupos(
 
     const alvo = ordenarElegiveis(projetados)[0]!.colaboradorId
     recebido.set(alvo, (recebido.get(alvo) ?? 0) + grupo.tamanho)
+    donoDoGrupo.set(grupo.chave, alvo)
   }
 
-  return recebido
+  return { totais: recebido, donoDoGrupo }
 }
 
 /**
