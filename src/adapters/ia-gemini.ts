@@ -169,12 +169,23 @@ export function clienteGemini(): ClienteDeModelo {
       try {
         objeto = JSON.parse(texto)
       } catch {
+        // SEM `input: texto`, e isto é segurança, não economia.
+        //
+        // `ZodError.message` é `JSON.stringify(issues)`, e o replacer do Zod só
+        // remove `input` dos issues que ele mesmo cria — um issue escrito à mão
+        // preserva o campo. Com `input: texto`, a resposta CRUA do modelo (até
+        // `MAXIMO_DE_TOKENS`, derivada do corpo do e-mail, com nome e CPF do
+        // associado) entrava na mensagem do erro. Dali ela ia para o log, que
+        // não tem retenção, e — pior — era colada nas INSTRUÇÕES da segunda
+        // tentativa, fora dos marcadores de conteúdo não confiável.
+        //
+        // Para corrigir o formato, o modelo precisa saber que a resposta não
+        // era JSON. Não precisa que a devolvam a ele.
         throw new z.ZodError([
           {
             code: 'custom',
             path: [],
-            message: 'a resposta não é JSON válido',
-            input: texto,
+            message: `a resposta não é JSON válido (${texto.length} caracteres)`,
           },
         ])
       }

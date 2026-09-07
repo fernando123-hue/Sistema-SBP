@@ -51,7 +51,10 @@ function clienteFalso(respostas: (unknown | Error)[]): ClienteDeModelo & {
       chamadas.push({ instrucoes, conteudo, modelo })
       const atual = respostas[Math.min(posicao, respostas.length - 1)]
       posicao += 1
-      if (atual instanceof Error) throw atual
+      // Ver a nota em `vazamento-na-repeticao.test.ts`: no zod 4 um `ZodError`
+      // construído à mão não é `instanceof Error`, e sem esta linha o duble o
+      // devolveria em vez de lançá-lo.
+      if (atual instanceof Error || atual instanceof z.ZodError) throw atual
       return { objeto: atual, modeloUsado: modelo }
     },
   }

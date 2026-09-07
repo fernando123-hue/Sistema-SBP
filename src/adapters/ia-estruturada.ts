@@ -9,6 +9,7 @@ import {
   type Interpretacao,
 } from '../core/esquemas'
 import { prepararConteudoExterno } from '../core/seguranca/conteudo-nao-confiavel'
+import { resumoDeValidacao } from '../core/seguranca/resumo-de-validacao'
 import { FalhaDeInterpretacao, InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import { ambiente } from '../servidor/ambiente'
 import { registrarLog } from '../servidor/observabilidade'
@@ -182,8 +183,13 @@ export class InterpretadorEstruturado implements AiPort {
         // jeito, mas a FONTE é uma só, e é isso que impede duas descrições da
         // mesma forma divergirem em silêncio.
         esquema: RespostaDoModeloSchema,
+        // `erroAnterior` já vem RESUMIDO — código do defeito e caminho até o
+        // campo, sem nada que o modelo tenha escrito. Interpolar `erro.message`
+        // aqui era a fresta descrita em `resumo-de-validacao.ts`: texto vindo
+        // do remetente atravessava a delimitação e reaparecia como instrução de
+        // sistema, no bloco de maior confiança do prompt.
         instrucoes: erroAnterior
-          ? `${INSTRUCOES}\n\nA tentativa anterior foi rejeitada pela validação: ${erroAnterior}\nDevolva o mesmo conteúdo corrigido, respeitando exatamente o formato pedido.`
+          ? `${INSTRUCOES}\n\nA tentativa anterior foi rejeitada pela validação. Defeitos de forma encontrados: ${erroAnterior}\nDevolva o mesmo conteúdo corrigido, respeitando exatamente o formato pedido.`
           : INSTRUCOES,
         conteudo,
         modelo,
@@ -204,6 +210,20 @@ export class InterpretadorEstruturado implements AiPort {
       if (this.perfil.ehCredencialRecusada(erro)) throw new InterpretacaoIndisponivelError(causa)
 
       const especie = especieDoErro(erro)
+
+      // O QUE SAI DAQUI depende da espécie, e a distinção é de privacidade.
+      //
+      // Falha de VALIDAÇÃO é sobre a resposta do modelo, que é derivada do
+      // corpo do e-mail: a mensagem crua carrega nome, CPF e o que mais o
+      // modelo tiver ecoado. `redigir()` não alcança isso — ele redige por NOME
+      // de chave, e aqui tudo é um blob de string sob `causa`. Como log não tem
+      // política de retenção (invariante 11), vai só o resumo estrutural.
+      //
+      // Falha de TRANSPORTE é texto do fornecedor (`timeout`, `503`,
+      // `RESOURCE_EXHAUSTED`), não do remetente, e é o que a operação precisa
+      // ler para saber o que arrumar. Essa vai inteira.
+      const paraRegistrar = especie === 'validacao' ? resumoDeValidacao(erro) : causa
+
       registrarLog(
         'aviso',
         especie === 'validacao'
@@ -213,10 +233,13 @@ export class InterpretadorEstruturado implements AiPort {
           adapter: this.nome,
           especie,
           segundaTentativa: erroAnterior !== null,
-          causa,
+          causa: paraRegistrar,
         },
       )
-      return { tipo: 'erro', erro: causa, especie }
+      // O `erro` devolvido é o que vira `erroAnterior` da segunda tentativa e,
+      // no fim da linha, a causa de `FalhaDeInterpretacao`. Também é o resumo:
+      // é este valor que seria colado nas instruções.
+      return { tipo: 'erro', erro: paraRegistrar, especie }
     }
   }
 }

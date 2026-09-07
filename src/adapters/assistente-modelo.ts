@@ -5,6 +5,7 @@ import {
 } from '../core/assistente/esquemas'
 import { montarMaterial, type QuemPergunta } from '../core/assistente/prompt'
 import { prepararConteudoExterno } from '../core/seguranca/conteudo-nao-confiavel'
+import { resumoDeValidacao } from '../core/seguranca/resumo-de-validacao'
 import {
   AssistenteIndisponivelError,
   FalhaDoAssistente,
@@ -126,8 +127,13 @@ export class AssistenteComModelo implements AssistentePort {
     try {
       const { objeto } = await this.cliente.gerar({
         esquema: RespostaDoModeloAssistenteSchema,
+        // Resumido, nunca a mensagem crua — mesma fresta descrita em
+        // `resumo-de-validacao.ts`. Aqui ela seria ainda mais direta: a
+        // pergunta é escrita por quem está logado, e `resposta` é um texto
+        // livre que o modelo devolve. Colar o erro cru daria a qualquer pessoa
+        // um caminho para escrever na região de instruções em duas rodadas.
         instrucoes: erroAnterior
-          ? `${instrucoes}\n\nA tentativa anterior foi rejeitada pela validação: ${erroAnterior}\nDevolva o mesmo conteúdo corrigido, respeitando exatamente o formato pedido.`
+          ? `${instrucoes}\n\nA tentativa anterior foi rejeitada pela validação. Defeitos de forma encontrados: ${erroAnterior}\nDevolva o mesmo conteúdo corrigido, respeitando exatamente o formato pedido.`
           : instrucoes,
         conteudo,
         modelo,
@@ -145,14 +151,19 @@ export class AssistenteComModelo implements AssistentePort {
       if (this.perfil.ehCredencialRecusada(erro)) throw new AssistenteIndisponivelError(causa)
 
       const especie = especieDoErro(erro)
+      // Validação vira resumo estrutural; transporte é texto do fornecedor e
+      // vai inteiro. Mesma distinção de `ia-estruturada.ts`, e pelo mesmo
+      // motivo: o log não tem política de retenção.
+      const paraRegistrar = especie === 'validacao' ? resumoDeValidacao(erro) : causa
+
       registrarLog(
         'aviso',
         especie === 'validacao'
           ? 'resposta do assistente recusada pela validação'
           : 'chamada do assistente ao modelo falhou',
-        { adapter: this.nome, especie, segundaTentativa: erroAnterior !== null, causa },
+        { adapter: this.nome, especie, segundaTentativa: erroAnterior !== null, causa: paraRegistrar },
       )
-      return { tipo: 'erro', erro: causa, especie }
+      return { tipo: 'erro', erro: paraRegistrar, especie }
     }
   }
 }
