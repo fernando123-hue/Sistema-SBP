@@ -17,6 +17,57 @@ export abstract class ErroDominio extends Error {
 }
 
 /**
+ * Falha ESPERADA numa fronteira externa — modelo, armazenamento, adapter.
+ *
+ * ═══ POR QUE ESTA CLASSE PRECISOU EXISTIR ═══
+ *
+ * `ErroDominio` cobre o que o DOMÍNIO recusa: "transferência exige
+ * justificativa", "revisão já resolvida". A camada HTTP reconhece e a mensagem
+ * chega inteira à tela.
+ *
+ * As fronteiras externas tinham o mesmo problema que `ErroDeNegocio` resolveu
+ * para o domínio, e ninguém tinha notado: `FalhaDeInterpretacao`,
+ * `InterpretacaoIndisponivelError`, `AdapterIndisponivelError`,
+ * `FalhaDeArmazenamento`, `FalhaDoAssistente` e `AssistenteIndisponivelError`
+ * estendiam `Error` puro. Todas têm mensagem escrita para humano — a de
+ * `InterpretacaoIndisponivelError` existe LITERALMENTE para dizer qual variável
+ * de ambiente arrumar — e todas chegavam à tela como "Erro interno" com um
+ * código de correlação. O operador via o mesmo texto para "a chave da IA está
+ * errada" e para um defeito de programação, e a mensagem que dizia o que fazer
+ * ficava só no log do servidor.
+ *
+ * Isso é o invariante 7 falhando na última curva: o sistema detectava a causa,
+ * escrevia a explicação, e a jogava fora na saída.
+ *
+ * ═══ MENSAGEM PÚBLICA ≠ MENSAGEM DO LOG ═══
+ *
+ * `message` é para o log e carrega a causa técnica crua. `mensagemPublica` é o
+ * que cruza para o cliente. Elas coincidem por padrão, e divergem onde a causa
+ * crua contaria a quem pergunta mais sobre a infraestrutura do que ela precisa
+ * saber — ver `AssistenteIndisponivelError`.
+ */
+export abstract class ErroOperacional extends Error {
+  abstract readonly codigo: string
+  /**
+   * Status HTTP desta falha.
+   *
+   * `503` para "a dependência está fora ou mal configurada — tente de novo, ou
+   * avise quem cuida"; `422` para "esta entrada específica não deu certo".
+   */
+  abstract readonly statusHttp: number
+
+  constructor(mensagem: string) {
+    super(mensagem)
+    this.name = new.target.name
+  }
+
+  /** O que a tela pode mostrar. Sobrescreva quando a causa crua não deve sair. */
+  get mensagemPublica(): string {
+    return this.message
+  }
+}
+
+/**
  * Violação de regra de negócio causada pelo uso, não por defeito do sistema.
  *
  * "Só o responsável ativo pode concluir", "transferência exige justificativa",

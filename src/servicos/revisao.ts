@@ -225,6 +225,19 @@ export async function resolver(
           data: {
             emailId: revisao.item.emailId,
             categoriaId: categoria.id,
+            // HERDA A LIGA DO ITEM DE ORIGEM.
+            //
+            // Sem isto, o desdobramento — que é EXATAMENTE o caso do `A4`,
+            // "um e-mail lista trinta ligantes" — criava trinta itens com
+            // `ligaId` nulo. Cada um virava um lote de um só (é o que
+            // `agruparPorLiga` faz com item sem liga), a liga era espalhada
+            // entre a equipe inteira, e o agrupamento que o operador acabara
+            // de justificar na tela deixava de valer justamente para os itens
+            // que ele criou.
+            //
+            // O item extra é o mesmo trabalho da mesma liga: a única resposta
+            // correta é a liga do item de origem.
+            ligaId: revisao.item.ligaId,
             sequencia: proximaSequencia,
             titulo: extra.titulo,
             payload: serializar({

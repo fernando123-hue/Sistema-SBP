@@ -1,6 +1,6 @@
 import { ZodError } from 'zod'
 
-import { ErroDominio } from '../core/erros'
+import { ErroDominio, ErroOperacional } from '../core/erros'
 import { ambiente } from './ambiente'
 import { PermissaoNegadaError } from './ator'
 import { verificarLimite } from './limite-de-taxa'
@@ -76,6 +76,26 @@ export async function rota(handler: () => Promise<Response>): Promise<Response> 
   try {
     return await handler()
   } catch (erro) {
+    // Falha ESPERADA de fronteira externa: modelo fora do ar, chave recusada,
+    // adapter inexistente, disco cheio.
+    //
+    // Vem antes do resto porque o status é `503` — e a regra geral manda tudo
+    // que é `>= 500` para a mensagem genérica. Sem este ramo, seis classes cuja
+    // mensagem foi escrita para ser lida chegavam à tela como "Erro interno":
+    // o operador via o mesmo texto para "a chave da IA está errada" e para um
+    // defeito de programação, e a frase que dizia o que arrumar ficava só no
+    // log. Ver `ErroOperacional` em `core/erros.ts`.
+    //
+    // `mensagemPublica`, nunca `message`: a causa crua vai para o log, e cada
+    // classe decide quanto dela pode cruzar a fronteira.
+    if (erro instanceof ErroOperacional) {
+      registrarLog('aviso', 'falha esperada em fronteira externa', {
+        codigo: erro.codigo,
+        erro: erro.message,
+      })
+      return responderErro(erro.mensagemPublica, erro.statusHttp)
+    }
+
     const status = statusDoErro(erro)
 
     if (status !== null && status < 500) {

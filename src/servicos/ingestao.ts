@@ -141,16 +141,39 @@ export async function sincronizar(
       // Silenciar isto era perder carga sem que ninguém pudesse notar.
       if (resultado.criados === 0) {
         resumo.emailsSemItem += 1
-        registrarLog('aviso', 'e-mail interpretado sem nenhum item', {
+
+        // ZERO ITENS + CONTEÚDO SUSPEITO NÃO É A MESMA COISA QUE ZERO ITENS.
+        //
+        // Sem item não existe `Revisao` para criar — a tabela exige `itemId` —,
+        // então este e-mail nunca entra numa fila de trabalho e, pela
+        // idempotência de `messageId`, também nunca volta. Para uma resposta
+        // automática isso está certo: é o comportamento que evita encher a fila
+        // de ruído.
+        //
+        // Para um e-mail que as defesas marcaram como suspeito, não está. É
+        // exatamente a forma que um ataque bem-sucedido teria — o conteúdo
+        // convence o modelo a não devolver item nenhum, e some com um aviso
+        // igual ao de um "obrigado, recebido". Os dois casos precisavam ser
+        // distinguíveis por quem investiga, e não eram.
+        //
+        // A separação é de VISIBILIDADE, não de fluxo: nada muda para a
+        // operação, e a decisão de criar uma fila para estes casos é do dono do
+        // processo (`DECISOES.md § C`).
+        const suspeito = resultado.conteudoSuspeito
+        registrarLog(suspeito ? 'erro' : 'aviso', 'e-mail interpretado sem nenhum item', {
           correlacaoId,
           messageId: email.messageId,
+          conteudoSuspeito: suspeito,
         })
         await registrarEvento(deps.banco, {
           correlacaoId,
           etapa: 'ingestao',
           situacao: 'falha',
           referencia: email.messageId,
-          mensagem: 'e-mail interpretado sem nenhum item — confira se havia trabalho ali',
+          mensagem: suspeito
+            ? 'e-mail SUSPEITO interpretado sem nenhum item — pode ser tentativa de fazer o trabalho desaparecer'
+            : 'e-mail interpretado sem nenhum item — confira se havia trabalho ali',
+          detalhe: { conteudoSuspeito: suspeito },
         })
       }
     } catch (erro) {
@@ -211,6 +234,15 @@ interface ResultadoDeUm {
   aprovados: number
   paraRevisao: number
   anexosRejeitados: number
+  /**
+   * Se as defesas contra injeção levantaram a mão sobre este e-mail.
+   *
+   * Sobe até o laço porque "não gerou item nenhum" tem duas causas muito
+   * diferentes: resposta automática (rotina) e conteúdo suspeito que o modelo
+   * não conseguiu — ou não quis — estruturar. As duas caíam no mesmo aviso
+   * genérico, indistinguíveis para quem fosse investigar depois.
+   */
+  conteudoSuspeito: boolean
 }
 
 /** `P2002` é o código do Prisma para violação de constraint única. */
@@ -333,7 +365,7 @@ async function processarUm(
       correlacaoId,
     })
 
-    return { ...resultado, anexosRejeitados }
+    return { ...resultado, anexosRejeitados, conteudoSuspeito: interpretacao.conteudoSuspeito }
   })
 }
 
@@ -346,7 +378,7 @@ async function criarItens(
     correlacaoId: string
     usuario: string
   },
-): Promise<Omit<ResultadoDeUm, 'anexosRejeitados'>> {
+): Promise<Omit<ResultadoDeUm, 'anexosRejeitados' | 'conteudoSuspeito'>> {
   const { interpretacao } = contexto
   let criados = 0
   let aprovados = 0

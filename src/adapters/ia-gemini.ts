@@ -70,6 +70,16 @@ const MAXIMO_DE_TOKENS = 16_000
 const TEMPERATURA = 0
 
 /**
+ * Teto de tempo por chamada.
+ *
+ * Generoso porque a camada gratuita é lenta de verdade — 54 a 63 segundos por
+ * chamada, medidos —, e apertar demais transformaria operação normal em falha.
+ * O que ele impede é o caso sem teto: uma chamada que nunca volta e segura o
+ * laço de ingestão indefinidamente.
+ */
+const TEMPO_LIMITE_MS = 120_000
+
+/**
  * Motivos de parada que invalidam a resposta.
  *
  * `STOP` é o único fim aceitável. Os demais devolvem texto — às vezes texto
@@ -122,7 +132,22 @@ export function clienteGemini(): ClienteDeModelo {
   // tranca, para o caso de alguém construir o adapter direto.
   if (!chave) throw new Error('GOOGLE_AI_KEY ausente: o adapter Gemini não pode subir.')
 
-  const cliente = new GoogleGenAI({ apiKey: chave })
+  const cliente = new GoogleGenAI({
+    apiKey: chave,
+    // TETO DE TEMPO EXPLÍCITO.
+    //
+    // O núcleo declara, ao decidir não repetir falha de transporte, que "o SDK
+    // já tentou de novo por conta própria antes de desistir". Isso era verdade
+    // para a Anthropic e FALSO aqui: o SDK do Google não repete e, sem
+    // `timeout`, uma chamada pendurada segurava o laço de ingestão sem prazo
+    // para acabar. Medido nesta auditoria: 54 a 63 segundos por chamada em
+    // condição normal na camada gratuita, com `503` frequente.
+    //
+    // Um teto explícito transforma "pendurado para sempre" em falha de
+    // transporte, que o sistema já sabe tratar — o e-mail vai para revisão
+    // humana. É degradar do jeito certo em vez de travar.
+    httpOptions: { timeout: TEMPO_LIMITE_MS },
+  })
 
   return {
     async gerar({ instrucoes, conteudo, modelo, esquema }) {

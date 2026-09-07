@@ -1,3 +1,4 @@
+import { ErroOperacional } from '../core/erros'
 import type { QuemPergunta } from '../core/assistente/prompt'
 import type { RespostaDoModeloAssistente } from '../core/assistente/esquemas'
 
@@ -33,12 +34,25 @@ export interface AssistentePort {
  * truncada. A pessoa recebe um aviso e pode tentar de novo; nada mais no
  * sistema é afetado.
  */
-export class FalhaDoAssistente extends Error {
+export class FalhaDoAssistente extends ErroOperacional {
   readonly codigo = 'FALHA_DO_ASSISTENTE'
+  /** Transitório: a mesma pergunta costuma funcionar na tentativa seguinte. */
+  readonly statusHttp = 503
 
   constructor(readonly causa: string) {
     super(`Não consegui responder agora: ${causa}`)
-    this.name = 'FalhaDoAssistente'
+  }
+
+  /**
+   * A causa técnica fica no log.
+   *
+   * Aqui, ao contrário da ingestão, quem recebe a mensagem pode ser qualquer
+   * pessoa da equipe — a ajuda não exige papel. "invalid_type em
+   * itens.0.confianca" não diz nada a quem só queria tirar uma dúvida, e um
+   * texto que a pessoa não entende a faz achar que fez algo errado.
+   */
+  override get mensagemPublica(): string {
+    return 'Não consegui responder agora. Tente de novo em alguns instantes.'
   }
 }
 
@@ -50,11 +64,24 @@ export class FalhaDoAssistente extends Error {
  * distinto de `FalhaDeInterpretacao`: a mensagem tem de mandar arrumar a
  * configuração, não sugerir que a pessoa reformule a pergunta e tente de novo.
  */
-export class AssistenteIndisponivelError extends Error {
+export class AssistenteIndisponivelError extends ErroOperacional {
   readonly codigo = 'ASSISTENTE_INDISPONIVEL'
+  readonly statusHttp = 503
 
   constructor(readonly causa: string) {
     super(`Assistente indisponível: ${causa}`)
-    this.name = 'AssistenteIndisponivelError'
+  }
+
+  /**
+   * "API key not valid" NÃO sai daqui.
+   *
+   * A ajuda é aberta a qualquer pessoa autenticada, e a causa crua conta sobre
+   * a infraestrutura mais do que quem tirou uma dúvida precisa saber. É a
+   * diferença deliberada em relação a `InterpretacaoIndisponivelError`, cuja
+   * rota exige operador ou gestor e cuja mensagem inteira é justamente o que
+   * essa pessoa precisa ler. A causa completa continua no log.
+   */
+  override get mensagemPublica(): string {
+    return 'A ajuda está indisponível no momento. Avise quem cuida do sistema.'
   }
 }

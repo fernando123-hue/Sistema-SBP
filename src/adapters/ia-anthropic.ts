@@ -38,6 +38,9 @@ const ESFORCO = 'low' as const
 /** Teto de saída. Estourar não é truncado em silêncio — vira falha e revisão humana. */
 const MAXIMO_DE_TOKENS = 16_000
 
+/** Teto de tempo por chamada. Igual ao do Gemini, para os dois falharem no mesmo prazo. */
+const TEMPO_LIMITE_MS = 120_000
+
 /**
  * Perfil do fornecedor.
  *
@@ -62,7 +65,14 @@ export function clienteAnthropic(): ClienteDeModelo {
   // tranca, para o caso de alguém construir o adapter direto.
   if (!chave) throw new Error('ANTHROPIC_API_KEY ausente: o adapter Anthropic não pode subir.')
 
-  const cliente = new Anthropic({ apiKey: chave })
+  // `maxRetries` e `timeout` EXPLÍCITOS, mesmo coincidindo com o padrão do SDK.
+  //
+  // O núcleo justifica não repetir falha de transporte dizendo que "o SDK já
+  // tentou de novo por conta própria". Enquanto isso ficou implícito, a frase
+  // valia aqui e era falsa no Gemini — e ninguém tinha como saber lendo o
+  // código. Declarar em cada adapter o que ele de fato faz é o que torna a
+  // afirmação do núcleo verificável nos dois.
+  const cliente = new Anthropic({ apiKey: chave, maxRetries: 2, timeout: TEMPO_LIMITE_MS })
 
   return {
     async gerar({ instrucoes, conteudo, modelo, esquema }) {

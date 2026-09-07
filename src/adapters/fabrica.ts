@@ -1,3 +1,4 @@
+import { ErroOperacional } from '../core/erros'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { AssistentePort } from '../ports/assistente'
 import type { AiPort } from '../ports/ia'
@@ -23,15 +24,16 @@ import { IngestaoMock, type OpcoesIngestaoMock } from './ingestao-mock'
  * Agora, pedir um adapter não implementado FALHA, e falha dizendo o que falta.
  */
 
-export class AdapterIndisponivelError extends Error {
+export class AdapterIndisponivelError extends ErroOperacional {
   readonly codigo = 'ADAPTER_INDISPONIVEL'
+  /** Configuração, não defeito: quem lê precisa saber que a variável está errada. */
+  readonly statusHttp = 503
 
   constructor(tipo: string, nome: string) {
     super(
       `Adapter de ${tipo} "${nome}" ainda não foi implementado. ` +
         `Ajuste a variável de ambiente ou implemente o adapter.`,
     )
-    this.name = 'AdapterIndisponivelError'
   }
 }
 
