@@ -47,10 +47,41 @@ export interface Cobertura {
   fracaoRevisada: number | null
 }
 
+/**
+ * A mesma medida, separada por modelo que produziu a classificação.
+ *
+ * ═══ POR QUE ISTO PRECISAVA EXISTIR ═══
+ *
+ * O sistema mantém dois fornecedores de IA por decisão de arquitetura, e a
+ * pergunta que justifica o custo disso é uma só: **algum deles acerta mais
+ * neste trabalho?** A medida agregava tudo sob um número — as revisões do
+ * Gemini e as da Anthropic somadas na mesma taxa —, então a comparação era
+ * impossível de fazer na tela, e trocar de fornecedor virava questão de gosto.
+ *
+ * O `modeloIa` já era gravado em cada `Item` desde a fundação; faltava apenas
+ * agrupar por ele. `versaoPrompt` leva o nome do fornecedor pelo mesmo motivo
+ * (ver `PerfilDoFornecedor`) — a mesma redação rende resultados diferentes em
+ * modelos diferentes, e somar as duas populações sob um rótulo só torna o
+ * histórico incomparável.
+ */
+export interface AcertoPorModelo {
+  /** Como o fornecedor identificou o modelo. Ex.: `gemini-3.6-flash`. */
+  modelo: string
+  taxa: TaxaDeAcerto
+}
+
 export interface QualidadeDaIa {
   /** Início da janela em ISO, ou `null` quando a medida é desde sempre. */
   desde: string | null
   taxa: TaxaDeAcerto
+  /**
+   * A taxa separada por modelo, da maior amostra para a menor.
+   *
+   * Vazio quando não há revisão resolvida na janela. Com UM modelo só, traz uma
+   * linha — que é a informação certa: diz qual modelo produziu o número
+   * agregado, em vez de deixar quem lê supor.
+   */
+  porModelo: AcertoPorModelo[]
   cobertura: Cobertura
   /**
    * Revisões resolvidas cujo JSON gravado não pôde ser lido.
@@ -85,7 +116,10 @@ export async function medirQualidadeDaIa(
       },
       // `resolvidoPor` deliberadamente ausente do select: medir acerto por
       // revisor seria vigiar pessoa, não observar modelo. Invariante 10.
-      select: { sugestaoIa: true, valorFinal: true },
+      //
+      // `item.modeloIa` entra porque medir MODELO é o oposto disso — é o único
+      // eixo pelo qual a comparação entre fornecedores existe.
+      select: { sugestaoIa: true, valorFinal: true, item: { select: { modeloIa: true } } },
     }),
     banco.item.count({ where: { modeloIa: { not: null }, ...itemNaJanela } }),
     banco.revisao.count({
@@ -97,6 +131,7 @@ export async function medirQualidadeDaIa(
   ])
 
   const pares: ParDeRevisao[] = []
+  const paresPorModelo = new Map<string, ParDeRevisao[]>()
   let ignoradas = 0
 
   for (const registro of resolvidas) {
@@ -106,11 +141,26 @@ export async function medirQualidadeDaIa(
       continue
     }
     pares.push(par)
+
+    // A consulta já filtra `modeloIa: { not: null }`, então o `??` é só para o
+    // compilador — e o rótulo, se um dia chegar aqui, diz a verdade em vez de
+    // fundir a linha sem modelo com a de algum fornecedor.
+    const modelo = registro.item.modeloIa ?? '(sem modelo registrado)'
+    const doModelo = paresPorModelo.get(modelo) ?? []
+    doModelo.push(par)
+    paresPorModelo.set(modelo, doModelo)
   }
+
+  const porModelo = [...paresPorModelo]
+    .map(([modelo, seusPares]) => ({ modelo, taxa: calcularTaxaDeAcerto(seusPares) }))
+    // Maior amostra primeiro: uma taxa de 100% sobre duas revisões não pode
+    // aparecer acima de uma de 91% sobre duzentas.
+    .sort((a, b) => b.taxa.revisadas - a.taxa.revisadas || (a.modelo < b.modelo ? -1 : 1))
 
   return {
     desde,
     taxa: calcularTaxaDeAcerto(pares),
+    porModelo,
     cobertura: {
       itensDeIa,
       revisados,

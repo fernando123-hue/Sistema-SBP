@@ -44,7 +44,26 @@ const AmbienteSchema = z.object({
    * um dia entrar um, ela não precisa mudar de nome nem de dono.
    */
   GOOGLE_AI_KEY: z.string().optional(),
-  SESSAO_SECRET: z.string().optional(),
+  /**
+   * Segredo que assina o cookie de sessão.
+   *
+   * VALIDADO NA PARTIDA, não na primeira entrada. Era `optional()`, e o sistema
+   * subia normalmente: a falha só aparecia quando alguém tentava entrar, como
+   * "Erro interno" com id de correlação — e `autenticar` já tinha rodado até o
+   * fim, gravado `entrada_autorizada` na trilha e zerado o contador de
+   * tentativas. Ou seja: a auditoria registrava uma entrada que não aconteceu,
+   * e quem estava publicando o sistema descobria o problema pela pessoa errada,
+   * com a mensagem errada.
+   *
+   * O mínimo de 16 caracteres é o mesmo que `segredo()` já exigia; a diferença
+   * é a hora em que a exigência é cobrada. Ver `servidor/sessao.ts`.
+   */
+  SESSAO_SECRET: z
+    .string()
+    .min(
+      16,
+      'SESSAO_SECRET precisa de no mínimo 16 caracteres — gere um com: node -e "console.log(crypto.randomUUID())"',
+    ),
   /**
    * Onde os arquivos de anexo são guardados.
    *

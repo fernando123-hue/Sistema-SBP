@@ -112,6 +112,16 @@ const CRITERIO: Record<string, { texto: string; explicacao: string }> = {
     texto: 'lote inteiro',
     explicacao: 'Volume baixo: o lote vai inteiro para uma pessoa em vez de fragmentar.',
   },
+  // Faltava, e o buraco aparecia na tela: toda rodada de LIGANTE ou EMAIL_LIGA
+  // usa este critério, então o operador via o identificador interno cru
+  // (`por_grupo`) sem nenhuma explicação — justamente na categoria em que a
+  // regra é menos óbvia e mais precisa ser explicada.
+  por_grupo: {
+    texto: 'liga inteira',
+    explicacao:
+      'Cada liga vai inteira para uma pessoa, a que estiver com mais crédito no momento. ' +
+      'Ligas diferentes podem ir para pessoas diferentes.',
+  },
   sem_demanda: { texto: 'sem demanda', explicacao: 'Nada a distribuir nesta categoria.' },
 }
 

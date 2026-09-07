@@ -201,6 +201,19 @@ function alocarPorGrupos(
         creditoCategoria: elegivel.creditoCategoria - jaLevou * peso,
         creditoGlobal: elegivel.creditoGlobal - jaLevou * peso,
         recebidoDia: elegivel.recebidoDia + jaLevou,
+        // `recebidoPeriodo` TAMBÉM projeta, e esquecê-lo tinha consequência.
+        //
+        // A ordem de desempate é: crédito da categoria, crédito global,
+        // `recebidoPeriodo`, `recebidoDia`. O terceiro critério vem ANTES do
+        // quarto — então projetar só o quarto deixava o critério mais forte dos
+        // dois decidindo com o número de antes desta rodada. Com crédito
+        // empatado (o dia em que todos começam zerados, por exemplo), a mesma
+        // pessoa levava lote após lote: cada entrega atualizava um campo que
+        // só é consultado depois de outro que ficava parado.
+        //
+        // A janela de 30 dias inclui hoje, então o que a pessoa acabou de
+        // receber faz parte dela por definição.
+        recebidoPeriodo: elegivel.recebidoPeriodo + jaLevou,
       }
     })
 

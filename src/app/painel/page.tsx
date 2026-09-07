@@ -70,6 +70,11 @@ interface Qualidade {
     confiancaMediaAceita: number | null
     confiancaMediaCorrigida: number | null
   }
+  /** A mesma taxa, separada por modelo. Vazio quando não há revisão resolvida. */
+  porModelo: {
+    modelo: string
+    taxa: { revisadas: number; aceitasSemCorrecao: number; taxaDeAceitacao: number | null }
+  }[]
   cobertura: {
     itensDeIa: number
     revisados: number
@@ -545,6 +550,42 @@ function QualidadeDaIa({ medida }: { medida: Qualidade }) {
               detalhe="média informada pelo modelo"
             />
           </div>
+
+          {/*
+            COMPARAÇÃO ENTRE MODELOS.
+            A razão de o sistema manter dois fornecedores é poder responder se
+            algum acerta mais neste trabalho. Enquanto a medida era um número
+            agregado, a resposta não existia em lugar nenhum — as revisões dos
+            dois iam somadas na mesma taxa. Aparece só com dois ou mais: com um
+            modelo só, a linha repetiria o número de cima.
+          */}
+          {medida.porModelo.length > 1 ? (
+            <div className="mt-3">
+              <p className="mb-1.5 text-xs font-medium tracking-wide text-tinta-fraca uppercase">
+                Por modelo
+              </p>
+              <ul className="flex flex-col gap-1">
+                {medida.porModelo.map((linha) => (
+                  <li
+                    key={linha.modelo}
+                    className="flex items-center justify-between gap-3 rounded-md border border-borda px-3 py-2 text-sm"
+                  >
+                    <span className="font-medium">{linha.modelo}</span>
+                    <span className="text-tinta-suave">
+                      <span className="numerico">{percentual(linha.taxa.taxaDeAceitacao)}</span>{' '}
+                      <span className="text-xs">
+                        · {linha.taxa.aceitasSemCorrecao} de {linha.taxa.revisadas}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1.5 text-xs text-tinta-fraca">
+                Compare pela amostra, não só pela porcentagem: taxa alta sobre poucas revisões
+                ainda não diz nada.
+              </p>
+            </div>
+          ) : null}
 
           {separacao !== null && separacao < 0.05 ? (
             <div className="mt-3">
