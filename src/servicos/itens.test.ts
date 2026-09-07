@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { LIMITE_ITENS_POR_REGISTRO_MANUAL } from '../core/esquemas'
-import { sequenciaDeDatas } from '../core/util/datas'
+import { hojeIso, sequenciaDeDatas } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
 import { confirmar } from './distribuicao'
@@ -382,7 +382,10 @@ describe('painel', () => {
   it('o item manual aparece na categoria certa e some da pendência ao concluir', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     const pessoa = base.colaboradores[0]!
-    const hoje = new Date().toISOString().slice(0, 10)
+    // `hojeIso()`, nunca `toISOString()`: o serviço recorta o período no fuso da
+    // operação (UTC−3), então das 21h à meia-noite a data UTC já é a de amanhã e
+    // o período do teste não cobriria o item que ele acabou de criar.
+    const hoje = hojeIso()
     const periodo = { de: hoje, ate: hoje }
 
     const feito = await registrarManual(
