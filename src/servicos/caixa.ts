@@ -33,11 +33,21 @@ export interface ItemDaCaixa {
   /** Quantos itens o mesmo e-mail gerou. Mostra o desdobramento na tela. */
   irmaos: number
   responsavel: string | null
+  /**
+   * A liga do item, quando tem (`A4`).
+   *
+   * Governava a distribuição desde o `A4` e não aparecia em tela nenhuma. Sobe
+   * até aqui para que a Caixa possa filtrar por liga — e, com isso, para que a
+   * memória do setor sobre aquela liga tenha onde ser lida e escrita.
+   */
+  ligaId: string | null
+  ligaNome: string | null
 }
 
 export interface FiltroDaCaixa {
   status?: string | undefined
   categoriaCodigo?: string | undefined
+  ligaId?: string | undefined
   limite?: number | undefined
 }
 
@@ -52,11 +62,13 @@ export async function listarCaixa(
     where: {
       ...(status ? { status } : {}),
       ...(filtro.categoriaCodigo ? { categoria: { codigo: filtro.categoriaCodigo } } : {}),
+      ...(filtro.ligaId ? { ligaId: filtro.ligaId } : {}),
     },
     orderBy: [{ criadoEm: 'desc' }, { sequencia: 'asc' }],
     take: limite,
     include: {
       categoria: { select: { codigo: true, rotulo: true, grupo: true } },
+      liga: { select: { id: true, nome: true } },
       email: {
         select: {
           recebidoEm: true,
@@ -87,6 +99,8 @@ export async function listarCaixa(
     recebidoEm: item.email?.recebidoEm ?? null,
     irmaos: item.email?._count.itens ?? 1,
     responsavel: item.atribuicoes[0]?.colaborador.nome ?? null,
+    ligaId: item.liga?.id ?? null,
+    ligaNome: item.liga?.nome ?? null,
   }))
 }
 

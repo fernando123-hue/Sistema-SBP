@@ -15,6 +15,7 @@ export async function GET(requisicao: Request): Promise<Response> {
       listarCaixa(banco, {
         status: url.searchParams.get('status') ?? undefined,
         categoriaCodigo: url.searchParams.get('categoria') ?? undefined,
+        ligaId: url.searchParams.get('liga') ?? undefined,
         limite: Number(url.searchParams.get('limite') ?? 100),
       }),
       resumirCaixa(banco),

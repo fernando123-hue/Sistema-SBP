@@ -234,12 +234,20 @@ export function NotasDoSetor({
             >
               {salvando ? 'Registrando…' : 'Registrar'}
             </Botao>
+            {/*
+              Diz os DOIS vínculos quando os dois existem. Antes dizia só
+              "ligada a esta liga" com a categoria também presa — e a pessoa
+              descobriria a diferença só ao não achar a nota depois, filtrando
+              por uma coisa de cada vez.
+            */}
             <span className="text-xs text-tinta-suave">
-              {contexto.ligaId
-                ? 'Fica ligada a esta liga.'
-                : contexto.categoriaCodigo
-                  ? 'Fica ligada a esta categoria.'
-                  : 'Vale para o setor inteiro.'}
+              {contexto.ligaId && contexto.categoriaCodigo
+                ? 'Fica ligada a esta liga E a esta categoria — aparece quando as duas baterem.'
+                : contexto.ligaId
+                  ? 'Fica ligada a esta liga.'
+                  : contexto.categoriaCodigo
+                    ? 'Fica ligada a esta categoria.'
+                    : 'Vale para o setor inteiro.'}
             </span>
           </div>
         </div>
