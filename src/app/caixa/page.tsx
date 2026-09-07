@@ -33,6 +33,8 @@ interface ItemDaCaixa {
   recebidoEm: string | null
   irmaos: number
   responsavel: string | null
+  ligaId: string | null
+  ligaNome: string | null
 }
 
 interface Resumo {
@@ -46,6 +48,15 @@ interface Categoria {
   rotulo: string
   grupo: string
   entraNoRateio: boolean
+}
+
+interface Liga {
+  id: string
+  nome: string
+  instituicao: string | null
+  uf: string | null
+  itens: number
+  notas: number
 }
 
 interface PessoaDaEscala {
@@ -82,6 +93,15 @@ const REGISTRO_VAZIO: Registro = {
 export default function Caixa() {
   const [dados, setDados] = useState<{ itens: ItemDaCaixa[]; resumo: Resumo } | null>(null)
   const [filtro, setFiltro] = useState<string | null>(null)
+  /**
+   * Liga escolhida, `null` para todas.
+   *
+   * Separado do filtro de categoria porque as duas perguntas são
+   * independentes: "que tipo de trabalho é este" e "de quem veio". Somá-las num
+   * filtro só obrigaria a escolher entre ver uma liga e ver uma categoria.
+   */
+  const [ligaEscolhida, setLigaEscolhida] = useState<string | null>(null)
+  const [ligas, setLigas] = useState<Liga[]>([])
   const [erro, setErro] = useState<string | null>(null)
 
   const [papel, setPapel] = useState<string | null>(null)
@@ -92,19 +112,32 @@ export default function Caixa() {
   const [gravando, setGravando] = useState(false)
   const [confirmacao, setConfirmacao] = useState<string | null>(null)
 
-  const carregar = useCallback(async (categoria: string | null) => {
+  const carregar = useCallback(async (categoria: string | null, liga: string | null) => {
     setDados(null)
     try {
-      const consulta = categoria ? `?categoria=${categoria}&limite=200` : '?limite=200'
-      setDados(await api.buscar<{ itens: ItemDaCaixa[]; resumo: Resumo }>(`/itens${consulta}`))
+      const parametros = new URLSearchParams({ limite: '200' })
+      if (categoria) parametros.set('categoria', categoria)
+      if (liga) parametros.set('liga', liga)
+      setDados(
+        await api.buscar<{ itens: ItemDaCaixa[]; resumo: Resumo }>(`/itens?${parametros}`),
+      )
     } catch (causa) {
       setErro(mensagemDoErro(causa))
     }
   }, [])
 
   useEffect(() => {
-    void carregar(filtro)
-  }, [filtro, carregar])
+    void carregar(filtro, ligaEscolhida)
+  }, [filtro, ligaEscolhida, carregar])
+
+  useEffect(() => {
+    // Falha aqui não derruba a caixa: sem a lista, o seletor de liga
+    // simplesmente não aparece e o resto da tela segue inteiro.
+    void api
+      .buscar<Liga[]>('/ligas')
+      .then(setLigas)
+      .catch(() => setLigas([]))
+  }, [])
 
   // O papel decide se o formulário de registro aparece. Esconder é
   // conveniência, não proteção: `registrarManual` confere o papel no servidor,
@@ -170,7 +203,7 @@ export default function Caixa() {
       )
       setNovo(REGISTRO_VAZIO)
       setRegistrando(false)
-      await carregar(filtro)
+      await carregar(filtro, ligaEscolhida)
     } catch (causa) {
       setErro(mensagemDoErro(causa))
     } finally {
@@ -351,6 +384,36 @@ export default function Caixa() {
             ))}
           </div>
 
+          {/*
+            Seletor, não pastilhas: categoria são oito e cabem na linha; liga
+            cresce sem teto com a operação, e uma fileira de trinta pastilhas
+            empurraria a caixa para fora da tela no celular.
+          */}
+          {ligas.length > 0 ? (
+            <label className="flex flex-wrap items-center gap-2 text-xs text-tinta-suave">
+              <span className="font-medium">Liga</span>
+              <select
+                value={ligaEscolhida ?? ''}
+                onChange={(evento) => setLigaEscolhida(evento.target.value || null)}
+                className="min-h-9 rounded-md border border-borda bg-papel px-2 py-1 text-xs text-tinta"
+              >
+                <option value="">todas as ligas</option>
+                {ligas.map((liga) => (
+                  <option key={liga.id} value={liga.id}>
+                    {liga.nome}
+                    {liga.instituicao ? ` — ${liga.instituicao}` : ''} · {liga.itens}
+                    {liga.notas > 0 ? ` · ${liga.notas} nota${liga.notas === 1 ? '' : 's'}` : ''}
+                  </option>
+                ))}
+              </select>
+              {ligaEscolhida ? (
+                <span>
+                  A memória do setor abaixo é desta liga — e o que você anotar fica ligado a ela.
+                </span>
+              ) : null}
+            </label>
+          ) : null}
+
           {dados.itens.length === 0 ? (
             <Vazio
               titulo="Nenhum item"
@@ -372,6 +435,22 @@ export default function Caixa() {
                       <p className="truncate text-xs text-tinta-fraca">
                         {item.remetente ?? 'origem manual'}
                       </p>
+                      {/*
+                        A liga aparece na linha porque é ela que governa o
+                        rateio de `LIGANTE` e `EMAIL_LIGA` desde o `A4` — e até
+                        aqui decidia a distribuição sem nunca ser vista por
+                        quem opera. Clicar filtra a caixa por ela.
+                      */}
+                      {item.ligaNome ? (
+                        <button
+                          type="button"
+                          onClick={() => setLigaEscolhida(item.ligaId)}
+                          className="mt-0.5 truncate text-xs text-acento underline decoration-dotted underline-offset-2"
+                          title="Ver só esta liga — e o que o setor já aprendeu sobre ela"
+                        >
+                          {item.ligaNome}
+                        </button>
+                      ) : null}
                     </div>
                   ),
                 },
@@ -432,7 +511,7 @@ export default function Caixa() {
         seleção devolve as notas do setor inteiro, que é a resposta certa para
         "ainda não sei de que categoria este trabalho é".
       */}
-      <NotasDoSetor contexto={{ categoriaCodigo: filtro }} />
+      <NotasDoSetor contexto={{ categoriaCodigo: filtro, ligaId: ligaEscolhida }} />
     </div>
   )
 }
