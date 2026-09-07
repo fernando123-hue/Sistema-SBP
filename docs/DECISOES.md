@@ -23,6 +23,8 @@ Nenhuma hipótese vira regra silenciosamente. Este arquivo é a fonte da verdade
 | A12 | Cuidado por categoria (revisão) | **Documento e ficha exigem mais cuidado — mais itens vão para revisão humana.** É o segundo lado do "demandam mais atenção". Mexe no `limiar_confianca` por categoria (default `0,85`: abaixo disso o item vai para a fila de Revisão). Valores propostos: `DOC_CADASTRO = 0,95`, `FICHA_CADASTRO = 0,90`, demais `0,85`. Limiar mais alto = a IA precisa estar mais segura para aprovar sozinha, logo **mais** documentos/fichas caem na revisão humana. Já é campo por categoria, configurável sem deploy. Não toca no motor — é o corte antes dele. |
 | A13 | Quem pode ver o motivo de uma ausência *(06/09/2026)* | **Todo mundo vê que a pessoa está fora; só o gestor vê por quê.** Para `colaborador` e `operador`, a ausência aparece como **"de férias"** ou **"indisponível"** — nada além disso. Para `gestor`, uma **ficha** com o motivo real (`atestado`, `licença`, `falta`, `outro`) e a observação livre, onde cabe "motivos pessoais". Duas razões separam os dois níveis: a operação **precisa** saber quem não vai receber trabalho hoje, senão a tela promete uma equipe que não existe; e o motivo médico não é assunto de quem divide fila. `férias` atravessa porque é agenda, não saúde — e esconder agenda só produziria a pergunta "por que fulano está indisponível?", que é a conversa que a redação existe para evitar. Os motivos sensíveis viram todos o **mesmo** rótulo de propósito: se `atestado` tivesse rótulo próprio e os outros não, a ausência do rótulo já denunciaria o motivo. **A redação acontece no servidor**, nunca no componente: mandar o tipo real e esconder na tela deixaria o dado numa resposta HTTP que qualquer pessoa autenticada consegue ler. |
 
+| A14 | Memória operacional e feedback da equipe *(07/09/2026)* | **A memória existe para o sistema usar, com autonomia progressiva como alvo declarado** — o sistema deve ir facilitando cada vez mais o trabalho de todo mundo com o passar do tempo. Quatro respostas fecharam o desenho da primeira etapa: **(a) onde a nota aparece** — nas quatro telas de trabalho (Fila, Revisão, Distribuição, Caixa), nunca numa tela própria, porque memória que mora em tela separada é memória que ninguém abre; **(b) a que a nota se prende** — categoria e liga, os dois vínculos que cobrem os casos concretos levantados; **fica de fora o vínculo com pessoa**, que aguarda a chefia (§ H.4, item 13); **(c) quando a IA passa a ler a nota** — **depois** de o adapter da Anthropic rodar contra a API real e existir linha de base de acerto, não junto da primeira entrega (§ H.4, item 14); **(d) classificar é consequência, nunca porta de entrada** — correção do dono a uma primeira proposta que separava os exemplos em quatro tipos e recomendava um caminho para cada: os exemplos não são condições absolutas, o trabalho é com seres humanos, e o sistema tem de servir em qualquer circunstância. O erro nomeado foi transformar a taxonomia em **exigência de entrada**; formulário que obriga a classificar antes de escrever mata a captura, e memória em que ninguém escreve não vale nada. A consequência de engenharia de **(c)** é a que mais importa: a seleção de notas nasce como função **pura**, hoje ligada só à tela, para que ligar o modelo depois seja **trocar o destino de uma chamada** — não reescrever a regra nem os testes. |
+
 **Impacto em A4 — não é só configuração, é mudança no motor.** Hoje `distribuir()` (`src/core/distribuicao/motor.ts`) recebe uma `quantidade` escalar por categoria e reparte por resto-maior (RN-04); ele não sabe que um lote de ligantes se divide em grupos por `liga_id`. Para cumprir A4, a categoria `LIGANTE`/`E-MAIL LIGA` precisa de uma unidade de entrada nova — grupos (liga, tamanho) em vez de uma contagem plana — com alocação gulosa por maior-grupo-primeiro, mantendo a mesma trava de conservação (`Σ atribuições == quantidade de entrada`) e o mesmo livro-razão de crédito. Isso vai para `docs/03-SPEC.md` (contrato do motor) antes de mexer no código. Ver `ESTADO.md` → *Próximo passo sugerido*.
 
 ### Etapa 6 — fluxo atual e mapeamento (base de A5)
@@ -414,6 +416,74 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 8. **Memória cai de que lado da retenção?** *(levantada em 28/08/2026)* `LogAuditoria` guarda `Item.titulo`, que a IA extraiu do corpo do e-mail e pode carregar nome de associado. Se a retenção expurgar `EmailConteudo`, esse título sobrevive na trilha — que o invariante 11 proíbe apagar. As duas leituras são defensáveis, e a escolha é de DPO, não de engenharia.
 
 ~~9. **Quem pode ver que alguém está de atestado?**~~ **RESPONDIDA em 06/09/2026** — ver `§ A13` abaixo. A escolha foi a combinação de (b) e (c): todo mundo vê que a pessoa está fora, só o gestor vê por quê.
+
+**Itens 10 a 14 levantados em 07/09/2026**, com a intenção de separar retenção de dado bruto de retenção de memória operacional, e com a proposta de feedback da equipe. Ver *Memória operacional e feedback da equipe — 07/09/2026*. Os itens 10 a 13 estão na folha de decisão preparada para a chefia do setor; o 14 é do dono do negócio.
+
+10. **Por quanto tempo fica o corpo do e-mail?** `EmailConteudo` (remetente, assunto, corpo) e os bytes de anexo são expurgáveis por construção, e **nada os expurga hoje** — não existe rotina de retenção no código, só a estrutura que a permite. Sem prazo definido, o dado bruto acumula para sempre por omissão, que é o pior dos mundos: nem decidido, nem defensável. Decisão de operação + DPO.
+
+11. **Por quanto tempo fica o que a IA extraiu?** Camada nova, que não estava separada até aqui. `Item.titulo`, `Item.payload`, `Revisao.sugestaoIa` e `Revisao.valorFinal` são de retenção longa hoje e carregam texto extraído do corpo — `payload.campos` é `record<string, string>` de até 2000 caracteres por valor, ou seja, um saco aberto onde CPF, CRM, nome e e-mail de associado caem naturalmente. A pergunta operacional que define o prazo: **até quando a equipe precisa reabrir um item antigo e ver o que foi extraído dele?**
+
+12. **Motivo de afastamento é dado de saúde.** `Afastamento.tipo` aceita `atestado` e `licenca`, e `observacao` é texto livre. Sob a LGPD isso é dado sensível (art. 11), categoria mais protegida que o restante. Hoje é retenção longa, sem prazo e sem expurgo. O `A13` resolveu **quem vê**; não resolveu **por quanto tempo fica**. É o item mais urgente desta lista.
+
+13. **Nota sobre pessoa: existe, e sob que regra?** Da proposta de feedback (07/09/2026). Uma anotação persistente sobre um colega, escrita por outros colegas, passa por baixo do invariante 10 — que restringe métrica por pessoa a observabilidade, nunca a julgamento — porque texto livre não é métrica e nada no sistema o intercepta. Três saídas foram formuladas para a chefia: (a) não existe nota sobre pessoa, só sobre categoria e tipo de demanda; (b) existe e a pessoa vê o que foi escrito sobre ela; (c) existe e é visível só ao gestor, espelhando o desenho já escolhido no `A13`. **Nenhuma foi assumida.** Enquanto não houver resposta, a captura de nota não grava vínculo com `Colaborador`.
+
+14. **A memória volta para a IA?** *(dono do negócio, não da chefia)* A proposta de 07/09/2026 diz que o sistema deve "analisar e se adaptar". Três leituras, com distância de risco grande entre elas: **(A)** a nota aparece para a pessoa certa no momento do trabalho — não envolve IA, risco nenhum; **(B)** o sistema propõe mudança de regra e um humano aprova — auditável, a decisão continua humana; **(C)** as notas entram no contexto enviado ao modelo. **(C) é exatamente o que o invariante 12 proíbe**, por dois motivos independentes: transforma injeção de prompt de incidente de uma mensagem em ataque persistente (basta uma conta comprometida ou uma saída ruim), e selecionar correções humanas para injetar no prompt é aprendizado em contexto — treinar com dado real da associação, que o invariante 9 sujeita a decisão explícita do dono. Recomendação registrada: **A agora, B depois, C só após o adapter rodar contra o modelo real** (ver *Próximo passo* em `ESTADO.md`), porque sem linha de base medida "a IA melhorou com as notas" é afirmação não falsificável.
+
+---
+
+## Memória operacional e feedback da equipe — 07/09/2026
+
+**Nada disto está implementado.** É registro de proposta, das restrições que ela encontra e das perguntas que ficaram abertas. Ver § H.4, itens 10 a 14.
+
+### A intenção, como foi colocada
+
+Separar **retenção de dado bruto** de **retenção de conhecimento operacional**. O bruto (corpo de e-mail, anexo) tem prazo curto, definido por necessidade operacional, segurança e LGPD. O conhecimento consolidado e não sensível tem prazo muito mais longo.
+
+Junto veio a proposta de **feedback da equipe**: um canal onde quem opera registra o que aprendeu, e o sistema usa isso para melhorar. Exemplos dados: *"esse tipo de solicitação normalmente apresenta este problema"*, *"fulano prefere análises objetivas"*, *"nesta categoria o documento X precisa ser conferido antes da aprovação"*, *"a IA erra neste campo"*.
+
+### O que já estava certo, e por quê
+
+A intenção **já é o invariante 11**, e a arquitetura já a executa numa fronteira: `Email` (metadado, retenção longa) contra `EmailConteudo` (remetente, assunto, corpo — expurgável), com `conteudoExpurgadoEm` distinguindo "nunca teve" de "foi expurgado". `Anexo` repete o desenho: metadado fica, bytes saem.
+
+O que a auditoria de 07/09 acrescenta é que **a fronteira foi desenhada num lugar só.** O lado "conhecimento" não está limpo de dado pessoal: `Item.titulo`, `Item.payload`, `Revisao.sugestaoIa`, `Revisao.valorFinal`, `LogAuditoria.antes/depois`, `Ligante.nome/email`, `Anexo.nomeSeguro` e `Afastamento.tipo/observacao` são todos de retenção longa e todos podem carregar identificação de pessoa. Hoje é possível apagar o e-mail original e o nome do associado seguir vivo em quatro tabelas.
+
+`LogAuditoria` é o nó: append-only por invariante, então **nada ali pode ser limpo depois**. O que entrar, entra para sempre. É a razão de o item 12 de § H.4 ser urgente por si só, independentemente de quando o dado real chegar.
+
+### Três camadas, não duas
+
+A proposta falava em duas gavetas. São **três** — e a do meio está hoje do lado errado:
+
+| | O que é | Prazo |
+|---|---|---|
+| **Bruto** | corpo, remetente, assunto, bytes de anexo | curto |
+| **Derivado** | título, `payload`, sugestão da IA, correção humana | **médio — hoje está com o longo** |
+| **Conhecimento** | contagens, datas, crédito, carga, taxa de acerto | longo |
+
+A camada **Conhecimento** já é limpa por construção: são números e datas, e nenhum deles precisa de nome de ninguém para significar o que significa. É onde mora quase todo o valor que a proposta quer preservar. O trabalho é tirar de lá o que vazou da camada Derivado.
+
+### Feedback escrito pela equipe é a matéria-prima mais limpa que existe aqui
+
+Nota escrita por quem opera é **texto de primeira pessoa sobre o próprio trabalho** — não é dado de terceiro que um associado nunca escolheu ceder. Isso a torna elegível a retenção longa por construção, ao contrário de memória extraída de e-mail. A proposta, neste ponto, *resolve* o problema de retenção em vez de aumentá-lo.
+
+### A correção de rumo de 07/09/2026 — classificar é consequência, nunca porta de entrada
+
+A primeira resposta a esta proposta separou os quatro exemplos em quatro tipos (memória, regra, métrica, nota sobre pessoa) e recomendou tratar cada um por um caminho. **O dono do projeto corrigiu:** os exemplos não são condições absolutas, o trabalho é com seres humanos, e o sistema tem de servir em qualquer circunstância.
+
+A correção está certa, e o erro tinha nome: transformar a taxonomia em **exigência de entrada**. Formulário que obriga a escolher o tipo antes de escrever mata a captura — e memória em que ninguém escreve não vale nada. A rigidez teria custado exatamente a utilidade que a funcionalidade existe para ter.
+
+**O desenho que fica:** uma porta só, texto livre, sem classificação obrigatória. O que a nota *é* se descobre depois — nota repetida vira candidata a regra, nota conferível contra número é conferida, nota que ninguém abre morre por desuso. Classificação vira destino, não requisito.
+
+Duas coisas seguem valendo, e não são rigidez de categoria — são consequência, e por isso viraram pergunta em vez de decisão minha: **nota sobre pessoa** (§ H.4, item 13) e **nota indo para o modelo** (§ H.4, item 14).
+
+### O que fica proibido de nascer por efeito colateral
+
+- **Nota alimentando prompt.** Invariante 12. Se um dia entrar, entra como decisão do dono, com o texto passando pelas três camadas de `conteudo-nao-confiavel` no caminho de leitura e sempre dentro dos delimitadores.
+- **Nota sobre pessoa virando avaliação.** Invariante 10. Texto livre não é métrica, e nada no sistema o intercepta hoje — é justamente por isso que a política precisa ser explícita antes, e não depois.
+- **"A IA erra neste campo" como texto.** O par (sugestão da IA, decisão do humano) está gravado em `Revisao` desde sempre, e `medirQualidadeDaIa` já o lê. Falta só quebrar por campo. Registrar isso como nota criaria uma opinião competindo com uma medição — e quando as duas divergem, ganha a mais barulhenta, não a mais correta.
+
+### O que ainda não existe
+
+Não existe **nenhuma rotina de expurgo** no sistema. A estrutura permite apagar; nada apaga. `conteudoExpurgadoEm`, `bytesExpurgadosEm` e `Anexo.chaveArmazenamento = null` são todos campos que os leitores já toleram — a ingestão e a caixa já tratam o nulo — mas nada os preenche. Quando os prazos existirem, o teste que prova o expurgo correto é: **painel e crédito acumulado devolvem exatamente os mesmos números depois dele.** Se algum número mudar, o expurgo está apagando conhecimento, não dado bruto.
 
 ---
 
