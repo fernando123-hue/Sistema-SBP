@@ -90,11 +90,18 @@ const CAMPO_NOME = /\bnome[:\s]+([^\n]{3,120})/i
  * minúscula deixa de virar liga. Item sem liga é um lote de um item só —
  * inofensivo. Item na liga ERRADA é trabalho entregue à pessoa errada.
  *
- * `[^\n,.;:]` já impedia atravessar quebra de linha; era o `/i` que deixava a
- * âncora inútil.
+ * A captura também deixou de ser "tudo até a pontuação" e passou a ser uma
+ * sequência de palavras CAPITALIZADAS: em *"Liga de Cardiologia para cadastro"*
+ * ela para em `Cardiologia`, em vez de levar `para cadastro` junto para dentro
+ * do nome da liga — e nome com lixo no fim é nome que não casa com o mesmo
+ * nome escrito de outro jeito no dia seguinte.
+ *
+ * Montada por `new RegExp` porque as três partes se repetem; o custo é ter de
+ * escapar a barra em `ESPACO`, e o ganho é a expressão caber numa linha legível.
  */
 const INICIAL = 'A-ZÁÉÍÓÚÂÊÔÃÕÇ'
-const RESTO = 'a-zà-öø-ÿA-ZÀ-Þ0-9'
+/** `Ø-Þ` e não `Ø-ÿ`: `×` (0xD7) e `÷` (0xF7) são sinais de multiplicação e divisão, não letras. */
+const RESTO = 'a-zà-öø-ÿA-ZÀ-ÖØ-Þ0-9'
 /** Só espaço e tabulação separam — `\s` atravessaria a quebra de linha. */
 const ESPACO = '[ \\t]+'
 /** Uma palavra capitalizada, possivelmente ligada por `de`/`da`/`do` minúsculo. */
