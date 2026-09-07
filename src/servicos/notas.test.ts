@@ -22,8 +22,21 @@ beforeEach(async () => {
   await limparTudo(banco)
 })
 
+/**
+ * Busca-ou-cria, nunca cria direto.
+ *
+ * `limparTudo` NÃO apaga `Liga` — nenhum teste do repositório apaga — então um
+ * `create` puro estoura no índice único `[nome, instituicao]` assim que o mesmo
+ * arquivo roda duas vezes contra o mesmo banco. Em `vitest run` isso não
+ * aparece (o `globalSetup` recria `teste.db` a cada invocação); em modo watch,
+ * a segunda execução falha. Mesma forma do helper de `agrupamento.test.ts`.
+ */
 async function ligaDeTeste(nome = 'Liga Acadêmica Sintética') {
-  return banco.liga.create({ data: { nome, instituicao: `Instituição ${nome}` } })
+  const instituicao = `Instituição ${nome}`
+  return (
+    (await banco.liga.findFirst({ where: { nome, instituicao } })) ??
+    (await banco.liga.create({ data: { nome, instituicao } }))
+  )
 }
 
 describe('quem escreve', () => {
@@ -268,6 +281,28 @@ describe('a nota encontra o trabalho', () => {
     expect((await paraContexto(banco, { categoriaId: doc.id })).map((linha) => linha.texto)).toEqual(
       ['Vale para o setor inteiro.'],
     )
+  })
+
+  it('contexto vazio NÃO devolve nota de categoria — só as do setor inteiro', async () => {
+    // Esta é a garantia que a ROTA anulava por fora. Três das quatro telas
+    // pedem com contexto vazio; enquanto o padrão do `GET` era a listagem
+    // plana, elas recebiam também as notas presas a categorias em que a pessoa
+    // não estava trabalhando — e o núcleo seguia verde, porque o defeito não
+    // estava na regra, estava em quem a chamava.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const ator = base.colaboradores[0]!.ator
+
+    await registrar(banco, { texto: 'Só para DOC.', categoriaCodigo: 'DOC_CADASTRO' }, ator)
+    await registrar(banco, { texto: 'Para o setor inteiro.' }, ator)
+
+    expect((await paraContexto(banco, {})).map((linha) => linha.texto)).toEqual([
+      'Para o setor inteiro.',
+    ])
+
+    // E a listagem plana continua devolvendo as duas — ela existe para
+    // administrar a memória, e é por isso que virou o modo que precisa ser
+    // pedido por escrito (`?todas=1`).
+    expect(await listar(banco)).toHaveLength(2)
   })
 
   it('arquivada não orienta ninguém, mas continua listável', async () => {

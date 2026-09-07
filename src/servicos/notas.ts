@@ -262,15 +262,6 @@ export async function arquivar(
   })
 }
 
-/**
- * As notas que valem para onde a pessoa está agora.
- *
- * Lê as candidatas do banco e entrega ao núcleo puro, que decide o que sobra.
- * A consulta traz só as vivas — o corte por `arquivadaEm` está nos dois lugares
- * de propósito: no banco porque o índice existe para isso, e em
- * `selecionarNotas` porque a função pura não pode depender de o chamador ter
- * filtrado.
- */
 export interface ContextoPedido extends ContextoDeTrabalho {
   /**
    * As telas conhecem o CÓDIGO da categoria, não o id — `codigo` é o que
@@ -281,6 +272,29 @@ export interface ContextoPedido extends ContextoDeTrabalho {
   categoriaCodigo?: string | null
 }
 
+/**
+ * As notas que valem para onde a pessoa está agora.
+ *
+ * Lê as candidatas do banco e entrega ao núcleo puro, que decide o que sobra.
+ * A consulta traz só as vivas — o corte por `arquivadaEm` está nos dois lugares
+ * de propósito: no banco porque o índice existe para isso, e em
+ * `selecionarNotas` porque a função pura não pode depender de o chamador ter
+ * filtrado.
+ *
+ * **É o modo PADRÃO da rota**, e isso é a defesa. Enquanto a listagem plana era
+ * o padrão, as telas que pedem sem contexto — três das quatro — recebiam também
+ * as notas presas a categorias em que a pessoa não estava trabalhando, anulando
+ * por fora a única garantia que `selecionarNotas` existe para dar. O modo
+ * perigoso é o que precisa ser pedido por escrito.
+ *
+ * **A leitura não tem teto, e é escolha registrada.** Com o recorte do `where`,
+ * as candidatas são só as gerais mais as do vínculo pedido — dezenas, na escala
+ * de 4 a 7 pessoas. Um `take` aqui pareceria prudente e seria pior: ordenado
+ * por data, ele descartaria em silêncio a nota de liga mais antiga em favor de
+ * notas gerais recentes, trocando um custo irrelevante por uma degradação
+ * invisível. Mesma classe de `H-D8`: vira assunto na migração para PostgreSQL,
+ * e lá a saída é paginar informando o corte, como `servicos/memoria.ts` faz.
+ */
 export async function paraContexto(
   banco: Banco,
   pedido: ContextoPedido,

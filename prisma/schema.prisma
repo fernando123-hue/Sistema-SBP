@@ -549,9 +549,26 @@ model Nota {
   /// Ver `DominioSchema` e a nota em `LogAuditoria.dominio`.
   dominio String @default("distribuicao")
 
+  /// `Restrict` NOS TRÊS, e o de `categoria`/`liga` foi corrigido antes de
+  /// chegar a produção: nasceram `Cascade`.
+  ///
+  /// Com `Cascade`, remover uma categoria apagaria junto tudo o que o setor
+  /// aprendeu sobre ela — em silêncio, sem linha na trilha, sem ninguém
+  /// decidir isso. É o mesmo raciocínio que já vale para `SaldoCarga`, cujos
+  /// dois lados são `Restrict` porque o livro-razão é histórico de auditoria,
+  /// e é o invariante 11 no ponto exato onde ele mais custa: nunca apagar dado
+  /// operacional para simplificar armazenamento.
+  ///
+  /// `SetNull` seria pior que `Cascade`: a nota de uma categoria removida
+  /// viraria nota geral e passaria a aparecer em TODA tela do setor, com um
+  /// conselho cujo contexto não existe mais.
+  ///
+  /// O sistema desativa categorias (`Categoria.ativa`), nunca as remove — então
+  /// na prática esta trava nunca dispara. Ela existe para o dia em que alguém
+  /// tentar, e para que esse alguém receba um erro em vez de um silêncio.
   autor     Colaborador @relation(fields: [autorId], references: [id], onDelete: Restrict)
-  categoria Categoria?  @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
-  liga      Liga?       @relation(fields: [ligaId], references: [id], onDelete: Cascade)
+  categoria Categoria?  @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
+  liga      Liga?       @relation(fields: [ligaId], references: [id], onDelete: Restrict)
 
   /// A consulta quente é sempre "notas vivas deste vínculo": as telas leem por
   /// categoria e por liga, e a seleção descarta arquivada antes de ordenar.
