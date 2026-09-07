@@ -1,14 +1,16 @@
 # Estado do projeto — retomada
 
-Última atualização: **06/09/2026** — **o roteiro de decisões do dono do negócio foi fechado.** As nove decisões de 26/08 (A4 a A12) e a de privacidade (A13) estão implementadas. Seis entregas mescladas: A11/A12, A7, A6, A10, A4 e A13.
+Última atualização: **07/09/2026** — **abriu a memória do setor.** O sistema já guardava o que *aconteceu* (a trilha); agora guarda o que a equipe *aprendeu* com isso. Três entregas mescladas hoje: o conserto do teste de fuso (#24), a retenção em três camadas com a decisão `A14` (#25) e as notas do setor (#26).
 
-> **Não há nenhuma decisão sua esperando código.** O que resta são dois pedaços registrados (a leitura narrada do histórico, do `A6`; e o lembrete semanal do `A8`, que depende de envio de e-mail), mais o que sempre esteve pendente: **o adapter da Anthropic nunca rodou contra a API real.** Ver *Próximo passo sugerido*.
+> **Agora HÁ decisões suas esperando** — cinco, registradas em `DECISOES.md § H.4`, itens 10 a 14. Quatro são de retenção e privacidade e vão para a chefia do setor; a quinta é sua: **quando a IA passa a ler as notas.** Você já respondeu *"depois de medir o modelo real"*, e essa medição é o passo 1 de sempre. Ver *Próximo passo sugerido*.
 
 ### Se você está retomando agora, leia isto primeiro
 
-1. **`npm run verificar` tem de dar 358 verdes.** Se der menos, algo quebrou entre as sessões — comece por aí, não pelo próximo passo.
+1. **`npm run verificar` tem de dar 386 verdes.** Se der menos, algo quebrou entre as sessões — comece por aí, não pelo próximo passo.
 2. **Os valores do `A11` nunca foram relidos com o cliente.** `DOC = 4` e `FICHA = 1,75` redistribuem carga entre pessoas reais. `1,75` nasceu marcado como negociável.
 3. **Uma armadilha conhecida:** a CSP quebra a verificação de tela em modo de desenvolvimento (`eval() is not supported`, HMR caindo, formulários controlados sem reagir). Não é defeito de produção. Para conferir tela, o caminho confiável hoje é por HTTP com sessão real — ver `DECISOES.md`, seção *Afastamento (A10)*.
+4. **Nada é apagado por retenção, e nenhum prazo foi definido.** A estrutura separa conteúdo de histórico e permite expurgar; **não existe nenhuma rotina de expurgo no código.** Enquanto a chefia não responder, o dado bruto acumula por omissão. Ver `DECISOES.md`, seção de 07/09/2026.
+5. **Duas dívidas nasceram com as notas, e estão nomeadas** em *Dívidas que a entrega de 07/09 criou*, abaixo. Nenhuma trava uso; as duas foram registradas em vez de escondidas.
 
 ---
 
@@ -66,7 +68,7 @@ Depois:
 npx prisma migrate deploy   # cria o banco e aplica as 10 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 358 testes
+npm run verificar           # typecheck + 386 testes
 npm run dev                 # http://localhost:3000
 ```
 
@@ -103,12 +105,55 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | API REST | 27 caminhos, 33 operações, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
-| Testes | **358 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, pipeline de integração) |
+| Notas do setor | O que a equipe aprendeu operando, escrito por quem opera. Uma porta só, texto livre, vinculável a categoria e liga. Aparece nas quatro telas de trabalho |
+| Testes | **386 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
+
+**Entrou a memória do setor (`A14`).** O sistema tinha memória do que **aconteceu** — `LogAuditoria` e `EventoProcessamento`, lidos por `servicos/memoria.ts` — e nenhuma do que se **aprendeu** com isso. Agora tem as duas.
+
+**Uma porta só.** `texto` é o único campo obrigatório: sem tipo de nota, sem categoria de nota, sem escolha antes de escrever. Formulário que obriga a classificar mata a captura, e memória em que ninguém escreve não vale nada. O que a nota *é* se descobre depois, pelo uso.
+
+> Esta forma veio de uma correção do dono do projeto. A primeira proposta separava os exemplos em quatro tipos e dava um caminho para cada; ele respondeu que os exemplos não são condições absolutas, que o trabalho é com seres humanos, e que o sistema tem de servir em qualquer circunstância. O erro tinha nome: **transformar a taxonomia em exigência de entrada.** Registrado em `DECISOES.md § A14(d)`.
+
+**A nota encontra o trabalho**, em vez de esperar ser procurada: aparece na Fila, na Revisão, na Distribuição e na Caixa, no momento da decisão. Ordem: liga > categoria > geral, e no mesmo peso a mais recente primeiro. Vínculo que não bate **elimina** a nota.
+
+**O interruptor, não a reescrita.** `src/core/notas.ts` é a seleção: pura, sem I/O, testada. Hoje alimenta a tela; é a **mesma função** que montará o contexto do modelo quando você liberar (`§ H.4` item 14). Ligar a IA depois é trocar o destino de uma chamada — e `core/notas.test.ts` passa a cobrir o prompt sem uma linha de mudança.
+
+**O texto da nota NÃO vai para a trilha.** `LogAuditoria` é append-only: copiar o texto faria a nota existir em dois lugares com políticas de retenção opostas, e a cópia eterna seria justamente a que ninguém consegue arquivar. A trilha grava quem, quando, o vínculo e o tamanho.
+
+**Não existe vínculo com pessoa** além da autoria — a coluna não existe, aguardando `§ H.4` item 13. Criá-la depois é migração; retirá-la depois de povoada, não.
+
+### O defeito que a revisão pegou, e por que ele importa
+
+O `GET /api/notas` tinha a **listagem plana como padrão**, e a seleção só rodava quando vinha algum vínculo. Três das quatro telas pedem com contexto vazio — então elas recebiam **todas** as notas vivas, inclusive as de categorias em que a pessoa não estava trabalhando. Exatamente o que `selecionarNotas` existe para impedir.
+
+Duas coisas sobre como escapou, e as duas valem para a próxima vez:
+
+- **Os testes de núcleo estavam verdes o tempo todo.** A regra estava certa; quem a chamava é que não estava. Testar a função pura não prova nada sobre quem a consome.
+- **A verificação por HTTP declarada como prova passou por cima.** Havia UMA nota no banco, geral — os dois modos devolviam o mesmo resultado. Verificação com um caso que não distingue os caminhos não é verificação.
+
+O padrão inverteu: seleção por omissão, listagem plana exige `?todas=1`. A lição ficou na forma do código — **o modo perigoso é o que precisa ser pedido por escrito.**
+
+Junto vieram três correções da mesma varredura: `Nota` cascateava com `Categoria` e `Liga` (apagaria a memória do setor em silêncio — agora `Restrict` nos três, como `SaldoCarga`); o helper `ligaDeTeste` fazia `create` puro e estourava em modo watch; e a tela oferecia arquivar a quem o serviço recusa.
+
+### Dívidas que a entrega de 07/09 criou
+
+Nenhuma trava uso. As duas estão registradas porque foram escolhas, não descuidos:
+
+1. **A liga é inalcançável pela tela.** O vínculo existe no banco, na API e nos testes; nenhuma tela oferece criar nota ligada a uma liga. Metade da decisão `A14(b)` está construída por baixo e inacessível por cima. É a lacuna mais concreta da entrega.
+2. **`NotaDoSetor` está declarado duas vezes** — em `servicos/notas.ts` e em `componentes/notas.tsx`. Instância nova da dívida `H-D7`, com `criadoEm` já sendo `Date` de um lado e `string` do outro, que é a forma exata que o defeito assumiu da última vez. Documentado dentro do arquivo. Corrigir a família inteira atravessa a fronteira servidor/cliente e não é carona de entrega de funcionalidade.
+
+Também registrado, e deliberado: **a leitura de `paraContexto` não tem teto.** Um `take` pareceria prudente e seria pior — ordenado por data, descartaria em silêncio a nota de liga mais antiga em favor de notas gerais recentes. Mesma classe de `H-D8`.
+
+Testes: 358 → **386**.
+
+---
+
+## Antes disso — o A13
 
 **Entrou o A13 — quem pode ver o motivo de uma ausência.** Era a última pergunta aberta desta sessão, e você respondeu em 06/09/2026. Detalhe em `DECISOES.md § A13`.
 
@@ -509,7 +554,11 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ## Próximo passo sugerido
 
-**O roteiro de decisões fechou em 06/09/2026.** Até aqui esta seção começava com "há trabalho de código decidido e não feito". Não há mais: **A4 a A13 estão implementadas.** O que sobrou está listado abaixo, e o topo da lista voltou a ser o de sempre — a parte que nunca foi provada.
+**O topo da lista não mudou, e agora tem duas razões para estar lá.** Rodar o adapter contra a API real sempre foi a parte nunca provada; desde 07/09 ele também é o **pré-requisito que o próprio dono escolheu** para a IA passar a ler as notas do setor (`§ A14(c)`). Sem linha de base medida, *"a IA melhorou com as notas"* é afirmação que ninguém consegue falsificar.
+
+> **O que muda o rumo desta lista não é código, é resposta.** Cinco perguntas em `DECISOES.md § H.4`, itens 10 a 14. Quatro vão para a chefia do setor — e uma delas, o prazo do motivo de afastamento, é dado de saúde sob a LGPD, o item mais urgente do documento inteiro. Enquanto elas não voltam, o dado bruto acumula por omissão e **nenhuma linha é apagada por retenção**, porque não existe rotina de expurgo no código.
+
+**O roteiro de 26/08 fechou em 06/09/2026:** `A4` a `A13` estão implementadas. `A14` entrou em 07/09.
 
 ### O que foi construído em 06/09/2026
 
@@ -554,19 +603,35 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 ### Depois disso, por valor decrescente
 
-4. **`H-D7`** — os contratos de API redigitados à mão nas telas. Já divergiram uma vez (`emAndamento` sumiu; `Date` vs. string), e cada tela nova aumenta a superfície. Derivar os tipos dos esquemas Zod mata a família inteira de divergência silenciosa entre API e tela — e o legado do cliente vai consumir essas rotas.
+4. **A liga inalcançável pela tela.** *(nasceu em 07/09)* O vínculo de nota com liga existe no banco, na API e nos testes; nenhuma tela oferece criá-lo. Metade da decisão `A14(b)` está construída por baixo e inacessível por cima. É a lacuna mais barata de fechar desta lista, e a que mais entrega — nota de liga é o conhecimento mais caro de descobrir sozinho.
 
-5. **`H-D18`** — agregados de métrica materializados. Reclassificado: nenhuma métrica lê linha expurgável, então **não bloqueia mais a política de retenção**. Continua valendo por recorte histórico barato.
+5. **`H-D7`** — os contratos de API redigitados à mão nas telas. Já divergiram uma vez (`emAndamento` sumiu; `Date` vs. string), e cada tela nova aumenta a superfície. Derivar os tipos dos esquemas Zod mata a família inteira de divergência silenciosa entre API e tela — e o legado do cliente vai consumir essas rotas. **Ganhou uma instância nova em 07/09:** `NotaDoSetor` está declarado em `servicos/notas.ts` e redigitado em `componentes/notas.tsx`, com `criadoEm` já sendo `Date` de um lado e `string` do outro — a forma exata que o defeito assumiu da última vez. Está documentado dentro do arquivo, não escondido.
 
-6. **`H-D8`** — as consultas N+1 do painel e da distribuição. Irrelevantes com 4-7 pessoas em SQLite local (medido: ~29 consultas por carregamento do painel, ~14 por categoria na distribuição). Viram problema de verdade na migração para PostgreSQL, e pior por acontecerem dentro da transação que segura a trava do dia.
+6. **`H-D18`** — agregados de métrica materializados. Reclassificado: nenhuma métrica lê linha expurgável, então **não bloqueia mais a política de retenção**. Continua valendo por recorte histórico barato.
 
-7. **Demais itens de `DECISOES.md § H.2`.** Onze dívidas continuam abertas no total; tirando as quatro já nomeadas acima, sobram **sete**. Nenhuma com prazo, nenhuma travando uso.
+7. **`H-D8`** — as consultas N+1 do painel e da distribuição. Irrelevantes com 4-7 pessoas em SQLite local (medido: ~29 consultas por carregamento do painel, ~14 por categoria na distribuição). Viram problema de verdade na migração para PostgreSQL, e pior por acontecerem dentro da transação que segura a trava do dia.
+
+8. **Demais itens de `DECISOES.md § H.2`.** Onze dívidas continuam abertas no total; tirando as quatro já nomeadas acima, sobram **sete**. Nenhuma com prazo, nenhuma travando uso.
 
 ---
 
-## Quatro decisões que dependem do dono do negócio
+## Nove decisões que dependem do dono do negócio
 
-Estão registradas em `DECISOES.md § H.4`, sem resposta inventada:
+Estão registradas em `DECISOES.md § H.4`, sem resposta inventada. **Cinco nasceram em 07/09/2026** (itens 10 a 14) e vêm primeiro porque quatro delas têm prazo de mundo real: enquanto não voltarem, dado se acumula sem política.
+
+### As cinco de retenção e memória — 07/09/2026
+
+| # | Pergunta | De quem |
+|---|---|---|
+| 12 | **Motivo de afastamento é dado de saúde** (LGPD art. 11). Hoje fica guardado sem prazo. O `A13` resolveu *quem vê*; não resolveu *por quanto tempo fica* | **o mais urgente** |
+| 10 | Por quanto tempo fica o corpo do e-mail e os bytes de anexo | operação + DPO |
+| 11 | Por quanto tempo fica o que a IA extraiu (`Item.titulo`, `Item.payload`, as revisões). A pergunta prática: até quando a equipe precisa reabrir um item antigo e ver o que foi extraído? | operação + DPO |
+| 13 | Nota sobre pessoa: existe, e sob que regra? Três saídas formuladas | chefia |
+| 14 | A memória volta a alimentar a IA? Respondida em parte — *depois de medir o modelo real* | dono |
+
+> **Uma folha de decisão foi preparada para a chefia**, com opções, uma recomendação marcada em cada, e o que acontece se ninguém decidir. Ela não está no repositório: foi entregue como arquivo na sessão de 07/09/2026. Se o arquivo se perdeu, as perguntas cruas estão em `§ H.4` e a folha se refaz a partir delas.
+
+### As quatro anteriores
 
 > ~~**Quem pode ver que alguém está de atestado?**~~ **Respondida em 06/09/2026** e implementada como `A13`: todo mundo vê que a pessoa está fora, só o gestor vê por quê. Saiu desta lista.
 
@@ -583,7 +648,7 @@ Estão registradas em `DECISOES.md § H.4`, sem resposta inventada:
 
 ## Pendências que aguardam decisão, não código
 
-- **Retenção:** a estrutura separa conteúdo de histórico e permite expurgo, mas **nenhum prazo foi definido** e nada é apagado hoje. Definir prazo é decisão de negócio e de DPO, não de engenharia.
+- **Retenção:** a estrutura separa conteúdo de histórico e permite expurgo, mas **nenhum prazo foi definido e não existe nenhuma rotina de expurgo no código** — nada apaga nada hoje. A auditoria de 07/09/2026 acrescentou que a fronteira foi desenhada num lugar só: `Item.titulo`, `Item.payload`, as revisões, a trilha, `Ligante` e `Afastamento` são todos de retenção longa e todos podem carregar identificação de pessoa. **Hoje é possível expurgar o e-mail e o nome do associado seguir vivo em quatro tabelas.** Ver `DECISOES.md`, seção de 07/09/2026, e as três camadas propostas lá.
 - **Dado real para a API da Anthropic:** bloqueado por decisão de 27/08/2026 — só dados sintéticos até aprovação formal da associação.
 
 ---
@@ -603,6 +668,7 @@ src/
     distribuicao/   o motor e a ordenação (núcleo de valor)
     seguranca/      injeção de prompt, validação e tipo real de anexo
     autenticacao.ts política de bloqueio (pura, sem I/O)
+    notas.ts        que notas valem para o contexto atual — hoje a tela, amanhã o prompt
   ports/            AiPort, IngestaoPort, ArmazenamentoPort
   adapters/         mock, anthropic, disco + fábrica escolhida por ambiente
   servicos/         transações, orquestração
@@ -625,6 +691,9 @@ src/
 | mexer em cadastro de pessoa ou habilitação | `src/servicos/colaboradores.ts` e a tela `/acesso` |
 | registrar trabalho que não veio por e-mail | `src/servicos/itens.ts` e o formulário em `/caixa` |
 | investigar "o que aconteceu com este item / neste erro" | `GET /api/memoria` e `src/servicos/memoria.ts` |
+| mudar **quais notas aparecem** para quem trabalha | `selecionarNotas` em `src/core/notas.ts` (puro). É também o que alimentará o modelo — mude aqui, não na tela |
+| mostrar notas numa tela nova | `<NotasDoSetor>` de `src/componentes/notas.tsx`, passando o contexto que a tela conhece |
+| **ligar as notas ao prompt da IA** | NÃO faça sem a decisão do dono (`§ H.4` item 14). Quando entrar: o texto passa pelas três camadas de `core/seguranca/conteudo-nao-confiavel` no caminho de LEITURA e vai dentro dos delimitadores |
 | acrescentar uma ação de auditoria ou uma operação com papel | `AcaoAuditavelSchema` / `OperacaoSchema` em `src/core/esquemas.ts` — são uniões fechadas |
 | ajustar confiança em proxy | `PROXIES_CONFIAVEIS` no `.env`; confira em `/api/diagnostico/origem` |
 | implementar retenção | apagar `EmailConteudo` e bytes; **nunca** `Item`, `Atribuicao`, `SaldoCarga`, `LogAuditoria` |
@@ -636,7 +705,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 358 testes |
+| `npm run verificar` | Typecheck + 386 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |
