@@ -630,6 +630,38 @@ async function atualizarSaldos(
       creditoGlobal: { increment: entrada.deltaCreditoGlobal },
     },
   })
+
+  // ═══ O CRÉDITO GLOBAL É UM TOTAL CORRIDO, E TOTAL CORRIDO PRECISA PROPAGAR ═══
+  //
+  // `carregarElegiveis` lê o crédito global pegando a linha MAIS RECENTE com
+  // `data <= data` — ou seja, cada linha guarda o acumulado até aquele dia, não
+  // o movimento do dia.
+  //
+  // Enquanto os dias forem distribuídos em ordem, isso funciona: cada nova
+  // linha nasce de `creditoGlobalAnterior + delta`. Distribuir uma data
+  // ANTERIOR a outra já distribuída quebrava a cadeia — a linha retroativa
+  // nascia certa, e as linhas dos dias seguintes continuavam com o valor que
+  // tinham antes, calculado sem ela. A partir daí toda leitura para uma data
+  // posterior pegava uma dessas linhas, e o efeito da rodada retroativa
+  // simplesmente não existia para o desempate. Nenhum erro, nenhum aviso: o
+  // razão que sustenta a justiça do rateio passava a afirmar um equilíbrio que
+  // não era verdade.
+  //
+  // Distribuir fora de ordem é operação legítima — sexta-feira esquecida,
+  // feriado processado depois. A correção é propagar, não proibir.
+  //
+  // No caminho normal (dia mais recente) não existe linha posterior e este
+  // `updateMany` não toca em nada.
+  if (entrada.deltaCreditoGlobal !== 0) {
+    await tx.saldoCargaGlobal.updateMany({
+      where: {
+        colaboradorId: entrada.colaboradorId,
+        escopo: entrada.escopo,
+        data: { gt: entrada.data },
+      },
+      data: { creditoGlobal: { increment: entrada.deltaCreditoGlobal } },
+    })
+  }
 }
 
 // ─── Carregamento de estado ──────────────────────────────────

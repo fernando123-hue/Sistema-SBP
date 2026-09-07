@@ -189,16 +189,39 @@ export default function PainelPagina() {
   if (erro) return <Aviso>{erro}</Aviso>
   if (!dados) return <Carregando />
 
-  const comDados = dados.categorias.filter((linha) => linha.aberto > 0)
+  // ═══ DUAS NATUREZAS DE NÚMERO NESTA TELA, E ELAS NÃO SE FILTRAM IGUAL ═══
+  //
+  // `aberto`, `entrouNoPeriodo`, `concluidoNoPeriodo` e `pendente` são do
+  // PERÍODO escolhido. `aguardandoRevisao` é ESTADO ATUAL — quantos itens estão
+  // parados na revisão agora, sem recorte nenhum.
+  //
+  // O filtro `aberto > 0` valia para as quatro primeiras e mentia sobre a
+  // última: bastava escolher um período em que a categoria não teve movimento
+  // para a linha sumir, e com ela sumiam do total itens que estão em revisão
+  // NESTE momento. O operador estreitava o período para investigar e o número
+  // "Em revisão" caía — dando a entender que o trabalho tinha andado.
+  //
+  // Uma métrica que responde a pergunta errada é pior que uma ausente: esta
+  // levava a decisão exatamente para o lado contrário do certo.
+  const temTrabalhoAgora = (linha: LinhaPainel) =>
+    linha.aberto > 0 || linha.aguardandoRevisao > 0
+  const comDados = dados.categorias.filter(temTrabalhoAgora)
+
   const total = comDados.reduce(
     (soma, linha) => ({
       aberto: soma.aberto + linha.aberto,
       entrou: soma.entrou + linha.entrouNoPeriodo,
       concluido: soma.concluido + linha.concluidoNoPeriodo,
       pendente: soma.pendente + linha.pendente,
-      revisao: soma.revisao + linha.aguardandoRevisao,
     }),
-    { aberto: 0, entrou: 0, concluido: 0, pendente: 0, revisao: 0 },
+    { aberto: 0, entrou: 0, concluido: 0, pendente: 0 },
+  )
+
+  // Sobre TODAS as categorias, nunca sobre as filtradas: é estado atual, e não
+  // depende do período que a pessoa escolheu para olhar.
+  const emRevisaoAgora = dados.categorias.reduce(
+    (soma, linha) => soma + linha.aguardandoRevisao,
+    0,
   )
 
   const conservacaoOk = dados.conservacao.divergentes.length === 0
@@ -251,8 +274,8 @@ export default function PainelPagina() {
         <Metrica rotulo="Pendente" valor={total.pendente} detalhe="aberto no fim do período" />
         <Metrica
           rotulo="Em revisão"
-          valor={total.revisao}
-          tom={total.revisao > 0 ? 'atencao' : 'neutro'}
+          valor={emRevisaoAgora}
+          tom={emRevisaoAgora > 0 ? 'atencao' : 'neutro'}
           detalhe="aguardando decisão humana · estado atual"
         />
       </div>

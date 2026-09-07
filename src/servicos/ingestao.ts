@@ -300,73 +300,120 @@ async function processarUm(
   )
   const anexosRejeitados = anexosAvaliados.filter((anexo) => !anexo.veredicto.aceito).length
 
-  return deps.banco.$transaction(async (tx) => {
-    // Segunda checagem, agora DENTRO da transação: fecha a janela entre a
-    // verificação de existência e a gravação.
-    const jaProcessado = await tx.email.findUnique({
-      where: { messageId: email.messageId },
-      select: { processadoEm: true },
-    })
-    if (jaProcessado?.processadoEm) return null
+  // ═══ BYTES NO DISCO ANTES DA TRANSAÇÃO PRECISAM DE VOLTA ATRÁS ═══
+  //
+  // Os arquivos são gravados acima, fora da transação — e isso está certo:
+  // escrever no armazenamento dentro dela seguraria lock de banco durante uma
+  // operação de I/O que pode ser lenta ou remota.
+  //
+  // O que faltava era o desfazer. Se a transação abortar — categoria
+  // desconhecida, corrida de unicidade, qualquer defeito —, o arquivo fica no
+  // disco sem nenhuma linha de `Anexo` apontando para ele. E é um órfão que a
+  // política de retenção NUNCA alcança: o expurgo caminha a partir das linhas
+  // do banco, então bytes sem linha são invisíveis para ele — documento de
+  // associado que fica no disco para sempre sem que nada saiba que existe
+  // (invariante 11), e sem nada registrando que ele está lá (invariante 7).
+  //
+  // Pior no caso comum: e-mail que falha não é marcado como processado, então
+  // a próxima sincronização o reprocessa e grava OUTRA cópia. Um defeito
+  // repetido enche o disco de cópias do mesmo documento.
+  //
+  // `remover` é idempotente por contrato, então limpar o que talvez nem tenha
+  // sido escrito é seguro.
+  const chavesGravadas = anexosAvaliados
+    .map((anexo) => anexo.chaveArmazenamento)
+    .filter((chave): chave is string => chave !== null)
 
-    // Metadado e conteúdo nascem juntos, mas em linhas separadas: é o que
-    // permite, depois, expurgar o conteúdo pela retenção sem levar junto o
-    // histórico operacional que sustenta métrica, auditoria e conservação.
-    const registro = await tx.email.upsert({
-      where: { messageId: email.messageId },
-      create: {
-        messageId: email.messageId,
-        origem: email.origem,
-        recebidoEm: email.recebidoEm,
-        modeloIa: interpretacao.modelo,
-        versaoPrompt: interpretacao.versaoPrompt,
-        processadoEm: new Date(),
-        conteudo: {
-          create: {
-            remetente: email.remetente,
-            assunto: email.assunto,
-            corpo: email.corpo,
+  /** Apaga o que esta tentativa escreveu. Nunca substitui o erro original. */
+  async function desfazerArquivos(): Promise<void> {
+    if (!deps.armazenamento) return
+    for (const chave of chavesGravadas) {
+      try {
+        await deps.armazenamento.remover(chave)
+      } catch (aoRemover) {
+        // Falhou a limpeza: o arquivo continua órfão, e agora pelo menos
+        // existe uma linha dizendo qual é.
+        registrarLog('erro', 'anexo órfão no armazenamento após transação abortada', {
+          correlacaoId,
+          chave,
+          erro: mensagemDoErro(aoRemover),
+        })
+      }
+    }
+  }
+
+  try {
+    return await deps.banco.$transaction(async (tx) => {
+      // Segunda checagem, agora DENTRO da transação: fecha a janela entre a
+      // verificação de existência e a gravação.
+      const jaProcessado = await tx.email.findUnique({
+        where: { messageId: email.messageId },
+        select: { processadoEm: true },
+      })
+      if (jaProcessado?.processadoEm) return null
+
+      // Metadado e conteúdo nascem juntos, mas em linhas separadas: é o que
+      // permite, depois, expurgar o conteúdo pela retenção sem levar junto o
+      // histórico operacional que sustenta métrica, auditoria e conservação.
+      const registro = await tx.email.upsert({
+        where: { messageId: email.messageId },
+        create: {
+          messageId: email.messageId,
+          origem: email.origem,
+          recebidoEm: email.recebidoEm,
+          modeloIa: interpretacao.modelo,
+          versaoPrompt: interpretacao.versaoPrompt,
+          processadoEm: new Date(),
+          conteudo: {
+            create: {
+              remetente: email.remetente,
+              assunto: email.assunto,
+              corpo: email.corpo,
+            },
+          },
+          anexos: {
+            create: anexosAvaliados.map((anexo) => ({
+              nomeSeguro: anexo.veredicto.nomeSeguro,
+              tipoDeclarado: anexo.tipoDeclarado,
+              tamanho: anexo.tamanho,
+              hash: anexo.hash,
+              aceito: anexo.veredicto.aceito,
+              motivo: anexo.veredicto.motivo ?? null,
+              chaveArmazenamento: anexo.chaveArmazenamento,
+              armazenadoEm: anexo.chaveArmazenamento ? new Date() : null,
+            })),
           },
         },
-        anexos: {
-          create: anexosAvaliados.map((anexo) => ({
-            nomeSeguro: anexo.veredicto.nomeSeguro,
-            tipoDeclarado: anexo.tipoDeclarado,
-            tamanho: anexo.tamanho,
-            hash: anexo.hash,
-            aceito: anexo.veredicto.aceito,
-            motivo: anexo.veredicto.motivo ?? null,
-            chaveArmazenamento: anexo.chaveArmazenamento,
-            armazenadoEm: anexo.chaveArmazenamento ? new Date() : null,
-          })),
+        update: { processadoEm: new Date() },
+      })
+
+      const resultado = await criarItens(tx, {
+        emailId: registro.id,
+        interpretacao,
+        anexosRejeitados,
+        correlacaoId,
+        usuario,
+      })
+
+      await auditar(tx, {
+        entidade: 'Email',
+        entidadeId: registro.id,
+        acao: 'ingerido',
+        depois: {
+          messageId: email.messageId,
+          itens: resultado.criados,
+          conteudoSuspeito: interpretacao.conteudoSuspeito,
         },
-      },
-      update: { processadoEm: new Date() },
-    })
+        usuario,
+        correlacaoId,
+      })
 
-    const resultado = await criarItens(tx, {
-      emailId: registro.id,
-      interpretacao,
-      anexosRejeitados,
-      correlacaoId,
-      usuario,
+      return { ...resultado, anexosRejeitados, conteudoSuspeito: interpretacao.conteudoSuspeito }
     })
-
-    await auditar(tx, {
-      entidade: 'Email',
-      entidadeId: registro.id,
-      acao: 'ingerido',
-      depois: {
-        messageId: email.messageId,
-        itens: resultado.criados,
-        conteudoSuspeito: interpretacao.conteudoSuspeito,
-      },
-      usuario,
-      correlacaoId,
-    })
-
-    return { ...resultado, anexosRejeitados, conteudoSuspeito: interpretacao.conteudoSuspeito }
-  })
+  } catch (erro) {
+    await desfazerArquivos()
+    throw erro
+  }
 }
 
 async function criarItens(
