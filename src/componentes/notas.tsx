@@ -30,6 +30,21 @@ import { Aviso, Botao, juntar } from './matrizes'
  * no caminho de leitura — ver `core/notas.ts`.
  */
 
+/**
+ * ⚠️ ESTE TIPO É UMA INSTÂNCIA NOVA DA DÍVIDA `H-D7`, e está declarado aqui de
+ * olhos abertos.
+ *
+ * Ele redigita à mão o que `servicos/notas.ts` já declara — a mesma divergência
+ * silenciosa que fez `emAndamento` sumir e `Date` virar string em outras telas.
+ * Repeti o padrão porque a correção da família inteira (derivar os tipos dos
+ * esquemas Zod) atravessa a fronteira servidor/cliente e não é carona de uma
+ * entrega de funcionalidade; começar por este arquivo deixaria o repositório
+ * com dois jeitos de resolver o mesmo problema, que é pior que um jeito ruim.
+ *
+ * Duas divergências já são possíveis hoje: `criadoEm` e `arquivadaEm` são
+ * `Date` no serviço e `string` aqui, porque JSON não tem data. É exatamente a
+ * forma que o defeito assumiu da última vez.
+ */
 export interface NotaDoSetor {
   id: string
   texto: string
@@ -49,6 +64,28 @@ export interface ContextoDaNota {
   ligaId?: string | null
   /** Código da categoria, para gravar a nota nova no mesmo vínculo em que ela foi lida. */
   categoriaCodigo?: string | null
+}
+
+interface PerfilDaSessao {
+  autenticado: boolean
+  colaborador: { id: string; papel: string } | null
+}
+
+/**
+ * Quem pode arquivar, do ponto de vista da TELA.
+ *
+ * Espelha a regra do serviço (`servicos/notas.ts`: o autor, ou o gestor), e a
+ * duplicação é deliberada — sem ela a tela oferece a todo mundo um botão que o
+ * servidor recusa para quase todo mundo, e a pessoa recebe uma mensagem de
+ * permissão negada como resposta a um clique que a interface convidou a dar.
+ *
+ * Esconder aqui NÃO é a defesa: a defesa é a checagem no serviço, dentro da
+ * transação. Esta função só evita prometer o que não vai acontecer.
+ */
+function podeArquivar(perfil: PerfilDaSessao | null, nota: NotaDoSetor): boolean {
+  const eu = perfil?.colaborador
+  if (!eu) return false
+  return eu.id === nota.autorId || eu.papel === 'gestor'
 }
 
 function alcance(nota: NotaDoSetor): { rotulo: string; especifica: boolean } {
@@ -83,10 +120,13 @@ export function NotasDoSetor({
   titulo?: string
 }) {
   const [notas, definirNotas] = useState<NotaDoSetor[] | null>(null)
+  const [perfil, definirPerfil] = useState<PerfilDaSessao | null>(null)
   const [erro, definirErro] = useState<string | null>(null)
   const [escrevendo, definirEscrevendo] = useState(false)
   const [texto, definirTexto] = useState('')
   const [salvando, definirSalvando] = useState(false)
+  /** Id da nota aguardando confirmação de arquivamento. */
+  const [confirmando, definirConfirmando] = useState<string | null>(null)
 
   const chave = consulta(contexto)
 
@@ -106,6 +146,16 @@ export function NotasDoSetor({
   useEffect(() => {
     void carregar()
   }, [carregar])
+
+  useEffect(() => {
+    // Falha aqui não é erro de tela: sem perfil o botão de arquivar apenas não
+    // aparece, e a leitura das notas — que é o que a pessoa veio fazer —
+    // continua funcionando.
+    void api
+      .buscar<PerfilDaSessao>('/sessao')
+      .then(definirPerfil)
+      .catch(() => definirPerfil(null))
+  }, [])
 
   async function registrar() {
     if (texto.trim().length < 3 || salvando) return
@@ -135,6 +185,7 @@ export function NotasDoSetor({
   async function arquivar(nota: NotaDoSetor) {
     try {
       definirErro(null)
+      definirConfirmando(null)
       await api.remover(`/notas/${nota.id}`)
       await carregar()
     } catch (falha) {
@@ -226,13 +277,24 @@ export function NotasDoSetor({
                   </span>
                   <span>{nota.autorNome}</span>
                   <span>{comoData(nota.criadoEm)}</span>
-                  <button
-                    type="button"
-                    onClick={() => void arquivar(nota)}
-                    className="ml-auto min-h-9 underline decoration-dotted underline-offset-2 hover:text-tinta"
-                  >
-                    Não vale mais
-                  </button>
+                  {podeArquivar(perfil, nota) ? (
+                    // Dois cliques, sem caixa de diálogo. Arquivar tira a nota
+                    // da vista de todo o setor e não há desfazer na interface —
+                    // um clique acidental num link de uma linha custaria a
+                    // memória de outra pessoa.
+                    <button
+                      type="button"
+                      onClick={() =>
+                        confirmando === nota.id
+                          ? void arquivar(nota)
+                          : definirConfirmando(nota.id)
+                      }
+                      onBlur={() => definirConfirmando((atual) => (atual === nota.id ? null : atual))}
+                      className="ml-auto min-h-9 underline decoration-dotted underline-offset-2 hover:text-tinta"
+                    >
+                      {confirmando === nota.id ? 'Confirmar: tirar da vista' : 'Não vale mais'}
+                    </button>
+                  ) : null}
                 </div>
               </li>
             )
