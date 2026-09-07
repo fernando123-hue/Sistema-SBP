@@ -29,6 +29,14 @@ interface Conteudo {
   papel: Papel
   expiraEm: number
   /**
+   * Quando este cookie foi emitido.
+   *
+   * É o que permite a `sessoesInvalidasAntes` revogar sessões: sem saber a
+   * idade do cookie, não há como dizer se ele é anterior ao "sair". Mesmo papel
+   * que `senhaEm`, para o outro gesto de revogação.
+   */
+  emitidoEm: number
+  /**
    * `senhaDefinidaEm` de quando o cookie foi emitido.
    *
    * É o que torna a troca de senha uma REVOGAÇÃO. Sem isto, a pessoa que
@@ -69,10 +77,12 @@ export function montarCookie(
   papel: Papel,
   senhaDefinidaEm: Date | null,
 ): string {
+  const agora = Date.now()
   const conteudo: Conteudo = {
     colaboradorId,
     papel,
-    expiraEm: Date.now() + VALIDADE_SEGUNDOS * 1000,
+    expiraEm: agora + VALIDADE_SEGUNDOS * 1000,
+    emitidoEm: agora,
     senhaEm: senhaDefinidaEm?.getTime() ?? null,
   }
   const carga = Buffer.from(JSON.stringify(conteudo)).toString('base64url')
@@ -92,6 +102,12 @@ export function lerCookie(valor: string | undefined): Conteudo | null {
   try {
     const conteudo = JSON.parse(Buffer.from(carga, 'base64url').toString()) as Conteudo
     if (typeof conteudo.expiraEm !== 'number' || conteudo.expiraEm < Date.now()) return null
+    // Cookie sem `emitidoEm` é anterior à revogação por logout e não dá para
+    // situar no tempo — então não dá para saber se um "sair" já o invalidou.
+    // Recusar custa uma reentrada a cada pessoa, uma única vez, na subida da
+    // versão; aceitar manteria de pé exatamente os cookies que a mudança
+    // existe para poder derrubar.
+    if (typeof conteudo.emitidoEm !== 'number') return null
     return { ...conteudo, papel: PapelSchema.parse(conteudo.papel) }
   } catch {
     return null
@@ -140,6 +156,7 @@ export async function perfilAtual(): Promise<PerfilAtual | null> {
       ativo: true,
       precisaTrocarSenha: true,
       senhaDefinidaEm: true,
+      sessoesInvalidasAntes: true,
     },
   })
   if (!colaborador?.ativo) return null
@@ -147,6 +164,12 @@ export async function perfilAtual(): Promise<PerfilAtual | null> {
   // Senha mudou depois deste cookie: a sessão morre aqui. Vale para a troca
   // feita pelo dono e para a redefinição feita pelo gestor.
   if ((colaborador.senhaDefinidaEm?.getTime() ?? null) !== conteudo.senhaEm) return null
+
+  // A pessoa saiu depois que este cookie foi emitido: ele morre aqui, esteja
+  // em que navegador estiver. É o que faz "sair" valer também para uma cópia
+  // do cookie que alguém tenha levado da máquina compartilhada.
+  const revogadasAte = colaborador.sessoesInvalidasAntes?.getTime()
+  if (revogadasAte !== undefined && conteudo.emitidoEm < revogadasAte) return null
 
   const papel = PapelSchema.parse(colaborador.papel)
   return {

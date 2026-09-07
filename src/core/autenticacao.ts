@@ -11,6 +11,42 @@
 /** Erros consecutivos tolerados antes de a conta travar. */
 export const TENTATIVAS_ANTES_DE_TRAVAR = 5
 
+/**
+ * Piso de tempo de QUALQUER recusa de entrada.
+ *
+ * ═══ POR QUE IGUALAR O HASH NÃO BASTOU ═══
+ *
+ * `gastarTempoDeConferencia` iguala o custo do `scrypt` quando o e-mail não
+ * existe, e a intenção estava certa: sem ele, "não existe" responde em 1 ms e
+ * "senha errada" em ~90 ms, e o relógio conta o que a mensagem se recusa a
+ * dizer. Só que a igualdade valia para o scrypt e para mais nada.
+ *
+ * O ramo de conta ATIVA com senha errada faz, DEPOIS do hash, escritas que o
+ * ramo do e-mail inexistente não faz: incrementa `tentativasFalhas`, grava
+ * `entrada_recusada` na trilha, e às vezes ainda grava `bloqueadoAte`. Cada uma
+ * é uma transação com fsync. Medido neste repositório, com o banco de teste e
+ * 30 amostras alternadas: mediana de 92,3 ms para e-mail inexistente contra
+ * 115,7 ms para conta ativa com senha errada — 23,5 ms de diferença, com 22 das
+ * 30 amostras do segundo caminho acima do p75 do primeiro.
+ *
+ * Vinte e cinco milissegundos, com ~5 amostras por endereço, respondem "esta
+ * conta existe e está ativa" — que é exatamente a lista que a mensagem única
+ * existe para não entregar.
+ *
+ * ═══ POR QUE UM PISO, E NÃO MAIS CONTABILIDADE ═══
+ *
+ * Tentar igualar operação a operação — gravar um registro descartável no ramo
+ * do e-mail inexistente, por exemplo — polui a trilha com fatos que não
+ * aconteceram e quebra de novo no dia em que alguém acrescentar uma escrita a
+ * um dos lados. O piso não depende de o que há dentro dos ramos continuar
+ * simétrico: ele mede do começo ao fim e espera o que faltar.
+ *
+ * O valor fica acima do pior caso medido (p75 de 148 ms) com folga para máquina
+ * mais lenta. Ele NÃO se aplica à entrada bem-sucedida: quem acertou a senha já
+ * provou conhecê-la, e atrasar quem acerta é custo sem defesa.
+ */
+export const PISO_DE_RESPOSTA_DE_ENTRADA_MS = 250
+
 /** Teto do atraso. Sem ele, o dobro sucessivo chega a horas e vira negação de serviço contra o próprio usuário. */
 export const BLOQUEIO_MAXIMO_SEGUNDOS = 15 * 60
 

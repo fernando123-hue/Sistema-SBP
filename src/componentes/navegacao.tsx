@@ -2,8 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import { useState } from 'react'
 
-import { api } from './api'
+import { api, mensagemDoErro } from './api'
 import { juntar } from './matrizes'
 
 const DESTINOS = [
@@ -21,13 +22,41 @@ const DESTINOS = [
 export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
   const caminho = usePathname()
   const navegador = useRouter()
+  const [saindo, setSaindo] = useState(false)
+  const [erroAoSair, setErroAoSair] = useState<string | null>(null)
 
   const visiveis = DESTINOS.filter((destino) => destino.papeis.includes(papel as never))
 
+  /**
+   * Sair, e dizer a verdade quando não deu.
+   *
+   * A versão anterior era `await api.remover('/sessao')` seguido de
+   * `push('/entrar')`, sem `try`. Qualquer falha — rede oscilando, servidor
+   * reiniciando — rejeitava no `await` e a navegação NUNCA acontecia: a tela
+   * ficava idêntica, sem aviso nenhum, e a única evidência era uma rejeição no
+   * console do navegador. A pessoa clicava, não via nada mudar, concluía que
+   * travou e ia embora com a sessão de pé — no balcão compartilhado, a próxima
+   * pessoa entrava como ela, e a trilha registrava o nome dela.
+   *
+   * Agora a falha aparece e a sessão NÃO é dada como encerrada. Isto é o
+   * oposto do que `senha/page.tsx` fazia com `.catch(() => null)`: lá a
+   * navegação seguia de qualquer jeito, o que esconde exatamente o caso
+   * perigoso. Sair é revogação — se ela não aconteceu no servidor, mandar a
+   * pessoa para a tela de entrada é dizer que ela saiu quando ela não saiu.
+   */
   async function sair() {
-    await api.remover('/sessao')
-    navegador.push('/entrar')
-    navegador.refresh()
+    if (saindo) return
+    setSaindo(true)
+    setErroAoSair(null)
+    try {
+      await api.remover('/sessao')
+      navegador.push('/entrar')
+      navegador.refresh()
+    } catch (causa) {
+      setErroAoSair(mensagemDoErro(causa))
+    } finally {
+      setSaindo(false)
+    }
   }
 
   return (
@@ -67,13 +96,23 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
             <span className="block text-tinta-fraca">{papel}</span>
           </span>
           <button
-            onClick={sair}
-            className="rounded-md px-2 py-1 text-xs text-tinta-suave hover:bg-papel-fundo hover:text-tinta"
+            onClick={() => void sair()}
+            disabled={saindo}
+            className="rounded-md px-2 py-1 text-xs text-tinta-suave hover:bg-papel-fundo hover:text-tinta disabled:opacity-50"
           >
-            sair
+            {saindo ? 'saindo…' : 'sair'}
           </button>
         </div>
       </div>
+
+      {erroAoSair ? (
+        <div
+          role="alert"
+          className="border-t border-alerta/40 bg-alerta-claro px-4 py-2 text-sm text-alerta"
+        >
+          Não foi possível sair: {erroAoSair} <strong>Você continua conectado.</strong> Tente de novo.
+        </div>
+      ) : null}
     </header>
   )
 }

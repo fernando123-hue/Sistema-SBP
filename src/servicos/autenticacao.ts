@@ -12,6 +12,7 @@ import {
 import { exigirPapel, type Ator } from '../servidor/ator'
 import {
   conferirSenha,
+  esperarAtePisoDeEntrada,
   gastarTempoDeConferencia,
   gerarHash,
   precisaRehash,
@@ -34,9 +35,12 @@ import { auditar } from './auditoria'
  * 1. **Uma mensagem só para qualquer falha de entrada.** "E-mail não existe",
  *    "senha errada" e "conta desativada" respondem exatamente igual. Distinguir
  *    seria entregar de graça a lista de quem tem acesso ao sistema.
- * 2. **Custo de CPU constante.** Mesmo quando o e-mail não existe, a
+ * 2. **Tempo de resposta constante.** Mesmo quando o e-mail não existe, a
  *    conferência é executada contra um hash de referência — senão o relógio
- *    responde o que a mensagem se recusa a dizer.
+ *    responde o que a mensagem se recusa a dizer. E, porque igualar o hash não
+ *    basta, toda recusa espera até um PISO comum antes de responder: os ramos
+ *    fazem trabalho diferente depois do hash, e a diferença foi medida em
+ *    23,5 ms. Ver `PISO_DE_RESPOSTA_DE_ENTRADA_MS`.
  */
 
 const FALHA_DE_ENTRADA = 'E-mail ou senha incorretos.'
@@ -53,6 +57,9 @@ export interface EntradaAutorizada {
 export async function autenticar(banco: Banco, entrada: unknown): Promise<EntradaAutorizada> {
   const dados = CredenciaisSchema.parse(entrada)
   const correlacaoId = novaCorrelacao()
+  // Marcado ANTES da consulta: o piso mede a requisição inteira, senão o tempo
+  // da própria busca por e-mail (que acha ou não acha) voltaria a diferenciar.
+  const inicio = Date.now()
 
   const colaborador = await banco.colaborador.findUnique({
     where: { email: dados.email },
@@ -71,6 +78,7 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
 
   if (!colaborador?.ativo || !colaborador.senhaHash) {
     await gastarTempoDeConferencia()
+    await esperarAtePisoDeEntrada(inicio)
     throw new ErroDeNegocio(FALHA_DE_ENTRADA, 'FALHA_DE_ENTRADA')
   }
 
@@ -119,6 +127,9 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
       correlacaoId,
     })
 
+    // Depois de TODAS as escritas deste ramo — são elas que o outro ramo não
+    // faz, e é a soma delas que o piso precisa absorver.
+    await esperarAtePisoDeEntrada(inicio)
     throw new ErroDeNegocio(FALHA_DE_ENTRADA, 'FALHA_DE_ENTRADA')
   }
 

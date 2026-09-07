@@ -26,10 +26,21 @@ export default function Senha() {
 
   const divergem = repetida.length > 0 && senhaNova !== repetida
 
+  /**
+   * O `.catch(() => null)` que estava aqui navegava mesmo quando a saída
+   * falhava — dizendo à pessoa que ela saiu enquanto a sessão continuava viva.
+   * Sair é revogação: se o servidor não confirmou, a tela não pode afirmar que
+   * confirmou. Mesma correção aplicada em `componentes/navegacao.tsx`.
+   */
   async function sair() {
-    await api.remover('/sessao').catch(() => null)
-    navegador.push('/entrar')
-    navegador.refresh()
+    setErro(null)
+    try {
+      await api.remover('/sessao')
+      navegador.push('/entrar')
+      navegador.refresh()
+    } catch (causa) {
+      setErro(`Não foi possível sair: ${mensagemDoErro(causa)} Você continua conectado.`)
+    }
   }
 
   async function trocar(evento: React.FormEvent) {
