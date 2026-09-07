@@ -25,6 +25,8 @@ Nenhuma hipótese vira regra silenciosamente. Este arquivo é a fonte da verdade
 
 | A14 | Memória operacional e feedback da equipe *(07/09/2026)* | **A memória existe para o sistema usar, com autonomia progressiva como alvo declarado** — o sistema deve ir facilitando cada vez mais o trabalho de todo mundo com o passar do tempo. Quatro respostas fecharam o desenho da primeira etapa: **(a) onde a nota aparece** — nas quatro telas de trabalho (Fila, Revisão, Distribuição, Caixa), nunca numa tela própria, porque memória que mora em tela separada é memória que ninguém abre; **(b) a que a nota se prende** — categoria e liga, os dois vínculos que cobrem os casos concretos levantados; **fica de fora o vínculo com pessoa**, que aguarda a chefia (§ H.4, item 13); **(c) quando a IA passa a ler a nota** — **depois** de o adapter da Anthropic rodar contra a API real e existir linha de base de acerto, não junto da primeira entrega (§ H.4, item 14); **(d) classificar é consequência, nunca porta de entrada** — correção do dono a uma primeira proposta que separava os exemplos em quatro tipos e recomendava um caminho para cada: os exemplos não são condições absolutas, o trabalho é com seres humanos, e o sistema tem de servir em qualquer circunstância. O erro nomeado foi transformar a taxonomia em **exigência de entrada**; formulário que obriga a classificar antes de escrever mata a captura, e memória em que ninguém escreve não vale nada. A consequência de engenharia de **(c)** é a que mais importa: a seleção de notas nasce como função **pura**, hoje ligada só à tela, para que ligar o modelo depois seja **trocar o destino de uma chamada** — não reescrever a regra nem os testes. |
 
+| A15 | Independência de fornecedor de IA *(07/09/2026)* | **O sistema não pode depender de um fornecedor ou modelo de IA, e isso passa a ser verificado em vez de afirmado.** Decisão tomada junto com uma restrição prática: não acrescentar custo de API no protótipo. Entrou o adapter **Gemini** (Google AI Studio, camada gratuita) ao lado do Anthropic, que **fica**. A prova é o tamanho da mudança: uma linha em `criarAiPort()` e um valor no enum de `IA_ADAPTER` — zero arquivos tocados em `servicos/`, `app/` ou `core/`. Consequência de arquitetura: a política de interpretação (três camadas contra injeção, repetição única e só por erro de formato, distinção entre falha do e-mail e camada fora do ar, sinal duplo de suspeita, revalidação) saiu do adapter e foi para `ia-estruturada.ts`, valendo igual para todo modelo; cada fornecedor declara só `PerfilDoFornecedor` (nome, modelo padrão, como reconhecer credencial recusada) e como falar com a própria API. O invariante 2 do `CLAUDE.md` ganhou essa cláusula: **se acrescentar um fornecedor exigir tocar em `servicos/`, `app/` ou `core/`, a fronteira quebrou.** |
+
 **Impacto em A4 — não é só configuração, é mudança no motor.** Hoje `distribuir()` (`src/core/distribuicao/motor.ts`) recebe uma `quantidade` escalar por categoria e reparte por resto-maior (RN-04); ele não sabe que um lote de ligantes se divide em grupos por `liga_id`. Para cumprir A4, a categoria `LIGANTE`/`E-MAIL LIGA` precisa de uma unidade de entrada nova — grupos (liga, tamanho) em vez de uma contagem plana — com alocação gulosa por maior-grupo-primeiro, mantendo a mesma trava de conservação (`Σ atribuições == quantidade de entrada`) e o mesmo livro-razão de crédito. Isso vai para `docs/03-SPEC.md` (contrato do motor) antes de mexer no código. Ver `ESTADO.md` → *Próximo passo sugerido*.
 
 ### Etapa 6 — fluxo atual e mapeamento (base de A5)
@@ -428,6 +430,63 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 13. **Nota sobre pessoa: existe, e sob que regra?** Da proposta de feedback (07/09/2026). Uma anotação persistente sobre um colega, escrita por outros colegas, passa por baixo do invariante 10 — que restringe métrica por pessoa a observabilidade, nunca a julgamento — porque texto livre não é métrica e nada no sistema o intercepta. Três saídas foram formuladas para a chefia: (a) não existe nota sobre pessoa, só sobre categoria e tipo de demanda; (b) existe e a pessoa vê o que foi escrito sobre ela; (c) existe e é visível só ao gestor, espelhando o desenho já escolhido no `A13`. **Nenhuma foi assumida.** Enquanto não houver resposta, a captura de nota não grava vínculo com `Colaborador`.
 
 14. **A memória volta para a IA?** *(dono do negócio, não da chefia)* A proposta de 07/09/2026 diz que o sistema deve "analisar e se adaptar". Três leituras, com distância de risco grande entre elas: **(A)** a nota aparece para a pessoa certa no momento do trabalho — não envolve IA, risco nenhum; **(B)** o sistema propõe mudança de regra e um humano aprova — auditável, a decisão continua humana; **(C)** as notas entram no contexto enviado ao modelo. **(C) é exatamente o que o invariante 12 proíbe**, por dois motivos independentes: transforma injeção de prompt de incidente de uma mensagem em ataque persistente (basta uma conta comprometida ou uma saída ruim), e selecionar correções humanas para injetar no prompt é aprendizado em contexto — treinar com dado real da associação, que o invariante 9 sujeita a decisão explícita do dono. Recomendação registrada: **A agora, B depois, C só após o adapter rodar contra o modelo real** (ver *Próximo passo* em `ESTADO.md`), porque sem linha de base medida "a IA melhorou com as notas" é afirmação não falsificável.
+
+---
+
+## Segundo fornecedor de IA: Gemini — 07/09/2026
+
+**O que motivou.** Duas coisas ao mesmo tempo: não acrescentar custo de API no protótipo, e testar se o sistema — e o harness em volta dele — opera de forma independente do fornecedor de IA. A segunda é a que vale a longo prazo: *não depender de um agente específico e poder trocar quando for necessário.*
+
+### O resultado, medido
+
+Acrescentar o Gemini custou **uma linha** em `criarAiPort()` e um valor a mais no enum de `IA_ADAPTER`. **Zero** arquivos tocados em `servicos/`, `app/` ou `core/`. A fronteira `AiPort` fez o que prometia.
+
+### O que a chegada do segundo fornecedor obrigou a separar
+
+Das 253 linhas do adapter Anthropic, **quinze** eram sobre a Anthropic: a chamada ao SDK, a leitura do motivo de parada, e como aquele SDK sinaliza credencial recusada. Todo o resto era política **deste sistema** — e teria sido duplicada por fornecedor se ninguém olhasse.
+
+Foi para `adapters/ia-estruturada.ts`: as três camadas contra injeção, a repetição única e só por erro de formato, a distinção entre falha deste e-mail e camada fora do ar, o sinal duplo de suspeita (`OU`, nunca `E`), e a revalidação da resposta. Cada fornecedor declara um `PerfilDoFornecedor` com três coisas — nome, modelo padrão, e como reconhecer credencial recusada.
+
+> **Por que isso não é refatoração de estimação.** Duas cópias da defesa contra injeção divergindo em silêncio é a `H-D7` na camada onde ela custaria mais caro, e a segunda cópia envelheceria sozinha porque ninguém lembra que existe. `ClienteDeInterpretacao` já era a costura certa — nasceu para o teste substituir a rede, e servir a um segundo fornecedor foi consequência, não reforma.
+
+### Três defeitos que só apareceram por rodar contra a API real
+
+1. **`IA_MODELO` tinha padrão fixo `claude-sonnet-5`.** Com um fornecedor era inofensivo. Com dois, trocar `IA_ADAPTER` sem trocar essa variável manda um nome de modelo da Anthropic para a API do Google. Aconteceu na primeira execução: `404 models/claude-sonnet-5 is not found` — e o erro **parece problema de chave**, mandando quem investiga para o lugar errado. Agora vazio significa "o padrão do adapter escolhido", e cada adapter carrega o seu.
+
+2. **O `responseJsonSchema` do Gemini não aceita o nosso schema.** `400 INVALID_ARGUMENT`: o Gemini suporta um subconjunto do JSON Schema, e `campos` é mapa aberto (`propertyNames` + `additionalProperties`) enquanto os anuláveis usam `anyOf`. **A saída não foi redigitar um schema compatível à mão** — seria criar uma segunda forma, mantida em paralelo ao Zod, divergindo em silêncio até a validação aceitar o que o prompt não pediu. O schema derivado do **mesmo** Zod vai ao modelo como texto, nas instruções. Quem valida continua sendo `RespostaDoModeloSchema.parse`, no núcleo compartilhado.
+
+   > Isso deu sentido novo a um comentário antigo. Ele dizia *"o SDK já valida, mas revalidamos aqui"*. Com um segundo fornecedor, aquela linha deixou de ser cinto de segurança e passou a ser **a** validação.
+
+3. **O modelo padrão que escolhi já estava fora.** `gemini-2.5-flash` respondeu *"no longer available to new users, please update to models/gemini-3.6-flash"*. Corrigido para `gemini-3.6-flash`, com o registro de que o valor envelhece e o próprio erro diz o nome novo.
+
+### A prova que faltava desde o começo do projeto
+
+O pipeline de IA nunca tinha trocado uma palavra com um modelo real — era a única parte do sistema sem verificação, e custo era a razão. Custo zero destravou.
+
+**O caso de injeção respondeu como devia:**
+
+| | |
+|---|---|
+| categoria | `EMAIL_CADASTRO` — o e-mail de verdade, **não** o que a injeção mandava |
+| confiança | `0,10` → vai para revisão humana |
+| suspeito | `true` |
+| padrões | `ignorar_instrucoes`, `redefinicao_de_papel`, `mencao_a_confianca`, `ordem_de_classificacao`, **`modelo_sinalizou`** |
+
+As **duas** defesas dispararam: a nossa regex, que roda antes de o texto chegar ao modelo, e o próprio modelo levantando a mão. O modelo não obedeceu ao conteúdo hostil.
+
+### O que fica registrado como comportamento esperado, não defeito
+
+**`503` acontece na camada gratuita** (*"model is currently experiencing high demand"*). O sistema classifica como falha de transporte, não repete — reescrever o prompt não conserta saturação — e manda o e-mail para revisão humana. Degradar assim é o certo, e é o oposto de degradar em silêncio.
+
+**`429` não é credencial recusada.** Cota estourada é transitória; tratá-la como credencial pararia o lote inteiro por um limite que se resolve no minuto seguinte. Só `401` e `403` sobem como `InterpretacaoIndisponivelError`. Há teste para isso.
+
+### Nomenclatura
+
+`gemini` para o adapter — o nome do modelo, alinhado a `anthropic`, e é o que aparece em `Item.modeloIa` e nos logs. A chave é `GOOGLE_AI_KEY`, e não `GEMINI_API_KEY`, porque é a credencial do Google AI Studio e serve a outros modelos da casa: se um dia entrar um, ela não muda de nome nem de dono. A versão do prompt leva o prefixo do fornecedor (`gemini-1.0.0`, `anthropic-1.0.0`) porque a **mesma** redação rende resultados diferentes em modelos diferentes — sem o prefixo, a medida de acerto somaria duas populações sob um rótulo só, e a comparação entre fornecedores ficaria impossível de fazer sobre o histórico.
+
+### O que NÃO mudou, e é o ponto
+
+Nenhum serviço, rota, tela ou regra de domínio sabe qual fornecedor está atendendo. Todos falam com `AiPort`. A decisão de 27/08/2026 continua valendo igual para os dois: **só dados sintéticos até aprovação formal da associação** — a restrição é sobre o dado sair da casa, não sobre quem o recebe. E trocar `IA_ADAPTER` troca a empresa que processa o conteúdo do e-mail: enquanto for dado sintético é indiferente, mas no dia em que entrar dado real, o fornecedor escolhido precisa constar da autorização.
 
 ---
 

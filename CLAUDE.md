@@ -23,6 +23,8 @@ O cliente é uma empresa de grande porte, mas este é o **primeiro** sistema de 
 
 2. **IA interpreta. Algoritmo decide. Banco lembra. Regra explícita governa.** A IA nunca calcula divisão, nunca escolhe quem recebe, nunca trata o resto. Toda saída dela passa por Zod (`InterpretacaoSchema`); o que não valida vai para revisão humana, nunca para o motor.
 
+   **E nenhum fornecedor de IA é premissa.** A política de interpretação — as três camadas contra injeção, a repetição única, o sinal duplo de suspeita, a revalidação — mora em `adapters/ia-estruturada.ts` e vale igual para todo modelo. Cada fornecedor é um arquivo `ia-<nome>.ts` com duas coisas: como falar com a API dele e um `PerfilDoFornecedor`. Quem escolhe é `criarAiPort()`, a partir de `IA_ADAPTER`; ninguém mais importa uma implementação concreta. Se acrescentar um fornecedor exigir tocar em `servicos/`, `app/` ou `core/`, a fronteira quebrou — conserte a fronteira, não o chamador.
+
 3. **Conservação é invariante de transação, não boa intenção.** `Σ atribuições == quantidade de entrada`, verificado antes do commit. Falhou, aborta tudo. A planilha erra isso em 29% dos dias — é a razão de o projeto existir.
 
 4. **Nenhuma métrica de painel é digitável.** Métrica é `<p>`, nunca `<input>`. Não existe rota de escrita para métrica.

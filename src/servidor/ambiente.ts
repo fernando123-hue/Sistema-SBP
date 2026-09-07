@@ -22,10 +22,28 @@ function carregarArquivoEnv(): void {
 
 const AmbienteSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL é obrigatória — copie `.env.example` para `.env`'),
-  IA_ADAPTER: z.enum(['mock', 'anthropic']).default('mock'),
+  IA_ADAPTER: z.enum(['mock', 'anthropic', 'gemini']).default('mock'),
   INGESTAO_ADAPTER: z.enum(['mock', 'imap', 'graph', 'gmail']).default('mock'),
-  IA_MODELO: z.string().default('claude-sonnet-5'),
+  /**
+   * Modelo a usar. **Vazio significa "o padrão do adapter escolhido"**, nunca
+   * um modelo fixo.
+   *
+   * Antes o padrão era `claude-sonnet-5` para todo mundo. Com um fornecedor só
+   * isso era inofensivo; com dois, trocar `IA_ADAPTER` sem lembrar de trocar
+   * esta variável mandaria um nome de modelo da Anthropic para a API do Google
+   * — que responde 404 sem dizer por quê, e a pessoa iria procurar o defeito
+   * na chave. Cada adapter carrega o próprio padrão em `PerfilDoFornecedor`.
+   */
+  IA_MODELO: z.string().default(''),
   ANTHROPIC_API_KEY: z.string().optional(),
+  /**
+   * Chave do Gemini (Google AI Studio).
+   *
+   * O nome é o que o Google usa para a credencial do AI Studio, e não
+   * `GEMINI_API_KEY`, porque a mesma chave serve a outros modelos da casa — se
+   * um dia entrar um, ela não precisa mudar de nome nem de dono.
+   */
+  GOOGLE_AI_KEY: z.string().optional(),
   SESSAO_SECRET: z.string().optional(),
   /**
    * Onde os arquivos de anexo são guardados.
@@ -71,10 +89,21 @@ export function ambiente(): Ambiente {
     throw new Error(`Configuração de ambiente inválida:\n${problemas}`)
   }
 
-  // O adapter real de IA exige chave. Descobrir isso na primeira chamada ao
+  // Todo adapter real de IA exige chave. Descobrir isso na primeira chamada ao
   // modelo, em produção, seria tarde demais.
-  if (resultado.data.IA_ADAPTER === 'anthropic' && !resultado.data.ANTHROPIC_API_KEY) {
-    throw new Error('IA_ADAPTER="anthropic" exige ANTHROPIC_API_KEY configurada.')
+  //
+  // A tabela é explícita em vez de uma convenção do tipo "`X` exige
+  // `X_API_KEY`": os nomes das credenciais são escolhidos pelos fornecedores,
+  // não por nós, e derivá-los por padrão de texto quebraria calado no dia em
+  // que um deles não seguisse a forma.
+  const CHAVE_EXIGIDA: Record<string, keyof typeof resultado.data> = {
+    anthropic: 'ANTHROPIC_API_KEY',
+    gemini: 'GOOGLE_AI_KEY',
+  }
+
+  const exigida = CHAVE_EXIGIDA[resultado.data.IA_ADAPTER]
+  if (exigida && !resultado.data[exigida]) {
+    throw new Error(`IA_ADAPTER="${resultado.data.IA_ADAPTER}" exige ${exigida} configurada.`)
   }
 
   cache = resultado.data

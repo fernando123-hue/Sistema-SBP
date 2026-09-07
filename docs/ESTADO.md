@@ -6,7 +6,7 @@
 
 ### Se você está retomando agora, leia isto primeiro
 
-1. **`npm run verificar` tem de dar 386 verdes.** Se der menos, algo quebrou entre as sessões — comece por aí, não pelo próximo passo.
+1. **`npm run verificar` tem de dar 398 verdes.** Se der menos, algo quebrou entre as sessões — comece por aí, não pelo próximo passo.
 2. **Os valores do `A11` nunca foram relidos com o cliente.** `DOC = 4` e `FICHA = 1,75` redistribuem carga entre pessoas reais. `1,75` nasceu marcado como negociável.
 3. **Uma armadilha conhecida:** a CSP quebra a verificação de tela em modo de desenvolvimento (`eval() is not supported`, HMR caindo, formulários controlados sem reagir). Não é defeito de produção. Para conferir tela, o caminho confiável hoje é por HTTP com sessão real — ver `DECISOES.md`, seção *Afastamento (A10)*.
 4. **Nada é apagado por retenção, e nenhum prazo foi definido.** A estrutura separa conteúdo de histórico e permite expurgar; **não existe nenhuma rotina de expurgo no código.** Enquanto a chefia não responder, o dado bruto acumula por omissão. Ver `DECISOES.md`, seção de 07/09/2026.
@@ -39,7 +39,7 @@ Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aber
 | `node_modules/` | Dependências | `npm install` |
 | `armazenamento/` | Anexos; são documentos, não código | Criado sozinho no primeiro anexo |
 
-**A chave da Anthropic não está em lugar nenhum do repositório, e é assim que tem de ser.** Na máquina nova ela precisa ser colada de novo em `ANTHROPIC_API_KEY`, dentro do `.env`.
+**Nenhuma chave de IA está em lugar nenhum do repositório, e é assim que tem de ser.** Na máquina nova elas precisam ser coladas de novo no `.env`: `GOOGLE_AI_KEY` para o Gemini, `ANTHROPIC_API_KEY` para a Anthropic. Sem a chave do adapter escolhido, o sistema **recusa subir** — nunca cai no mock em silêncio.
 
 ---
 
@@ -68,7 +68,7 @@ Depois:
 npx prisma migrate deploy   # cria o banco e aplica as 10 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 386 testes
+npm run verificar           # typecheck + 398 testes
 npm run dev                 # http://localhost:3000
 ```
 
@@ -93,7 +93,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Retenção | Conteúdo do e-mail e bytes de anexo em linhas próprias, expurgáveis sem tocar no histórico operacional |
 | Ingestão | Idempotente por `message-id`, IA atrás de port, tipo real do anexo conferido pelos bytes |
 | Armazenamento | Arquivos fora do banco, atrás de port. Disco local hoje, nuvem trocando o adapter |
-| Adapters de IA | `mock` determinístico e `anthropic` real (este ainda **não** exercitado contra a API) |
+| Adapters de IA | `mock` determinístico, `gemini` (camada gratuita, **exercitado contra a API real** em 07/09/2026) e `anthropic` (ainda não exercitado). A política de interpretação é compartilhada — ver `ia-estruturada.ts` |
 | Revisão humana | Fila de exceções com sugestão da IA e campos editáveis |
 | Distribuição | Transacional, com trava por dia, crédito histórico, auditoria completa |
 | Fila individual | Concluir, transferir, devolver ao pool |
@@ -106,14 +106,28 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
 | Notas do setor | O que a equipe aprendeu operando, escrito por quem opera. Uma porta só, texto livre, vinculável a categoria e liga. Aparece nas quatro telas de trabalho |
-| Testes | **386 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, pipeline de integração) |
+| Testes | **398 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, dois adapters de IA, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
 
 ## Onde parei
 
-**Entrou a memória do setor (`A14`).** O sistema tinha memória do que **aconteceu** — `LogAuditoria` e `EventoProcessamento`, lidos por `servicos/memoria.ts` — e nenhuma do que se **aprendeu** com isso. Agora tem as duas.
+**O sistema deixou de depender de um fornecedor de IA — e isso foi comprovado, não afirmado.**
+
+Entrou o adapter **Gemini** (Google AI Studio, camada gratuita) ao lado do Anthropic. A prova que interessa é o tamanho da mudança: acrescentar o segundo fornecedor custou **uma linha** em `criarAiPort()` e um valor a mais no enum de `IA_ADAPTER`. Nenhum arquivo de `servicos/`, `app/` ou `core/` foi tocado.
+
+Isso obrigou a separar o que sempre foi política **deste sistema** do que é detalhe **do fornecedor**. Das 253 linhas do adapter Anthropic, quinze eram sobre a Anthropic. O resto — as três camadas contra injeção, a repetição única e só por erro de formato, a distinção entre falha deste e-mail e camada fora do ar, o sinal duplo de suspeita, a revalidação — foi para `ia-estruturada.ts` e vale igual para qualquer modelo. Cada fornecedor declara três coisas em `PerfilDoFornecedor`: como se chama, qual o modelo padrão, e como reconhecer credencial recusada no SDK dele.
+
+**E o pipeline rodou contra a API real, de graça.** Era a única parte do sistema que nunca tinha trocado uma palavra com um modelo. O caso de injeção respondeu como devia: categoria do e-mail de verdade, confiança `0,10`, suspeita marcada pelas duas defesas — a nossa regex e o próprio modelo. Ele não obedeceu ao conteúdo hostil.
+
+Três coisas que só apareceram por rodar de verdade, e que estão registradas no código:
+
+- **`IA_MODELO` tinha padrão fixo `claude-sonnet-5`.** Com um fornecedor só era inofensivo; com dois, trocar de adapter sem trocar essa variável manda um modelo da Anthropic para a API do Google. Aconteceu na primeira execução — `404 models/claude-sonnet-5`, e o erro parece problema de chave. Agora vazio significa "o padrão do adapter".
+- **O `responseJsonSchema` do Gemini não aceita o nosso schema** (`400 INVALID_ARGUMENT`): `campos` é mapa aberto e os anuláveis usam `anyOf`. A saída não foi redigitar um segundo schema à mão — seria a `H-D7` na camada mais cara. O schema derivado do **mesmo** Zod vai ao modelo como texto, nas instruções, e quem valida continua sendo `RespostaDoModeloSchema.parse`.
+- **`503` acontece na camada gratuita.** O sistema trata como falha de transporte e manda o e-mail para revisão humana. Degradar assim é o comportamento certo.
+
+**Entrou também a memória do setor (`A14`).** O sistema tinha memória do que **aconteceu** — `LogAuditoria` e `EventoProcessamento`, lidos por `servicos/memoria.ts` — e nenhuma do que se **aprendeu** com isso. Agora tem as duas.
 
 **Uma porta só.** `texto` é o único campo obrigatório: sem tipo de nota, sem categoria de nota, sem escolha antes de escrever. Formulário que obriga a classificar mata a captura, e memória em que ninguém escreve não vale nada. O que a nota *é* se descobre depois, pelo uso.
 
@@ -583,13 +597,20 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 >
 > **Duas vezes um teste vermelho não era defeito.** No `A11` e no `A4`, o invariante antigo media um sistema que o cliente mandou mudar. Nos dois casos a saída não foi afrouxar o teste: foi entender o que a garantia perdida protegia e escrever a garantia nova — no `A4`, o teste de **não-deriva** do crédito ao longo de 24 dias.
 
-### Primeiro — a única parte nunca provada
+### Primeiro — juntar amostra contra o modelo real
 
-1. **Rodar o adapter Anthropic contra a API real.** Com a chave em `ANTHROPIC_API_KEY` no `.env`:
+> **A parte "nunca provada" deixou de existir em 07/09/2026.** O pipeline de IA rodou de ponta a ponta contra a API real do Gemini, na camada gratuita. O caso de injeção respondeu como devia: categoria do e-mail de verdade (`EMAIL_CADASTRO`), confiança `0,10`, suspeita marcada pelas **duas** defesas — cinco padrões da nossa regex mais `modelo_sinalizou`. O modelo não obedeceu ao conteúdo hostil. Detalhe em `DECISOES.md`, seção de 07/09/2026.
+
+1. **Rodar de novo, e mais vezes, para ter amostra.** Sem custo:
    ```bash
-   IA_ADAPTER=anthropic npm run ia:experimentar
+   IA_ADAPTER=gemini npm run ia:experimentar
    ```
-   Ele mostra quatro casos — comum, desdobramento em N itens, campo faltando e tentativa de injeção — e não toca no banco. Compare com a saída do mock, principalmente no caso de injeção. É a **única** parte do sistema que nunca trocou uma palavra com o modelo; tudo mais tem teste ou foi conferido na tela.
+   Quatro casos — comum, desdobramento em N itens, campo faltando e tentativa de injeção — sem tocar no banco. **Espere `503` de vez em quando:** a camada gratuita satura, e o sistema trata isso como falha de transporte, mandando o e-mail para revisão humana. Degradar assim é o comportamento certo; não é defeito para consertar.
+
+   Para comparar fornecedores sobre a mesma bateria — que é como se descobre se este sistema depende de um modelo específico:
+   ```bash
+   IA_ADAPTER=anthropic npm run ia:experimentar   # gasta crédito
+   ```
 
 2. **Depois de rodar, olhar a seção *Acerto da IA* no Painel.** Ela responde o critério de aceitação nº 5 e diz se a confiança que o modelo reporta separa acerto de erro. Contra o mock as duas médias saem coladas (0,91 e 0,90) e a tela avisa. Com o modelo real esse número muda — e é ele que autoriza, ou proíbe, afrouxar o limiar de confiança.
 
@@ -649,7 +670,8 @@ Estão registradas em `DECISOES.md § H.4`, sem resposta inventada. **Cinco nasc
 ## Pendências que aguardam decisão, não código
 
 - **Retenção:** a estrutura separa conteúdo de histórico e permite expurgo, mas **nenhum prazo foi definido e não existe nenhuma rotina de expurgo no código** — nada apaga nada hoje. A auditoria de 07/09/2026 acrescentou que a fronteira foi desenhada num lugar só: `Item.titulo`, `Item.payload`, as revisões, a trilha, `Ligante` e `Afastamento` são todos de retenção longa e todos podem carregar identificação de pessoa. **Hoje é possível expurgar o e-mail e o nome do associado seguir vivo em quatro tabelas.** Ver `DECISOES.md`, seção de 07/09/2026, e as três camadas propostas lá.
-- **Dado real para a API da Anthropic:** bloqueado por decisão de 27/08/2026 — só dados sintéticos até aprovação formal da associação.
+- **Dado real para qualquer API de IA:** bloqueado por decisão de 27/08/2026 — só dados sintéticos até aprovação formal da associação. Vale igual para Gemini e Anthropic: a decisão é sobre o dado sair da casa, não sobre quem o recebe.
+- **Onde o dado vai parar muda com o fornecedor, e isso é decisão, não detalhe.** Trocar `IA_ADAPTER` troca a empresa que processa o conteúdo do e-mail. Enquanto for dado sintético, é indiferente; no dia em que entrar dado real, o fornecedor escolhido precisa constar da autorização.
 
 ---
 
@@ -670,7 +692,8 @@ src/
     autenticacao.ts política de bloqueio (pura, sem I/O)
     notas.ts        que notas valem para o contexto atual — hoje a tela, amanhã o prompt
   ports/            AiPort, IngestaoPort, ArmazenamentoPort
-  adapters/         mock, anthropic, disco + fábrica escolhida por ambiente
+  adapters/         mock, gemini, anthropic, disco + fábrica escolhida por ambiente
+    ia-estruturada.ts  a política de interpretação, igual para todo fornecedor
   servicos/         transações, orquestração
   servidor/         prisma, ambiente, ator, sessão, credenciais, http
   app/              rotas de API e telas (inclui /acesso e /senha)
@@ -684,7 +707,9 @@ src/
 | Quero… | Vou em |
 |---|---|
 | mudar como o trabalho é repartido | `src/core/distribuicao/motor.ts` (puro) e `ordenacao.ts` |
-| mudar o que a IA extrai | `src/adapters/ia-anthropic.ts` (prompt) e `src/core/esquemas.ts` (contrato) |
+| mudar o que a IA extrai | `src/adapters/ia-estruturada.ts` (prompt e política, valem para todo fornecedor) e `src/core/esquemas.ts` (contrato) |
+| trocar de fornecedor de IA | `IA_ADAPTER` no `.env`. Só isso — `criarAiPort()` é o único lugar que sabe qual sobe |
+| acrescentar um fornecedor novo | um arquivo `ia-<nome>.ts` com `PerfilDoFornecedor` + `ClienteDeInterpretacao`, um `case` na fábrica, um valor no enum. Nada em `servicos/`, `app/` ou `core/` |
 | mudar a janela do desempate | `DIAS_DA_JANELA` em `src/servicos/distribuicao.ts` |
 | mudar as colunas do painel | `porCategoria` em `src/servicos/painel.ts` — mantenha `conferirPendencia` batendo |
 | mudar o critério de acerto da IA | `src/core/qualidade-ia.ts` (puro) — o serviço só lê o banco |
@@ -705,7 +730,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 386 testes |
+| `npm run verificar` | Typecheck + 398 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |

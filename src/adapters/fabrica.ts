@@ -4,6 +4,7 @@ import type { IngestaoPort } from '../ports/ingestao'
 import { ambiente } from '../servidor/ambiente'
 import { ArmazenamentoEmDisco } from './armazenamento-disco'
 import { IaAnthropic } from './ia-anthropic'
+import { IaGemini } from './ia-gemini'
 import { IaMock } from './ia-mock'
 import { IngestaoMock, type OpcoesIngestaoMock } from './ingestao-mock'
 
@@ -31,6 +32,17 @@ export class AdapterIndisponivelError extends Error {
   }
 }
 
+/**
+ * O único lugar do sistema que sabe qual fornecedor de IA está atendendo.
+ *
+ * Acrescentar o Gemini em 07/09/2026 custou UMA linha aqui e um valor a mais no
+ * enum de `IA_ADAPTER` — nenhum arquivo de `servicos/`, `app/` ou `core/` foi
+ * tocado. Era o que a fronteira `AiPort` prometia, e passou a ser o que ela
+ * comprovadamente entrega.
+ *
+ * A regra que mantém isso verdadeiro: ninguém importa `IaAnthropic` ou
+ * `IaGemini` fora daqui. Quem precisa de interpretação pede `AiPort`.
+ */
 export function criarAiPort(): AiPort {
   const nome = ambiente().IA_ADAPTER
   switch (nome) {
@@ -38,6 +50,8 @@ export function criarAiPort(): AiPort {
       return new IaMock()
     case 'anthropic':
       return new IaAnthropic()
+    case 'gemini':
+      return new IaGemini()
     default:
       throw new AdapterIndisponivelError('IA', nome)
   }
