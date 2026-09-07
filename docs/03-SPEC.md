@@ -19,7 +19,7 @@ servicos/     Transações, Prisma, orquestração.           Depende de core.
 servidor/     Sessão, ator, http, prisma, observabilidade.
 core/         Domínio puro. TypeScript, zero I/O.         Depende de NADA.
 ports/        Contratos: AiPort · IngestaoPort · ArmazenamentoPort.
-adapters/     Construídos: ia-mock · ia-anthropic · ingestao-mock
+adapters/     Construídos: ia-estruturada (política comum) · ia-mock · ia-gemini · ia-anthropic · ingestao-mock
               · armazenamento-disco. Previstos: imap · graph · gmail · nuvem
 ```
 
@@ -230,7 +230,7 @@ Item **sem** liga (`ligaId` nulo) é grupo de tamanho 1 — indivisível por def
 | Port | Contrato | Adapter V1 | Depois |
 |---|---|---|---|
 | `IngestaoPort` | `buscarNovos(): EmailBruto[]` idempotente por `message_id` | `mock` (seed) | `imap` · `graph` · `gmail` |
-| `AiPort` | `interpretar(email): { itens[], confianca, evidencia, modelo, versaoPrompt }` | `mock` determinístico | `anthropic` (claude-sonnet-5, structured output) |
+| `AiPort` | `interpretar(email): { itens[], confianca, evidencia, modelo, versaoPrompt }` | `mock` determinístico | `gemini` (gemini-3.6-flash, JSON + validação nossa) e `anthropic` (claude-sonnet-5, structured output). A política é comum: `ia-estruturada.ts` |
 | `ExportPort` | `exportar(periodo, formato)` | *(nenhum — planejado, não construído)* | `rest` para o sistema legado |
 
 O adapter mock da IA é determinístico de propósito: permite testar todo o pipeline sem chamar modelo e sem custo.
@@ -334,7 +334,7 @@ src/
     seguranca/
     pureza.test.ts        guarda automática da regra de dependência
   ports/                  ia · ingestao · armazenamento
-  adapters/               ia-mock · ia-anthropic · ingestao-mock
+  adapters/               ia-estruturada · ia-mock · ia-gemini · ia-anthropic · ingestao-mock
                           · armazenamento-disco · fabrica
   servicos/               transações e orquestração
   servidor/               prisma · ambiente · ator · sessão · http

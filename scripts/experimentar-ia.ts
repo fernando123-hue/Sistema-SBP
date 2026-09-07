@@ -1,11 +1,17 @@
 /**
  * Experimento manual do adapter de IA real.
  *
- * É o ÚNICO caminho do repositório que gasta crédito e depende de rede — por
- * decisão registrada, nenhum teste automático chama a API. Aqui o modelo é
- * exercitado quando você quiser, com os olhos na saída.
+ * É o ÚNICO caminho do repositório que depende de rede — por decisão
+ * registrada, nenhum teste automático chama a API. Aqui o modelo é exercitado
+ * quando você quiser, com os olhos na saída.
  *
- *   IA_ADAPTER=anthropic npm run ia:experimentar
+ * Desde 07/09/2026 há dois fornecedores, e a comparação entre eles é metade do
+ * valor deste script: a MESMA bateria de casos, o mesmo prompt, saídas lado a
+ * lado. É assim que se descobre se este sistema depende de um modelo
+ * específico — que é justamente o que ele não pode fazer.
+ *
+ *   IA_ADAPTER=gemini    npm run ia:experimentar   # camada gratuita
+ *   IA_ADAPTER=anthropic npm run ia:experimentar   # gasta crédito
  *
  * Os e-mails abaixo são sintéticos e cobrem os casos que mais importam: o
  * comum, o desdobramento em N itens, o campo faltando e a tentativa de
@@ -13,8 +19,7 @@
  * exatamente o que se está comprando com o modelo real.
  */
 
-import { IaAnthropic } from '../src/adapters/ia-anthropic'
-import { IaMock } from '../src/adapters/ia-mock'
+import { criarAiPort } from '../src/adapters/fabrica'
 import { EmailBrutoSchema, type EmailBruto } from '../src/core/esquemas'
 import { ambiente } from '../src/servidor/ambiente'
 import type { AiPort } from '../src/ports/ia'
@@ -114,18 +119,28 @@ async function principal(): Promise<void> {
   linha('='.repeat(74))
   linha('EXPERIMENTO DO ADAPTER DE IA')
   linha('='.repeat(74))
-  linha(`IA_ADAPTER=${configurado}  ·  IA_MODELO=${ambiente().IA_MODELO}`)
+  // `IA_MODELO` vazio quer dizer "o padrão do adapter" — mostrar a string vazia
+  // faria a linha parecer configuração faltando.
+  const modelo = ambiente().IA_MODELO || '(padrão do adapter)'
+  linha(`IA_ADAPTER=${configurado}  ·  IA_MODELO=${modelo}`)
 
-  if (configurado !== 'anthropic') {
-    linha('')
+  // A escolha do adapter mora em `criarAiPort()`, não aqui. Este script
+  // instanciava `new IaAnthropic()` direto e teria de ganhar um `if` por
+  // fornecedor — a mesma classe de defeito que a fábrica existe para eliminar,
+  // e que já mordeu este repositório quando a rota de ingestão instanciava o
+  // mock incondicionalmente enquanto a configuração dizia outra coisa.
+  const porta: AiPort = criarAiPort()
+
+  linha('')
+  if (configurado === 'mock') {
     linha('Rodando com o MOCK — nenhuma chamada de rede, nenhum custo.')
-    linha('Para exercitar o modelo real: IA_ADAPTER=anthropic npm run ia:experimentar')
+    linha('Para exercitar um modelo real:')
+    linha('  IA_ADAPTER=gemini    npm run ia:experimentar   (camada gratuita)')
+    linha('  IA_ADAPTER=anthropic npm run ia:experimentar   (gasta crédito)')
   } else {
-    linha('')
-    linha('Rodando contra a API REAL. Isto gasta crédito.')
+    linha(`Rodando contra a API REAL de "${configurado}", adapter "${porta.nome}".`)
+    if (configurado === 'anthropic') linha('Isto gasta crédito.')
   }
-
-  const porta: AiPort = configurado === 'anthropic' ? new IaAnthropic() : new IaMock()
 
   for (const caso of CASOS) {
     await rodar(porta, caso)
