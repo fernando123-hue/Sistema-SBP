@@ -169,7 +169,7 @@ export async function registrar(
       select: CAMPOS,
     })
 
-    // Na MESMA transação do fato, nunca depois — invariante 13. Publicar antes
+    // Na MESMA transação do fato, nunca depois — invariante 14. Publicar antes
     // do commit deixaria a memória afirmando uma nota que a transação abortou.
     await auditar(tx, {
       entidade: 'Nota',

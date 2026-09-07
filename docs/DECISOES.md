@@ -1594,3 +1594,184 @@ As validações foram exercitadas pela rota real: fim anterior ao início e sobr
 Registrado, **não corrigido**: afrouxar a CSP em desenvolvimento é mexer numa defesa que está funcionando, e a decisão de como fazer isso (variar por `NODE_ENV`) merece ser própria, não carona numa entrega de outra coisa. Enquanto isso, verificação de tela neste projeto tende a precisar do caminho por HTTP.
 
 Testes: 295 → **309**.
+
+---
+
+## Fechamento e maturação — 07/09/2026
+
+Etapa pedida como *"deixar o projeto no melhor estado possível dentro do escopo
+atual"*, com segurança como prioridade máxima. Auditoria de dez dimensões em
+paralelo sobre o projeto inteiro — não só sobre as últimas alterações —, seguida
+de correção, verificação e revisão.
+
+**Vinte e nove achados levantados; catorze corrigidos; o restante ou já estava
+registrado como dívida, ou é decisão de operação e virou pergunta.** Cada
+correção foi verificada revertendo-a e vendo o teste falhar — o método vale
+registro porque a primeira leva de testes passou verde contra o código
+defeituoso, pelo motivo descrito em *O ZodError que não era um Error*, abaixo.
+
+Testes: 403 → **470**.
+
+### A15 — o assistente de ajuda
+
+O sistema não tinha ajuda nenhuma. Quem não sabia por que um item foi para
+revisão, ou qual a diferença entre devolver e transferir, perguntava a um colega
+— e a resposta dependia de o colega saber.
+
+**O que ele é:** responde dúvidas sobre COMO O SISTEMA FUNCIONA, a partir de um
+manual escrito por nós (`core/assistente/conhecimento.ts`), em vinte verbetes.
+
+**O que ele não recebe, e por quê:**
+
+- **Nenhum conteúdo de e-mail.** Corpo de e-mail é hostil por hipótese
+  (invariante 6). Alimentá-lo ao assistente transformaria uma injeção plantada
+  num e-mail em ataque persistente — o que o invariante 12 proíbe.
+- **Nenhum dado pessoal.** O que sai da casa é o manual, escrito por nós, mais a
+  pergunta de quem está logado. Nem o nome de quem pergunta vai ao modelo: ele
+  não muda a resposta, e o teste de admissão de todo campo é *quem pergunta já
+  vê isso na tela dela?*
+- **Nenhuma nota do setor.** É a tentação óbvia de contexto, e `§ A14(c)`
+  condiciona esse passo a uma decisão do dono, depois de medir o modelo real.
+
+**Autorização em código, duas vezes, nunca por instrução.** Cada verbete declara
+quem pode vê-lo, e a filtragem roda ANTES de o prompt existir — em vez de mandar
+o verbete de gestor com um pedido para o modelo não contar, que é autorização
+por boa vontade. Depois, a tela sugerida pelo modelo é conferida contra o papel
+de novo, porque a primeira garantia depende de o modelo respeitar o material.
+
+**O retorno não tem campo de ação, e não é omissão a corrigir depois.** Um
+assistente capaz de devolver `{acao: 'distribuir'}` seria um caminho para operar
+o sistema por texto livre, sujeito a quem escrever a pergunta mais persuasiva.
+
+**A pergunta de um colega passa pelas três camadas contra injeção.** Não por
+desconfiança da equipe: a pergunta que a operação vai fazer é *"o que quer dizer
+este e-mail?"*, com o e-mail colado junto — e nesse instante texto de terceiro
+entra no prompt pela mão de alguém de dentro, sem má intenção nenhuma.
+
+**Sem fornecedor como premissa.** Usa a mesma fronteira da interpretação, pelo
+mesmo `IA_ADAPTER` — uma variável só para as duas tarefas, porque a pergunta que
+ela responde é *qual empresa processa o texto que sai desta casa*, e essa
+autorização é por fornecedor, não por funcionalidade. Com `mock` (o padrão)
+responde uma busca no manual: determinística, sem rede, incapaz de inventar
+porque só sabe repetir. A tela sempre mostra quem respondeu.
+
+### As duas falhas mais graves
+
+**1. Texto de fora voltava como INSTRUÇÃO na segunda tentativa ao modelo.**
+
+A repetição montava as instruções com `erro.message` cru. `ZodError.message` é
+`JSON.stringify(issues)`, e os issues carregam texto vindo de fora por duas
+rotas independentes, ambas reproduzidas: o adapter Gemini fabricava um erro com
+`input: <resposta crua do modelo>` (até 16 mil tokens derivados do corpo do
+e-mail, com nome e CPF); e — sem depender de fornecedor — uma chave de `campos`
+acima de 60 caracteres entra literal no `path` da issue `invalid_key`.
+
+Nos dois casos o texto do remetente terminava colado na região de INSTRUÇÕES,
+FORA de `<<<CONTEUDO_NAO_CONFIAVEL>>>`, seguido de *"devolva o mesmo conteúdo
+corrigido"*. Uma injeção que a delimitação continha saía do bloco de dados e
+voltava com autoridade de sistema. Invariantes 6 e 12 — e 11 no caminho do log,
+porque `redigir()` redige por NOME de chave e ali tudo era um blob sob `causa`.
+
+Corrigido com `core/seguranca/resumo-de-validacao.ts`: o modelo recebe o CÓDIGO
+do defeito e o caminho até o campo, com todo segmento que ele possa ter
+escolhido virando `<chave-recusada>`. Nunca `input`, nunca a mensagem crua.
+
+**2. A liga era partida entre pessoas na gravação.**
+
+O motor decidia certo — `alocarPorGrupos` entrega cada lote inteiro a alguém —,
+mas devolvia só CONTAGENS, e quem gravava repartia os itens por POSIÇÃO numa
+lista ordenada por `criadoEm`. Com duas ligas cujos e-mails chegaram
+intercalados, a fatia cortava no meio de uma liga.
+
+E nada acusava: a soma continuava fechando, então a trava de conservação
+passava; a rodada gravava a alocação correta EM NÚMERO; e a liga partida só
+aparecia na mesa de quem atendia o associado. É o `A4` sendo anulado na última
+curva, com todos os indicadores verdes.
+
+`ResultadoRodada.atribuicaoDeGrupos` leva agora a decisão por lote até quem
+grava. Junto veio a segunda metade do mesmo defeito: **desdobrar uma revisão
+criava itens sem `ligaId`** — o caso canônico do `A4`, "um e-mail lista trinta
+ligantes" — e os trinta viravam trinta lotes de um.
+
+### O alarme que virava ruído
+
+`conferirConservacao` contava só atribuições ATIVAS. Mas `devolver` encerra a
+atribuição e NÃO cria substituta — o item fica sem dono até a próxima rodada
+(`AT-07`). Bastava alguém devolver um item para o painel dizer, todo dia e para
+sempre, que os números não são confiáveis.
+
+Um alarme que dispara na operação normal deixa de ser alarme: quem opera aprende
+a ignorá-lo, e no dia de uma violação de verdade ninguém olha. Passou a contar
+itens distintos por rodada, que é imune tanto à devolução quanto à transferência
+— e um teste garante que ele AINDA acusa quando uma atribuição some de verdade.
+
+### O ZodError que não era um `Error`
+
+Os primeiros testes escritos para a falha nº 1 passaram VERDES contra o código
+defeituoso. O motivo: **no zod 4, um `new z.ZodError([...])` construído à mão
+não é `instanceof Error`** — só o erro que o `.parse()` lança é. Os dubles de
+teste faziam `if (atual instanceof Error) throw atual` e portanto DEVOLVIAM o
+erro como se fosse a resposta do modelo, exercitando outro caminho.
+
+Fica registrado porque a lição é geral: **um teste que passa não prova nada até
+alguém verificar que ele falha contra o defeito.** Desde então, cada correção
+desta etapa foi verificada revertendo-a.
+
+### Outras correções
+
+| O quê | Por que importava |
+|---|---|
+| **Enumeração de contas pelo relógio** | `gastarTempoDeConferencia` igualava o custo do `scrypt`, e só ele. O ramo de conta ativa com senha errada faz duas escritas a mais depois do hash — medido: 23,5 ms de diferença mediana, suficiente para varrer quais e-mails têm conta. Agora toda recusa espera até um piso comum |
+| **"Sair" não revogava nada** | O cookie continuava válido por até 12 h. Entra `sessoesInvalidasAntes`, conferido na mesma consulta que `perfilAtual` já fazia |
+| **O botão "sair" engolia a falha** | Sem `try`, a navegação nunca acontecia e a tela ficava idêntica: a pessoa ia embora com a sessão de pé. `senha/page.tsx` tinha o oposto e igualmente ruim — `.catch(() => null)` navegava mesmo quando falhava |
+| **Distribuir fora de ordem apagava crédito** | `creditoGlobal` é total corrido; a rodada retroativa não propagava para os dias seguintes, e seu efeito sumia do rateio. Corrigido propagando — proibir seria proibir operação legítima |
+| **Anexo órfão no disco** | Bytes gravados antes da transação, sem desfazer. Transação abortada deixava arquivo que o expurgo por retenção nunca alcança, e cada retentativa gravava outra cópia |
+| **`2026-13-01` era data válida** | `DataIsoSchema` conferia formato, não calendário — e essa string é chave primária de `TravaDeDistribuicao` |
+| **Seis erros viravam "Erro interno"** | Classes de fronteira externa com mensagem escrita para humano estendiam `Error` puro. Entra `ErroOperacional`, com `statusHttp` e `mensagemPublica` separada de `message` |
+| **A camada 3 não removia o que a 2 detectava** | `delimitar()` removia marcador por string exata; a detecção reconhece variantes com outra caixa e espaços |
+| **Acerto da IA não separado por modelo** | A pergunta que justifica ter dois fornecedores era impossível de responder na tela |
+| **CSP quebrava a verificação de tela** | `unsafe-eval` agora só em desenvolvimento. Era a "armadilha conhecida" do `ESTADO`; foi ela que permitiu encontrar os dois itens de interface desta lista |
+| **Desempate por grupo com dado obsoleto** | A projeção atualizava `recebidoDia` e esquecia `recebidoPeriodo`, que é critério ANTERIOR |
+| **"Em revisão" mentia** | O painel filtrava linhas por recorte de período e somava uma coluna de estado atual |
+| **Motivo de arquivamento ia para a trilha** | Texto expurgável copiado para tabela append-only (invariante 11) |
+| **`SESSAO_SECRET` falhava tarde** | O sistema subia sem ele e quebrava na primeira entrada, depois de já ter gravado `entrada_autorizada` |
+
+### A cota gratuita do Gemini, medida
+
+O `ESTADO` descrevia `npm run ia:experimentar` como *"grátis, é só repetir"*. Não
+é: a cota é de **20 requisições por dia, por modelo**
+(`GenerateRequestsPerDayPerProjectPerModel-FreeTier`), e uma rodada da bateria
+gasta de 4 a 8. Dá cerca de três rodadas por dia, por modelo.
+
+A cota ser POR MODELO é a saída: a mesma bateria contra modelos diferentes tem
+orçamentos independentes. Medido em 07/09/2026, quatro casos sintéticos:
+
+| Modelo | Casos corretos | Latência |
+|---|---|---|
+| `gemini-3.6-flash` *(padrão do adapter)* | 2 de 12 tentativas — resto `503` | 54–63 s |
+| `gemini-3.5-flash` | 7 de 8 | 5–11 s |
+| `gemini-3.1-flash-lite` | 4 de 4 | 1–3 s |
+
+**A injeção foi recusada pelos três**, com os cinco sinais das duas defesas em
+todos. O `modeloPadrao` do adapter continua `gemini-3.6-flash` porque trocá-lo
+muda que modelo processa o conteúdo por omissão — é decisão do dono, não ajuste.
+
+### O que NÃO foi alterado, e virou pergunta
+
+Três achados eram decisões de operação, não defeitos. Nenhum foi alterado.
+
+15. **Transferir para quem está afastado.** A validação nova recusa destino
+    DESATIVADO — item numa fila que ninguém abre é perda silenciosa. Mas
+    transferir para quem está de férias pode ser deliberado (*"ela volta amanhã
+    e é o caso dela"*), e a resposta é do dono do processo.
+16. **E-mail suspeito que gera zero itens.** Sem item não existe `Revisao` para
+    criar, então ele não entra em fila nenhuma e, pela idempotência de
+    `messageId`, nunca volta. Para uma resposta automática está certo; para um
+    e-mail marcado como suspeito é a forma exata de um ataque bem-sucedido. Os
+    dois casos agora são distinguíveis no log e no evento — **criar uma fila
+    para eles é decisão, e tem consequência de schema.**
+17. **Quem vê o livro-razão por pessoa no Painel.** `GET /api/painel` entrega os
+    números de carga de toda a equipe a qualquer colaborador. O invariante 10
+    enquadra isso como observabilidade para balancear carga, e a equipe já
+    trabalha de caixa compartilhada — restringir mudaria a operação. Irmão do
+    item 5 de § H.4.

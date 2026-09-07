@@ -559,7 +559,7 @@ model Nota {
   arquivadaPor String?
   motivoArquivo String?
 
-  /// Invariante 13: toda linha de memória nasce sabendo de que domínio é.
+  /// Invariante 14: toda linha de memória nasce sabendo de que domínio é.
   /// Ver `DominioSchema` e a nota em `LogAuditoria.dominio`.
   dominio String @default("distribuicao")
 

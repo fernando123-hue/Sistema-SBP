@@ -1,29 +1,39 @@
 # Estado do projeto — retomada
 
-Última atualização: **07/09/2026** — **abriu a memória do setor, e o sistema deixou de depender de um fornecedor de IA.** Seis entregas mescladas neste dia: o conserto do teste de fuso (#24), a retenção em três camadas com a decisão `A14` (#25), as notas do setor (#26), a correção deste próprio arquivo (#27), a liga chegando à tela (#28) e o segundo adapter de IA (#29).
+Última atualização: **07/09/2026** — **etapa de fechamento e maturação: auditoria do projeto inteiro, catorze correções, e o sistema ganhou ajuda embutida.** Sete entregas mescladas neste dia, as três últimas nesta etapa: a fronteira do fornecedor de IA saindo da interpretação de e-mail, o assistente de ajuda (`A15`), e as correções de segurança e correção que a auditoria encontrou.
 
-> **O pipeline de IA rodou contra um modelo real pela primeira vez** — Gemini, camada gratuita, custo zero. Era a única parte do sistema que nunca tinha sido exercitada. Detalhe em *Onde parei*.
+> **Duas falhas graves foram encontradas em código que passava em todos os testes.** Texto vindo de e-mail voltava como INSTRUÇÃO ao modelo na segunda tentativa, fora dos delimitadores; e a liga era partida entre pessoas na hora de gravar, com a trava de conservação passando porque a soma fechava. As duas estão corrigidas, com testes que falham contra o código anterior. Detalhe em `DECISOES.md`, seção *Fechamento e maturação*.
 
-> **Agora HÁ decisões suas esperando** — cinco, registradas em `DECISOES.md § H.4`, itens 10 a 14. Quatro são de retenção e privacidade e vão para a chefia do setor; a quinta é sua: **quando a IA passa a ler as notas.** Você já respondeu *"depois de medir o modelo real"*, e essa medição é o passo 1 de sempre. Ver *Próximo passo sugerido*.
+> **As decisões que esperam por você não mudaram** — cinco em `DECISOES.md § H.4` (itens 10 a 14) e **três novas** (itens 15 a 17) nascidas desta auditoria, todas de operação, nenhuma travando uso.
 
 ### Se você está retomando agora, leia isto primeiro
 
-1. **`npm run verificar` tem de dar 403 verdes.** Se der menos, algo quebrou entre as sessões — comece por aí, não pelo próximo passo.
-2. **Zero PRs abertos, zero branches.** Tudo o que existe está na `main`. Não há trabalho pela metade em lugar nenhum.
-3. **O próximo passo NÃO é código.** É juntar amostra de acerto da IA (grátis, comando abaixo) e levar quatro perguntas à chefia do setor. As duas coisas podem correr em paralelo, e nenhuma depende de mim.
-4. **Uma armadilha conhecida:** a CSP quebra a verificação de tela em modo de desenvolvimento (`eval() is not supported`, HMR caindo, formulários controlados sem reagir). Não é defeito de produção. Para conferir tela, o caminho confiável hoje é por HTTP com sessão real — ver `DECISOES.md`, seção *Afastamento (A10)*.
-5. **Nada é apagado por retenção, e nenhum prazo foi definido.** A estrutura separa conteúdo de histórico e permite expurgar; **não existe nenhuma rotina de expurgo no código.** Enquanto a chefia não responder, o dado bruto acumula por omissão. Ver `DECISOES.md`, seção de 07/09/2026.
+1. **`npm run verificar` tem de dar 470 verdes.** Se der menos, algo quebrou entre as sessões — comece por aí, não pelo próximo passo.
+2. **Zero PRs abertos.** O trabalho desta etapa está na branch `maturacao/fechamento-de-etapa`, em seis commits. Se ela já foi mesclada, tudo está na `main`.
+3. **`SESSAO_SECRET` agora é obrigatório.** O sistema RECUSA subir sem ele (mínimo 16 caracteres). Antes subia e quebrava na primeira entrada. Se a sua cópia local não tinha, é isso que vai aparecer.
+4. **A armadilha da CSP acabou.** `unsafe-eval` agora entra só em desenvolvimento, então **conferir tela em `npm run dev` voltou a funcionar** — formulário controlado reage, HMR fica de pé. Em produção nada mudou. Foi essa correção que permitiu achar dois defeitos de interface desta etapa.
+5. **Nada é apagado por retenção, e nenhum prazo foi definido.** Continua igual: a estrutura permite expurgar, **não existe rotina de expurgo no código**, e o dado bruto acumula por omissão enquanto a chefia não responder.
 6. **Os valores do `A11` nunca foram relidos com o cliente.** `DOC = 4` e `FICHA = 1,75` redistribuem carga entre pessoas reais. `1,75` nasceu marcado como negociável.
 
-### O comando que destrava mais coisa, e não custa nada
+### O comando que destrava mais coisa — e o que ele custa de verdade
 
 ```bash
-IA_ADAPTER=gemini npm run ia:experimentar
+IA_ADAPTER=gemini IA_MODELO=gemini-3.1-flash-lite npm run ia:experimentar
 ```
 
-Quatro casos sintéticos, sem tocar no banco, sem custo. **Espere `503` de vez em quando** — a camada gratuita satura, o sistema trata como falha de transporte e manda o e-mail para revisão humana. É o comportamento certo, não defeito; só significa repetir o comando algumas vezes para juntar amostra.
+**Correção importante em relação à versão anterior deste arquivo:** ele NÃO é "grátis, é só repetir". A cota gratuita é de **20 requisições por dia, POR MODELO** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`), e cada rodada da bateria gasta de 4 a 8 — cerca de três rodadas por dia, por modelo.
 
-Por que ele destrava mais que qualquer outra coisa: sem linha de base de acerto medida contra um modelo real, *"a IA melhorou"* é afirmação que ninguém consegue provar nem desmentir — e é essa medida que autoriza, ou proíbe, a IA passar a ler as notas do setor (`§ H.4` item 14).
+A cota ser por modelo é a saída: a mesma bateria contra modelos diferentes tem orçamentos independentes. Medido em 07/09/2026:
+
+| Modelo | Casos corretos | Latência |
+|---|---|---|
+| `gemini-3.6-flash` *(padrão do adapter)* | 2 de 12 tentativas — resto `503` | 54–63 s |
+| `gemini-3.5-flash` | 7 de 8 | 5–11 s |
+| `gemini-3.1-flash-lite` | 4 de 4 | 1–3 s |
+
+**A injeção foi recusada pelos três**, com os cinco sinais das duas defesas em todos. O `modeloPadrao` do adapter continua `gemini-3.6-flash` de propósito: trocá-lo muda que modelo processa o conteúdo por omissão, e isso é decisão sua, não ajuste técnico.
+
+**Agora a medida tem onde aparecer.** O Painel passou a separar o acerto da IA POR MODELO — antes tudo ia somado num número só, e a comparação que justifica manter dois fornecedores era impossível de fazer na tela.
 
 ### As quatro perguntas que só a chefia responde
 
@@ -31,8 +41,19 @@ Estão em `DECISOES.md § H.4`, itens 10 a 13, com opções e recomendação for
 
 > Uma folha de decisão em uma página foi preparada em 07/09/2026 e entregue como arquivo, fora do repositório. Se ela se perdeu, as perguntas cruas estão em `§ H.4` e a folha se refaz a partir delas.
 
+### O que a etapa de fechamento entregou
+
+**Segurança.** Injeção que atravessava a delimitação e voltava como instrução de sistema; enumeração de contas pelo tempo de resposta (23,5 ms medidos); "sair" que não revogava nada; `SESSAO_SECRET` que falhava tarde demais; transferência para pessoa desativada; `campos` sem teto de cardinalidade; data inexistente virando chave de razão.
+
+**Correção.** A liga partida na gravação; o desdobramento de revisão criando itens sem liga; distribuição retroativa apagando crédito em silêncio; anexo órfão no disco que nenhuma retenção alcança; o desempate por grupo decidindo com dado obsoleto.
+
+**Honestidade dos números.** O alarme de conservação, que disparava em toda devolução e ensinava a equipe a ignorá-lo; a métrica "Em revisão", que mentia quando se estreitava o período; seis erros com mensagem escrita para humano que chegavam à tela como "Erro interno".
+
+**Ajuda embutida (`A15`).** Assistente que responde sobre como o sistema funciona, sem autoridade sobre nada: não executa, não consulta demanda, não vê dado de outra pessoa, não recebe conteúdo de e-mail nem nota do setor. Filtragem por papel em código, duas vezes. Com `IA_ADAPTER=mock` responde por busca no manual — sem rede, sem custo, incapaz de inventar.
+
 ---
 
+## Continuando em outra máquina
 ## Continuando em outra máquina
 
 Tudo está na **`main`**. O [PR #12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) foi mesclado em 31/08/2026, e com ele o aviso que esta seção carregava deixou de ter função.
@@ -87,7 +108,7 @@ Depois:
 npx prisma migrate deploy   # cria o banco e aplica as 10 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 403 testes
+npm run verificar           # typecheck + 470 testes
 npm run dev                 # http://localhost:3000
 ```
 
@@ -125,7 +146,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
 | Notas do setor | O que a equipe aprendeu operando, escrito por quem opera. Uma porta só, texto livre, vinculável a categoria e liga. Aparece nas quatro telas de trabalho |
-| Testes | **403 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, dois adapters de IA, pipeline de integração) |
+| Testes | **470 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, assistente, dois adapters de IA, agrupamento por liga, conservação, distribuição retroativa, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
@@ -234,7 +255,7 @@ Férias, atestado, falta e licença deixam de ser catorze marcações de escala 
 
 **Verificado por HTTP com A/B, e a primeira tentativa não provava nada:** pus alguém de férias e ela não recebeu — mas ela não estava escalada naquele dia de qualquer forma. Refeito com quem **estava** de plantão e recebendo: Dora sai, a carga é absorvida pelos outros, a conservação fecha, e a narrativa do `A6` acompanha sozinha ("com 1 pessoa de plantão" no lugar de 2).
 
-**Um obstáculo de ambiente ficou registrado:** a CSP quebra a verificação de tela em desenvolvimento (`eval() is not supported`, HMR caindo), e a hidratação do React fica intermitente. Não é defeito do produto — em produção o React não usa `eval` — mas torna o `npm run dev` pouco confiável para conferir tela, e esta entrega teve de ser verificada por HTTP. Não corrigido de propósito: afrouxar a CSP em desenvolvimento é decisão própria, não carona.
+**Um obstáculo de ambiente ficou registrado — e foi RESOLVIDO em 07/09/2026, na etapa de fechamento.** A CSP quebrava a verificação de tela em desenvolvimento (`eval() is not supported`, HMR caindo, formulário controlado sem reagir), e esta entrega teve de ser verificada por HTTP. `unsafe-eval` passou a entrar só em desenvolvimento; em produção nada mudou. Conferir tela em `npm run dev` voltou a funcionar.
 
 Testes: 295 → **309**.
 
@@ -753,7 +774,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 403 testes |
+| `npm run verificar` | Typecheck + 470 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |
