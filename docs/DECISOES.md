@@ -266,6 +266,40 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **Status:** ⏳ provisório. Duas evoluções possíveis quando houver dado real: (a) tela para o operador **fundir** duas ligas, que é o caminho seguro; (b) sugestão de possível duplicata **para revisão humana**, nunca fusão automática. Nenhuma das duas foi implementada.
 
+### AT-11 — Prazo de retenção da observação de afastamento *(08/09/2026)*
+
+**Hipótese:** 90 dias depois de a ausência terminar, a observação do afastamento é redigida para `[EXPURGADO LGPD]`. O afastamento, o tipo e as datas ficam.
+
+**Motivo:** a rotina de expurgo passou a existir (`src/servicos/expurgo-lgpd.ts`, `npm run db:expurgar`), e uma rotina precisa de um número para rodar. O número **não** é resposta ao `§ H.4` item 12 — que é da chefia do setor e continua aberto, e continua sendo o item mais urgente daquela lista. É andaime: a capacidade existe antes da decisão, para que responder a pergunta seja mudar uma constante e não construir um sistema.
+
+**Impacto:** enquanto o número for hipótese, a rotina **não é agendada** — não há cron, gatilho nem rota que a chame. Roda só por comando de quem executa. Ligá-la a um agendador antes da resposta transformaria hipótese em regra em silêncio.
+
+**O que a rotina NÃO alcança:** `EmailConteudo`, bytes de anexo, `Item.payload` e `Revisao` — os itens 10 e 11 do `§ H.4`, também sem resposta. O nome do arquivo fala de LGPD; o alcance é um campo.
+
+**Status:** ⏳ hipótese registrada, capacidade construída, prazo aguardando a chefia.
+
+### AT-12 — Anexo em texto puro é lido como legado *(08/09/2026)*
+
+**Hipótese:** um arquivo sem o cabeçalho `SBP_ENC_v1!!` foi gravado antes de a cifragem existir, e é lido em texto puro.
+
+**Motivo:** a cifragem (`H-D19`) entrou sem rotina de migração. Recusar o que não tem cabeçalho apagaria da operação todo anexo anterior à versão, sem que ninguém tivesse decidido isso.
+
+**Impacto:** enquanto o ramo existir, um arquivo em texto puro colocado no diretório de armazenamento é aceito como legítimo. Quem já pode escrever ali, porém, também poderia sobrescrever um cifrado — o ganho do atacante é pequeno, e o custo de fechar sem migração é perder documento.
+
+**O que já não é mais assim:** arquivo **com** cabeçalho e curto demais para conter IV e tag deixou de cair neste ramo. Era gravação interrompida sendo devolvida como documento — degradação em silêncio dentro do único adapter que trata anexo. Agora falha alto.
+
+**Status:** ⏳ sai quando houver rotina de migração; aí a ausência do cabeçalho passa a ser erro.
+
+### AT-13 — A chave dos anexos cai para `SESSAO_SECRET` quando não é declarada *(08/09/2026)*
+
+**Hipótese:** `ANEXOS_SECRET` vazio significa "usa `SESSAO_SECRET`".
+
+**Motivo:** exigir a variável nova quebraria toda instalação existente na subida, e a cifragem entrou sem migração.
+
+**Impacto — e é o que importa:** os dois segredos têm ciclos de vida **opostos**. Rotacionar o de sessão é rotina de segurança e custa uma reentrada por pessoa; rotacionar o dos anexos torna **ilegível todo documento já gravado**, porque não existe recifragem. Com a queda ativa, o gesto seguro executa o gesto destrutivo junto. O que existe hoje contra isso: a variável separada, o aviso no `.env.example`, a mensagem de erro que nomeia `ANEXOS_SECRET` como primeira hipótese, e um teste que prova as duas coisas.
+
+**Status:** ⏳ a queda sai quando houver rotina de recifragem — e aí `ANEXOS_SECRET` passa a ser obrigatória como `SESSAO_SECRET` já é.
+
 ---
 
 ## D. Pendências do cliente final
@@ -382,7 +416,7 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 | ~~H-D4~~ | ~~`INADIMP`/`ISENTO` sem caminho de criação manual (`POST /api/itens`)~~ | **RESOLVIDO em 28/08/2026** — `POST /api/itens` e o formulário na Caixa de entrada. Seção *Registro manual de item* abaixo |
 | ~~H-D5~~ | ~~Painel sem recorte de data e com definição própria de "pendente"~~ | **RESOLVIDO em 28/08/2026** — `?de=&ate=`, colunas mapeadas uma a uma para as da planilha, e o carry-over deixa de ser digitado. Seção *Painel com recorte de período* abaixo |
 | H-D6 | Escopo do livro-razão global antes de a frente `TÍTULOS` entrar | Acrescentar escopo a um razão já acumulado exige recomputar histórico |
-| H-D7 | Contratos de API duplicados à mão nas telas — já divergiram (`emAndamento` sumiu; `Date` vs. string) | O legado vai consumir sem esquema contra o qual programar |
+| H-D7 | ⚠️ **Estreitada em 08/09/2026, não fechada.** As seis formas de resposta agora são declaradas uma vez em `core/tipos.ts`; serviço e tela olham para a mesma declaração, e `NaRede<T>` expressa o que o JSON faz com `Date`. Provado: renomear um campo quebra a compilação dos dois lados. **O que falta:** nada prova que a ROTA devolve a forma declarada — `api.buscar<T>()` acredita no que o tipo diz. Fechar exige validar a resposta no cliente contra o mesmo Zod | O legado vai consumir sem esquema contra o qual programar |
 | H-D8 | N+1 em `carregarElegiveis` e `painel.porPessoa` | Irrelevante com 4–7 pessoas; vira problema com equipe grande ou PostgreSQL remoto |
 | H-D9 | Rodada com `Q = 0` não é registrada, contrariando a Spec | Responderia "por que não houve distribuição de LIGA no dia 12?" |
 | H-D10 | Rodada compensatória (correção de lançamento) não existe como conceito | Acrescentar a coluna depois exige backfill |
@@ -394,7 +428,7 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 | ~~H-D16~~ | ~~`X-Forwarded-For` aceito sem proxy confiável~~ | **RESOLVIDO em 27/08/2026** — `PROXIES_CONFIAVEIS` declara os saltos confiáveis; sem eles o código admite que não sabe a origem em vez de fingir. Seção *Origem da requisição e proxy confiável* abaixo. Publicar fora da rede local ainda exige ajustar o número |
 | ~~H-D17~~ | ~~Sem cadastro de colaborador pela tela~~ | **RESOLVIDO em 27/08/2026** — cadastro e habilitação na tela de Acesso, entregues juntos. Seção *Cadastro de pessoa e habilitação* abaixo |
 | H-D18 | Agregados de métrica não são materializados | **Reclassificado em 27/08/2026.** Nenhuma métrica lê linha expurgável — todas saem de `Item`, `Atribuicao`, `SaldoCarga` e `Revisao`, e o invariante 11 proíbe apagar dado operacional. Deixou de ser pré-requisito da retenção; continua valendo por recorte histórico barato e por segurança contra uma retenção futura mais ampla |
-| H-D19 | Bytes de anexo sem criptografia em repouso e sem controle de acesso próprio | O diretório fica fora do repositório e não há rota que sirva arquivo. Antes de documento real de associado entrar: cifrar em repouso e decidir quem pode baixar o quê |
+| H-D19 | ⚠️ **Metade resolvida em 08/09/2026.** Os bytes vão para o disco em AES-256-GCM (chave derivada de `ANEXOS_SECRET`, com queda para `SESSAO_SECRET` — ver `AT-13`); arquivo adulterado ou truncado falha alto. **O que falta:** o controle de acesso — continua não havendo rota que sirva arquivo, então "quem pode baixar o quê" segue sem resposta, e é a metade que precisa existir antes de documento real entrar. Falta também rotina de migração dos anexos em texto puro (`AT-12`) | O diretório fica fora do repositório e não há rota que sirva arquivo |
 
 ### H.3 Adequado como está
 

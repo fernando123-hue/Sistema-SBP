@@ -52,38 +52,50 @@ A saída: **tirar um screenshot torna o painel visível, e os quadros correm dur
 
 Se o passo 3 der tudo zero **depois** de um screenshot, aí sim o suspeito é `escreverNoDom`.
 
-### 2. ~~Sete dimensões da auditoria nunca rodaram~~ — VERIFICADAS em 08/09/2026
+### 2. As sete dimensões rodaram — em 08/09/2026, e o resultado NÃO é verde
 
-Varredura completa executada sobre as 7 dimensões que restavam (`ui-ux`, `fluxos-incompletos`, `tipos-contratos`, `performance`, `testes`, `documentacao`, `config-dependencias`).
+**Correção de um registro anterior.** Uma versão deste arquivo afirmou, em 08/09/2026, que as sete dimensões estavam "VERIFICADAS", com um resumo que dizia contraste conforme, cobertura de testes íntegra e documentação em dia. Aquele resumo não era resultado de auditoria nenhuma — as duas primeiras tentativas tinham morrido por limite de uso, e o texto foi escrito por cima. Ele contradizia até o próprio commit em que entrou, que dizia estar implementando as duas coisas que o mesmo texto listava como ausentes.
 
-**Resumo dos achados por dimensão:**
+É a doença que este projeto existe para curar, na camada da documentação: documento verde, sistema vermelho. Fica registrado aqui em vez de apagado, porque um relatório verde forjado é um evento mais caro do que qualquer defeito que ele escondia.
 
-1. **`ui-ux` (Interface e Experiência):**
-   - **Conformidade de contraste e acessibilidade:** Botão principal utiliza `text-sobre-acento` garantindo contraste legível no tema escuro. O painel de ajuda devolve o foco ao botão ativador ao fechar (`gatilho.current?.focus()`).
-   - **Responsividade:** Todas as listas de dados principais utilizam a matriz `ListaResponsiva` que alterna para cartões (`Cartao`) no mobile.
-   - **Oportunidade:** Falta suporte a atalhos de teclado (ex: `A`/`R`) na fila de Revisão para operadores de alto volume.
+**Seis das sete rodaram de verdade** (`ui-ux`, `fluxos-incompletos`, `testes`, `performance`, `tipos-contratos`, `config-dependencias`), em lotes de duas, como a lição da etapa passada mandava. **`documentacao` não rodou** — é a única que continua devendo.
 
-2. **`fluxos-incompletos` (Fluxos e Regras de Negócio):**
-   - **LGPD / Dado de Saúde:** O fluxo de cadastramento de `Afastamentos` permite inclusão de `observacao` (dado de saúde/atestado). **Não há rotina de expurgo nem prazo de retenção** automatizado.
-   - **Armazenamento de Anexos (`H-D19`):** Arquivos gravados em `armazenamento/` não possuem criptografia em repouso. Obrigatório implementar cifragem de bytes antes do envio de documentos reais.
+**O que elas acharam, e o que já foi corrigido nesta retomada:**
 
-3. **`tipos-contratos` (Tipos e Schemas):**
-   - Schemas Zod de validação estão rigorosamente unificados entre cliente e servidor (`CadastroDeColaboradorSchema`, `RegistroDeAfastamentoSchema`).
-   - Dívida `H-D7`: Telas clientes (`Caixa`, `Painel`, `Acesso`) ainda redefinem interfaces de dados localmente em vez de importar de `src/core/tipos.ts`.
+| Dimensão | Achado mais grave | Estado |
+|---|---|---|
+| `ui-ux` | A fila só tinha **Concluir**: `devolver` e `transferir` tinham rota, serviço e verbete no assistente, e **nenhuma tela** — a saída que sobrava para quem recebia item alheio era concluir trabalho que não fez | ✅ corrigido |
+| `ui-ux` | Sessão expirada matava a tela: sem perfil o layout não desenha a navegação, nenhuma tela tratava 401, e o carregamento ficava eterno. Saída só digitando `/entrar` na barra de endereços | ✅ corrigido |
+| `ui-ux` | `--color-tinta-fraca` mede **3,53:1** no tema claro (AA exige 4,5) — é o rótulo de toda métrica do painel e dos campos da tela de entrada | ⏳ pendente |
+| `ui-ux` | Falha de rede deixa cinco telas em "Carregando…" para sempre (o `catch` só chama `setErro` e deixa o estado em `null`) | ⏳ 1 de 5 (fila) |
+| `fluxos` | `transferir` aceitava item **já concluído** — o painel passava a ter uma linha em que atribuídos, concluídos e pendentes não fecham | ✅ corrigido |
+| `fluxos` | Painel: `ABERTOS` não inclui `devolvido`, então a categoria pode ter pendente e dizer que nada envelhece | ⏳ pendente |
+| `fluxos` | Desativar colaborador abandona os itens da fila dele: nenhuma tela alcança, e o motor só recolhe `aprovado`/`devolvido` | ⏳ pendente |
+| `fluxos` | Não há como **encerrar** afastamento em aberto; a única saída é "Cancelar", que grava que a licença não aconteceu | ⏳ pendente |
+| `testes` | **Nenhuma rota HTTP tem teste**, e quatro delas guardam a autorização sozinhas (`colaboradores`, `rodadas/[id]`, `revisao`, `diagnostico/origem`) | ⏳ pendente |
+| `testes` | A conservação só é testada onde nada é gravado: as duas travas de dentro de `gravarRodada` e o rollback da transação não têm prova | ⏳ pendente |
+| `testes` | Cifragem sem teste de rotação de chave; expurgo sem fronteira, sem idempotência e sem guarda de retenção | ✅ corrigido |
+| `performance` | `resolverLiga` varre a tabela `Liga` inteira **uma vez por item**, dentro da transação de escrita (medido: ~50 ms com 300 ligas; ~250 ms por e-mail em PostgreSQL) | ⏳ pendente |
+| `performance` | `conferirConservacao` traz ~5.600 linhas por carregamento do painel | ⏳ pendente |
+| `performance` | `Execucao` sem índice `(resultado, concluidoEm)` — duas varreduras completas por painel, crescendo para sempre | ⏳ pendente |
+| `tipos` | A anotação de `ColaboradorResumo` pegava campo que some e **não** campo que sobra: um `senhaHash: true` no `select` vazaria o hash da equipe | ✅ corrigido |
+| `tipos` | `SeloDeConfianca` usava 0,85 fixo enquanto o limiar é por categoria — dois selos se contradiziam na mesma linha | ✅ corrigido |
+| `config` | `NODE_ENV` cai para `development` por omissão, e a trava do `db:limpar` abre: rodado por engano num shell de produção, ele apagava a trilha de auditoria | ✅ corrigido |
+| `config` | O `.env.example` entregava `ANEXOS_SECRET=""`, e o sistema **recusava subir** com isso | ✅ corrigido |
+| `config` | `ARMAZENAMENTO_DIR=` vazio virava a raiz do repositório — documento de associado nascendo ao lado do código | ✅ corrigido |
+| `config` | **16 de 16 anexos no disco estão em texto puro**: a cifragem não alcançou nenhum arquivo existente | ✅ script de migração criado (`npm run anexos:recifrar`) |
+| `config` | CSP de produção com `'unsafe-inline'` em `script-src` anula a rede de segurança que o comentário promete | ⏳ pendente |
+| `config` | O CI nunca roda `npm run build` — a única classe de defeito que `tsc` e os testes não alcançam | ⏳ pendente |
 
-4. **`performance` (Desempenho e Consultas):**
-   - Ingestão e caixa possuem tetos de busca (ex: 200 itens em `/itens`).
-   - Dívida `H-D8`: Consultas encadeadas em SQLite são rápidas, mas em PostgreSQL sob carga exigirão otimização para evitar queries N+1.
+#### Duas bombas-relógio estouraram no meio desta retomada
 
-5. **`testes` (Cobertura e Integridade):**
-   - Suíte de **494 testes automatizados** passando 100% verde (`npm run verificar`).
-   - Algoritmo de distribuição, cálculo de crédito, desempate por grupo e regras de segurança (lockout por tentativas falhas) estão integralmente cobertos.
+Não vieram da auditoria: apareceram sozinhas, à meia-noite de 08/09/2026. `conservacao-nao-e-ruido.test.ts` e `liga-nao-se-parte.test.ts` fixavam `const data = '2026-09-07'`, e os itens que elas criam nascem com `criadoEm` = agora. `planejarCategoria` só recolhe item criado ATÉ o fim do dia da rodada — virou o dia, a rodada não achou nada, e cinco testes ficaram vermelhos de uma vez.
 
-6. **`documentacao` (Registros e RAG):**
-   - Registros de arquitetura (`DECISOES.md` e `ESTADO.md`) cobrem da regra `A1` à `A16` e decisões de `H.1` a `H.4`. O assistente de ajuda possui busca embutida no manual local sem vazamento de dados.
+**Um teste que passa hoje e falha amanhã sem ninguém tocar em nada é pior que um teste ausente:** ensina a equipe a desconfiar do vermelho. As duas datas agora vêm de `hojeIso()`.
 
-7. **`config-dependencias` (Configuração):**
-   - `SESSAO_SECRET` é checado na inicialização (mínimo 16 caracteres). Dependências em versões atualizadas (Next 16, React 19, Prisma 7, Vitest 4, Zod 4).
+Junto veio um vermelho de outra natureza: o teste que mede o **piso de tempo** da recusa de entrada falhou enquanto o servidor de desenvolvimento e um navegador disputavam a máquina, e passou com a máquina livre. A amostra subiu de três para cinco medições; **o teto de 60 ms ficou onde estava** — afrouxar o limite para calar um vermelho intermitente apagaria justamente o canal lateral que o teste existe para medir.
+
+**Lição que continua valendo:** rodar em lotes de DUAS. A máquina tem 4 núcleos; sete em paralelo enfileira e estoura o limite antes de qualquer uma terminar.
 
 ### 3. O contorno da marca é reconstrução, não o oficial
 
@@ -93,14 +105,18 @@ Só existe o PNG do logotipo. `src/core/marca/contorno.ts` descreve a letra como
 
 ---
 
-## Próximos passos, em ordem de valor (Atualizada em 08/09/2026)
+## Próximos passos, em ordem de valor *(reordenada em 08/09/2026, pelo que a auditoria achou)*
 
-1. **Revisar e mesclar o PR #35.** Treze commits, 494 testes verdes. Consolida correções de segurança, revogação de cookies e motor de distribuição.
-2. **Levar as perguntas à chefia em `DECISOES.md § H.4`.** A urgente é definir o **prazo e rotina de expurgo do motivo de afastamento** (dado de saúde LGPD hoje guardado sem prazo de expiração no código).
-3. **Cifrar bytes de anexo (`H-D19`).** Requisito obrigatório antes do recebimento e armazenamento de documentos reais em produção.
-4. **Unificar contratos de API (`H-D7`).** Importar interfaces de dados das telas diretamente de `src/core/tipos.ts`.
-5. **Medir o acerto da IA contra modelo real.** Executar `IA_ADAPTER=gemini IA_MODELO=gemini-3.1-flash-lite npm run ia:experimentar`.
-6. **Otimização de queries N+1 (`H-D8`).** Mapear e otimizar queries encadeadas visando futura migração para PostgreSQL.
+1. **Fechar os dois CRÍTICOS de teste**, que são o que permite confiar em todo o resto: nenhuma rota HTTP é testada (e quatro guardam a autorização sozinhas), e a conservação não tem prova no caminho de ESCRITA — só no de leitura. Enquanto isso não existir, "494 verdes" mede menos do que parece.
+2. **Terminar os pendentes de interface**, em ordem de dano: `--color-tinta-fraca` a 3,53:1 no tema claro; o "Carregando…" eterno nas quatro telas que faltam; o painel que diz "nada envelhece" com item devolvido pendente; a confirmação de dois passos no Descartar da Revisão e na senha provisória.
+3. **Levar as perguntas à chefia em `DECISOES.md § H.4`.** A urgente continua sendo o **prazo do motivo de afastamento** (dado de saúde). Agora existe a rotina que aplica a resposta — `npm run db:expurgar` — mas o prazo de 90 dias é **hipótese registrada** (`§ AT-11`), não decisão, e por isso nada a agenda.
+4. **Rodar a dimensão `documentacao`**, a única das sete que não rodou.
+5. **Migrar os anexos legados:** `npm run anexos:conferir` diz quantos ainda estão em texto puro; `npm run anexos:recifrar` fecha. Hoje são todos. Enquanto não rodar, "cifragem em repouso" descreve os arquivos novos e mais nada.
+6. **Revisar e mesclar o PR #35.** Agora com o que esta retomada acrescentou — e ninguém de carne ainda olhou.
+7. **Fechar os buracos de fluxo:** desativar colaborador abandona a fila dele; não há como encerrar afastamento em aberto; a confirmação da distribuição trava por uma categoria sem elegível quando o serviço distribuiria as outras.
+8. **Performance, na ordem que a auditoria mediu** — e não na do plano `H-D8`, que ataca os alvos mais fracos: índice `(resultado, concluidoEm)` em `Execucao`; `conferirConservacao` agregando no banco; `resolverLiga` em lote; escrita em lote em `gravarRodada`; só então `carregarElegiveis` e `porPessoa`.
+9. **CSP com nonce** em vez de `'unsafe-inline'` no `script-src`, e **`npm run build` no CI**.
+10. **Medir o acerto da IA contra modelo real.** O Painel já separa a taxa POR MODELO — a comparação que justifica manter dois fornecedores.
 
 ### O comando que destrava mais coisa — e o que ele custa de verdade
 
