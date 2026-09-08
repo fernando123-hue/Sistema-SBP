@@ -408,6 +408,8 @@ async function criarItens(
   },
 ): Promise<Omit<ResultadoDeUm, 'anexosRejeitados' | 'conteudoSuspeito'>> {
   const { interpretacao } = contexto
+  // Uma leitura de `Liga` por LOTE, não por item — ver `indiceDeLigas`.
+  const ligas = await indiceDeLigas(tx)
   let criados = 0
   let aprovados = 0
   let paraRevisao = 0
@@ -455,7 +457,7 @@ async function criarItens(
     // e `Ligante` existiam no schema desde a fundação e nunca tiveram um
     // escritor. O motor precisa saber QUAL liga é para não separar o lote
     // dela, e `ligaMencionada` sozinho é texto, não identidade.
-    const ligaId = await resolverLiga(tx, extraido.ligaMencionada)
+    const ligaId = await resolverLiga(tx, ligas, extraido.ligaMencionada)
 
     const item = await tx.item.create({
       data: {
@@ -509,21 +511,48 @@ async function criarItens(
  * O nome ORIGINAL é guardado como veio — é o que a tela mostra, e reescrevê-lo
  * para a forma normalizada faria a liga aparecer sem acento na interface.
  */
-async function resolverLiga(tx: Transacao, mencionada: string | null): Promise<string | null> {
+async function resolverLiga(
+  tx: Transacao,
+  indice: Map<string, string>,
+  mencionada: string | null,
+): Promise<string | null> {
   const chave = chaveDaLiga(mencionada)
   if (chave === null) return null
 
-  // A comparação acontece sobre a chave, então a busca traz as candidatas com
-  // o mesmo primeiro caractere e compara em memória. Com o volume desta
-  // operação (dezenas de ligas), é mais simples e mais previsível do que
-  // gravar uma coluna normalizada agora — e trocar por uma coluna indexada
-  // depois não muda o comportamento, só o custo.
-  const existentes = await tx.liga.findMany({ select: { id: true, nome: true } })
-  const achada = existentes.find((liga) => chaveDaLiga(liga.nome) === chave)
-  if (achada) return achada.id
+  const achada = indice.get(chave)
+  if (achada) return achada
 
   const criada = await tx.liga.create({ data: { nome: mencionada!.trim() } })
+  // A liga nova entra no índice: o mesmo e-mail pode mencioná-la de novo nos
+  // itens seguintes, e sem isto cada menção criaria uma linha.
+  indice.set(chave, criada.id)
   return criada.id
+}
+
+/**
+ * Índice de ligas por chave normalizada, montado UMA vez por lote.
+ *
+ * A varredura em si é decisão (`AT-10`: a comparação é exata, sobre a chave, e
+ * não aproximada) — o defeito era repeti-la por item. Um e-mail de liga com 30
+ * ligantes fazia 30 leituras da tabela inteira DENTRO da transação de escrita,
+ * mais 30 × N normalizações: com 300 ligas cadastradas, 9.000 chamadas de
+ * `chaveDaLiga` medidas em 37,8 ms de CPU, tudo segurando a trava.
+ *
+ * É exatamente o defeito que `criarItens` já tinha corrigido para `Categoria`,
+ * vinte linhas acima, com o comentário explicando por quê. A correção não tinha
+ * sido aplicada a `Liga`.
+ */
+async function indiceDeLigas(tx: Transacao): Promise<Map<string, string>> {
+  const existentes = await tx.liga.findMany({ select: { id: true, nome: true } })
+  const indice = new Map<string, string>()
+  for (const liga of existentes) {
+    const chave = chaveDaLiga(liga.nome)
+    // Primeira vencendo: se duas linhas normalizam para a mesma chave (dado
+    // anterior à regra), o comportamento continua sendo o da varredura, que
+    // parava no primeiro `find`.
+    if (chave !== null && !indice.has(chave)) indice.set(chave, liga.id)
+  }
+  return indice
 }
 
 /**

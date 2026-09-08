@@ -408,6 +408,13 @@ model Execucao {
 
   @@index([colaboradorId, concluidoEm])
   @@index([itemId])
+  /// O painel pergunta duas vezes por carregamento "o que foi concluído neste
+  /// período?" — e sem este índice as duas viram varredura completa de
+  /// `Execucao`, confirmado por `EXPLAIN QUERY PLAN`. `Execucao` é a única
+  /// tabela do caminho do painel que cresce para sempre (uma linha por
+  /// conclusão, ~16 mil por ano): as outras seis agregações usam índice de
+  /// cobertura, esta não usava nenhum.
+  @@index([resultado, concluidoEm])
 }
 
 /// O livro-razão do balanceamento. É o que a planilha não tem em lugar nenhum.

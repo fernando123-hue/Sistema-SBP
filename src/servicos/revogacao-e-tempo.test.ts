@@ -102,9 +102,20 @@ describe('tempo de resposta da recusa de entrada', () => {
   it('quem acerta a senha não paga o piso — atrasar quem acerta é custo sem defesa', async () => {
     await semearPessoa()
 
-    const inicio = Date.now()
-    await autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA })
-    expect(Date.now() - inicio).toBeLessThan(PISO_DE_RESPOSTA_DE_ENTRADA_MS)
+    // MEDIANA de três, e não uma amostra: uma pausa do sistema operacional no
+    // meio da única medição fazia este teste ficar vermelho com a máquina
+    // ocupada e verde com ela livre. O que ele afirma continua idêntico — o
+    // caminho do acerto não espera o piso de propósito —, e o teto continua
+    // sendo o piso, sem folga acrescentada.
+    const amostras: number[] = []
+    for (let volta = 0; volta < 3; volta += 1) {
+      const inicio = Date.now()
+      await autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA })
+      amostras.push(Date.now() - inicio)
+    }
+
+    const mediana = amostras.sort((a, b) => a - b)[1]!
+    expect(mediana).toBeLessThan(PISO_DE_RESPOSTA_DE_ENTRADA_MS)
   })
 })
 

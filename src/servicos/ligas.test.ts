@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { EmailBrutoSchema } from '../core/esquemas'
+import type { AiPort } from '../ports/ia'
+import type { IngestaoPort } from '../ports/ingestao'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo, semearBase } from '../testes/apoio'
 import { listarCaixa } from './caixa'
+import { sincronizar } from './ingestao'
 import { listar } from './ligas'
 import { arquivar, registrar } from './notas'
 
@@ -114,5 +118,84 @@ describe('a caixa filtra por liga', () => {
     const todos = await listarCaixa(banco)
     expect(todos).toHaveLength(3)
     expect(todos.find((item) => item.titulo === 'Sem liga')?.ligaNome).toBeNull()
+  })
+})
+
+describe('identidade de liga com o índice de lote', () => {
+  /**
+   * O índice de ligas é montado uma vez por lote — a correção do N+1 que varria
+   * a tabela `Liga` inteira por ITEM, dentro da transação de escrita.
+   *
+   * O risco que ele introduz é o oposto do defeito que corrige: se a liga criada
+   * NO MEIO do lote não entrar no índice, a menção seguinte ao mesmo nome cria
+   * uma segunda linha — e aí o `A4` deixa de valer, porque a liga se parte em
+   * duas e cada metade pode ir para uma pessoa diferente no mesmo dia.
+   *
+   * O duble devolve dois itens com a MESMA liga, que ainda não existe no banco.
+   * Com `IaMock` isto não seria testável: ele extrai um item por e-mail.
+   */
+  const doisLigantesDaMesmaLiga: AiPort = {
+    nome: 'duble',
+    interpretar: async () => ({
+      itens: [
+        {
+          categoriaCodigo: 'LIGANTE' as const,
+          titulo: 'Pessoa Um',
+          confianca: 0.99,
+          campos: {},
+          camposAusentes: [],
+          ligaMencionada: 'Liga Acadêmica de Pediatria do Vale',
+          observacao: null,
+        },
+        {
+          categoriaCodigo: 'LIGANTE' as const,
+          titulo: 'Pessoa Dois',
+          confianca: 0.99,
+          campos: {},
+          camposAusentes: [],
+          // O MESMO nome, com acentuação e caixa diferentes: `chaveDaLiga`
+          // normaliza os dois para a mesma chave, por decisão (`AT-10`).
+          ligaMencionada: 'liga academica de pediatria do vale',
+          observacao: null,
+        },
+      ],
+      conteudoSuspeito: false,
+      padroesSuspeitos: [],
+      modelo: 'duble',
+      versaoPrompt: 'teste',
+    }),
+  }
+
+  it('a mesma liga mencionada duas vezes no lote continua sendo UMA linha', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+
+    const ingestao: IngestaoPort = {
+      nome: 'teste',
+      buscarNovos: async () => [
+        EmailBrutoSchema.parse({
+          messageId: 'liga-repetida@teste.local',
+          remetente: 'contato@exemplo.test',
+          assunto: 'Dois ligantes da mesma liga',
+          corpo: 'Seguem dois ligantes.\n',
+          recebidoEm: new Date(),
+        }),
+      ],
+    }
+
+    // A base semeada já tem ligas: o que interessa é quantas NASCEM deste lote.
+    const antes = new Set((await banco.liga.findMany({ select: { id: true } })).map((l) => l.id))
+
+    await sincronizar({ banco, ingestao, ia: doisLigantesDaMesmaLiga }, base.operador)
+
+    const depois = await banco.liga.findMany({ select: { id: true, nome: true } })
+    const nascidas = depois.filter((liga) => !antes.has(liga.id))
+    expect(nascidas).toHaveLength(1)
+
+    const itens = await banco.item.findMany({
+      where: { ligaId: { not: null } },
+      select: { ligaId: true },
+    })
+    expect(itens).toHaveLength(2)
+    expect(new Set(itens.map((item) => item.ligaId)).size).toBe(1)
   })
 })
