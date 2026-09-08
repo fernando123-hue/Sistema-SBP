@@ -13,7 +13,10 @@ import {
   Selo,
   Vazio,
 } from '../../componentes/matrizes'
-import type { ColaboradorResumo as Colaborador } from '../../core/tipos'
+import type { ColaboradorResumo, NaRede } from '../../core/tipos'
+
+/** O que a rota devolve: as datas chegam como texto ISO. */
+type Colaborador = NaRede<ColaboradorResumo>
 
 
 interface Categoria {
@@ -62,6 +65,12 @@ export default function Acesso() {
       setEquipe(pessoas)
       setCategorias(disponiveis)
     } catch (causa) {
+      // Estado neutro, e não `null`: `null` é a condição que desenha
+      // "Carregando…", então uma falha de rede deixava erro E carregando na
+      // tela ao mesmo tempo, para sempre. Quem olha conclui "hoje está lento",
+      // espera, e nunca tenta de novo.
+      setEquipe([])
+      setCategorias([])
       setErro(mensagemDoErro(causa))
     }
   }, [])

@@ -18,7 +18,7 @@ import {
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
 import { hojeIso } from '../../core/util/datas'
-import type { ItemDaCaixa } from '../../core/tipos'
+import type { ItemDaCaixa, NaRede } from '../../core/tipos'
 
 
 interface Resumo {
@@ -75,7 +75,7 @@ const REGISTRO_VAZIO: Registro = {
  * proibida de classificá-las e o motor as ignora.
  */
 export default function Caixa() {
-  const [dados, setDados] = useState<{ itens: ItemDaCaixa[]; resumo: Resumo } | null>(null)
+  const [dados, setDados] = useState<{ itens: NaRede<ItemDaCaixa>[]; resumo: Resumo } | null>(null)
   const [filtro, setFiltro] = useState<string | null>(null)
   /**
    * Liga escolhida, `null` para todas.
@@ -103,9 +103,14 @@ export default function Caixa() {
       if (categoria) parametros.set('categoria', categoria)
       if (liga) parametros.set('liga', liga)
       setDados(
-        await api.buscar<{ itens: ItemDaCaixa[]; resumo: Resumo }>(`/itens?${parametros}`),
+        await api.buscar<{ itens: NaRede<ItemDaCaixa>[]; resumo: Resumo }>(`/itens?${parametros}`),
       )
     } catch (causa) {
+      // Estado neutro, e não `null`: `null` é a condição que desenha
+      // "Carregando…", então uma falha de rede deixava erro E carregando na
+      // tela ao mesmo tempo, para sempre. Quem olha conclui "hoje está lento",
+      // espera, e nunca tenta de novo.
+      setDados({ itens: [], resumo: { total: 0, porStatus: {}, porCategoria: [] } })
       setErro(mensagemDoErro(causa))
     }
   }, [])
@@ -463,7 +468,7 @@ export default function Caixa() {
                   // decisão que nenhum modelo tomou.
                   conteudo: (item) =>
                     item.classificadaPorIa ? (
-                      <SeloDeConfianca valor={item.confianca} />
+                      <SeloDeConfianca valor={item.confianca} limiar={item.limiarConfianca} />
                     ) : (
                       <Selo titulo="Registrado à mão: nenhum modelo classificou este item.">
                         manual

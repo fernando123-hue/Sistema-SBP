@@ -16,7 +16,7 @@ import {
   juntar,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
-import type { LinhaDaEscala, ResumoDaIngestao } from '../../core/tipos'
+import type { LinhaDaEscala, NaRede, ResumoIngestao } from '../../core/tipos'
 
 /**
  * O servidor já redigiu conforme o papel de quem pediu (decisão de 06/09/2026).
@@ -102,18 +102,23 @@ const CRITERIO: Record<string, { texto: string; explicacao: string }> = {
 
 export default function Distribuicao() {
   const [data, setData] = useState(hoje)
-  const [escala, setEscala] = useState<LinhaDaEscala[] | null>(null)
+  const [escala, setEscala] = useState<NaRede<LinhaDaEscala>[] | null>(null)
   const [previa, setPrevia] = useState<Resumo | null>(null)
   const [confirmado, setConfirmado] = useState<Resumo | null>(null)
   const [erro, setErro] = useState<string | null>(null)
-  const [ingestao, setIngestao] = useState<ResumoDaIngestao | null>(null)
+  const [ingestao, setIngestao] = useState<NaRede<ResumoIngestao> | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
 
   const carregarEscala = useCallback(async (dia: string) => {
     setEscala(null)
     try {
-      setEscala(await api.buscar<LinhaDaEscala[]>(`/escala?data=${dia}`))
+      setEscala(await api.buscar<NaRede<LinhaDaEscala>[]>(`/escala?data=${dia}`))
     } catch (causa) {
+      // Estado neutro, e não `null`: `null` é a condição que desenha
+      // "Carregando…", então uma falha de rede deixava erro E carregando na
+      // tela ao mesmo tempo, para sempre. Quem olha conclui "hoje está lento",
+      // espera, e nunca tenta de novo.
+      setEscala([])
       setErro(mensagemDoErro(causa))
     }
   }, [])
@@ -131,11 +136,11 @@ export default function Distribuicao() {
   // duas, sem explicação.
   const dePlantao = (escala ?? []).filter((linha) => linha.disponivel && linha.afastamento === null)
 
-  async function alternar(linha: LinhaDaEscala) {
+  async function alternar(linha: NaRede<LinhaDaEscala>) {
     setErro(null)
     setPrevia(null)
     try {
-      const atualizada = await api.atualizar<LinhaDaEscala[]>('/escala', {
+      const atualizada = await api.atualizar<NaRede<LinhaDaEscala>[]>('/escala', {
         data,
         colaboradorId: linha.colaboradorId,
         disponivel: !linha.disponivel,
@@ -152,7 +157,7 @@ export default function Distribuicao() {
     setErro(null)
     try {
       if (acao === 'sincronizar') {
-        setIngestao(await api.enviar<ResumoDaIngestao>('/ingestao'))
+        setIngestao(await api.enviar<NaRede<ResumoIngestao>>('/ingestao'))
         setPrevia(null)
       } else if (acao === 'previa') {
         setPrevia(await api.enviar<Resumo>('/distribuicao/previa', { data, categorias: [] }))

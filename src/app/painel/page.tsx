@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
   Aviso,
+  Botao,
   CabecalhoDeSecao,
   Carregando,
   ListaResponsiva,
@@ -14,7 +15,7 @@ import {
   juntar,
 } from '../../componentes/matrizes'
 
-import type { LinhaPainel, LinhaPorPessoa } from '../../core/tipos'
+import type { LinhaPainel, LinhaPorPessoa, NaRede } from '../../core/tipos'
 
 interface Periodo {
 
@@ -24,8 +25,8 @@ interface Periodo {
 
 interface Painel {
   periodo: Periodo
-  categorias: LinhaPainel[]
-  pessoas: LinhaPorPessoa[]
+  categorias: NaRede<LinhaPainel>[]
+  pessoas: NaRede<LinhaPorPessoa>[]
   conservacao: { rodadas: number; divergentes: { rodadaId: string }[] }
 }
 
@@ -146,8 +147,13 @@ export default function PainelPagina() {
   /** Vazio = deixa o servidor escolher o mês corrente, a unidade da planilha. */
   const [de, setDe] = useState('')
   const [ate, setAte] = useState('')
+  /** Muda para pedir os dados de novo depois de uma falha. */
+  const [tentativa, setTentativa] = useState(0)
 
   useEffect(() => {
+    // Limpa o erro anterior: sem isto, a faixa vermelha da tentativa que falhou
+    // ficaria na tela por cima dos dados que a tentativa seguinte trouxe.
+    setErro(null)
     const recorte = de && ate ? `?de=${de}&ate=${ate}` : ''
     Promise.all([
       api.buscar<Painel>(`/painel${recorte}`),
@@ -166,10 +172,37 @@ export default function PainelPagina() {
         setFora(ausentes)
       })
       .catch((causa) => setErro(mensagemDoErro(causa)))
-  }, [de, ate])
+  }, [de, ate, tentativa])
 
-  if (erro) return <Aviso>{erro}</Aviso>
-  if (!dados) return <Carregando />
+  // ═══ ERRO NÃO APAGA A TELA ═══
+  //
+  // Este ramo era `if (erro) return <Aviso>{erro}</Aviso>`, e ele levava junto
+  // o cabeçalho e os DOIS CAMPOS DE PERÍODO. Como o efeito só dispara quando
+  // `de`/`ate` mudam, e não sobrava campo na tela para mudá-los, não existia
+  // caminho de volta dentro da página: uma piscada de rede no meio da consulta
+  // deixava a gestora com uma linha vermelha no branco e nada para clicar.
+  //
+  // Agora o erro aparece com o botão que refaz a consulta; e quando já havia
+  // dados na tela, eles ficam — refazer uma consulta que falhou não é motivo
+  // para apagar o que já estava certo.
+  if (!dados) {
+    return (
+      <div className="flex flex-col gap-4">
+        <CabecalhoDeSecao
+          titulo="Painel"
+          descricao="Todo número desta tela é calculado. Não existe campo digitável."
+        />
+        {erro ? (
+          <div className="flex flex-col items-start gap-3">
+            <Aviso>{erro}</Aviso>
+            <Botao onClick={() => setTentativa((numero) => numero + 1)}>Tentar de novo</Botao>
+          </div>
+        ) : (
+          <Carregando />
+        )}
+      </div>
+    )
+  }
 
   // ═══ DUAS NATUREZAS DE NÚMERO NESTA TELA, E ELAS NÃO SE FILTRAM IGUAL ═══
   //
@@ -185,7 +218,7 @@ export default function PainelPagina() {
   //
   // Uma métrica que responde a pergunta errada é pior que uma ausente: esta
   // levava a decisão exatamente para o lado contrário do certo.
-  const temTrabalhoAgora = (linha: LinhaPainel) =>
+  const temTrabalhoAgora = (linha: NaRede<LinhaPainel>) =>
     linha.aberto > 0 || linha.aguardandoRevisao > 0
   const comDados = dados.categorias.filter(temTrabalhoAgora)
 
@@ -210,6 +243,7 @@ export default function PainelPagina() {
 
   return (
     <div className="flex flex-col gap-6">
+      {erro ? <Aviso>{erro}</Aviso> : null}
       <CabecalhoDeSecao
         titulo="Painel"
         descricao="Todo número desta tela é calculado. Não existe campo digitável."

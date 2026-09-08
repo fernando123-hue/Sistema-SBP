@@ -14,19 +14,10 @@ import {
   Vazio,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
+import type { ItemEmRevisao, NaRede } from '../../core/tipos'
 
-interface ItemEmRevisao {
-  revisaoId: string
-  itemId: string
-  motivo: string
-  confianca: number
-  campoIncerto: string | null
-  titulo: string
-  categoriaCodigo: string
-  remetente: string | null
-  assunto: string | null
-  sugestaoIa: string
-}
+/** A forma vem do núcleo; a tela lê o que sobrevive ao JSON (`H-D7`). */
+type ItemNaTela = NaRede<ItemEmRevisao>
 
 const CATEGORIAS = [
   'DOC_CADASTRO',
@@ -66,7 +57,7 @@ const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutr
  * medida de acerto do modelo — e é ela que autoriza afrouxar o limiar depois.
  */
 export default function Revisao() {
-  const [pendentes, setPendentes] = useState<ItemEmRevisao[] | null>(null)
+  const [pendentes, setPendentes] = useState<ItemNaTela[] | null>(null)
   /** Quantas existem de verdade. Maior que a lista = a fila está truncada. */
   const [totalPendentes, setTotalPendentes] = useState(0)
   const [erro, setErro] = useState<string | null>(null)
@@ -75,7 +66,7 @@ export default function Revisao() {
 
   const carregar = useCallback(async () => {
     try {
-      const fila = await api.buscar<{ itens: ItemEmRevisao[]; total: number }>('/revisao')
+      const fila = await api.buscar<{ itens: ItemNaTela[]; total: number }>('/revisao')
       const lista = fila.itens
       setTotalPendentes(fila.total)
       setPendentes(lista)
@@ -93,6 +84,11 @@ export default function Revisao() {
         ),
       )
     } catch (causa) {
+      // Estado neutro, e não `null`: `null` é a condição que desenha
+      // "Carregando…", então uma falha de rede deixava erro E carregando na
+      // tela ao mesmo tempo, para sempre. Quem olha conclui "hoje está lento",
+      // espera, e nunca tenta de novo.
+      setPendentes([])
       setErro(mensagemDoErro(causa))
     }
   }, [])
@@ -175,7 +171,7 @@ export default function Revisao() {
     }
   }
 
-  function camposSugeridos(item: ItemEmRevisao): Record<string, string> {
+  function camposSugeridos(item: ItemNaTela): Record<string, string> {
     try {
       const sugestao = JSON.parse(item.sugestaoIa) as { campos?: Record<string, string> }
       return sugestao.campos ?? {}
@@ -228,7 +224,7 @@ export default function Revisao() {
                 <Cartao className="px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Selo tom={info.tom}>{info.texto}</Selo>
-                    <SeloDeConfianca valor={item.confianca} />
+                    <SeloDeConfianca valor={item.confianca} limiar={item.limiarConfianca} />
                     {item.campoIncerto ? <Selo>falta: {item.campoIncerto}</Selo> : null}
                   </div>
 

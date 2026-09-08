@@ -92,6 +92,20 @@ async function requisitar<T>(
     const envelope = (await resposta.json().catch(() => null)) as Envelope<T> | null
 
     if (!resposta.ok || !envelope?.sucesso) {
+      // 401 é sessão ausente ou expirada, e SÓ isso: entrada com senha errada
+      // é `ErroDeNegocio` (422), então não há risco de laço na tela de entrada.
+      //
+      // Sem este desvio, o cookie vencendo com uma tela aberta deixava a pessoa
+      // presa: o layout só desenha a navegação quando há perfil, então a barra
+      // inteira sumia — nenhum link, nenhum "entrar" —, a tarja de erro ficava,
+      // e o único caminho de volta era digitar /entrar na barra de endereços.
+      // Recarregar a página, que é o que qualquer um tenta, piorava.
+      if (resposta.status === 401 && typeof window !== 'undefined') {
+        if (window.location.pathname !== '/entrar') {
+          window.location.assign('/entrar')
+        }
+      }
+
       throw new ErroDaApi(
         envelope?.erro ?? `Falha na requisição (${resposta.status}).`,
         resposta.status,

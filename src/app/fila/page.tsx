@@ -38,15 +38,32 @@ function quando(valor: string | null): string {
  * A tela que substitui "Paulo: 24". Em vez de um número, os 24 itens reais,
  * com remetente e assunto. Mobile-first: é a tela que será aberta no celular.
  */
+/** Quem pode receber uma transferência. Vem da escala, que qualquer papel lê. */
+interface PessoaDaEscala {
+  colaboradorId: string
+  nome: string
+}
+
+type AcaoEmCurso = { itemId: string; acao: 'concluir' | 'devolver' | 'transferir' } | null
+
 export default function Fila() {
   const [itens, setItens] = useState<ItemDaFila[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
-  const [ocupado, setOcupado] = useState<string | null>(null)
+  const [ocupado, setOcupado] = useState<AcaoEmCurso>(null)
+  /** Item cujo formulário de "não é comigo" está aberto, e o que ele preenche. */
+  const [saindo, setSaindo] = useState<string | null>(null)
+  const [justificativa, setJustificativa] = useState('')
+  const [destino, setDestino] = useState('')
+  const [equipe, setEquipe] = useState<PessoaDaEscala[]>([])
 
   const carregar = useCallback(async () => {
     try {
       setItens(await api.buscar<ItemDaFila[]>('/fila'))
     } catch (causa) {
+      // Lista vazia, e não `null`: `null` é a condição que desenha "Carregando…",
+      // então uma falha de rede deixava erro E carregando na tela ao mesmo
+      // tempo, para sempre. Quem olha conclui "hoje está lento" e espera.
+      setItens([])
       setErro(mensagemDoErro(causa))
     }
   }, [])
@@ -56,11 +73,66 @@ export default function Fila() {
   }, [carregar])
 
   async function concluir(item: ItemDaFila) {
-    setOcupado(item.itemId)
+    setOcupado({ itemId: item.itemId, acao: 'concluir' })
     setErro(null)
     try {
       await api.enviar(`/itens/${item.itemId}/concluir`)
       setItens((atual) => (atual ?? []).filter((linha) => linha.itemId !== item.itemId))
+    } catch (causa) {
+      setErro(mensagemDoErro(causa))
+    } finally {
+      setOcupado(null)
+    }
+  }
+
+  /**
+   * Abre o formulário de saída do item, e busca a equipe uma vez só.
+   *
+   * A lista vem de `/escala`, que é o que um colaborador consegue ler —
+   * `/colaboradores` exige gestor. Consequência: só aparece quem tem alguma
+   * habilitação, e é por isso que o texto embaixo do seletor diz isso, em vez
+   * de deixar a pessoa procurar um nome que nunca vai estar lá.
+   */
+  async function abrirSaida(item: ItemDaFila) {
+    setSaindo(item.itemId)
+    setJustificativa('')
+    setDestino('')
+    setErro(null)
+    if (equipe.length > 0) return
+    try {
+      const hoje = new Date().toISOString().slice(0, 10)
+      setEquipe(await api.buscar<PessoaDaEscala[]>(`/escala?data=${hoje}`))
+    } catch {
+      // Sem a lista, transferir fica indisponível e devolver continua valendo.
+      // Uma das duas saídas some; a tela não. Por isso não vira erro de tela.
+      setEquipe([])
+    }
+  }
+
+  async function devolver(item: ItemDaFila) {
+    setOcupado({ itemId: item.itemId, acao: 'devolver' })
+    setErro(null)
+    try {
+      await api.enviar(`/itens/${item.itemId}/devolver`, { justificativa })
+      setItens((atual) => (atual ?? []).filter((linha) => linha.itemId !== item.itemId))
+      setSaindo(null)
+    } catch (causa) {
+      setErro(mensagemDoErro(causa))
+    } finally {
+      setOcupado(null)
+    }
+  }
+
+  async function transferir(item: ItemDaFila) {
+    setOcupado({ itemId: item.itemId, acao: 'transferir' })
+    setErro(null)
+    try {
+      await api.enviar(`/itens/${item.itemId}/transferir`, {
+        paraColaboradorId: destino,
+        justificativa,
+      })
+      setItens((atual) => (atual ?? []).filter((linha) => linha.itemId !== item.itemId))
+      setSaindo(null)
     } catch (causa) {
       setErro(mensagemDoErro(causa))
     } finally {
@@ -131,16 +203,104 @@ export default function Fila() {
                         </span>
                       </div>
 
-                      <div className="mt-3 flex justify-end">
+                      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                        {/*
+                          "Não é comigo" existe porque a alternativa é pior: com
+                          Concluir sendo o único botão, quem recebe item alheio
+                          conclui trabalho que não fez — e a contagem do painel
+                          volta a ser a ficção que este sistema veio substituir.
+                          O manual do assistente já ensinava as duas operações e
+                          mandava a pessoa para esta tela; a tela é que não as
+                          oferecia.
+                        */}
+                        <Botao
+                          tamanho="pequeno"
+                          onClick={() =>
+                            saindo === item.itemId ? setSaindo(null) : void abrirSaida(item)
+                          }
+                          desabilitado={ocupado !== null}
+                        >
+                          {saindo === item.itemId ? 'Deixar comigo' : 'Não é comigo'}
+                        </Botao>
                         <Botao
                           variante="principal"
                           tamanho="pequeno"
                           onClick={() => concluir(item)}
                           desabilitado={ocupado !== null}
                         >
-                          {ocupado === item.itemId ? 'concluindo…' : 'Concluir'}
+                          {ocupado?.itemId === item.itemId && ocupado.acao === 'concluir'
+                            ? 'concluindo…'
+                            : 'Concluir'}
                         </Botao>
                       </div>
+
+                      {saindo === item.itemId ? (
+                        <div className="mt-3 flex flex-col gap-2 border-t border-borda pt-3">
+                          <label
+                            className="text-xs text-tinta-suave"
+                            htmlFor={`porque-${item.itemId}`}
+                          >
+                            Por que este item não é seu? Mínimo de 5 letras — fica na trilha.
+                          </label>
+                          <textarea
+                            id={`porque-${item.itemId}`}
+                            value={justificativa}
+                            onChange={(evento) => setJustificativa(evento.target.value)}
+                            rows={2}
+                            className="w-full rounded-md border border-borda-forte bg-papel px-2 py-1.5 text-sm"
+                            placeholder="Ex.: é da liga que a Cristina já está tratando."
+                          />
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Botao
+                              tamanho="pequeno"
+                              onClick={() => devolver(item)}
+                              desabilitado={ocupado !== null || justificativa.trim().length < 5}
+                            >
+                              {ocupado?.itemId === item.itemId && ocupado.acao === 'devolver'
+                                ? 'devolvendo…'
+                                : 'Devolver para o grupo'}
+                            </Botao>
+
+                            {equipe.length > 0 ? (
+                              <>
+                                <select
+                                  aria-label="Transferir para"
+                                  value={destino}
+                                  onChange={(evento) => setDestino(evento.target.value)}
+                                  className="min-h-9 rounded-md border border-borda-forte bg-papel px-2 text-xs"
+                                >
+                                  <option value="">Transferir para…</option>
+                                  {equipe.map((pessoa) => (
+                                    <option key={pessoa.colaboradorId} value={pessoa.colaboradorId}>
+                                      {pessoa.nome}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Botao
+                                  tamanho="pequeno"
+                                  onClick={() => transferir(item)}
+                                  desabilitado={
+                                    ocupado !== null ||
+                                    destino === '' ||
+                                    justificativa.trim().length < 5
+                                  }
+                                >
+                                  {ocupado?.itemId === item.itemId && ocupado.acao === 'transferir'
+                                    ? 'transferindo…'
+                                    : 'Transferir'}
+                                </Botao>
+                              </>
+                            ) : null}
+                          </div>
+
+                          <p className="text-xs text-tinta-suave">
+                            Devolver deixa o item sem dono, e o rateio decide de novo na próxima
+                            rodada. Transferir escolhe a pessoa — a lista traz quem está habilitado
+                            em alguma categoria.
+                          </p>
+                        </div>
+                      ) : null}
                     </Cartao>
                   </li>
                 ))}
