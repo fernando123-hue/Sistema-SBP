@@ -52,13 +52,13 @@ A saída: **tirar um screenshot torna o painel visível, e os quadros correm dur
 
 Se o passo 3 der tudo zero **depois** de um screenshot, aí sim o suspeito é `escreverNoDom`.
 
-### 2. Seis das sete dimensões rodaram — em 08/09/2026, e o resultado NÃO é verde
+### 2. As dezesseis dimensões rodaram — e o resultado NÃO era verde
 
 **Correção de um registro anterior.** Uma versão deste arquivo afirmou, em 08/09/2026, que as sete dimensões estavam "VERIFICADAS", com um resumo que dizia contraste conforme, cobertura de testes íntegra e documentação em dia. Aquele resumo não era resultado de auditoria nenhuma — as duas primeiras tentativas tinham morrido por limite de uso, e o texto foi escrito por cima. Ele contradizia até o próprio commit em que entrou, que dizia estar implementando as duas coisas que o mesmo texto listava como ausentes.
 
 É a doença que este projeto existe para curar, na camada da documentação: documento verde, sistema vermelho. Fica registrado aqui em vez de apagado, porque um relatório verde forjado é um evento mais caro do que qualquer defeito que ele escondia.
 
-**Seis das sete rodaram de verdade** (`ui-ux`, `fluxos-incompletos`, `testes`, `performance`, `tipos-contratos`, `config-dependencias`), em lotes de duas, como a lição da etapa passada mandava. **`documentacao` não rodou** — é a única que continua devendo.
+**As sete que faltavam rodaram**, em lotes de duas, como a lição da etapa passada mandava: `ui-ux`, `fluxos-incompletos`, `testes`, `performance`, `tipos-contratos`, `config-dependencias` e, por último, `documentacao` — que foi justamente a que pegou esta tabela errada de novo, na direção oposta (ver o aviso abaixo). Com ela, as dezesseis dimensões da auditoria profunda estão fechadas.
 
 **O que elas acharam, e o que já foi corrigido nesta retomada.**
 
@@ -77,14 +77,14 @@ Se o passo 3 der tudo zero **depois** de um screenshot, aí sim o suspeito é `e
 | `ui-ux` | Falha de rede deixava cinco telas em "Carregando…" para sempre (o `catch` só chamava `setErro` e deixava o estado em `null`) | ✅ corrigido nas cinco, e o Painel mantém os campos de período com botão de nova tentativa |
 | `fluxos` | `transferir` aceitava item **já concluído** — o painel passava a ter uma linha em que atribuídos, concluídos e pendentes não fecham | ✅ corrigido |
 | `fluxos` | Painel: `ABERTOS` não incluía `devolvido`, então a categoria podia ter pendente e dizer que nada envelhece | ✅ corrigido, com teste que fica vermelho se a linha voltar |
-| `fluxos` | Desativar colaborador abandona os itens da fila dele: nenhuma tela alcança, e o motor só recolhe `aprovado`/`devolvido` | ⏳ pendente |
-| `fluxos` | Não há como **encerrar** afastamento em aberto; a única saída é "Cancelar", que grava que a licença não aconteceu | ⏳ pendente |
+| `fluxos` | Desativar colaborador abandonava os itens da fila dele: nenhuma tela alcança, e o motor só recolhe `aprovado`/`devolvido` | ✅ corrigido — devolvidos ao grupo na mesma transação |
+| `fluxos` | Não havia como **encerrar** afastamento em aberto; a única saída era "Cancelar", que grava que a licença não aconteceu | ✅ corrigido — `PATCH /api/afastamentos/:id` e o botão "Voltou hoje" |
 | `testes` | **Nenhuma rota HTTP tinha teste**, e quatro delas guardam a autorização sozinhas | ✅ corrigido — `src/app/api/autorizacao-de-rotas.test.ts`; remover um `exigirPapel` agora dá `expected 200 to be 403` |
 | `testes` | A conservação só era testada onde nada é gravado: as duas travas de dentro de `gravarRodada` e o rollback não tinham prova | ✅ corrigido — `src/servicos/conservacao-na-escrita.test.ts`; sabotando o motor, a transação aborta e o banco fica em zero |
 | `testes` | Cifragem sem teste de rotação de chave; expurgo sem fronteira, sem idempotência e sem guarda de retenção | ✅ corrigido |
-| `performance` | `resolverLiga` varre a tabela `Liga` inteira **uma vez por item**, dentro da transação de escrita (medido: ~50 ms com 300 ligas; ~250 ms por e-mail em PostgreSQL) | ⏳ pendente |
-| `performance` | `conferirConservacao` traz ~5.600 linhas por carregamento do painel | ⏳ pendente |
-| `performance` | `Execucao` sem índice `(resultado, concluidoEm)` — duas varreduras completas por painel, crescendo para sempre | ⏳ pendente |
+| `performance` | `resolverLiga` varria a tabela `Liga` inteira **uma vez por item**, dentro da transação de escrita | ✅ corrigido — uma leitura por lote, com teste que fica vermelho se a liga nova não entrar no índice |
+| `performance` | `conferirConservacao` traz ~5.600 linhas por carregamento do painel | ⏳ pendente — é o maior volume de rede do sistema, e vira grave em PostgreSQL |
+| `performance` | `Execucao` sem índice `(resultado, concluidoEm)` — duas varreduras completas por painel, crescendo para sempre | ✅ corrigido — `EXPLAIN QUERY PLAN` passou a dizer `USING COVERING INDEX` |
 | `tipos` | A anotação de `ColaboradorResumo` pegava campo que some e **não** campo que sobra: um `senhaHash: true` no `select` vazaria o hash da equipe | ✅ corrigido |
 | `tipos` | `SeloDeConfianca` usava 0,85 fixo enquanto o limiar é por categoria — dois selos se contradiziam na mesma linha | ✅ corrigido |
 | `config` | `NODE_ENV` cai para `development` por omissão, e a trava do `db:limpar` abre: rodado por engano num shell de produção, ele apagava a trilha de auditoria | ✅ corrigido |
@@ -93,6 +93,10 @@ Se o passo 3 der tudo zero **depois** de um screenshot, aí sim o suspeito é `e
 | `config` | **16 de 16 anexos no disco estão em texto puro**: a cifragem não alcançou nenhum arquivo existente | ✅ script de migração criado (`npm run anexos:recifrar`) |
 | `config` | CSP de produção com `'unsafe-inline'` em `script-src` anulava a rede de segurança que o comentário promete | ✅ corrigido — nonce por requisição em `src/middleware.ts`, provado nos dois sentidos no navegador |
 | `config` | O CI nunca rodava `npm run build` — a única classe de defeito que `tsc` e os testes não alcançam | ✅ corrigido |
+| `documentacao` | A tabela ACIMA marcava ⏳ cinco achados que o código já tinha corrigido, e o ESTADO dizia em três lugares que "não existe rotina de expurgo" depois de ela existir | ✅ corrigido |
+| `documentacao` | A SPEC dizia "27 caminhos, 33 operações — o que estiver aqui existe, e o que existe está aqui", e faltavam 5 rotas, 4 entidades, 2 ports e 3 telas | ✅ corrigido |
+| `documentacao` | Contagem de testes desatualizada em sete lugares (494 e 271, contra 520), escrita como critério de sanidade | ✅ trocada por "a suíte inteira verde" |
+| `documentacao` | O roteiro de instalação do README não gerava `SESSAO_SECRET`: seguido à risca, o sistema não sobe | ✅ corrigido |
 
 #### Duas bombas-relógio estouraram no meio desta retomada
 
@@ -114,10 +118,15 @@ Só existe o PNG do logotipo. `src/core/marca/contorno.ts` descreve a letra como
 
 ## Próximos passos, em ordem de valor *(reordenada em 08/09/2026, no fim da retomada)*
 
+> As linhas ✅ da tabela acima saíram desta lista. Se você for acrescentar um
+> item aqui, confira antes se ele ainda existe no código — esta lista já mandou,
+> uma vez, refazer trabalho que estava pronto.
+
 1. **Rodar `npm run anexos:recifrar`.** É a ação de maior valor por minuto do
    repositório inteiro: a rotina existe e está testada, e enquanto ela não rodar
    **todos os anexos no disco continuam legíveis com `cat`** — "cifragem em
    repouso" descreve só os arquivos gravados de agora em diante.
+   `npm run anexos:conferir` diz quantos faltam.
 2. **Levar as perguntas à chefia em `DECISOES.md § H.4`.** A urgente continua
    sendo o **prazo do motivo de afastamento** (dado de saúde). A rotina que
    aplica a resposta já existe (`npm run db:expurgar`); o prazo de 90 dias é
@@ -125,23 +134,25 @@ Só existe o PNG do logotipo. `src/core/marca/contorno.ts` descreve a letra como
    agenda.
 3. **Revisar e mesclar o PR #35**, agora com o que esta retomada acrescentou.
    Ninguém de carne olhou ainda.
-4. **Fechar os buracos de fluxo que sobraram:** desativar colaborador abandona
-   os itens da fila dele, e nenhuma tela alcança; não há como **encerrar**
-   afastamento em aberto (só "Cancelar", que grava que a licença não aconteceu);
-   a confirmação da distribuição trava por UMA categoria sem elegível, quando o
-   serviço distribuiria as outras.
-5. **Terminar os pendentes de interface:** confirmação de dois passos no
-   Descartar da Revisão e na senha provisória; o truncamento silencioso em 200
-   itens da Caixa; o rótulo de progresso que aparece no botão errado.
-6. **Performance, na ordem que a auditoria mediu** — e não na do plano `H-D8`,
-   que ataca os alvos mais fracos: índice `(resultado, concluidoEm)` em
-   `Execucao`; `conferirConservacao` agregando no banco; `resolverLiga` em lote;
-   escrita em lote em `gravarRodada`; só então `carregarElegiveis` e `porPessoa`.
-7. **Medir o acerto da IA contra modelo real.** O Painel já separa a taxa POR
+4. **Fechar o `H-D19` de verdade:** falta o **controle de acesso ao anexo**. Não
+   existe rota que sirva arquivo, então "quem pode baixar o quê" segue sem
+   resposta — e é a metade que precisa existir antes de documento real entrar.
+5. **Performance, no que sobrou da ordem que a auditoria mediu:**
+   `conferirConservacao` agregando no banco (hoje traz ~5.600 linhas por
+   carregamento do painel, o maior volume de rede do sistema); escrita em lote
+   em `gravarRodada` (124 das ~288 consultas da transação, e é a metade que
+   cresce com o volume da associação); só então `carregarElegiveis` e
+   `porPessoa`, que são os alvos do plano `H-D8` — e os mais fracos.
+6. **Medir o acerto da IA contra modelo real.** O Painel já separa a taxa POR
    MODELO — a comparação que justifica manter dois fornecedores.
-8. **Fechar o resto da `H-D7`:** validar a resposta da rota no cliente contra o
-   mesmo Zod. Os tipos já são únicos; o que falta é a prova de que a rota
-   entrega a forma declarada.
+7. **Fechar o resto da `H-D7`:** validar a resposta da rota no cliente contra o
+   mesmo Zod. Os tipos já são únicos e o compilador liga serviço e tela; o que
+   falta é a prova de que a ROTA entrega a forma declarada.
+8. **Dívidas que a auditoria de tipos deixou registradas:** `ErroOperacional.statusHttp`
+   é `number` e aceitaria 500, contornando a regra de não vazar mensagem em
+   falha de servidor; os oito códigos de categoria existem em duas listas sem
+   vínculo de compilação; e `PAPEIS_DA_TELA` espelha `DESTINOS` à mão, com o
+   assistente lendo a cópia.
 
 ### O comando que destrava mais coisa — e o que ele custa de verdade
 
