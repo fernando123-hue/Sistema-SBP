@@ -100,6 +100,7 @@ export const AcaoAuditavelSchema = z.enum([
   'conta_destravada',
   'afastamento_registrado',
   'afastamento_cancelado',
+  'afastamento_encerrado',
   'afastamento_observacao_expurgada',
   // Memória do setor
   'nota_registrada',
@@ -144,6 +145,7 @@ export const OperacaoSchema = z.enum([
   'consultar memória operacional',
   'registrar afastamento',
   'cancelar afastamento',
+  'encerrar afastamento',
   'registrar nota do setor',
   'arquivar nota do setor',
 ])

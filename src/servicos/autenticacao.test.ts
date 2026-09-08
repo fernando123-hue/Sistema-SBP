@@ -454,6 +454,71 @@ describe('destravar conta', () => {
 })
 
 describe('ativar e desativar acesso', () => {
+  it('desligar o acesso devolve ao grupo os itens que estavam na fila da pessoa', async () => {
+    // Antes disto, os itens ficavam `distribuido` com atribuição ativa para
+    // sempre: a pessoa não abre sessão, então não conclui; o motor só recolhe
+    // `aprovado` e `devolvido`, então a rodada não os pega; e nenhuma tela abre
+    // a fila de outra pessoa. Continuavam contando em `pendente` e envelhecendo
+    // no indicador de atraso, mas sumiam de "Por pessoa" no painel — trabalho
+    // real, invisível para quem decide, sem erro nenhum.
+    const base = await semearPessoa()
+    const categoria = await banco.categoria.create({
+      data: {
+        codigo: 'DOC_CADASTRO',
+        rotulo: 'Documento',
+        frente: 'CADASTRO',
+        grupo: 'ASSOCIADO',
+        divisivel: true,
+        limiarIndivisivel: 1,
+      },
+    })
+
+    const item = await banco.item.create({
+      data: { categoriaId: categoria.id, titulo: 'Na fila de quem saiu', status: 'distribuido' },
+    })
+    await banco.atribuicao.create({
+      data: {
+        itemId: item.id,
+        colaboradorId: base.pessoaId,
+        motivo: 'algoritmo',
+        atribuidoPor: base.gestorId,
+        ativa: true,
+      },
+    })
+
+    const resultado = await definirAtivacao(
+      banco,
+      { colaboradorId: base.pessoaId, ativo: false },
+      base.gestor,
+    )
+
+    expect(resultado.itensDevolvidos).toBe(1)
+
+    // O item volta ao estado que a próxima rodada recolhe, e a atribuição sai
+    // de ativa — o índice único fica livre para quem receber depois.
+    const depois = await banco.item.findUniqueOrThrow({ where: { id: item.id } })
+    expect(depois.status).toBe('devolvido')
+    expect(await banco.atribuicao.count({ where: { itemId: item.id, ativa: true } })).toBe(0)
+
+    // E a trilha responde por quê, sem `UPDATE` em linha nenhuma de auditoria.
+    const trilha = await banco.logAuditoria.findFirst({
+      where: { entidadeId: item.id, acao: 'devolvido' },
+    })
+    expect(trilha?.depois).toContain('acesso_desativado')
+  })
+
+  it('reativar não mexe em item nenhum', async () => {
+    const base = await semearPessoa({ ativo: false })
+
+    const resultado = await definirAtivacao(
+      banco,
+      { colaboradorId: base.pessoaId, ativo: true },
+      base.gestor,
+    )
+
+    expect(resultado.itensDevolvidos).toBe(0)
+  })
+
   it('desativar impede a entrada mesmo com a senha correta', async () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { CadastroDeColaboradorSchema } from '../../core/esquemas'
+import { hojeIso } from '../../core/util/datas'
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
   Aviso,
@@ -515,6 +516,8 @@ function Afastamentos({
   const [abrindo, setAbrindo] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [novo, setNovo] = useState({ colaboradorId: '', tipo: 'ferias', inicio: '', fim: '', observacao: '' })
+  /** Qual cancelamento está esperando o segundo clique. */
+  const [confirmando, definirConfirmando] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     try {
@@ -552,11 +555,35 @@ function Afastamentos({
     }
   }
 
+  /**
+   * A pessoa voltou: a ausência em aberto ganha data de fim.
+   *
+   * Sem isto, a única saída era "Cancelar" — que grava que a ausência NÃO
+   * aconteceu. O gestor precisava afirmar uma coisa falsa para conseguir a
+   * verdadeira, e a trilha deixava de responder por que alguém ficou fora do
+   * rateio em março.
+   */
+  async function encerrar(afastamento: Afastamento) {
+    setSalvando(true)
+    aoFalhar(null)
+    try {
+      await api.ajustar(`/afastamentos/${afastamento.id}`, { fim: hojeIso() })
+      definirConfirmando(null)
+      await carregar()
+      await aoMudar()
+    } catch (causa) {
+      aoFalhar(mensagemDoErro(causa))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
   async function cancelar(afastamento: Afastamento) {
     setSalvando(true)
     aoFalhar(null)
     try {
       await api.remover(`/afastamentos/${afastamento.id}`)
+      definirConfirmando(null)
       await carregar()
       await aoMudar()
     } catch (causa) {
@@ -710,12 +737,38 @@ function Afastamentos({
                       entender por que alguém não recebeu não teria resposta.
                     */}
                     {afastamento.vigente ? <Selo tom="atencao">fora hoje</Selo> : null}
+                    {/*
+                      Duas ações com significados OPOSTOS, e antes só existia a
+                      segunda: "encerrar" diz que a ausência acabou, "cancelar"
+                      diz que ela não aconteceu. Quem precisava trazer alguém de
+                      volta ao rateio era empurrado a gravar a afirmação falsa.
+
+                      "Cancelar" pede dois cliques porque devolve a pessoa ao
+                      rateio na hora e some da lista: um toque errado no celular
+                      colocava alguém de férias de volta na distribuição do dia.
+                    */}
+                    {afastamento.fim === null ? (
+                      <Botao
+                        tamanho="pequeno"
+                        onClick={() => encerrar(afastamento)}
+                        desabilitado={salvando || ocupado}
+                      >
+                        Voltou hoje
+                      </Botao>
+                    ) : null}
                     <Botao
                       tamanho="pequeno"
-                      onClick={() => cancelar(afastamento)}
+                      variante={confirmando === afastamento.id ? 'perigo' : 'secundario'}
+                      onClick={() =>
+                        confirmando === afastamento.id
+                          ? void cancelar(afastamento)
+                          : definirConfirmando(afastamento.id)
+                      }
                       desabilitado={salvando || ocupado}
                     >
-                      Cancelar
+                      {confirmando === afastamento.id
+                        ? 'Confirmar: não aconteceu'
+                        : 'Não aconteceu'}
                     </Botao>
                   </div>
                 </div>
@@ -726,7 +779,8 @@ function Afastamentos({
       )}
 
       <p className="mt-3 text-xs text-tinta-fraca">
-        Cancelar um afastamento não apaga o registro: a trilha precisa continuar respondendo por que
+        "Voltou hoje" fecha uma ausência sem data de volta. "Não aconteceu" é outra coisa: cancela o
+        registro, e nenhum dos dois apaga a linha — a trilha precisa continuar respondendo por que
         alguém ficou fora do rateio numa data passada.
       </p>
     </section>

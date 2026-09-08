@@ -179,6 +179,21 @@ export default function Distribuicao() {
   const mostrado = previa ?? confirmado
   const comItens = mostrado?.linhas.filter((linha) => linha.quantidade > 0) ?? []
   const comErro = comItens.filter((linha) => linha.erro)
+  /**
+   * Só trava quando NENHUMA categoria pode ser distribuída.
+   *
+   * Era `comErro.length > 0`: uma categoria sem ninguém habilitado de plantão
+   * bloqueava o dia inteiro. Com equipe de 4-7 pessoas e 2-3 de plantão, isso
+   * não é excepcional — é rotina, e o custo era os itens das OUTRAS categorias
+   * ficarem parados sem motivo.
+   *
+   * O serviço nunca precisou disso: `confirmar` pula o plano sem resultado,
+   * grava os demais e registra os pulados em `EventoProcessamento` como
+   * `reprocessavel`. O aviso logo abaixo é o que a tela deve fazer — avisar —, e
+   * o texto dele já promete que "o trabalho fica na fila até haver plantão".
+   * O botão desabilitado impedia a própria promessa de acontecer.
+   */
+  const nadaADistribuir = comItens.length > 0 && comErro.length === comItens.length
   const total = comItens.reduce((soma, linha) => soma + linha.quantidade, 0)
 
   return (
@@ -305,7 +320,7 @@ export default function Distribuicao() {
               <Botao
                 variante="principal"
                 onClick={() => executar('confirmar')}
-                desabilitado={ocupado !== null || previa === null || comErro.length > 0}
+                desabilitado={ocupado !== null || previa === null || nadaADistribuir}
               >
                 {ocupado === 'confirmar' ? 'gravando…' : 'Confirmar'}
               </Botao>
@@ -317,7 +332,10 @@ export default function Distribuicao() {
           <div className="mb-3">
             <Aviso tom="atencao">
               <strong>{comErro.length} categoria(s) sem ninguém elegível.</strong> O trabalho fica na
-              fila até haver plantão — nada é descartado. Marque alguém habilitado e recalcule.
+              fila até haver plantão — nada é descartado.{' '}
+              {nadaADistribuir
+                ? 'Como nenhuma categoria tem quem receba, não há o que confirmar: marque alguém habilitado e recalcule.'
+                : 'Confirmar distribui as demais; estas voltam na próxima rodada.'}
             </Aviso>
           </div>
         ) : null}

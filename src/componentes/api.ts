@@ -124,6 +124,8 @@ export const api = {
   buscar: <T,>(caminho: string) => requisitar<T>(caminho),
   enviar: <T,>(caminho: string, corpo?: unknown) => requisitar<T>(caminho, { metodo: 'POST', corpo }),
   atualizar: <T,>(caminho: string, corpo?: unknown) => requisitar<T>(caminho, { metodo: 'PUT', corpo }),
+  /** `PATCH`: muda UM campo, sem afirmar nada sobre o resto do registro. */
+  ajustar: <T,>(caminho: string, corpo?: unknown) => requisitar<T>(caminho, { metodo: 'PATCH', corpo }),
   remover: <T,>(caminho: string) => requisitar<T>(caminho, { metodo: 'DELETE' }),
 }
 

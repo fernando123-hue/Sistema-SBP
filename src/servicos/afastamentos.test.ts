@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { deslocarDias } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
-import { cancelar, listar, quemEstaFora, registrar } from './afastamentos'
+import { cancelar, encerrar, listar, quemEstaFora, registrar } from './afastamentos'
 import { obterEscala } from './escala'
 import { confirmar } from './distribuicao'
 import { registrarManual } from './itens'
@@ -506,5 +506,102 @@ describe('cancelamento carimba, nunca apaga', () => {
     await cancelar(banco, feito.id, base.gestor)
     expect(await listar(banco, base.gestor)).toHaveLength(0)
     expect(await banco.afastamento.count()).toBe(1)
+  })
+})
+
+describe('encerrar ausência em aberto', () => {
+  it('a pessoa volta ao rateio sem ninguém ter de afirmar que a ausência não aconteceu', async () => {
+    // Antes disto, a única saída era "cancelar" — cuja semântica, escrita no
+    // schema, é "esta ausência NÃO aconteceu". Encerrar diz outra coisa: ela
+    // acabou. A trilha continua respondendo por que a pessoa ficou fora.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const pessoa = base.colaboradores[0]!
+    const gestor = await banco.colaborador.create({
+      data: { nome: 'Gestora Volta', email: 'volta@teste.local', papel: 'gestor' },
+    })
+    const ator = atorDeTeste(gestor.id, 'gestor')
+
+    const aberto = await registrar(
+      banco,
+      {
+        colaboradorId: pessoa.id,
+        tipo: 'licenca',
+        inicio: deslocarDias(DATA_BASE, -20),
+        fim: null,
+        observacao: 'licença sem data de volta',
+      },
+      ator,
+    )
+
+    // Enquanto está em aberto, a pessoa está fora hoje.
+    expect((await quemEstaFora(banco, ator, DATA_BASE)).some((x) => x.colaboradorId === pessoa.id)).toBe(true)
+
+    const volta = deslocarDias(DATA_BASE, -1)
+    await encerrar(banco, { afastamentoId: aberto.id, fim: volta }, ator)
+
+    const gravado = await banco.afastamento.findUniqueOrThrow({ where: { id: aberto.id } })
+    expect(gravado.fim).toBe(volta)
+    // NÃO foi cancelado: o registro continua afirmando que a licença aconteceu.
+    expect(gravado.canceladoEm).toBeNull()
+
+    expect((await quemEstaFora(banco, ator, DATA_BASE)).some((x) => x.colaboradorId === pessoa.id)).toBe(false)
+
+    const trilha = await banco.logAuditoria.findFirst({
+      where: { entidadeId: pessoa.id, acao: 'afastamento_encerrado' },
+    })
+    expect(trilha).not.toBeNull()
+  })
+
+  it('recusa volta anterior ao início, ausência já fechada e afastamento cancelado', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const pessoa = base.colaboradores[0]!
+    const gestor = await banco.colaborador.create({
+      data: { nome: 'Gestora Recusa', email: 'recusa@teste.local', papel: 'gestor' },
+    })
+    const ator = atorDeTeste(gestor.id, 'gestor')
+
+    const aberto = await registrar(
+      banco,
+      { colaboradorId: pessoa.id, tipo: 'licenca', inicio: DATA_BASE, fim: null },
+      ator,
+    )
+    await expect(
+      encerrar(banco, { afastamentoId: aberto.id, fim: deslocarDias(DATA_BASE, -5) }, ator),
+    ).rejects.toThrow(/anterior ao início/i)
+
+    const fechado = await registrar(
+      banco,
+      {
+        colaboradorId: base.colaboradores[1]!.id,
+        tipo: 'ferias',
+        inicio: deslocarDias(DATA_BASE, -10),
+        fim: deslocarDias(DATA_BASE, -5),
+      },
+      ator,
+    )
+    await expect(
+      encerrar(banco, { afastamentoId: fechado.id, fim: DATA_BASE }, ator),
+    ).rejects.toThrow(/já termina/i)
+
+    await cancelar(banco, aberto.id, ator)
+    await expect(
+      encerrar(banco, { afastamentoId: aberto.id, fim: DATA_BASE }, ator),
+    ).rejects.toThrow(/cancelado/i)
+  })
+
+  it('operador não encerra afastamento — é operação de gestor', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const gestor = await banco.colaborador.create({
+      data: { nome: 'Gestora Papel', email: 'papel-enc@teste.local', papel: 'gestor' },
+    })
+    const aberto = await registrar(
+      banco,
+      { colaboradorId: base.colaboradores[0]!.id, tipo: 'licenca', inicio: DATA_BASE, fim: null },
+      atorDeTeste(gestor.id, 'gestor'),
+    )
+
+    await expect(
+      encerrar(banco, { afastamentoId: aberto.id, fim: DATA_BASE }, base.operador),
+    ).rejects.toThrow()
   })
 })

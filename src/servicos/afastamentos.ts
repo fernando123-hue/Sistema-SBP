@@ -1,6 +1,10 @@
 import { rotuloDeAfastamento, type RotuloDeAfastamento } from '../core/afastamento-visivel'
 import { ErroDeNegocio } from '../core/erros'
-import { AfastamentoEntradaSchema, type TipoDeAfastamento } from '../core/esquemas'
+import {
+  AfastamentoEntradaSchema,
+  DataIsoSchema,
+  type TipoDeAfastamento,
+} from '../core/esquemas'
 import { hojeIso } from '../core/util/datas'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import { novaCorrelacao } from '../servidor/observabilidade'
@@ -132,6 +136,72 @@ export async function registrar(
       observacao: dados.observacao,
       vigente: cobre(dados.inicio, dados.fim, hojeIso()),
     }
+  })
+}
+
+/**
+ * Encerra uma ausência EM ABERTO: a pessoa voltou.
+ *
+ * ═══ POR QUE ISTO PRECISOU EXISTIR ═══
+ *
+ * `fim: null` é ausência sem data de volta definida — licença, afastamento
+ * médico sem alta marcada. O esquema documenta isso e a tela oferece o campo
+ * vazio de propósito. Mas não havia NENHUMA operação que preenchesse o `fim`
+ * depois, e a única ação disponível era "Cancelar" — cuja semântica, escrita no
+ * schema e no serviço, é "esta ausência NÃO aconteceu".
+ *
+ * Então, para a pessoa voltar a receber trabalho, o gestor era empurrado a
+ * gravar uma afirmação falsa: a licença de três semanas passava a constar como
+ * cancelada, e a trilha deixava de responder por que ela ficou fora do rateio
+ * em março. É a memória operacional sendo corrompida pela falta de um botão.
+ */
+export async function encerrar(
+  banco: Banco,
+  entrada: { afastamentoId: string; fim: string },
+  ator: Ator,
+): Promise<{ id: string; fim: string }> {
+  exigirPapel(ator, 'encerrar afastamento', 'gestor')
+  DataIsoSchema.parse(entrada.fim)
+  const correlacaoId = novaCorrelacao()
+
+  return banco.$transaction(async (tx) => {
+    const afastamento = await tx.afastamento.findUnique({
+      where: { id: entrada.afastamentoId },
+      select: { id: true, colaboradorId: true, canceladoEm: true, inicio: true, fim: true },
+    })
+
+    if (!afastamento) throw new ErroDeNegocio('Afastamento não encontrado.')
+    if (afastamento.canceladoEm) {
+      throw new ErroDeNegocio('Este afastamento foi cancelado; não há o que encerrar.')
+    }
+    if (afastamento.fim !== null) {
+      throw new ErroDeNegocio(
+        `Esta ausência já termina em ${afastamento.fim}. Para mudar a data, cancele e registre de novo — ` +
+          'a trilha precisa mostrar a correção, não a data reescrita por cima.',
+      )
+    }
+    if (entrada.fim < afastamento.inicio) {
+      throw new ErroDeNegocio(
+        `A volta (${entrada.fim}) não pode ser anterior ao início da ausência (${afastamento.inicio}).`,
+      )
+    }
+
+    await tx.afastamento.update({
+      where: { id: afastamento.id },
+      data: { fim: entrada.fim },
+    })
+
+    await auditar(tx, {
+      entidade: 'Colaborador',
+      entidadeId: afastamento.colaboradorId,
+      acao: 'afastamento_encerrado',
+      antes: { afastamentoId: afastamento.id, inicio: afastamento.inicio, fim: null },
+      depois: { afastamentoId: afastamento.id, fim: entrada.fim },
+      usuario: ator.colaboradorId,
+      correlacaoId,
+    })
+
+    return { id: afastamento.id, fim: entrada.fim }
   })
 }
 
