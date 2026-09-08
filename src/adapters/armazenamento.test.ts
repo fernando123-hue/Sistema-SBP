@@ -81,6 +81,48 @@ describe('armazenamento em disco', () => {
     // qualquer sistema de arquivos.
     expect(entradas[0]!.length).toBe(2)
   })
+
+  it('grava os bytes cifrados no disco e decifra na leitura (H-D19)', async () => {
+    const chave = await armazenamento.guardar(PDF, '.pdf')
+    const lidoBruto = await import('node:fs/promises').then((fs) =>
+      fs.readFile(join(raiz, chave)),
+    )
+
+    // O arquivo gravado no disco NÃO pode conter os bytes em texto puro
+    expect(lidoBruto.includes(Buffer.from('conteudo sintetico'))).toBe(false)
+    expect(lidoBruto.subarray(0, 12).toString()).toBe('SBP_ENC_v1!!')
+
+    // Mas ao ler via adapter, devolve exatamente os bytes originais decifrados
+    const lido = await armazenamento.ler(chave)
+    expect(Array.from(lido!)).toEqual(Array.from(PDF))
+  })
+
+  it('mantém fallback transparente para anexos legados gravados em texto puro', async () => {
+    const { writeFile, mkdir } = await import('node:fs/promises')
+    const { dirname } = await import('node:path')
+    const chaveLegada = '00/legado.pdf'
+    const caminho = join(raiz, chaveLegada)
+
+    await mkdir(dirname(caminho), { recursive: true })
+    await writeFile(caminho, PDF) // Texto puro sem o cabeçalho mágico SBP_ENC_v1!!
+
+    const lido = await armazenamento.ler(chaveLegada)
+    expect(lido).not.toBeNull()
+    expect(Array.from(lido!)).toEqual(Array.from(PDF))
+  })
+
+  it('falha ao tentar decifrar anexo com tag de integridade adulterada', async () => {
+    const chave = await armazenamento.guardar(PDF, '.pdf')
+    const caminho = join(raiz, chave)
+    const { readFile, writeFile } = await import('node:fs/promises')
+
+    const cifrado = await readFile(caminho)
+    // Adultera um byte do payload cifrado (após o cabeçalho de 40 bytes)
+    cifrado[42] = (cifrado[42]! ^ 0xff)
+    await writeFile(caminho, cifrado)
+
+    await expect(armazenamento.ler(chave)).rejects.toThrow(FalhaDeArmazenamento)
+  })
 })
 
 describe('conferência do tipo real do arquivo', () => {

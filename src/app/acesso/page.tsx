@@ -13,19 +13,8 @@ import {
   Selo,
   Vazio,
 } from '../../componentes/matrizes'
+import type { ColaboradorResumo as Colaborador } from '../../core/tipos'
 
-interface Colaborador {
-  id: string
-  nome: string
-  papel: string
-  email: string
-  ativo: boolean
-  precisaTrocarSenha: boolean
-  senhaDefinidaEm: string | null
-  bloqueadoAte: string | null
-  tentativasFalhas: number
-  categorias: string[]
-}
 
 interface Categoria {
   codigo: string

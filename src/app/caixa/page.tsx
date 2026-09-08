@@ -18,24 +18,8 @@ import {
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
 import { hojeIso } from '../../core/util/datas'
+import type { ItemDaCaixa } from '../../core/tipos'
 
-interface ItemDaCaixa {
-  itemId: string
-  titulo: string
-  categoriaCodigo: string
-  categoriaRotulo: string
-  grupo: string
-  status: string
-  confianca: number
-  classificadaPorIa: boolean
-  remetente: string | null
-  assunto: string | null
-  recebidoEm: string | null
-  irmaos: number
-  responsavel: string | null
-  ligaId: string | null
-  ligaNome: string | null
-}
 
 interface Resumo {
   total: number

@@ -100,6 +100,7 @@ export const AcaoAuditavelSchema = z.enum([
   'conta_destravada',
   'afastamento_registrado',
   'afastamento_cancelado',
+  'afastamento_observacao_expurgada',
   // Memória do setor
   'nota_registrada',
   'nota_arquivada',

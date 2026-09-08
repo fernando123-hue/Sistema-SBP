@@ -16,17 +16,7 @@ import {
   juntar,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
-
-interface LinhaDaEscala {
-  colaboradorId: string
-  nome: string
-  papel: string
-  disponivel: boolean
-  capacidadeRelativa: number
-  categorias: string[]
-  /** Tipo do afastamento que cobre esta data, ou `null` (`A10`). */
-  afastamento: string | null
-}
+import type { LinhaDaEscala, ResumoDaIngestao } from '../../core/tipos'
 
 /**
  * O servidor já redigiu conforme o papel de quem pediu (decisão de 06/09/2026).
@@ -64,21 +54,6 @@ interface LinhaDaPrevia {
   fatias: Fatia[]
 }
 
-/**
- * O que a busca de e-mails produziu.
- *
- * A tela descartava este objeto inteiro. Com isso, e-mail que falhou e e-mail
- * que não virou item nenhum sumiam sem que o operador tivesse como saber —
- * exatamente a perda silenciosa que o sistema existe para eliminar.
- */
-interface ResumoDaIngestao {
-  recebidos: number
-  novos: number
-  duplicados: number
-  itensCriados: number
-  emailsSemItem: number
-  falhas: number
-}
 
 interface Narrativa {
   categoriaCodigo: string

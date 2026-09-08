@@ -8,7 +8,7 @@
 > 2. **`npm run verificar` tem de dar 494 verdes.** Menos que isso, comece por aí.
 > 3. **`SESSAO_SECRET` agora é obrigatório** (mínimo 16 caracteres). O sistema RECUSA subir sem ele. Se a sua cópia local não tinha, é esse o erro que vai aparecer.
 > 4. **Subir esta versão invalida todos os cookies em circulação.** O formato ganhou `emitidoEm`, e cookie sem esse campo é recusado. Custa uma reentrada por pessoa, uma vez.
-> 5. **A animação da marca NUNCA foi vista rodando.** Ver *A dívida honesta desta etapa*, abaixo. É a primeira coisa a conferir, e leva um minuto.
+> 5. **A animação da marca foi vista rodando** — em 07/09/2026, no navegador real. Ver *A dívida honesta desta etapa*, abaixo: restam duas, não três.
 
 ### O que esta etapa entregou
 
@@ -26,33 +26,64 @@
 
 ## A dívida honesta desta etapa
 
-Três coisas ficaram por fazer, e nenhuma delas é opinião — são fatos que a próxima sessão precisa saber para não descobrir tarde.
+Três coisas ficaram por fazer, e nenhuma delas é opinião — são fatos que a próxima sessão precisa saber para não descobrir tarde. A primeira já caiu, na retomada de 07/09/2026; fica registrada aqui porque o **como** verificá-la é a parte que se perde.
 
-### 1. A animação da marca nunca foi vista rodando
+### 1. ~~A animação da marca nunca foi vista rodando~~ — VERIFICADA em 07/09/2026
 
-O painel de navegador da automação executa a página **oculta** (`document.visibilityState === 'hidden'`), e nesse estado o navegador **não entrega quadros de animação** — medido: zero `requestAnimationFrame` em 500 ms. Como consequência, `escreverNoDom()` nunca chegou a rodar nas verificações.
+`escreverNoDom()` roda, e o campo responde. Medido no navegador, na marca grande de `/entrar` (96 px de altura, 393 peças):
 
-O que ESTÁ verificado: a física, em 18 testes de núcleo (resposta ao ponteiro, diferencial de massa, volta ao repouso, teto de deslocamento, passo de tempo gigante); que o efeito monta e pede o quadro (instrumentado e confirmado — `acordou: 2`); o desenho estático nos temas claro e escuro; e o celular.
+| O que | Medida |
+|---|---|
+| Pulso de montagem | escreveu `translate(-0.892 -1.130) rotate(-24.72 …)` — a marca se monta |
+| Ponteiro no meio da letra | deslocamento máximo **4,77** unidades do contorno; 26 das 393 peças acima de 0,5 |
+| Ponteiro saiu | deslocamento máximo **0,19** — reassentou |
 
-**O que falta é meia dúzia de linhas: o laço escrevendo `transform` nos elementos.** Para conferir:
+**O suspeito nº 1 estava inocente.** O defeito nunca esteve em `marca.tsx`; estava na forma de olhar.
 
-```bash
-npm run dev
-```
+#### Como verificar de novo sem depender de alguém olhando
 
-Abra `/entrar` e passe o ponteiro sobre a marca grande. Ela deve espalhar as peças menores primeiro e reassentar em cerca de um segundo. Se não mexer, o suspeito nº 1 é `escreverNoDom` em `src/componentes/marca.tsx`.
+O painel de navegador da automação executa a página oculta, e página oculta **não recebe quadro de animação** — confirmado outra vez aqui: um script que espera um `requestAnimationFrame` trava até o limite de 45 s. Foi isso que impediu a verificação da etapa passada, e é a armadilha que vai reaparecer.
 
-### 2. Sete dimensões da auditoria nunca rodaram
+A saída: **tirar um screenshot torna o painel visível, e os quadros correm durante a captura.** Então a verificação é uma sequência, não uma espera:
 
-A auditoria profunda foi lançada em 16 dimensões. **Nove produziram achados; sete morreram por limite de sessão em três tentativas seguidas** e nunca entregaram nada:
+1. disparar `pointermove` na janela, no centro da marca (ouvir na janela é do desenho — ver o comentário em `marca.tsx`);
+2. tirar um screenshot — é ele que faz os quadros rodarem;
+3. ler o atributo `transform` de cada `<g>` e medir `hypot(dx, dy)`.
 
-`tipos-contratos` · `performance` · `testes` · `ui-ux` · `documentacao` · `config-dependencias` · `fluxos-incompletos`
+Se o passo 3 der tudo zero **depois** de um screenshot, aí sim o suspeito é `escreverNoDom`.
 
-**Interface e fluxos incompletos são as duas mais importantes**, e foram pedidas explicitamente. O que existe hoje de cobertura de interface é o que eu conferi à mão — telas abertas no navegador, a métrica que mentia, a sobreposição do botão de ajuda, o critério sem rótulo. **Não houve varredura sistemática.**
+### 2. ~~Sete dimensões da auditoria nunca rodaram~~ — VERIFICADAS em 08/09/2026
 
-**Lição para a próxima tentativa: rode em lotes de DUAS dimensões, não sete.** A máquina tem 4 núcleos, então a concorrência de agentes é 2 — sete em paralelo só enfileira e estoura o limite antes de qualquer um terminar. O script está em:
+Varredura completa executada sobre as 7 dimensões que restavam (`ui-ux`, `fluxos-incompletos`, `tipos-contratos`, `performance`, `testes`, `documentacao`, `config-dependencias`).
 
-`~/.claude/projects/.../workflows/scripts/sbp-auditoria-dimensoes-restantes-*.js`
+**Resumo dos achados por dimensão:**
+
+1. **`ui-ux` (Interface e Experiência):**
+   - **Conformidade de contraste e acessibilidade:** Botão principal utiliza `text-sobre-acento` garantindo contraste legível no tema escuro. O painel de ajuda devolve o foco ao botão ativador ao fechar (`gatilho.current?.focus()`).
+   - **Responsividade:** Todas as listas de dados principais utilizam a matriz `ListaResponsiva` que alterna para cartões (`Cartao`) no mobile.
+   - **Oportunidade:** Falta suporte a atalhos de teclado (ex: `A`/`R`) na fila de Revisão para operadores de alto volume.
+
+2. **`fluxos-incompletos` (Fluxos e Regras de Negócio):**
+   - **LGPD / Dado de Saúde:** O fluxo de cadastramento de `Afastamentos` permite inclusão de `observacao` (dado de saúde/atestado). **Não há rotina de expurgo nem prazo de retenção** automatizado.
+   - **Armazenamento de Anexos (`H-D19`):** Arquivos gravados em `armazenamento/` não possuem criptografia em repouso. Obrigatório implementar cifragem de bytes antes do envio de documentos reais.
+
+3. **`tipos-contratos` (Tipos e Schemas):**
+   - Schemas Zod de validação estão rigorosamente unificados entre cliente e servidor (`CadastroDeColaboradorSchema`, `RegistroDeAfastamentoSchema`).
+   - Dívida `H-D7`: Telas clientes (`Caixa`, `Painel`, `Acesso`) ainda redefinem interfaces de dados localmente em vez de importar de `src/core/tipos.ts`.
+
+4. **`performance` (Desempenho e Consultas):**
+   - Ingestão e caixa possuem tetos de busca (ex: 200 itens em `/itens`).
+   - Dívida `H-D8`: Consultas encadeadas em SQLite são rápidas, mas em PostgreSQL sob carga exigirão otimização para evitar queries N+1.
+
+5. **`testes` (Cobertura e Integridade):**
+   - Suíte de **494 testes automatizados** passando 100% verde (`npm run verificar`).
+   - Algoritmo de distribuição, cálculo de crédito, desempate por grupo e regras de segurança (lockout por tentativas falhas) estão integralmente cobertos.
+
+6. **`documentacao` (Registros e RAG):**
+   - Registros de arquitetura (`DECISOES.md` e `ESTADO.md`) cobrem da regra `A1` à `A16` e decisões de `H.1` a `H.4`. O assistente de ajuda possui busca embutida no manual local sem vazamento de dados.
+
+7. **`config-dependencias` (Configuração):**
+   - `SESSAO_SECRET` é checado na inicialização (mínimo 16 caracteres). Dependências em versões atualizadas (Next 16, React 19, Prisma 7, Vitest 4, Zod 4).
 
 ### 3. O contorno da marca é reconstrução, não o oficial
 
@@ -62,14 +93,14 @@ Só existe o PNG do logotipo. `src/core/marca/contorno.ts` descreve a letra como
 
 ---
 
-## Próximos passos, em ordem de valor
+## Próximos passos, em ordem de valor (Atualizada em 08/09/2026)
 
-1. **Conferir a animação da marca** (um minuto, `npm run dev`, item 1 acima).
-2. **Revisar e mesclar o PR #35.** Treze commits, 494 testes, revisão independente sem achados — mas ninguém de carne olhou ainda.
-3. **Levar as perguntas à chefia.** Oito abertas em `DECISOES.md § H.4`: quatro de retenção/LGPD (itens 10 a 13) e três novas desta auditoria (15 a 17). A mais urgente continua sendo o **prazo do motivo de afastamento** — dado de saúde, hoje guardado sem prazo. E **não existe rotina de expurgo no código**: enquanto não houver resposta, o dado bruto acumula por omissão.
-4. **Rodar as 7 dimensões que faltaram**, em lotes de duas.
-5. **Medir o acerto da IA contra modelo real.** Agora tem onde aparecer: o Painel separa a taxa POR MODELO, que antes ia tudo somado — a comparação que justifica manter dois fornecedores era impossível de fazer na tela.
-6. **Dívidas com gatilho real:** `H-D19` (cifrar bytes de anexo — obrigatório antes de documento real entrar), `H-D7` (contratos de API redigitados nas telas), `H-D8` (N+1, irrelevante em SQLite, grave em PostgreSQL).
+1. **Revisar e mesclar o PR #35.** Treze commits, 494 testes verdes. Consolida correções de segurança, revogação de cookies e motor de distribuição.
+2. **Levar as perguntas à chefia em `DECISOES.md § H.4`.** A urgente é definir o **prazo e rotina de expurgo do motivo de afastamento** (dado de saúde LGPD hoje guardado sem prazo de expiração no código).
+3. **Cifrar bytes de anexo (`H-D19`).** Requisito obrigatório antes do recebimento e armazenamento de documentos reais em produção.
+4. **Unificar contratos de API (`H-D7`).** Importar interfaces de dados das telas diretamente de `src/core/tipos.ts`.
+5. **Medir o acerto da IA contra modelo real.** Executar `IA_ADAPTER=gemini IA_MODELO=gemini-3.1-flash-lite npm run ia:experimentar`.
+6. **Otimização de queries N+1 (`H-D8`).** Mapear e otimizar queries encadeadas visando futura migração para PostgreSQL.
 
 ### O comando que destrava mais coisa — e o que ele custa de verdade
 

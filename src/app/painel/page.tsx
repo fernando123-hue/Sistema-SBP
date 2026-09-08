@@ -14,33 +14,10 @@ import {
   juntar,
 } from '../../componentes/matrizes'
 
-interface LinhaPainel {
-  categoriaCodigo: string
-  rotulo: string
-  grupo: string
-  saldoInicial: number
-  entrouNoPeriodo: number
-  aberto: number
-  concluidoNoPeriodo: number
-  canceladoNoPeriodo: number
-  pendente: number
-  aguardandoRevisao: number
-  aprovado: number
-  distribuido: number
-  emAndamento: number
-  diasDoMaisAntigo: number | null
-}
-
-interface LinhaPorPessoa {
-  colaboradorId: string
-  nome: string
-  atribuidos: number
-  concluidos: number
-  pendentes: number
-  creditoGlobal: number
-}
+import type { LinhaPainel, LinhaPorPessoa } from '../../core/tipos'
 
 interface Periodo {
+
   de: string
   ate: string
 }

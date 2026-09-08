@@ -153,3 +153,82 @@ export interface ResultadoRodada {
   creditoGlobalAntes: Record<ColaboradorId, number>
   creditoGlobalDepois: Record<ColaboradorId, number>
 }
+
+// ─── Contratos de DTOs e Telas (H-D7) ──────────────────────────
+
+export interface ColaboradorResumo {
+  id: string
+  nome: string
+  papel: string
+  email: string
+  ativo: boolean
+  precisaTrocarSenha: boolean
+  senhaDefinidaEm: string | null
+  bloqueadoAte: string | null
+  tentativasFalhas: number
+  categorias: string[]
+}
+
+export interface ItemDaCaixa {
+  itemId: string
+  titulo: string
+  categoriaCodigo: string
+  categoriaRotulo: string
+  grupo: string
+  status: string
+  confianca: number
+  classificadaPorIa: boolean
+  remetente: string | null
+  assunto: string | null
+  recebidoEm: string | null
+  irmaos: number
+  responsavel: string | null
+  ligaId: string | null
+  ligaNome: string | null
+}
+
+export interface ResumoDaIngestao {
+  recebidos: number
+  novos: number
+  duplicados: number
+  itensCriados: number
+  emailsSemItem: number
+  falhas: number
+}
+
+export interface LinhaDaEscala {
+  colaboradorId: string
+  nome: string
+  papel: string
+  disponivel: boolean
+  capacidadeRelativa: number
+  categorias: string[]
+  afastamento: string | null
+}
+
+export interface LinhaPainel {
+  categoriaCodigo: string
+  rotulo: string
+  grupo: string
+  saldoInicial: number
+  entrouNoPeriodo: number
+  aberto: number
+  concluidoNoPeriodo: number
+  canceladoNoPeriodo: number
+  pendente: number
+  aguardandoRevisao: number
+  aprovado: number
+  distribuido: number
+  emAndamento: number
+  diasDoMaisAntigo: number | null
+}
+
+export interface LinhaPorPessoa {
+  colaboradorId: string
+  nome: string
+  atribuidos: number
+  concluidos: number
+  pendentes: number
+  creditoGlobal: number
+}
+

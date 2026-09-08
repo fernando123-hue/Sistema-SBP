@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:limpar": "tsx scripts/limpar-transacional.ts",
+    "db:expurgar": "tsx scripts/expurgo.ts",
     "db:studio": "prisma studio",
     "demo": "tsx scripts/demo.ts",
     "ia:experimentar": "tsx scripts/experimentar-ia.ts",
