@@ -18,9 +18,10 @@ api/          Endpoints REST. Toda operação existe aqui primeiro.
 servicos/     Transações, Prisma, orquestração.           Depende de core.
 servidor/     Sessão, ator, http, prisma, observabilidade.
 core/         Domínio puro. TypeScript, zero I/O.         Depende de NADA.
-ports/        Contratos: AiPort · IngestaoPort · ArmazenamentoPort.
-adapters/     Construídos: ia-estruturada (política comum) · ia-mock · ia-gemini · ia-anthropic · ingestao-mock
-              · armazenamento-disco. Previstos: imap · graph · gmail · nuvem
+ports/        Contratos: AiPort · IngestaoPort · ArmazenamentoPort · AssistentePort.
+adapters/     Construídos: fornecedor (fronteira do fornecedor de IA) · ia-estruturada (política comum)
+              · ia-mock · ia-gemini · ia-anthropic · ingestao-mock · armazenamento-disco (cifrado)
+              · assistente-busca · assistente-modelo. Previstos: imap · graph · gmail · nuvem
 ```
 
 **Regra de dependência:** as setas apontam só para dentro. `core/` não importa Prisma, React, Next nem `fetch`. Isso é o que torna o motor testável em milissegundos e auditável para sempre.
@@ -77,8 +78,27 @@ Ligante            id · liga_id · nome · email · vinculo
 RegraDistribuicao  id · categoria_id? · tipo · parametros(json) · vigencia_inicio · vigencia_fim · ativo
 Revisao            id · item_id · motivo · campo_incerto · sugestao_ia · confianca
                    · resolvido_por · resolvido_em · valor_final(json)
-LogAuditoria       id · entidade · entidade_id · acao · antes(json) · depois(json) · usuario · timestamp
+
+Afastamento        id · colaborador_id · tipo(ferias|falta|atestado|licenca|outro)
+                   · inicio · fim? · observacao?      ← DADO DE SAÚDE (LGPD art. 11)
+                   · registrado_por · registrado_em · cancelado_em? · cancelado_por?
+TravaDeDistribuicao data (pk) · execucoes · atualizado_em
+                   Serializa as confirmações do MESMO dia. Sem ela, duas
+                   confirmações concorrentes leem o crédito uma da outra e
+                   desempatam com dado obsoleto — sem exceção nenhuma.
+Nota               id · texto · categoria_id? · liga_id? · autor_id · criado_em
+                   · arquivado_em? · arquivado_por? · motivo_arquivo?
+
+LogAuditoria       id · dominio · entidade · entidade_id · acao · antes(json)
+                   · depois(json) · usuario · correlacao_id? · timestamp
+EventoProcessamento id · dominio · correlacao_id · etapa · situacao · referencia?
+                   · mensagem? · detalhe(json)? · duracao_ms? · criado_em
 ```
+
+**`dominio` não é enfeite.** As duas tabelas de memória nascem sabendo de que
+sistema do ecossistema vieram (invariante 14). Como a trilha é append-only, uma
+linha gravada sem domínio só ganharia um por `UPDATE` — a única escrita que este
+sistema promete nunca fazer.
 
 **Não vira entidade:** `Mov. Extra` (é `Atribuicao` com outro `motivo`) · `Saldo`/`Aberto`/`Pend.` (são **consultas** sobre `Item.status`) · totais e percentuais (agregação na leitura) · "aba do mês" (filtro de data).
 
@@ -94,6 +114,8 @@ Colaborador ─┬─< Habilitacao >─┬─ Categoria
 
 Email ──< Item          RodadaDistribuicao ──< Atribuicao
 Liga  ──< Ligante       Liga ──< Item          Item ──< Revisao
+Colaborador ──< Afastamento     Colaborador ──< Nota (autor)
+Categoria ──< Nota              Liga ──< Nota
 ```
 
 ### Categorias da V1
@@ -231,7 +253,15 @@ Item **sem** liga (`ligaId` nulo) é grupo de tamanho 1 — indivisível por def
 |---|---|---|---|
 | `IngestaoPort` | `buscarNovos(): EmailBruto[]` idempotente por `message_id` | `mock` (seed) | `imap` · `graph` · `gmail` |
 | `AiPort` | `interpretar(email): { itens[], confianca, evidencia, modelo, versaoPrompt }` | `mock` determinístico | `gemini` (gemini-3.6-flash, JSON + validação nossa) e `anthropic` (claude-sonnet-5, structured output). A política é comum: `ia-estruturada.ts` |
+| `ArmazenamentoPort` | `guardar(bytes, extensao)` · `ler(chave)` · `remover(chave)` | `disco`, cifrado em AES-256-GCM (`H-D19`) | nuvem |
+| `AssistentePort` | `responder(quem, pergunta): { resposta, verbetesUsados, telaSugerida? }` | `busca` no manual local (sem rede) e `modelo` | — |
 | `ExportPort` | `exportar(periodo, formato)` | *(nenhum — planejado, não construído)* | `rest` para o sistema legado |
+
+**O `AssistentePort` é o único port cujo desenho é uma PROIBIÇÃO.** O retorno não
+tem campo de ação, e a ausência é deliberada: um assistente capaz de devolver
+`{acao: 'distribuir'}` seria um caminho para operar o sistema por texto livre,
+sujeito a quem escrever a pergunta mais persuasiva (invariante 13). Quem for
+"preencher a lacuna" está desfazendo a decisão.
 
 O adapter mock da IA é determinístico de propósito: permite testar todo o pipeline sem chamar modelo e sem custo.
 
@@ -239,7 +269,13 @@ O adapter mock da IA é determinístico de propósito: permite testar todo o pip
 
 Envelope único em toda resposta: `{ sucesso, dados, erro, correlacaoId? }`.
 
-**Estado em 06/09/2026 — 27 caminhos, 33 operações.** Auditado contra o código; o que estiver aqui existe, e o que existe está aqui.
+**Estado em 08/09/2026 — 31 caminhos, 38 operações.** Auditado contra o código; o que estiver aqui existe, e o que existe está aqui.
+
+> A auditoria de documentação de 08/09/2026 encontrou cinco operações fora desta
+> lista, num documento que promete completude — inclusive a do assistente, que é
+> a única rota governada por um invariante próprio (`CLAUDE.md` nº 13). Um mapa
+> incompleto que se declara completo é pior que mapa nenhum: o legado do cliente
+> seria programado contra ele.
 
 ```
 ── Ingestão e revisão ───────────────────────────────────────
@@ -268,6 +304,17 @@ GET    /api/qualidade                 taxa de acerto da IA, cobertura, calibraç
 GET    /api/categorias                categorias ativas
 GET    /api/memoria?correlacao=       o que aconteceu num ciclo
 GET    /api/memoria?entidade=&id=     a história de um registro
+
+── Memória do setor e ajuda ─────────────────────────────────
+GET    /api/notas?categoria=&liga=    notas do setor no contexto da tela
+POST   /api/notas                     registra nota (categoria e/ou liga)
+DELETE /api/notas/:id                 arquiva — tira da vista, não apaga
+GET    /api/ligas                     ligas ativas, para filtrar a caixa
+POST   /api/assistente                pergunta sobre COMO o sistema funciona.
+                                      Não executa nada: a resposta traz texto e,
+                                      no máximo, o nome de uma tela existente —
+                                      não há campo de ação, e a ausência é o
+                                      desenho (invariante 13)
 
 ── Acesso ───────────────────────────────────────────────────
 POST   /api/sessao                    entrada por e-mail e senha
@@ -303,6 +350,9 @@ GET    /api/diagnostico/origem        confere o tratamento de proxy
 | 4 | **Minha Fila** | Itens reais. Concluir · devolver · pedir ajuda. **Mobile-first, cards** |
 | 5 | **Painel** | Recebido/distribuído/realizado/pendente. Zero campo digitável |
 | 6 | **Auditoria da Rodada** | Entrada, elegíveis, ordem, créditos antes/depois, versão do algoritmo |
+| 7 | **Entrada** (`/entrar`) | E-mail e senha. Mensagem única para conta inexistente e senha errada, e piso de tempo igual nos dois — a diferença de relógio entregava a lista de contas |
+| 8 | **Troca de senha** (`/senha`) | Obrigatória enquanto a senha for a provisória do gestor. Bloqueia o resto do sistema |
+| 9 | **Acesso** (`/acesso`) | Gestor: cadastra, habilita por categoria, ativa/desativa, destrava, gera senha provisória, registra e cancela afastamento |
 
 ## 9. Design system
 
@@ -321,30 +371,41 @@ docs/                     briefing · prd · spec · decisões
 prisma/                   schema · seed · migrations
 src/
   core/                   ← domínio puro, zero I/O
-    tipos.ts
+    tipos.ts              inclui os contratos de tela e `NaRede<T>` (`H-D7`)
     erros.ts
     config.ts
+    notas.ts              seleção de nota do setor — função PURA, hoje ligada só
+                          à tela; ligar o modelo depois é trocar o destino de uma
+                          chamada, não reescrever a regra
     util/numero.ts
+    util/datas.ts         fuso da operação; `toISOString` fazia 22h virar o dia seguinte
     distribuicao/
       ordenacao.ts
       motor.ts
       motor.test.ts
       simulacao.test.ts
+    assistente/
+      conhecimento.ts     o manual do assistente, filtrado por papel EM CÓDIGO
+    marca/                contorno · especificação · física do campo de partículas
     qualidade-ia.ts
     seguranca/
     pureza.test.ts        guarda automática da regra de dependência
-  ports/                  ia · ingestao · armazenamento
-  adapters/               ia-estruturada · ia-mock · ia-gemini · ia-anthropic · ingestao-mock
-                          · armazenamento-disco · fabrica
+  ports/                  ia · ingestao · armazenamento · assistente
+  adapters/               fornecedor · ia-estruturada · ia-mock · ia-gemini · ia-anthropic
+                          · ingestao-mock · armazenamento-disco · assistente-busca
+                          · assistente-modelo · fabrica
   servicos/               transações e orquestração
   servidor/               prisma · ambiente · ator · sessão · http
                           · credenciais · observabilidade
+  middleware.ts           CSP com nonce por requisição
   app/
     (telas)
     api/                  rotas
-  componentes/            matrizes.tsx · api.ts · navegacao.tsx
+  componentes/            matrizes.tsx · api.ts · navegacao.tsx · notas.tsx
+                          · assistente.tsx · marca.tsx
   generated/              cliente Prisma (não versionado)
-scripts/                  demo · experimentar-ia · limpar-transacional
+scripts/                  demo · experimentar-ia · limpar-transacional · expurgo
+                          · recifrar-anexos
 ```
 
 Os nomes são em **português** (`servicos`, `servidor`, `componentes`), como o resto do vocabulário do projeto — este documento dizia `services/` e `components/` até 28/08/2026. `carga/peso.ts` foi planejado e nunca existiu: o peso vive em `Categoria.peso`, lido pelo motor.
