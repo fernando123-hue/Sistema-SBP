@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { api, mensagemDoErro } from '../../componentes/api'
+import { Marca } from '../../componentes/marca'
 import { Aviso, Botao, Cartao } from '../../componentes/matrizes'
 
 interface Entrada {
@@ -55,6 +56,19 @@ export default function Entrar() {
 
   return (
     <div className="mx-auto max-w-sm py-10">
+      {/*
+        A marca em tamanho grande vive AQUI, e só aqui.
+
+        É o único momento do dia em que a pessoa está parada, sem trabalho na
+        tela, esperando. Nas telas de operação a marca fica pequena na barra e
+        sai da frente — quem está distribuindo o dia não quer identidade visual
+        ocupando espaço.
+
+        `ocupado` durante a entrada: enquanto a senha é conferida, a marca
+        respira. O `scrypt` leva um instante perceptível de propósito (ver
+        `servidor/credenciais.ts`), e este é o feedback desse instante.
+      */}
+      <Marca altura={96} ocupado={entrando} className="mb-6 text-tinta" />
       <h1 className="text-xl font-semibold tracking-tight">Atendimento ao Associado</h1>
       <p className="mt-1 text-sm text-tinta-suave">Entre com o e-mail da associação.</p>
 

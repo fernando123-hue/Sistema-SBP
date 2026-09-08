@@ -2,10 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Assistente } from './assistente'
-import { api, mensagemDoErro } from './api'
+import { Marca } from './marca'
+import { api, mensagemDoErro, observarAtividade } from './api'
 import { juntar } from './matrizes'
 
 const DESTINOS = [
@@ -25,6 +26,15 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
   const navegador = useRouter()
   const [saindo, setSaindo] = useState(false)
   const [erroAoSair, setErroAoSair] = useState<string | null>(null)
+  /**
+   * A marca respira enquanto há requisição em voo.
+   *
+   * O sinal vem de `api.ts`, que já é a porta única de toda tela — nenhuma
+   * delas precisa avisar nada. Substitui um indicador genérico por um que É a
+   * identidade, e reflete um fato, não uma métrica.
+   */
+  const [ocupado, setOcupado] = useState(false)
+  useEffect(() => observarAtividade(setOcupado), [])
 
   const visiveis = DESTINOS.filter((destino) => destino.papeis.includes(papel as never))
 
@@ -63,8 +73,19 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
   return (
     <header className="border-b border-borda bg-papel">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-        <Link href="/distribuicao" className="text-sm font-semibold tracking-tight">
-          SBP <span className="font-normal text-tinta-fraca">· Atendimento</span>
+        <Link
+          href="/distribuicao"
+          className="flex items-center gap-2 text-sm font-semibold tracking-tight"
+        >
+          {/*
+            A marca é decorativa (`aria-hidden` dentro do componente) e o nome
+            acessível do link continua vindo do texto ao lado. Para quem navega
+            por áudio nada mudou; para quem enxerga, a identidade entrou.
+          */}
+          <Marca altura={24} ocupado={ocupado} />
+          <span>
+            SBP <span className="font-normal text-tinta-fraca">· Atendimento</span>
+          </span>
         </Link>
 
         <nav aria-label="Principal" className="order-3 -mx-1 w-full overflow-x-auto sm:order-2 sm:w-auto">
