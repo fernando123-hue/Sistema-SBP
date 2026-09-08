@@ -23,6 +23,19 @@ jobs:
     env:
       DATABASE_URL: file:./prisma/ci.db
       NODE_ENV: test
+      # ═══ POR QUE ISTO NÃO É SEGREDO, E POR QUE PRECISA ESTAR AQUI ═══
+      #
+      # `SESSAO_SECRET` virou obrigatório quando "sair" passou a revogar sessão
+      # de verdade, e `ambiente()` recusa subir sem ele. Localmente o valor vem
+      # do `.env`, que não existe no CI — então TODO teste que toca o banco
+      # morria em "SESSAO_SECRET: Invalid input", e o CI ficou vermelho por
+      # quatro execuções seguidas sem ninguém notar, enquanto o `ESTADO.md`
+      # dizia "494 verdes".
+      #
+      # O valor é público de propósito: assina cookies de um banco efêmero que
+      # nasce e morre dentro do job. Pôr um segredo de verdade aqui seria pior —
+      # daria a impressão de que existe algo a proteger num ambiente onde não há.
+      SESSAO_SECRET: ci-nao-e-segredo-so-para-o-banco-efemero
 
     steps:
       - uses: actions/checkout@v7
@@ -57,8 +70,6 @@ jobs:
       # e só falhava quando o operador fosse publicar — o pior momento possível.
       - name: Build de produção
         run: npm run build
-        env:
-          SESSAO_SECRET: ci-somente-para-build-nao-e-segredo
 
   segredos:
     name: Varredura de segredos
