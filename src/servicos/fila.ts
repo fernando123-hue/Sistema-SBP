@@ -167,6 +167,7 @@ export async function transferir(
   await banco.$transaction(async (tx) => {
     const atual = await tx.atribuicao.findFirst({
       where: { itemId: entrada.itemId, ativa: true },
+      include: { item: { select: { status: true } } },
     })
     if (!atual) throw new ErroDeNegocio(`Item "${entrada.itemId}" não tem responsável ativo.`)
 
@@ -174,6 +175,22 @@ export async function transferir(
     // operação. Um colaborador não puxa para si o item de um colega.
     if (!ehOProprio(ator, atual.colaboradorId)) {
       exigirPapel(ator, 'transferir item de outra pessoa', 'operador', 'gestor')
+    }
+
+    // ITEM CONCLUÍDO NÃO TROCA DE DONO.
+    //
+    // `concluir` grava a `Execucao` e deixa a atribuição ativa, então este
+    // caminho aceitava de bom grado transferir trabalho já feito. O resultado
+    // não aparecia em fila nenhuma (`minhaFila` só lista `distribuido` e
+    // `em_andamento`) e estragava duas coisas de uma vez: quem fez perdia 1 em
+    // "Atribuídos" no painel, e quem recebeu ganhava uma linha em que
+    // atribuídos, concluídos e pendentes deixam de fechar. A `Atribuicao`
+    // vigente passava a dizer que o dono é quem não executou, contradizendo a
+    // `Execucao` — duas tabelas afirmando coisas diferentes sobre o mesmo fato.
+    //
+    // `devolver` já tinha esta trava; `transferir`, não.
+    if (atual.item.status === 'concluido') {
+      throw new ErroDeNegocio('Item já concluído não pode ser transferido.')
     }
 
     if (atual.colaboradorId === entrada.paraColaboradorId) return

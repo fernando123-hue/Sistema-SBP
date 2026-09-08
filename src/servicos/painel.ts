@@ -1,3 +1,4 @@
+import type { LinhaPainel, LinhaPorPessoa } from '../core/tipos'
 import {
   deslocarDias,
   diasEntre,
@@ -8,6 +9,8 @@ import {
 } from '../core/util/datas'
 import type { Banco } from '../servidor/prisma'
 
+export type { LinhaPainel, LinhaPorPessoa }
+
 /** Janela padrão da conferência de conservação exibida no painel. */
 export const JANELA_PADRAO_DE_DIAS = 90
 
@@ -17,8 +20,15 @@ export const JANELA_PADRAO_DE_DIAS = 90
  * Fonte única do que "aberto" significa no painel: os contadores de estado
  * atual e o indicador de atraso do `A7` leem esta mesma lista. Item concluído
  * ou cancelado saiu da mesa e, por definição, parou de envelhecer.
+ *
+ * `devolvido` ESTÁ aqui, e a ausência dele era defeito: o item devolvido volta
+ * ao pool esperando a próxima rodada — `planejarCategoria` o recolhe junto com
+ * `aprovado` —, então ele continua sendo trabalho a fazer e continua
+ * envelhecendo. Sem ele, `pendente` (que o conta) e "Mais antigo (hoje)" (que
+ * não contava) discordavam na mesma linha da mesma tela: a categoria dizia ter
+ * pendência e, ao lado, que nada estava envelhecendo.
  */
-const ABERTOS = ['aguardando_revisao', 'aprovado', 'distribuido', 'em_andamento']
+const ABERTOS = ['aguardando_revisao', 'aprovado', 'distribuido', 'em_andamento', 'devolvido']
 
 /**
  * Painel.
@@ -54,52 +64,10 @@ const ABERTOS = ['aguardando_revisao', 'aprovado', 'distribuido', 'em_andamento'
  * então a subtração não tem como ficar negativa. Quando os dois números
  * divergirem num dia de limpeza de backlog, o certo é este.
  */
-export interface LinhaPainel {
-  categoriaCodigo: string
-  rotulo: string
-  grupo: string
-
-  /** Entrou antes do período e ainda estava aberto quando ele começou. */
-  saldoInicial: number
-  /** Entrou dentro do período. */
-  entrouNoPeriodo: number
-  /** `saldoInicial + entrouNoPeriodo` — tudo que esteve na mesa no período. */
-  aberto: number
-  /** Fechado dentro do período. */
-  concluidoNoPeriodo: number
-  /** Cancelado dentro do período. A planilha não tem coluna equivalente. */
-  canceladoNoPeriodo: number
-  /** Ainda aberto no fim do período. */
-  pendente: number
-
-  /** Estado AGORA, para tocar o dia. Não tem recorte de período. */
-  aguardandoRevisao: number
-  aprovado: number
-  distribuido: number
-  emAndamento: number
-  /**
-   * Há quantos dias está parado o item aberto mais antigo desta categoria.
-   * `null` quando não há nada aberto.
-   *
-   * É o indicador de atraso do `A7`. Também é estado AGORA, e por isso ignora
-   * o recorte de período: a pergunta é "o que está envelhecendo neste momento",
-   * e um recorte de mês esconderia justamente o item de março que ninguém tocou.
-   */
-  diasDoMaisAntigo: number | null
-}
 
 export interface Periodo {
   de: string
   ate: string
-}
-
-export interface LinhaPorPessoa {
-  colaboradorId: string
-  nome: string
-  atribuidos: number
-  concluidos: number
-  pendentes: number
-  creditoGlobal: number
 }
 
 /**
@@ -312,7 +280,6 @@ export async function conferirPendencia(
     }
   })
 }
-
 
 export async function porPessoa(banco: Banco): Promise<LinhaPorPessoa[]> {
   const colaboradores = await banco.colaborador.findMany({

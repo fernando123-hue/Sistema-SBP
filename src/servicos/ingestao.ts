@@ -10,6 +10,7 @@ import { CategoriaDesconhecidaError } from '../core/erros'
 import { chaveDaLiga } from '../core/ligas'
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
+import type { ResumoIngestao } from '../core/tipos'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import { InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
@@ -23,6 +24,8 @@ import {
   registrarLog,
 } from '../servidor/observabilidade'
 import { auditar } from './auditoria'
+
+export type { ResumoIngestao }
 
 /**
  * Ingestão e interpretação.
@@ -45,28 +48,6 @@ export interface DependenciasIngestao {
    * significa exatamente "os bytes não estão aqui".
    */
   armazenamento?: ArmazenamentoPort | undefined
-}
-
-export interface ResumoIngestao {
-  correlacaoId: string
-  recebidos: number
-  novos: number
-  duplicados: number
-  itensCriados: number
-  /**
-   * E-mails interpretados que não geraram item nenhum.
-   *
-   * Zero item é resultado legítimo — resposta automática, aviso de entrega,
-   * boletim. Mas é indistinguível de "a IA não entendeu e a carga sumiu", e o
-   * e-mail fica marcado como processado, então nunca mais volta. Sem este
-   * contador na tela, a diferença entre os dois casos não existiria para
-   * ninguém: seria exatamente a perda silenciosa que a planilha comete.
-   */
-  emailsSemItem: number
-  itensAprovados: number
-  itensParaRevisao: number
-  falhas: number
-  anexosRejeitados: number
 }
 
 export async function sincronizar(

@@ -96,7 +96,19 @@ export function Selo({
  * Nunca esconde incerteza: o número aparece sempre, e a cor diz se o item
  * passou ou não pelo limiar da categoria.
  */
-export function SeloDeConfianca({ valor, limiar = 0.85 }: { valor: number; limiar?: number }) {
+/**
+ * O limiar é OBRIGATÓRIO, e o default de 0,85 foi removido de propósito.
+ *
+ * Ele existia, ninguém passava o valor, e os dois únicos chamadores não tinham
+ * como passar: nem `ItemDaCaixa` nem `ItemEmRevisao` carregavam o limiar da
+ * categoria. Resultado na tela de Revisão: um item de `DOC_CADASTRO` (limiar
+ * 0,95) com confiança 0,90 mostrava, na MESMA linha, o selo "confiança abaixo
+ * do limiar" em amarelo e este selo em verde, com o tooltip citando 0,85 — um
+ * limiar que não é o daquela categoria.
+ *
+ * Com o parâmetro obrigatório, o próximo chamador não repete o defeito calado.
+ */
+export function SeloDeConfianca({ valor, limiar }: { valor: number; limiar: number }) {
   const tom: TomDoSelo = valor >= limiar ? 'ok' : valor >= limiar - 0.2 ? 'atencao' : 'alerta'
   return (
     <Selo tom={tom} titulo={`Confiança da classificação automática (limiar ${limiar})`}>

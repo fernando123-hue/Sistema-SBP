@@ -1,3 +1,4 @@
+import type { ColaboradorResumo } from '../../../core/tipos'
 import { criarColaborador } from '../../../servicos/colaboradores'
 import { corpoJson, responder, rota } from '../../../servidor/http'
 import { obterPrisma } from '../../../servidor/prisma'
@@ -48,13 +49,40 @@ export async function GET(): Promise<Response> {
 
     // O hash nunca sai daqui, em nenhuma forma. `senhaDefinidaEm` responde
     // "esta pessoa já tem acesso?" sem revelar nada sobre a senha em si.
-    return responder(
-      colaboradores.map((colaborador) => ({
-        ...colaborador,
-        habilitacoes: undefined,
-        categorias: colaborador.habilitacoes.map((h) => h.categoria.codigo),
-      })),
-    )
+    // ═══ CAMPO A CAMPO, E NÃO POR ESPALHAMENTO ═══
+    //
+    // `ColaboradorResumo` é a forma que a TELA lê, e anotar o alvo faz o
+    // compilador comparar as duas — mas só em UMA direção. Campo que some
+    // quebra a compilação; campo que SOBRA, entrando por `...colaborador`,
+    // passa calado: espalhamento desliga a checagem de excedente. A prova está
+    // na versão anterior desta linha, onde `habilitacoes: undefined` — chave
+    // que `ColaboradorResumo` não declara — compilava sem uma reclamação.
+    //
+    // Consequência de verdade: alguém acrescenta `senhaHash: true` ao `select`
+    // para investigar um bug de entrada, esquece de tirar, e o hash `scrypt` da
+    // equipe inteira sai numa resposta HTTP. `tsc` verde, testes verdes, e a
+    // promessa escrita três linhas acima — "o hash nunca sai daqui, em nenhuma
+    // forma" — vira só prosa.
+    //
+    // Escrevendo campo a campo, o excedente não tem por onde entrar.
+    const resumo: ColaboradorResumo[] = colaboradores.map((colaborador) => ({
+      id: colaborador.id,
+      nome: colaborador.nome,
+      papel: colaborador.papel,
+      email: colaborador.email,
+      ativo: colaborador.ativo,
+      precisaTrocarSenha: colaborador.precisaTrocarSenha,
+      senhaDefinidaEm: colaborador.senhaDefinidaEm,
+      bloqueadoAte: colaborador.bloqueadoAte,
+      tentativasFalhas: colaborador.tentativasFalhas,
+      categorias: colaborador.habilitacoes.map((h) => h.categoria.codigo),
+      // `satisfies` e não só a anotação da const: a anotação sozinha pega campo
+      // que SOME (o objeto deixa de ser atribuível) e não pega campo que SOBRA,
+      // porque o literal perde a "frescura" ao atravessar o genérico do `map`.
+      // Testado: com só a anotação, acrescentar `senhaHash` aqui compilava.
+      }) satisfies ColaboradorResumo)
+
+    return responder(resumo)
   })
 }
 

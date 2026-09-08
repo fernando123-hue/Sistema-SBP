@@ -7,6 +7,7 @@ import {
 } from '../core/esquemas'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import { novaCorrelacao } from '../servidor/observabilidade'
+import type { ItemEmRevisao } from '../core/tipos'
 import type { Banco, Transacao } from '../servidor/prisma'
 import { auditar } from './auditoria'
 
@@ -37,19 +38,6 @@ async function exigirColaborador(tx: Transacao, colaboradorId: string): Promise<
  * (ou não) afrouxar o limiar de confiança depois.
  */
 
-export interface ItemEmRevisao {
-  revisaoId: string
-  itemId: string
-  motivo: string
-  confianca: number
-  campoIncerto: string | null
-  titulo: string
-  categoriaCodigo: string
-  remetente: string | null
-  assunto: string | null
-  sugestaoIa: string
-}
-
 /**
  * A fila de revisão, com o TOTAL ao lado.
  *
@@ -59,6 +47,8 @@ export interface ItemEmRevisao {
  * PERMANENTEMENTE: nunca sobe, nunca aparece, ninguém resolve. Fila que
  * esconde o próprio tamanho é indistinguível de fila sob controle.
  */
+export type { ItemEmRevisao }
+
 export interface FilaDeRevisao {
   itens: ItemEmRevisao[]
   /** Quantas revisões pendentes existem de verdade, ignorando o limite. */
@@ -74,7 +64,7 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaD
     include: {
       item: {
         include: {
-          categoria: { select: { codigo: true } },
+          categoria: { select: { codigo: true, limiarConfianca: true } },
           email: { include: { conteudo: true } },
         },
       },
@@ -89,6 +79,7 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaD
     campoIncerto: registro.campoIncerto,
     titulo: registro.item.titulo,
     categoriaCodigo: registro.item.categoria.codigo,
+    limiarConfianca: registro.item.categoria.limiarConfianca,
     remetente: registro.item.email?.conteudo?.remetente ?? null,
     assunto: registro.item.email?.conteudo?.assunto ?? null,
     sugestaoIa: registro.sugestaoIa,

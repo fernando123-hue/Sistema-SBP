@@ -1,5 +1,8 @@
 import { StatusItemSchema } from '../core/esquemas'
+import type { ItemDaCaixa } from '../core/tipos'
 import type { Banco } from '../servidor/prisma'
+
+export type { ItemDaCaixa }
 
 /**
  * Caixa de entrada.
@@ -7,42 +10,6 @@ import type { Banco } from '../servidor/prisma'
  * A tela que substitui a coluna de contagem: em vez de "e-mail: 47", a lista
  * dos 47 itens reais, com remetente, assunto e o grau de confiança da IA.
  */
-
-export interface ItemDaCaixa {
-  itemId: string
-  titulo: string
-  categoriaCodigo: string
-  categoriaRotulo: string
-  grupo: string
-  status: string
-  confianca: number
-  /**
-   * A IA classificou este item?
-   *
-   * Sem isto, item registrado à mão aparecia com "Confiança 100%" — um número
-   * de aparência ótima sobre uma classificação que modelo nenhum fez. É a
-   * mesma família de defeito que o `SUBTOTAL(109)` da planilha: o valor está
-   * lá, parece resultado, e não significa o que quem lê acha que significa.
-   * `modeloIa` é o mesmo critério que a taxa de acerto usa para montar o
-   * denominador.
-   */
-  classificadaPorIa: boolean
-  remetente: string | null
-  assunto: string | null
-  recebidoEm: Date | null
-  /** Quantos itens o mesmo e-mail gerou. Mostra o desdobramento na tela. */
-  irmaos: number
-  responsavel: string | null
-  /**
-   * A liga do item, quando tem (`A4`).
-   *
-   * Governava a distribuição desde o `A4` e não aparecia em tela nenhuma. Sobe
-   * até aqui para que a Caixa possa filtrar por liga — e, com isso, para que a
-   * memória do setor sobre aquela liga tenha onde ser lida e escrita.
-   */
-  ligaId: string | null
-  ligaNome: string | null
-}
 
 export interface FiltroDaCaixa {
   status?: string | undefined
@@ -67,7 +34,7 @@ export async function listarCaixa(
     orderBy: [{ criadoEm: 'desc' }, { sequencia: 'asc' }],
     take: limite,
     include: {
-      categoria: { select: { codigo: true, rotulo: true, grupo: true } },
+      categoria: { select: { codigo: true, rotulo: true, grupo: true, limiarConfianca: true } },
       liga: { select: { id: true, nome: true } },
       email: {
         select: {
@@ -90,6 +57,7 @@ export async function listarCaixa(
     titulo: item.titulo,
     categoriaCodigo: item.categoria.codigo,
     categoriaRotulo: item.categoria.rotulo,
+    limiarConfianca: item.categoria.limiarConfianca,
     grupo: item.categoria.grupo,
     status: item.status,
     confianca: item.confianca,
