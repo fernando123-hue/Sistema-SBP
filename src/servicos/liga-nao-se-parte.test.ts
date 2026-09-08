@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { hojeIso } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo } from '../testes/apoio'
 import { confirmar, planejarCategoria } from './distribuicao'
@@ -51,7 +52,17 @@ async function semear() {
   const ligaA = await banco.liga.create({ data: { nome: 'Liga Alfa' } })
   const ligaB = await banco.liga.create({ data: { nome: 'Liga Beta' } })
 
-  const data = '2026-09-07'
+  // A data é HOJE, e não uma constante.
+  //
+  // Era `'2026-09-07'` fixo. Funcionou até a virada da meia-noite de 08/09/2026,
+  // quando os cinco testes deste arquivo ficaram vermelhos de uma vez: os itens
+  // nascem com `criadoEm` = agora, e `planejarCategoria` só recolhe item criado
+  // ATÉ o fim do dia da rodada (`distribuicao.ts`, filtro por `limite`). Com a
+  // data no passado, a rodada não encontra nada, e a conferência vê zero rodada.
+  //
+  // Um teste que passa hoje e falha amanhã sem ninguém tocar em nada é pior que
+  // um teste ausente: ensina a equipe a desconfiar do vermelho.
+  const data = hojeIso()
   for (const pessoa of [ana, bruno]) {
     await banco.habilitacao.create({
       data: { colaboradorId: pessoa.id, categoriaId: categoria.id, podeReceber: true },

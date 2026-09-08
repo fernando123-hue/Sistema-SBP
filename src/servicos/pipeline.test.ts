@@ -698,6 +698,43 @@ describe('invariantes de atribuição', () => {
     expect(execucao.colaboradorId).toBe(dono.id)
   })
 
+  it('item já concluído não troca de dono', async () => {
+    // `concluir` deixa a atribuição ativa, então nada impedia transferir
+    // trabalho já feito: o item não aparecia em fila nenhuma, quem executou
+    // perdia 1 em "Atribuídos" no painel, e a `Atribuicao` vigente passava a
+    // contradizer a `Execucao`. `devolver` já recusava; `transferir`, não.
+    const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTudoNoBanco(banco)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
+
+    const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
+    const dono = base.colaboradores.find((pessoa) => pessoa.id === atribuicao.colaboradorId)!
+    const outro = base.colaboradores.find((pessoa) => pessoa.id !== atribuicao.colaboradorId)!
+
+    await concluir(banco, { itemId: atribuicao.itemId }, dono.ator)
+
+    await expect(
+      transferir(
+        banco,
+        {
+          itemId: atribuicao.itemId,
+          paraColaboradorId: outro.id,
+          justificativa: 'Pedindo conferência do colega.',
+        },
+        base.operador,
+      ),
+    ).rejects.toThrow(/concluído/i)
+
+    // E o dono continua sendo quem executou.
+    const ativa = await banco.atribuicao.findFirstOrThrow({
+      where: { itemId: atribuicao.itemId, ativa: true },
+    })
+    expect(ativa.colaboradorId).toBe(dono.id)
+  })
+
   it('transferência troca o dono, exige justificativa e não altera a rodada', async () => {
     const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
     const datas = sequenciaDeDatas(DATA_BASE, 1)

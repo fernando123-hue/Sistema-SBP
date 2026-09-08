@@ -74,16 +74,23 @@ describe('tempo de resposta da recusa de entrada', () => {
   it('a diferença entre os dois caminhos fica bem abaixo do que era medível', async () => {
     await semearPessoa()
 
-    // Três amostras alternadas de cada, comparadas pela MEDIANA: uma amostra
-    // isolada em máquina compartilhada com o CI é ruído puro.
+    // Cinco amostras alternadas de cada, comparadas pela MEDIANA. Eram três, e
+    // três não bastaram: em 08/09/2026 este teste ficou vermelho com o servidor
+    // de desenvolvimento e um navegador disputando a máquina, e verde de novo
+    // com a máquina livre. Uma única pausa do sistema operacional desloca a
+    // mediana de três; com cinco, ela precisa de duas pausas na mesma metade.
+    //
+    // O TETO NÃO FOI AFROUXADO de propósito: quem afrouxa o limite para calar um
+    // vermelho intermitente apaga justamente o canal lateral que este teste
+    // existe para medir. O que muda é o tamanho da amostra.
     const inexistentes: number[] = []
     const erradas: number[] = []
-    for (let volta = 0; volta < 3; volta += 1) {
+    for (let volta = 0; volta < 5; volta += 1) {
       inexistentes.push(await medir('nao-existe@teste.local'))
       erradas.push(await medir('pessoa@teste.local'))
     }
 
-    const mediana = (amostras: number[]) => amostras.slice().sort((a, b) => a - b)[1]!
+    const mediana = (amostras: number[]) => amostras.slice().sort((a, b) => a - b)[2]!
     const diferenca = Math.abs(mediana(erradas) - mediana(inexistentes))
 
     // Antes da correção a diferença era ~23 ms e crescia com o número de

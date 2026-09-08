@@ -49,6 +49,17 @@ jobs:
       - name: Testes
         run: npm test
 
+      # `tsc --noEmit` não é o mesmo que `next build`. O build valida a fronteira
+      # servidor/cliente, os tipos de rota gerados em `.next/types` (que num
+      # checkout limpo NÃO existem, então o typecheck do CI nem os enxerga) e a
+      # serialização de props entre Server e Client Components. Sem este passo,
+      # mover uma função para um componente `'use client'` entrava verde na main
+      # e só falhava quando o operador fosse publicar — o pior momento possível.
+      - name: Build de produção
+        run: npm run build
+        env:
+          SESSAO_SECRET: ci-somente-para-build-nao-e-segredo
+
   segredos:
     name: Varredura de segredos
     runs-on: ubuntu-latest
