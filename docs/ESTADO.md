@@ -111,6 +111,22 @@ Não vieram da auditoria: apareceram sozinhas, à meia-noite de 08/09/2026. `con
 
 Junto veio um vermelho de outra natureza: o teste que mede o **piso de tempo** da recusa de entrada falhou enquanto o servidor de desenvolvimento e um navegador disputavam a máquina, e passou com a máquina livre. A amostra subiu de três para cinco medições; **o teto de 60 ms ficou onde estava** — afrouxar o limite para calar um vermelho intermitente apagaria justamente o canal lateral que o teste existe para medir.
 
+#### Onde estão os achados que NÃO foram corrigidos
+
+`docs/auditoria/2026-09-08-achados-em-aberto.md` — 36 itens, cada um com o
+arquivo, o cenário concreto e a correção sugerida. Os relatórios completos
+existiam só no transcript da sessão, e achado que só existe numa conversa é
+achado perdido: é a mesma perda silenciosa que este sistema foi construído para
+eliminar.
+
+Os mais caros de lá, em uma linha cada: `conferirConservacao` movendo ~5.600
+linhas por carregamento do painel; a trava de distribuição sem teste nenhum;
+`rota()` sem prova do mapeamento erro→status; `definirEscala` — a porta que
+decide quem recebe trabalho — nunca chamada por teste; `analisarConteudo` sem
+normalizar unicode, então zero-width dentro da palavra passa pelas 12 regras;
+e não existir como cancelar item depois de distribuído, o que deixa três saídas
+e cada uma corrompe uma métrica.
+
 **Lição que continua valendo:** rodar em lotes de DUAS. A máquina tem 4 núcleos; sete em paralelo enfileira e estoura o limite antes de qualquer uma terminar.
 
 ### 3. O contorno da marca é reconstrução, não o oficial
