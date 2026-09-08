@@ -1,11 +1,11 @@
 # Estado do projeto — retomada
 
-Última atualização: **07/09/2026** — **etapa de fechamento e maturação, mais a marca da SBP virando objeto interativo.** O trabalho está num PR ABERTO, não na `main`.
+Última atualização: **08/09/2026** — **etapa de fechamento e maturação, mais a revisão do que entrou por fora e as seis auditorias que faltavam.** O trabalho está num PR ABERTO, não na `main`.
 
 > ## ⚠️ Leia estes cinco pontos antes de tocar em qualquer coisa
 >
-> 1. **Nada disto está na `main`.** Tudo vive na branch `maturacao/fechamento-de-etapa`, em **13 commits**, no [PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35), aberto e sem revisão de gente. Se a `main` parecer velha, é porque está.
-> 2. **`npm run verificar` tem de dar 494 verdes.** Menos que isso, comece por aí.
+> 1. **Nada disto está na `main`.** Tudo vive na branch `maturacao/fechamento-de-etapa`, em **24 commits**, no [PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35), aberto e sem revisão de gente. Se a `main` parecer velha, é porque está.
+> 2. **`npm run verificar` tem de fechar com a suíte INTEIRA verde.** Um número fixo aqui envelhece e mente nos dois sentidos — este arquivo já disse 494 quando eram 514. O que vale é: zero vermelho, zero pulado.
 > 3. **`SESSAO_SECRET` agora é obrigatório** (mínimo 16 caracteres). O sistema RECUSA subir sem ele. Se a sua cópia local não tinha, é esse o erro que vai aparecer.
 > 4. **Subir esta versão invalida todos os cookies em circulação.** O formato ganhou `emitidoEm`, e cookie sem esse campo é recusado. Custa uma reentrada por pessoa, uma vez.
 > 5. **A animação da marca foi vista rodando** — em 07/09/2026, no navegador real. Ver *A dívida honesta desta etapa*, abaixo: restam duas, não três.
@@ -52,7 +52,7 @@ A saída: **tirar um screenshot torna o painel visível, e os quadros correm dur
 
 Se o passo 3 der tudo zero **depois** de um screenshot, aí sim o suspeito é `escreverNoDom`.
 
-### 2. As sete dimensões rodaram — em 08/09/2026, e o resultado NÃO é verde
+### 2. Seis das sete dimensões rodaram — em 08/09/2026, e o resultado NÃO é verde
 
 **Correção de um registro anterior.** Uma versão deste arquivo afirmou, em 08/09/2026, que as sete dimensões estavam "VERIFICADAS", com um resumo que dizia contraste conforme, cobertura de testes íntegra e documentação em dia. Aquele resumo não era resultado de auditoria nenhuma — as duas primeiras tentativas tinham morrido por limite de uso, e o texto foi escrito por cima. Ele contradizia até o próprio commit em que entrou, que dizia estar implementando as duas coisas que o mesmo texto listava como ausentes.
 
@@ -60,20 +60,27 @@ Se o passo 3 der tudo zero **depois** de um screenshot, aí sim o suspeito é `e
 
 **Seis das sete rodaram de verdade** (`ui-ux`, `fluxos-incompletos`, `testes`, `performance`, `tipos-contratos`, `config-dependencias`), em lotes de duas, como a lição da etapa passada mandava. **`documentacao` não rodou** — é a única que continua devendo.
 
-**O que elas acharam, e o que já foi corrigido nesta retomada:**
+**O que elas acharam, e o que já foi corrigido nesta retomada.**
+
+> Esta tabela já esteve errada uma vez, na direção contrária: entre a primeira
+> escrita e o fim da sessão, cinco linhas continuaram ⏳ depois de o código ter
+> sido corrigido — quem lesse iria refazer trabalho pronto. Quem mexer aqui
+> confere a linha contra o código antes de deixá-la como está; a auditoria de
+> `documentacao` foi quem pegou.
+
 
 | Dimensão | Achado mais grave | Estado |
 |---|---|---|
 | `ui-ux` | A fila só tinha **Concluir**: `devolver` e `transferir` tinham rota, serviço e verbete no assistente, e **nenhuma tela** — a saída que sobrava para quem recebia item alheio era concluir trabalho que não fez | ✅ corrigido |
 | `ui-ux` | Sessão expirada matava a tela: sem perfil o layout não desenha a navegação, nenhuma tela tratava 401, e o carregamento ficava eterno. Saída só digitando `/entrar` na barra de endereços | ✅ corrigido |
-| `ui-ux` | `--color-tinta-fraca` mede **3,53:1** no tema claro (AA exige 4,5) — é o rótulo de toda métrica do painel e dos campos da tela de entrada | ⏳ pendente |
-| `ui-ux` | Falha de rede deixa cinco telas em "Carregando…" para sempre (o `catch` só chama `setErro` e deixa o estado em `null`) | ⏳ 1 de 5 (fila) |
+| `ui-ux` | `--color-tinta-fraca` media **3,53:1** no tema claro (AA exige 4,5) — é o rótulo de toda métrica do painel e dos campos da tela de entrada | ✅ corrigido (4,69:1) |
+| `ui-ux` | Falha de rede deixava cinco telas em "Carregando…" para sempre (o `catch` só chamava `setErro` e deixava o estado em `null`) | ✅ corrigido nas cinco, e o Painel mantém os campos de período com botão de nova tentativa |
 | `fluxos` | `transferir` aceitava item **já concluído** — o painel passava a ter uma linha em que atribuídos, concluídos e pendentes não fecham | ✅ corrigido |
-| `fluxos` | Painel: `ABERTOS` não inclui `devolvido`, então a categoria pode ter pendente e dizer que nada envelhece | ⏳ pendente |
+| `fluxos` | Painel: `ABERTOS` não incluía `devolvido`, então a categoria podia ter pendente e dizer que nada envelhece | ✅ corrigido, com teste que fica vermelho se a linha voltar |
 | `fluxos` | Desativar colaborador abandona os itens da fila dele: nenhuma tela alcança, e o motor só recolhe `aprovado`/`devolvido` | ⏳ pendente |
 | `fluxos` | Não há como **encerrar** afastamento em aberto; a única saída é "Cancelar", que grava que a licença não aconteceu | ⏳ pendente |
-| `testes` | **Nenhuma rota HTTP tem teste**, e quatro delas guardam a autorização sozinhas (`colaboradores`, `rodadas/[id]`, `revisao`, `diagnostico/origem`) | ⏳ pendente |
-| `testes` | A conservação só é testada onde nada é gravado: as duas travas de dentro de `gravarRodada` e o rollback da transação não têm prova | ⏳ pendente |
+| `testes` | **Nenhuma rota HTTP tinha teste**, e quatro delas guardam a autorização sozinhas | ✅ corrigido — `src/app/api/autorizacao-de-rotas.test.ts`; remover um `exigirPapel` agora dá `expected 200 to be 403` |
+| `testes` | A conservação só era testada onde nada é gravado: as duas travas de dentro de `gravarRodada` e o rollback não tinham prova | ✅ corrigido — `src/servicos/conservacao-na-escrita.test.ts`; sabotando o motor, a transação aborta e o banco fica em zero |
 | `testes` | Cifragem sem teste de rotação de chave; expurgo sem fronteira, sem idempotência e sem guarda de retenção | ✅ corrigido |
 | `performance` | `resolverLiga` varre a tabela `Liga` inteira **uma vez por item**, dentro da transação de escrita (medido: ~50 ms com 300 ligas; ~250 ms por e-mail em PostgreSQL) | ⏳ pendente |
 | `performance` | `conferirConservacao` traz ~5.600 linhas por carregamento do painel | ⏳ pendente |
@@ -84,8 +91,8 @@ Se o passo 3 der tudo zero **depois** de um screenshot, aí sim o suspeito é `e
 | `config` | O `.env.example` entregava `ANEXOS_SECRET=""`, e o sistema **recusava subir** com isso | ✅ corrigido |
 | `config` | `ARMAZENAMENTO_DIR=` vazio virava a raiz do repositório — documento de associado nascendo ao lado do código | ✅ corrigido |
 | `config` | **16 de 16 anexos no disco estão em texto puro**: a cifragem não alcançou nenhum arquivo existente | ✅ script de migração criado (`npm run anexos:recifrar`) |
-| `config` | CSP de produção com `'unsafe-inline'` em `script-src` anula a rede de segurança que o comentário promete | ⏳ pendente |
-| `config` | O CI nunca roda `npm run build` — a única classe de defeito que `tsc` e os testes não alcançam | ⏳ pendente |
+| `config` | CSP de produção com `'unsafe-inline'` em `script-src` anulava a rede de segurança que o comentário promete | ✅ corrigido — nonce por requisição em `src/middleware.ts`, provado nos dois sentidos no navegador |
+| `config` | O CI nunca rodava `npm run build` — a única classe de defeito que `tsc` e os testes não alcançam | ✅ corrigido |
 
 #### Duas bombas-relógio estouraram no meio desta retomada
 
@@ -105,18 +112,36 @@ Só existe o PNG do logotipo. `src/core/marca/contorno.ts` descreve a letra como
 
 ---
 
-## Próximos passos, em ordem de valor *(reordenada em 08/09/2026, pelo que a auditoria achou)*
+## Próximos passos, em ordem de valor *(reordenada em 08/09/2026, no fim da retomada)*
 
-1. **Fechar os dois CRÍTICOS de teste**, que são o que permite confiar em todo o resto: nenhuma rota HTTP é testada (e quatro guardam a autorização sozinhas), e a conservação não tem prova no caminho de ESCRITA — só no de leitura. Enquanto isso não existir, "494 verdes" mede menos do que parece.
-2. **Terminar os pendentes de interface**, em ordem de dano: `--color-tinta-fraca` a 3,53:1 no tema claro; o "Carregando…" eterno nas quatro telas que faltam; o painel que diz "nada envelhece" com item devolvido pendente; a confirmação de dois passos no Descartar da Revisão e na senha provisória.
-3. **Levar as perguntas à chefia em `DECISOES.md § H.4`.** A urgente continua sendo o **prazo do motivo de afastamento** (dado de saúde). Agora existe a rotina que aplica a resposta — `npm run db:expurgar` — mas o prazo de 90 dias é **hipótese registrada** (`§ AT-11`), não decisão, e por isso nada a agenda.
-4. **Rodar a dimensão `documentacao`**, a única das sete que não rodou.
-5. **Migrar os anexos legados:** `npm run anexos:conferir` diz quantos ainda estão em texto puro; `npm run anexos:recifrar` fecha. Hoje são todos. Enquanto não rodar, "cifragem em repouso" descreve os arquivos novos e mais nada.
-6. **Revisar e mesclar o PR #35.** Agora com o que esta retomada acrescentou — e ninguém de carne ainda olhou.
-7. **Fechar os buracos de fluxo:** desativar colaborador abandona a fila dele; não há como encerrar afastamento em aberto; a confirmação da distribuição trava por uma categoria sem elegível quando o serviço distribuiria as outras.
-8. **Performance, na ordem que a auditoria mediu** — e não na do plano `H-D8`, que ataca os alvos mais fracos: índice `(resultado, concluidoEm)` em `Execucao`; `conferirConservacao` agregando no banco; `resolverLiga` em lote; escrita em lote em `gravarRodada`; só então `carregarElegiveis` e `porPessoa`.
-9. **CSP com nonce** em vez de `'unsafe-inline'` no `script-src`, e **`npm run build` no CI**.
-10. **Medir o acerto da IA contra modelo real.** O Painel já separa a taxa POR MODELO — a comparação que justifica manter dois fornecedores.
+1. **Rodar `npm run anexos:recifrar`.** É a ação de maior valor por minuto do
+   repositório inteiro: a rotina existe e está testada, e enquanto ela não rodar
+   **todos os anexos no disco continuam legíveis com `cat`** — "cifragem em
+   repouso" descreve só os arquivos gravados de agora em diante.
+2. **Levar as perguntas à chefia em `DECISOES.md § H.4`.** A urgente continua
+   sendo o **prazo do motivo de afastamento** (dado de saúde). A rotina que
+   aplica a resposta já existe (`npm run db:expurgar`); o prazo de 90 dias é
+   **hipótese registrada** (`§ AT-11`), não decisão, e é por isso que nada a
+   agenda.
+3. **Revisar e mesclar o PR #35**, agora com o que esta retomada acrescentou.
+   Ninguém de carne olhou ainda.
+4. **Fechar os buracos de fluxo que sobraram:** desativar colaborador abandona
+   os itens da fila dele, e nenhuma tela alcança; não há como **encerrar**
+   afastamento em aberto (só "Cancelar", que grava que a licença não aconteceu);
+   a confirmação da distribuição trava por UMA categoria sem elegível, quando o
+   serviço distribuiria as outras.
+5. **Terminar os pendentes de interface:** confirmação de dois passos no
+   Descartar da Revisão e na senha provisória; o truncamento silencioso em 200
+   itens da Caixa; o rótulo de progresso que aparece no botão errado.
+6. **Performance, na ordem que a auditoria mediu** — e não na do plano `H-D8`,
+   que ataca os alvos mais fracos: índice `(resultado, concluidoEm)` em
+   `Execucao`; `conferirConservacao` agregando no banco; `resolverLiga` em lote;
+   escrita em lote em `gravarRodada`; só então `carregarElegiveis` e `porPessoa`.
+7. **Medir o acerto da IA contra modelo real.** O Painel já separa a taxa POR
+   MODELO — a comparação que justifica manter dois fornecedores.
+8. **Fechar o resto da `H-D7`:** validar a resposta da rota no cliente contra o
+   mesmo Zod. Os tipos já são únicos; o que falta é a prova de que a rota
+   entrega a forma declarada.
 
 ### O comando que destrava mais coisa — e o que ele custa de verdade
 
@@ -207,7 +232,7 @@ Depois:
 npx prisma migrate deploy   # cria o banco e aplica as 10 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 494 testes
+npm run verificar           # typecheck + a suíte inteira
 npm run dev                 # http://localhost:3000
 ```
 
@@ -245,7 +270,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
 | Notas do setor | O que a equipe aprendeu operando, escrito por quem opera. Uma porta só, texto livre, vinculável a categoria e liga. Aparece nas quatro telas de trabalho |
-| Testes | **494 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, assistente, dois adapters de IA, agrupamento por liga, conservação, distribuição retroativa, pipeline de integração) |
+| Testes | **a suíte inteira verde** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, assistente, dois adapters de IA, agrupamento por liga, conservação, distribuição retroativa, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
@@ -488,7 +513,7 @@ A diretriz era grande — memória, eventos, capacidades, contexto, isolamento d
 
 **O que eu recusei construir, e é o que mais parecia central na diretriz:** montagem de contexto para a IA com "casos parecidos corrigidos por humano". Devolver ao modelo texto que veio de e-mail transforma injeção de prompt — hoje limitada a uma mensagem — em ataque persistente. E selecionar correções humanas para injetar no prompt é aprendizado em contexto: treinar com dado real da associação a cada requisição, sem decisão sua. Também fora: tabela de memória genérica (`Categoria` já é a memória de domínio), `MemoriaPort` (sem segunda implementação, seria outro `RegraDistribuicao`) e barramento de eventos (nada precisa reagir).
 
-**Dois invariantes novos** no `CLAUDE.md`, custo zero: memória é lida, nunca soprada de volta ao modelo (12); toda linha de memória nasce sabendo de que domínio é, e evento vai na mesma transação do fato (13).
+**Dois invariantes novos** no `CLAUDE.md`, custo zero: memória é lida, nunca soprada de volta ao modelo (12); toda linha de memória nasce sabendo de que domínio é, e evento vai na mesma transação do fato (14 — era 13 antes de o invariante do assistente entrar).
 
 **Duas perguntas novas para você**, em `DECISOES.md § H.4`: um agente é ator de quê (hoje `ATOR_SISTEMA` tem papel `operador` e confirmaria distribuição), e de que lado da retenção a memória cai.
 
@@ -713,7 +738,7 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 **O topo da lista não mudou, e agora tem duas razões para estar lá.** Rodar o adapter contra a API real sempre foi a parte nunca provada; desde 07/09 ele também é o **pré-requisito que o próprio dono escolheu** para a IA passar a ler as notas do setor (`§ A14(c)`). Sem linha de base medida, *"a IA melhorou com as notas"* é afirmação que ninguém consegue falsificar.
 
-> **O que muda o rumo desta lista não é código, é resposta.** Cinco perguntas em `DECISOES.md § H.4`, itens 10 a 14. Quatro vão para a chefia do setor — e uma delas, o prazo do motivo de afastamento, é dado de saúde sob a LGPD, o item mais urgente do documento inteiro. Enquanto elas não voltam, o dado bruto acumula por omissão e **nenhuma linha é apagada por retenção**, porque não existe rotina de expurgo no código.
+> **O que muda o rumo desta lista não é código, é resposta.** Cinco perguntas em `DECISOES.md § H.4`, itens 10 a 14. Quatro vão para a chefia do setor — e uma delas, o prazo do motivo de afastamento, é dado de saúde sob a LGPD, o item mais urgente do documento inteiro. Enquanto elas não voltam, o dado bruto acumula por omissão: a rotina de expurgo passou a existir em 08/09/2026 (`npm run db:expurgar`), mas **alcança só a observação de afastamento**, o prazo dela é hipótese (`§ AT-11`) e **nada a agenda** — de propósito, porque agendar uma hipótese é transformá-la em regra em silêncio.
 
 **O roteiro de 26/08 fechou em 06/09/2026:** `A4` a `A13` estão implementadas. `A14` entrou em 07/09.
 
@@ -812,7 +837,7 @@ Estão registradas em `DECISOES.md § H.4`, sem resposta inventada. **Cinco nasc
 
 ## Pendências que aguardam decisão, não código
 
-- **Retenção:** a estrutura separa conteúdo de histórico e permite expurgo, mas **nenhum prazo foi definido e não existe nenhuma rotina de expurgo no código** — nada apaga nada hoje. A auditoria de 07/09/2026 acrescentou que a fronteira foi desenhada num lugar só: `Item.titulo`, `Item.payload`, as revisões, a trilha, `Ligante` e `Afastamento` são todos de retenção longa e todos podem carregar identificação de pessoa. **Hoje é possível expurgar o e-mail e o nome do associado seguir vivo em quatro tabelas.** Ver `DECISOES.md`, seção de 07/09/2026, e as três camadas propostas lá.
+- **Retenção:** a estrutura separa conteúdo de histórico e permite expurgo. Desde 08/09/2026 existe UMA rotina (`npm run db:expurgar`), que redige a observação de afastamento e **não é agendada**; o prazo é hipótese, não decisão (`§ AT-11`). Para todo o resto — corpo de e-mail, anexo, `Item.payload`, revisões — **nenhum prazo foi definido e nada apaga nada**. A auditoria de 07/09/2026 acrescentou que a fronteira foi desenhada num lugar só: `Item.titulo`, `Item.payload`, as revisões, a trilha, `Ligante` e `Afastamento` são todos de retenção longa e todos podem carregar identificação de pessoa. **Hoje é possível expurgar o e-mail e o nome do associado seguir vivo em quatro tabelas.** Ver `DECISOES.md`, seção de 07/09/2026, e as três camadas propostas lá.
 - **Dado real para qualquer API de IA:** bloqueado por decisão de 27/08/2026 — só dados sintéticos até aprovação formal da associação. Vale igual para Gemini e Anthropic: a decisão é sobre o dado sair da casa, não sobre quem o recebe.
 - **Onde o dado vai parar muda com o fornecedor, e isso é decisão, não detalhe.** Trocar `IA_ADAPTER` troca a empresa que processa o conteúdo do e-mail. Enquanto for dado sintético, é indiferente; no dia em que entrar dado real, o fornecedor escolhido precisa constar da autorização.
 
@@ -873,12 +898,15 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 494 testes |
+| `npm run verificar` | Typecheck + a suíte inteira |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |
 | `npm run db:seed` | Cadastro base sintético + senhas provisórias |
-| `npm run db:limpar` | Apaga dados transacionais, preserva cadastro |
+| `PERMITIR_LIMPEZA=sim npm run db:limpar` | Apaga dados transacionais, preserva o cadastro. Exige o opt-in explícito: sem ele, recusa — a trava anterior deduzia segurança da ausência de `NODE_ENV` |
+| `npm run db:expurgar` | Redige a observação de afastamentos antigos (dado de saúde). **Irreversível**, não agendado, prazo hipotético — ver `DECISOES.md § AT-11` |
+| `npm run anexos:conferir` | Diz quantos anexos ainda estão em texto puro no disco |
+| `npm run anexos:recifrar` | Cifra os que faltam, conferindo cada um pela leitura antes de trocar |
 | `npm run db:studio` | Inspeciona o banco |
 | `npx prisma migrate deploy` | Aplica as migrações num banco novo |
 | `npx prisma generate` | Regenera o cliente Prisma em `src/generated/` |

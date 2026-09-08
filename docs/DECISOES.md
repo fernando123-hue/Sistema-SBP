@@ -67,7 +67,7 @@ Registrar não é implementar, e a distância precisa ficar explícita — senã
 | A7 — prioridade por idade | ✅ **Completo em 06/09/2026.** *Minha Fila* ordena pelo item mais antigo e o painel mostra há quantos dias o mais velho está parado |
 | A8 — lembrete semanal | ❌ Backlog declarado. Depende de capacidade de **envio**, que o A5 adiou |
 | A9 — janela deslizante | ✅ Implementada, com 30 dias (ver acima) |
-| A10 — `Afastamento` | ✅ **Implementado em 06/09/2026.** Entidade, migração, exclusão automática do rateio, tela no Acesso e marcação na tela de plantão. O crédito congela por consequência, não por mecanismo. **Falta só a exibição no Painel**, que virou pergunta de privacidade (§ H.4, item 9) |
+| A10 — `Afastamento` | ✅ **Completo em 06/09/2026.** Entidade, migração, exclusão automática do rateio, tela no Acesso, marcação na tela de plantão e a linha "Fora hoje" no Painel, com a redação por papel do `A13`. O crédito congela por consequência, não por mecanismo |
 | A11 — peso por categoria | ✅ **Implementado em 06/09/2026.** `DOC = 4`, `FICHA = 1,75`, resto `1`. Ver *Peso e limiar por categoria* abaixo |
 | A12 — limiar por categoria | ✅ **Implementado em 06/09/2026.** `DOC = 0,95`, `FICHA = 0,90`, resto `0,85` |
 
@@ -196,7 +196,7 @@ Formato: hipótese · motivo · impacto · status.
 **Hipótese:** `peso = 1` para todas as categorias.
 **Motivo:** o único modelo de esforço do arquivo é `documentos = 7 × inscrições`, e pertence à frente `TÍTULOS`, fora da V1.
 **Impacto:** o balanceamento equaliza contagem, não esforço real. Um `DOC` pesa igual a um `E-MAIL`.
-**Status:** ✅ **respondida em 26/08/2026 (ver A11)** — não é igual: `DOC = 4`, `FICHA = 1,75`, resto `1`. Junto veio o cuidado por categoria (A12). ⚠️ **A resposta ainda não está no código:** `PESO_PADRAO = 1` para todas em `src/core/config.ts`. A hipótese deixou de valer; o comportamento dela ainda é o que roda. Ver *Reconciliação: A4–A12* em § A.
+**Status:** ✅ **encerrada.** Respondida em 26/08/2026 (A11) e **implementada em 06/09/2026**: `src/core/config.ts` traz `DOC = 4`, `FICHA = 1,75`, resto `1`, com migração aplicada e `src/servicos/peso-e-limiar.test.ts` cobrindo. O aviso de "ainda não está no código" ficou de pé por dois dias depois de deixar de ser verdade, contradizendo o § A da mesma página — corrigido em 08/09/2026 pela auditoria de documentação.
 
 ### AT-03 — `INADIMP.` e `ISENTO`
 
@@ -288,7 +288,7 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **O que já não é mais assim:** arquivo **com** cabeçalho e curto demais para conter IV e tag deixou de cair neste ramo. Era gravação interrompida sendo devolvida como documento — degradação em silêncio dentro do único adapter que trata anexo. Agora falha alto.
 
-**Status:** ⏳ sai quando houver rotina de migração; aí a ausência do cabeçalho passa a ser erro.
+**Status:** ⏳ a rotina de migração já existe (`npm run anexos:recifrar`). O ramo sai quando ela for EXECUTADA em cada instalação; aí a ausência do cabeçalho passa a ser erro.
 
 ### AT-13 — A chave dos anexos cai para `SESSAO_SECRET` quando não é declarada *(08/09/2026)*
 
@@ -428,7 +428,7 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 | ~~H-D16~~ | ~~`X-Forwarded-For` aceito sem proxy confiável~~ | **RESOLVIDO em 27/08/2026** — `PROXIES_CONFIAVEIS` declara os saltos confiáveis; sem eles o código admite que não sabe a origem em vez de fingir. Seção *Origem da requisição e proxy confiável* abaixo. Publicar fora da rede local ainda exige ajustar o número |
 | ~~H-D17~~ | ~~Sem cadastro de colaborador pela tela~~ | **RESOLVIDO em 27/08/2026** — cadastro e habilitação na tela de Acesso, entregues juntos. Seção *Cadastro de pessoa e habilitação* abaixo |
 | H-D18 | Agregados de métrica não são materializados | **Reclassificado em 27/08/2026.** Nenhuma métrica lê linha expurgável — todas saem de `Item`, `Atribuicao`, `SaldoCarga` e `Revisao`, e o invariante 11 proíbe apagar dado operacional. Deixou de ser pré-requisito da retenção; continua valendo por recorte histórico barato e por segurança contra uma retenção futura mais ampla |
-| H-D19 | ⚠️ **Metade resolvida em 08/09/2026.** Os bytes vão para o disco em AES-256-GCM (chave derivada de `ANEXOS_SECRET`, com queda para `SESSAO_SECRET` — ver `AT-13`); arquivo adulterado ou truncado falha alto. **O que falta:** o controle de acesso — continua não havendo rota que sirva arquivo, então "quem pode baixar o quê" segue sem resposta, e é a metade que precisa existir antes de documento real entrar. Falta também rotina de migração dos anexos em texto puro (`AT-12`) | O diretório fica fora do repositório e não há rota que sirva arquivo |
+| H-D19 | ⚠️ **Metade resolvida em 08/09/2026.** Os bytes vão para o disco em AES-256-GCM (chave derivada de `ANEXOS_SECRET`, com queda para `SESSAO_SECRET` — ver `AT-13`); arquivo adulterado ou truncado falha alto. **O que falta:** o controle de acesso — continua não havendo rota que sirva arquivo, então "quem pode baixar o quê" segue sem resposta, e é a metade que precisa existir antes de documento real entrar. A rotina de migração dos anexos em texto puro existe desde 08/09/2026 (`npm run anexos:recifrar`, com `anexos:conferir` para medir) e **não foi executada**: os 16 anexos do ambiente de desenvolvimento seguem legíveis com `cat`. Falta rodar, não escrever | O diretório fica fora do repositório e não há rota que sirva arquivo |
 
 ### H.3 Adequado como está
 
@@ -455,7 +455,7 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 **Itens 10 a 14 levantados em 07/09/2026**, com a intenção de separar retenção de dado bruto de retenção de memória operacional, e com a proposta de feedback da equipe. Ver *Memória operacional e feedback da equipe — 07/09/2026*. Os itens 10 a 13 estão na folha de decisão preparada para a chefia do setor; o 14 é do dono do negócio.
 
-10. **Por quanto tempo fica o corpo do e-mail?** `EmailConteudo` (remetente, assunto, corpo) e os bytes de anexo são expurgáveis por construção, e **nada os expurga hoje** — não existe rotina de retenção no código, só a estrutura que a permite. Sem prazo definido, o dado bruto acumula para sempre por omissão, que é o pior dos mundos: nem decidido, nem defensável. Decisão de operação + DPO.
+10. **Por quanto tempo fica o corpo do e-mail?** `EmailConteudo` (remetente, assunto, corpo) e os bytes de anexo são expurgáveis por construção, e **nada os expurga hoje**: a rotina que entrou em 08/09/2026 (`npm run db:expurgar`) alcança só a observação de afastamento, e o corpo do e-mail e os anexos continuam sem prazo e sem expurgo. Sem prazo definido, o dado bruto acumula para sempre por omissão, que é o pior dos mundos: nem decidido, nem defensável. Decisão de operação + DPO.
 
 11. **Por quanto tempo fica o que a IA extraiu?** Camada nova, que não estava separada até aqui. `Item.titulo`, `Item.payload`, `Revisao.sugestaoIa` e `Revisao.valorFinal` são de retenção longa hoje e carregam texto extraído do corpo — `payload.campos` é `record<string, string>` de até 2000 caracteres por valor, ou seja, um saco aberto onde CPF, CRM, nome e e-mail de associado caem naturalmente. A pergunta operacional que define o prazo: **até quando a equipe precisa reabrir um item antigo e ver o que foi extraído dele?**
 
