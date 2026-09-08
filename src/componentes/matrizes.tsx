@@ -18,13 +18,28 @@ export function Cartao({
   children,
   className,
   destaque,
+  ref,
+  role,
+  'aria-live': ariaLive,
 }: {
   children: ReactNode
   className?: string
   destaque?: boolean
+  /** React 19 aceita `ref` como prop comum — sem `forwardRef`. */
+  ref?: React.Ref<HTMLDivElement>
+  /**
+   * Para o cartão que aparece SOZINHO em resposta a uma ação — a senha
+   * provisória, por exemplo. Sem `role="status"`, quem usa leitor de tela não
+   * fica sabendo que ele existe, e ele "aparece uma única vez".
+   */
+  role?: string
+  'aria-live'?: 'off' | 'polite' | 'assertive'
 }) {
   return (
     <div
+      ref={ref}
+      role={role}
+      aria-live={ariaLive}
       className={juntar(
         'rounded-[var(--radius-cartao)] border bg-papel',
         destaque ? 'border-acento shadow-sm' : 'border-borda',

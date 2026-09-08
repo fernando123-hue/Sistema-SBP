@@ -61,7 +61,9 @@ export default function Revisao() {
   /** Quantas existem de verdade. Maior que a lista = a fila está truncada. */
   const [totalPendentes, setTotalPendentes] = useState(0)
   const [erro, setErro] = useState<string | null>(null)
-  const [ocupado, setOcupado] = useState<string | null>(null)
+  const [ocupado, setOcupado] = useState<{ revisaoId: string; aprovar: boolean } | null>(null)
+  /** Qual descarte está esperando o segundo clique. */
+  const [confirmando, definirConfirmando] = useState<string | null>(null)
   const [edicao, setEdicao] = useState<Record<string, Edicao>>({})
 
   const carregar = useCallback(async () => {
@@ -150,7 +152,7 @@ export default function Revisao() {
       return
     }
 
-    setOcupado(item.revisaoId)
+    setOcupado({ revisaoId: item.revisaoId, aprovar })
     setErro(null)
     try {
       await api.enviar('/revisao/resolver', {
@@ -164,6 +166,7 @@ export default function Revisao() {
         itensExtras: aprovar ? extras : [],
       })
       setPendentes((lista) => (lista ?? []).filter((linha) => linha.revisaoId !== item.revisaoId))
+      definirConfirmando(null)
     } catch (causa) {
       setErro(mensagemDoErro(causa))
     } finally {
@@ -343,14 +346,38 @@ export default function Revisao() {
                     ))}
                   </div>
 
+                  {/*
+                    ═══ DESCARTAR PEDE DOIS CLIQUES, APROVAR NÃO ═══
+
+                    Descartar grava `cancelado` e não existe caminho de volta —
+                    nem serviço, nem rota, nem tela —, e a idempotência por
+                    `messageId` impede que uma nova sincronização recrie o item.
+                    Um clique errado numa fila de 40 revisões resolvidas em
+                    sequência apaga o pedido de um associado para sempre.
+
+                    Arquivar uma NOTA, que não apaga nada de operacional, já
+                    exigia dois cliques. A assimetria era ao contrário.
+
+                    E o rótulo de progresso ia para o botão errado: `ocupado`
+                    guardava só o id, então quem clicava em Descartar via o botão
+                    "Aprovar", ao lado, anunciar "salvando…".
+                  */}
                   <div className="mt-3 flex justify-end gap-2">
                     <Botao
                       variante="perigo"
                       tamanho="pequeno"
-                      onClick={() => resolver(item, false)}
+                      onClick={() =>
+                        confirmando === item.revisaoId
+                          ? void resolver(item, false)
+                          : definirConfirmando(item.revisaoId)
+                      }
                       desabilitado={ocupado !== null}
                     >
-                      Descartar
+                      {ocupado?.revisaoId === item.revisaoId && !ocupado.aprovar
+                        ? 'descartando…'
+                        : confirmando === item.revisaoId
+                          ? 'Confirmar: descartar para sempre'
+                          : 'Descartar'}
                     </Botao>
                     <Botao
                       variante="principal"
@@ -358,7 +385,9 @@ export default function Revisao() {
                       onClick={() => resolver(item, true)}
                       desabilitado={ocupado !== null}
                     >
-                      {ocupado === item.revisaoId ? 'salvando…' : 'Aprovar'}
+                      {ocupado?.revisaoId === item.revisaoId && ocupado.aprovar
+                        ? 'salvando…'
+                        : 'Aprovar'}
                     </Botao>
                   </div>
                 </Cartao>

@@ -21,6 +21,16 @@ import { hojeIso } from '../../core/util/datas'
 import type { ItemDaCaixa, NaRede } from '../../core/tipos'
 
 
+/**
+ * Quantos itens a lista traz por vez.
+ *
+ * A Revisão já avisava quando cortava; a Caixa cortava calada. Com alguns meses
+ * de uso a pastilha "todas" mostra o total de itens JÁ EXISTENTES — milhares —
+ * e a lista abaixo tem 200 linhas: quem conta conclui que o sistema perdeu
+ * itens, que é a desconfiança que este projeto existe para eliminar.
+ */
+const TETO_DA_LISTA = 200
+
 interface Resumo {
   total: number
   porStatus: Record<string, number>
@@ -99,7 +109,7 @@ export default function Caixa() {
   const carregar = useCallback(async (categoria: string | null, liga: string | null) => {
     setDados(null)
     try {
-      const parametros = new URLSearchParams({ limite: '200' })
+      const parametros = new URLSearchParams({ limite: String(TETO_DA_LISTA) })
       if (categoria) parametros.set('categoria', categoria)
       if (liga) parametros.set('liga', liga)
       setDados(
@@ -229,6 +239,16 @@ export default function Caixa() {
           ) : undefined
         }
       />
+
+      {dados !== null && dados.itens.length >= TETO_DA_LISTA ? (
+        <Aviso tom="atencao">
+          <strong>
+            Esta tela mostra {dados.itens.length} itens; o filtro atual tem mais do que isso.
+          </strong>{' '}
+          Estreite por categoria ou por liga para ver o resto — sem este aviso, a lista parecia
+          completa e o número da pastilha parecia errado.
+        </Aviso>
+      ) : null}
 
       {erro ? <Aviso>{erro}</Aviso> : null}
       {confirmacao ? <Aviso tom="ok">{confirmacao}</Aviso> : null}

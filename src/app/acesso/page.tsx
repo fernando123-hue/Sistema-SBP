@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { CadastroDeColaboradorSchema } from '../../core/esquemas'
 import { hojeIso } from '../../core/util/datas'
@@ -52,6 +52,16 @@ export default function Acesso() {
   const [ocupado, setOcupado] = useState<string | null>(null)
   /** Senha recém-sorteada, exibida UMA vez. Nunca volta do servidor depois disto. */
   const [senhaGerada, setSenhaGerada] = useState<{ nome: string; senha: string } | null>(null)
+  /**
+   * Quem está esperando o segundo clique para ter a senha trocada.
+   *
+   * Gerar uma senha nova invalida a atual na hora, não tem desfazer, e o botão
+   * era um clique único visualmente idêntico ao "Categorias" ao lado. Criar a
+   * PRIMEIRA senha não precisa disso: não há o que invalidar.
+   */
+  const [confirmandoSenha, definirConfirmandoSenha] = useState<string | null>(null)
+  /** Cartão da senha recém-gerada, para levar a vista até ele. */
+  const cartaoDaSenha = useRef<HTMLDivElement>(null)
   const [cadastrando, setCadastrando] = useState(false)
   const [novo, setNovo] = useState<Cadastro>(CADASTRO_VAZIO)
   /** Quem está com o editor de categorias aberto, e o rascunho da seleção. */
@@ -101,6 +111,14 @@ export default function Acesso() {
         colaboradorId: pessoa.id,
       })
       setSenhaGerada({ nome: pessoa.nome, senha: resposta.senhaProvisoria })
+      definirConfirmandoSenha(null)
+      // O botão que gera fica no RODAPÉ do cartão da pessoa; o cartão da senha
+      // nasce no TOPO da página. Com sete pessoas cadastradas, a senha aparecia
+      // fora da vista, e ela "aparece uma única vez e não fica gravada em lugar
+      // nenhum": sair da tela sem rolar para cima trancava a pessoa para fora.
+      requestAnimationFrame(() =>
+        cartaoDaSenha.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+      )
     })
   }
 
@@ -195,7 +213,12 @@ export default function Acesso() {
       {erro ? <Aviso>{erro}</Aviso> : null}
 
       {senhaGerada ? (
-        <Cartao className="border-atencao/40 bg-atencao-claro px-4 py-3">
+        <Cartao
+          ref={cartaoDaSenha}
+          role="status"
+          aria-live="assertive"
+          className="border-atencao/40 bg-atencao-claro px-4 py-3"
+        >
           <p className="text-sm font-medium text-atencao">Senha provisória de {senhaGerada.nome}</p>
           <p className="mt-2 font-mono text-lg break-all select-all">{senhaGerada.senha}</p>
           <p className="mt-2 text-xs text-atencao">
@@ -418,12 +441,20 @@ export default function Acesso() {
 
                     {pessoa.ativo ? (
                       <Botao
-                        variante="secundario"
+                        variante={confirmandoSenha === pessoa.id ? 'perigo' : 'secundario'}
                         tamanho="pequeno"
                         desabilitado={ocupado !== null}
-                        onClick={() => gerarSenha(pessoa)}
+                        onClick={() =>
+                          !pessoa.senhaDefinidaEm || confirmandoSenha === pessoa.id
+                            ? void gerarSenha(pessoa)
+                            : definirConfirmandoSenha(pessoa.id)
+                        }
                       >
-                        {pessoa.senhaDefinidaEm ? 'Nova senha provisória' : 'Criar senha'}
+                        {!pessoa.senhaDefinidaEm
+                          ? 'Criar senha'
+                          : confirmandoSenha === pessoa.id
+                            ? `Confirmar: a senha atual de ${pessoa.nome.split(' ')[0]} deixa de valer`
+                            : 'Nova senha provisória'}
                       </Botao>
                     ) : null}
 
