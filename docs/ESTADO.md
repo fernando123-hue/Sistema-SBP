@@ -1,14 +1,19 @@
 # Estado do projeto — retomada
 
-Última atualização: **08/09/2026** — **etapa de fechamento e maturação, mais a revisão do que entrou por fora e as seis auditorias que faltavam.** O trabalho está num PR ABERTO, não na `main`.
+Última atualização: **08/09/2026** — **etapa de fechamento e maturação, mais a revisão do que entrou por fora, as sete auditorias que faltavam e as correções que elas produziram.** O trabalho está num PR ABERTO, não na `main`, e agora está **empurrado**.
 
-> ## ⚠️ Leia estes cinco pontos antes de tocar em qualquer coisa
+> ## ⚠️ Leia estes seis pontos antes de tocar em qualquer coisa
 >
-> 1. **Nada disto está na `main`.** Tudo vive na branch `maturacao/fechamento-de-etapa`, em **24 commits**, no [PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35), aberto e sem revisão de gente. Se a `main` parecer velha, é porque está.
-> 2. **`npm run verificar` tem de fechar com a suíte INTEIRA verde.** Um número fixo aqui envelhece e mente nos dois sentidos — este arquivo já disse 494 quando eram 514. O que vale é: zero vermelho, zero pulado.
-> 3. **`SESSAO_SECRET` agora é obrigatório** (mínimo 16 caracteres). O sistema RECUSA subir sem ele. Se a sua cópia local não tinha, é esse o erro que vai aparecer.
+> 1. **Nada disto está na `main`.** Tudo vive na branch `maturacao/fechamento-de-etapa`, em **34 commits**, no [PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35), aberto e sem revisão de gente. Se a `main` parecer velha, é porque está.
+> 2. **`npm run verificar` tem de fechar com a suíte INTEIRA verde.** Um número fixo aqui envelhece e mente nos dois sentidos — este arquivo já disse 494 quando eram 514. O que vale é: zero vermelho, zero pulado. **E confira o CI também:** `gh pr checks 35`. Ele ficou vermelho de 07 a 08/09 sem ninguém olhar, enquanto este arquivo dizia "494 verdes" — o verde era local, o vermelho era público. Corrigido e **verde em 08/09/2026**, com os três checks passando, inclusive o build de produção que entrou nesta etapa.
+> 3. **`SESSAO_SECRET` é obrigatório** (mínimo 16 caracteres). O sistema RECUSA subir sem ele. Se a sua cópia local não tinha, é esse o erro que vai aparecer — e era exatamente esse o erro do CI.
 > 4. **Subir esta versão invalida todos os cookies em circulação.** O formato ganhou `emitidoEm`, e cookie sem esse campo é recusado. Custa uma reentrada por pessoa, uma vez.
-> 5. **A animação da marca foi vista rodando** — em 07/09/2026, no navegador real. Ver *A dívida honesta desta etapa*, abaixo: restam duas, não três.
+> 5. **Os anexos do ambiente de desenvolvimento já foram recifrados** em 08/09/2026: 16 de 16, conferidos byte a byte pela leitura depois da troca. `npm run anexos:conferir` diz o estado a qualquer momento. **Numa instalação nova, isso ainda precisa rodar.**
+> 6. **A animação da marca foi vista rodando** — em 07/09/2026, no navegador real. Ver *A dívida honesta desta etapa*, abaixo: restam duas, não três.
+
+### Onde este trabalho parou, em uma frase
+
+O PR #35 está empurrado e com o CI consertado; o próximo passo humano é **revisar e mesclar**, e o próximo passo de decisão é **levar as perguntas de retenção à chefia**. Nada de código está pela metade — a lista de *Próximos passos* é toda de trabalho que ainda não começou.
 
 ### O que esta etapa entregou
 
@@ -121,34 +126,35 @@ Só existe o PNG do logotipo. `src/core/marca/contorno.ts` descreve a letra como
 > As linhas ✅ da tabela acima saíram desta lista. Se você for acrescentar um
 > item aqui, confira antes se ele ainda existe no código — esta lista já mandou,
 > uma vez, refazer trabalho que estava pronto.
+>
+> **Saiu daqui em 08/09/2026:** rodar `npm run anexos:recifrar`. Rodou — 16 de
+> 16 anexos do ambiente de desenvolvimento cifrados, cada um conferido pela
+> leitura antes de o original ser trocado. `npm run anexos:conferir` responde
+> "0 ainda em texto puro". Numa instalação nova, o comando continua sendo o
+> primeiro passo.
 
-1. **Rodar `npm run anexos:recifrar`.** É a ação de maior valor por minuto do
-   repositório inteiro: a rotina existe e está testada, e enquanto ela não rodar
-   **todos os anexos no disco continuam legíveis com `cat`** — "cifragem em
-   repouso" descreve só os arquivos gravados de agora em diante.
-   `npm run anexos:conferir` diz quantos faltam.
-2. **Levar as perguntas à chefia em `DECISOES.md § H.4`.** A urgente continua
+1. **Levar as perguntas à chefia em `DECISOES.md § H.4`.** A urgente continua
    sendo o **prazo do motivo de afastamento** (dado de saúde). A rotina que
    aplica a resposta já existe (`npm run db:expurgar`); o prazo de 90 dias é
    **hipótese registrada** (`§ AT-11`), não decisão, e é por isso que nada a
    agenda.
-3. **Revisar e mesclar o PR #35**, agora com o que esta retomada acrescentou.
+2. **Revisar e mesclar o PR #35**, agora com o que esta retomada acrescentou.
    Ninguém de carne olhou ainda.
-4. **Fechar o `H-D19` de verdade:** falta o **controle de acesso ao anexo**. Não
+3. **Fechar o `H-D19` de verdade:** falta o **controle de acesso ao anexo**. Não
    existe rota que sirva arquivo, então "quem pode baixar o quê" segue sem
    resposta — e é a metade que precisa existir antes de documento real entrar.
-5. **Performance, no que sobrou da ordem que a auditoria mediu:**
+4. **Performance, no que sobrou da ordem que a auditoria mediu:**
    `conferirConservacao` agregando no banco (hoje traz ~5.600 linhas por
    carregamento do painel, o maior volume de rede do sistema); escrita em lote
    em `gravarRodada` (124 das ~288 consultas da transação, e é a metade que
    cresce com o volume da associação); só então `carregarElegiveis` e
    `porPessoa`, que são os alvos do plano `H-D8` — e os mais fracos.
-6. **Medir o acerto da IA contra modelo real.** O Painel já separa a taxa POR
+5. **Medir o acerto da IA contra modelo real.** O Painel já separa a taxa POR
    MODELO — a comparação que justifica manter dois fornecedores.
-7. **Fechar o resto da `H-D7`:** validar a resposta da rota no cliente contra o
+6. **Fechar o resto da `H-D7`:** validar a resposta da rota no cliente contra o
    mesmo Zod. Os tipos já são únicos e o compilador liga serviço e tela; o que
    falta é a prova de que a ROTA entrega a forma declarada.
-8. **Dívidas que a auditoria de tipos deixou registradas:** `ErroOperacional.statusHttp`
+7. **Dívidas que a auditoria de tipos deixou registradas:** `ErroOperacional.statusHttp`
    é `number` e aceitaria 500, contornando a regra de não vazar mensagem em
    falha de servidor; os oito códigos de categoria existem em duas listas sem
    vínculo de compilação; e `PAPEIS_DA_TELA` espelha `DESTINOS` à mão, com o
