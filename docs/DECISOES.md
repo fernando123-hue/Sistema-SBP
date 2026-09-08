@@ -1775,3 +1775,99 @@ Três achados eram decisões de operação, não defeitos. Nenhum foi alterado.
     enquadra isso como observabilidade para balancear carga, e a equipe já
     trabalha de caixa compartilhada — restringir mudaria a operação. Irmão do
     item 5 de § H.4.
+
+### A16 — a marca como objeto interativo
+
+Pedido: que a logo *"se comporte como um objeto interativo dentro da interface"*,
+com liberdade criativa, sem comprometer usabilidade, desempenho,
+responsividade, acessibilidade nem a arquitetura existente. A referência técnica
+oferecida foi o **dossiê do `img2threejs`** — análise de arquitetura de outro
+projeto, do ecossistema `beyon.0`.
+
+#### O que o dossiê deu, e o que ele proibiu
+
+Ele não é sobre este sistema. O que transfere é **arquitetura, não tecnologia**:
+
+- **"Spec declarativo como IR; código como saída derivada."** É o ativo central
+  que ele identifica naquele projeto. Aqui: o arranjo dos P's é dado puro em
+  `core/marca/`, determinístico e testável; o SVG é *build*.
+- **"Pivô por peça + registros nomeados."** Cada P tem um `<g>` que é o alvo da
+  animação, separado do `<text>` que é o glifo. O laço nunca toca no glifo.
+- **"A IR nunca importa o motor; dependência só aponta para dentro."** É a
+  regra 1 deste projeto com outro nome — encaixou sem adaptação.
+
+E a advertência que **decidiu a stack**: *"não force 3D onde o CSS já entrega — o
+custo/benefício é ruim"*, e *"Three.js custa centenas de KB"*. O próprio veredito
+manda decidir **se** o projeto ganha com Three.js antes de qualquer código. Para
+uma marca de 24 px na barra de um sistema interno de 4-7 pessoas, com CSP
+restritiva e a regra da menor arquitetura que resolve o problema atual, a
+resposta é não. **Zero dependência nova.**
+
+#### Por que a marca da SBP é um caso especial
+
+A identidade é um P grande **composto por dezenas de P's pequenos**. Isso não é
+enfeite: a estrutura da marca já É um sistema de partículas. A interatividade
+sai da própria identidade em vez de ser colada por cima dela — e é o que separa
+"logo animado" de "logo que é um objeto".
+
+#### As decisões que valem registro
+
+**Física, não transição.** Uma `transition` faz o glifo *ir* de um ponto a outro;
+uma mola faz ele *ter inércia*. Cada P tem massa proporcional ao próprio tamanho
+— quadrática, porque peso se percebe pela ÁREA. O ponteiro espalha os miúdos
+primeiro e os graúdos quase não cedem. Sem massa, o campo se move em bloco e a
+leitura vira "imagem sendo distorcida" em vez de "muitas peças reagindo".
+
+**A marca é o indicador de atividade do sistema.** Respira enquanto há requisição
+em voo. O sinal vem de `componentes/api.ts`, que já era a porta única de toda
+tela — nenhuma precisa avisar nada. Não inventa métrica, não é gravado, e morre
+quando a resposta chega. Contador e não booleano: duas requisições terminando
+fora de ordem zerariam o sinal cedo demais.
+
+**O laço PARA.** Campo assentado e sem atividade cancela o `requestAnimationFrame`.
+Esta barra fica aberta o expediente inteiro; um laço eterno gastaria bateria o
+dia todo para não mostrar nada.
+
+**Abaixo de 48 px não há campo de ponteiro.** A 24 px a marca tem 17 de largura e
+o efeito move frações de pixel. A primeira ideia foi cortar GLIFOS nas versões
+pequenas — o "plano de LOD" que o dossiê descreve. **Medido, era errada:** os
+glifos menores são justamente os da BORDA, e é a borda que define a silhueta.
+Cortá-los deixa a letra mais leve e menos legível, o pior dos dois mundos. O
+corte certo foi no EFEITO, não nos nós.
+
+**Determinismo é requisito, não zelo.** O arranjo vem de um gerador com semente
+fixa. Um logotipo que se rearranja a cada carregamento não é um logotipo; e
+`Math.random()` faria servidor e cliente discordarem, quebrando a hidratação.
+
+#### Duas vezes o resultado medido derrubou o plano
+
+1. **A primeira densidade lia como chuvisco.** Glifos menores que a célula da
+   grade deixam fundo entre todos. A marca real faz o contrário: usa a maior
+   peça que couber, e a variação de tamanho vem da FORMA da letra — miolo largo,
+   borda estreita —, não de sorteio.
+2. **O transbordo da borda é deliberado.** A marca real deixa os P's da borda
+   passarem um pouco do contorno; é isso que faz a silhueta parecer feita de
+   letras em vez de recortada a tesoura. O teste guarda o TETO do transbordo, não
+   a ausência dele — sem teto, aumentar a tolerância até a letra virar nuvem
+   passaria despercebido.
+
+#### O contorno é reconstrução — e está isolado de propósito
+
+Só existe o PNG do logotipo. `core/marca/contorno.ts` descreve a letra como união
+e subtração de retângulos arredondados, com proporções medidas sobre a arte. Isso
+torna *"este ponto está dentro do P?"* uma conta de duas linhas, exata, sem
+tesselar e sem biblioteca de geometria.
+
+**É o único arquivo que muda quando o SVG oficial chegar.** Arranjo, física e
+desenho só perguntam `dentroDoP()` — nada mais no sistema sabe qual é a forma da
+letra. Pedir o vetor à SBP é barato e melhora a fidelidade de graça.
+
+#### O que ficou sem verificação
+
+**A animação nunca foi vista rodando.** O painel de navegador da automação executa
+a página oculta (`visibilityState: 'hidden'`), e nesse estado o navegador não
+entrega quadros — medido: zero `requestAnimationFrame` em 500 ms. Verificado: a
+física em 18 testes de núcleo, que o efeito monta e pede o quadro (instrumentado),
+o desenho estático nos dois temas, e o celular. **Falta confirmar o laço
+escrevendo `transform` nos elementos** — ver `ESTADO.md`, *A dívida honesta desta
+etapa*.

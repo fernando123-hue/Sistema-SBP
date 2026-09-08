@@ -1,19 +1,75 @@
 # Estado do projeto — retomada
 
-Última atualização: **07/09/2026** — **etapa de fechamento e maturação: auditoria do projeto inteiro, catorze correções, e o sistema ganhou ajuda embutida.** Sete entregas mescladas neste dia, as três últimas nesta etapa: a fronteira do fornecedor de IA saindo da interpretação de e-mail, o assistente de ajuda (`A15`), e as correções de segurança e correção que a auditoria encontrou.
+Última atualização: **07/09/2026** — **etapa de fechamento e maturação, mais a marca da SBP virando objeto interativo.** O trabalho está num PR ABERTO, não na `main`.
 
-> **Duas falhas graves foram encontradas em código que passava em todos os testes.** Texto vindo de e-mail voltava como INSTRUÇÃO ao modelo na segunda tentativa, fora dos delimitadores; e a liga era partida entre pessoas na hora de gravar, com a trava de conservação passando porque a soma fechava. As duas estão corrigidas, com testes que falham contra o código anterior. Detalhe em `DECISOES.md`, seção *Fechamento e maturação*.
+> ## ⚠️ Leia estes cinco pontos antes de tocar em qualquer coisa
+>
+> 1. **Nada disto está na `main`.** Tudo vive na branch `maturacao/fechamento-de-etapa`, em **13 commits**, no [PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35), aberto e sem revisão de gente. Se a `main` parecer velha, é porque está.
+> 2. **`npm run verificar` tem de dar 494 verdes.** Menos que isso, comece por aí.
+> 3. **`SESSAO_SECRET` agora é obrigatório** (mínimo 16 caracteres). O sistema RECUSA subir sem ele. Se a sua cópia local não tinha, é esse o erro que vai aparecer.
+> 4. **Subir esta versão invalida todos os cookies em circulação.** O formato ganhou `emitidoEm`, e cookie sem esse campo é recusado. Custa uma reentrada por pessoa, uma vez.
+> 5. **A animação da marca NUNCA foi vista rodando.** Ver *A dívida honesta desta etapa*, abaixo. É a primeira coisa a conferir, e leva um minuto.
 
-> **As decisões que esperam por você não mudaram** — cinco em `DECISOES.md § H.4` (itens 10 a 14) e **três novas** (itens 15 a 17) nascidas desta auditoria, todas de operação, nenhuma travando uso.
+### O que esta etapa entregou
 
-### Se você está retomando agora, leia isto primeiro
+**Segurança.** Injeção que atravessava a delimitação e voltava como instrução de sistema; enumeração de contas pelo tempo de resposta (23,5 ms medidos); "sair" que não revogava nada; `SESSAO_SECRET` que falhava tarde demais; transferência para pessoa desativada; `campos` sem teto de cardinalidade; data inexistente virando chave de razão.
 
-1. **`npm run verificar` tem de dar 470 verdes.** Se der menos, algo quebrou entre as sessões — comece por aí, não pelo próximo passo.
-2. **Zero PRs abertos.** O trabalho desta etapa está na branch `maturacao/fechamento-de-etapa`, em seis commits. Se ela já foi mesclada, tudo está na `main`.
-3. **`SESSAO_SECRET` agora é obrigatório.** O sistema RECUSA subir sem ele (mínimo 16 caracteres). Antes subia e quebrava na primeira entrada. Se a sua cópia local não tinha, é isso que vai aparecer.
-4. **A armadilha da CSP acabou.** `unsafe-eval` agora entra só em desenvolvimento, então **conferir tela em `npm run dev` voltou a funcionar** — formulário controlado reage, HMR fica de pé. Em produção nada mudou. Foi essa correção que permitiu achar dois defeitos de interface desta etapa.
-5. **Nada é apagado por retenção, e nenhum prazo foi definido.** Continua igual: a estrutura permite expurgar, **não existe rotina de expurgo no código**, e o dado bruto acumula por omissão enquanto a chefia não responder.
-6. **Os valores do `A11` nunca foram relidos com o cliente.** `DOC = 4` e `FICHA = 1,75` redistribuem carga entre pessoas reais. `1,75` nasceu marcado como negociável.
+**Correção.** A liga partida na gravação — o `A4` anulado na última curva, com todos os indicadores verdes; o desdobramento de revisão criando itens sem liga; distribuição retroativa apagando crédito em silêncio; anexo órfão no disco que nenhuma retenção alcança; o desempate por grupo decidindo com dado obsoleto; e o adapter padrão criando uma liga chamada **"Prezados"** com nove itens sem relação, achado rodando o sistema.
+
+**Honestidade dos números.** O alarme de conservação, que disparava em toda devolução e ensinava a equipe a ignorá-lo; a métrica "Em revisão", que mentia quando se estreitava o período; seis erros com mensagem escrita para humano que chegavam à tela como "Erro interno".
+
+**Ajuda embutida (`A15`).** Assistente que responde sobre como o sistema funciona, sem autoridade sobre nada: não executa, não consulta demanda, não vê dado de outra pessoa, não recebe conteúdo de e-mail nem nota do setor. Filtragem por papel em código, duas vezes. Com `IA_ADAPTER=mock` responde por busca no manual — sem rede, sem custo, incapaz de inventar.
+
+**A marca como objeto (`A16`).** O P da SBP composto por ~390 P's pequenos, cada um com massa própria, reagindo ao ponteiro por mola amortecida. Zero dependência nova. A marca também é o indicador de atividade do sistema: respira enquanto há requisição em voo.
+
+---
+
+## A dívida honesta desta etapa
+
+Três coisas ficaram por fazer, e nenhuma delas é opinião — são fatos que a próxima sessão precisa saber para não descobrir tarde.
+
+### 1. A animação da marca nunca foi vista rodando
+
+O painel de navegador da automação executa a página **oculta** (`document.visibilityState === 'hidden'`), e nesse estado o navegador **não entrega quadros de animação** — medido: zero `requestAnimationFrame` em 500 ms. Como consequência, `escreverNoDom()` nunca chegou a rodar nas verificações.
+
+O que ESTÁ verificado: a física, em 18 testes de núcleo (resposta ao ponteiro, diferencial de massa, volta ao repouso, teto de deslocamento, passo de tempo gigante); que o efeito monta e pede o quadro (instrumentado e confirmado — `acordou: 2`); o desenho estático nos temas claro e escuro; e o celular.
+
+**O que falta é meia dúzia de linhas: o laço escrevendo `transform` nos elementos.** Para conferir:
+
+```bash
+npm run dev
+```
+
+Abra `/entrar` e passe o ponteiro sobre a marca grande. Ela deve espalhar as peças menores primeiro e reassentar em cerca de um segundo. Se não mexer, o suspeito nº 1 é `escreverNoDom` em `src/componentes/marca.tsx`.
+
+### 2. Sete dimensões da auditoria nunca rodaram
+
+A auditoria profunda foi lançada em 16 dimensões. **Nove produziram achados; sete morreram por limite de sessão em três tentativas seguidas** e nunca entregaram nada:
+
+`tipos-contratos` · `performance` · `testes` · `ui-ux` · `documentacao` · `config-dependencias` · `fluxos-incompletos`
+
+**Interface e fluxos incompletos são as duas mais importantes**, e foram pedidas explicitamente. O que existe hoje de cobertura de interface é o que eu conferi à mão — telas abertas no navegador, a métrica que mentia, a sobreposição do botão de ajuda, o critério sem rótulo. **Não houve varredura sistemática.**
+
+**Lição para a próxima tentativa: rode em lotes de DUAS dimensões, não sete.** A máquina tem 4 núcleos, então a concorrência de agentes é 2 — sete em paralelo só enfileira e estoura o limite antes de qualquer um terminar. O script está em:
+
+`~/.claude/projects/.../workflows/scripts/sbp-auditoria-dimensoes-restantes-*.js`
+
+### 3. O contorno da marca é reconstrução, não o oficial
+
+Só existe o PNG do logotipo. `src/core/marca/contorno.ts` descreve a letra como união e subtração de retângulos arredondados, com as proporções medidas sobre a arte.
+
+**É o ÚNICO arquivo que muda quando o SVG oficial chegar.** O arranjo, a física e o desenho só perguntam `dentroDoP()` — nada mais no sistema sabe qual é a forma da letra. Pedir o SVG à SBP é barato e melhora a fidelidade de graça.
+
+---
+
+## Próximos passos, em ordem de valor
+
+1. **Conferir a animação da marca** (um minuto, `npm run dev`, item 1 acima).
+2. **Revisar e mesclar o PR #35.** Treze commits, 494 testes, revisão independente sem achados — mas ninguém de carne olhou ainda.
+3. **Levar as perguntas à chefia.** Oito abertas em `DECISOES.md § H.4`: quatro de retenção/LGPD (itens 10 a 13) e três novas desta auditoria (15 a 17). A mais urgente continua sendo o **prazo do motivo de afastamento** — dado de saúde, hoje guardado sem prazo. E **não existe rotina de expurgo no código**: enquanto não houver resposta, o dado bruto acumula por omissão.
+4. **Rodar as 7 dimensões que faltaram**, em lotes de duas.
+5. **Medir o acerto da IA contra modelo real.** Agora tem onde aparecer: o Painel separa a taxa POR MODELO, que antes ia tudo somado — a comparação que justifica manter dois fornecedores era impossível de fazer na tela.
+6. **Dívidas com gatilho real:** `H-D19` (cifrar bytes de anexo — obrigatório antes de documento real entrar), `H-D7` (contratos de API redigitados nas telas), `H-D8` (N+1, irrelevante em SQLite, grave em PostgreSQL).
 
 ### O comando que destrava mais coisa — e o que ele custa de verdade
 
@@ -21,9 +77,9 @@
 IA_ADAPTER=gemini IA_MODELO=gemini-3.1-flash-lite npm run ia:experimentar
 ```
 
-**Correção importante em relação à versão anterior deste arquivo:** ele NÃO é "grátis, é só repetir". A cota gratuita é de **20 requisições por dia, POR MODELO** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`), e cada rodada da bateria gasta de 4 a 8 — cerca de três rodadas por dia, por modelo.
+**Correção em relação a versões anteriores deste arquivo:** ele NÃO é "grátis, é só repetir". A cota gratuita é de **20 requisições por dia, POR MODELO** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`), e cada rodada gasta de 4 a 8 — cerca de três rodadas por dia, por modelo.
 
-A cota ser por modelo é a saída: a mesma bateria contra modelos diferentes tem orçamentos independentes. Medido em 07/09/2026:
+A cota ser por modelo é a saída: modelos diferentes têm orçamentos independentes. Medido em 07/09/2026:
 
 | Modelo | Casos corretos | Latência |
 |---|---|---|
@@ -31,32 +87,28 @@ A cota ser por modelo é a saída: a mesma bateria contra modelos diferentes tem
 | `gemini-3.5-flash` | 7 de 8 | 5–11 s |
 | `gemini-3.1-flash-lite` | 4 de 4 | 1–3 s |
 
-**A injeção foi recusada pelos três**, com os cinco sinais das duas defesas em todos. O `modeloPadrao` do adapter continua `gemini-3.6-flash` de propósito: trocá-lo muda que modelo processa o conteúdo por omissão, e isso é decisão sua, não ajuste técnico.
-
-**Agora a medida tem onde aparecer.** O Painel passou a separar o acerto da IA POR MODELO — antes tudo ia somado num número só, e a comparação que justifica manter dois fornecedores era impossível de fazer na tela.
+**A injeção foi recusada pelos três.** O `modeloPadrao` continua `gemini-3.6-flash` de propósito: trocá-lo muda que modelo processa o conteúdo por omissão, e isso é decisão do dono, não ajuste técnico.
 
 ### As quatro perguntas que só a chefia responde
 
-Estão em `DECISOES.md § H.4`, itens 10 a 13, com opções e recomendação formuladas. A mais urgente é o **prazo do motivo de afastamento** — é dado de saúde sob a LGPD, hoje guardado sem prazo e sem expurgo.
+Estão em `DECISOES.md § H.4`, itens 10 a 13, com opções e recomendação formuladas. Uma folha de decisão em uma página foi preparada em 07/09/2026 e entregue como arquivo, fora do repositório. Se ela se perdeu, as perguntas cruas estão em `§ H.4` e a folha se refaz a partir delas.
 
-> Uma folha de decisão em uma página foi preparada em 07/09/2026 e entregue como arquivo, fora do repositório. Se ela se perdeu, as perguntas cruas estão em `§ H.4` e a folha se refaz a partir delas.
+### Duas armadilhas que NÃO existem mais
 
-### O que a etapa de fechamento entregou
-
-**Segurança.** Injeção que atravessava a delimitação e voltava como instrução de sistema; enumeração de contas pelo tempo de resposta (23,5 ms medidos); "sair" que não revogava nada; `SESSAO_SECRET` que falhava tarde demais; transferência para pessoa desativada; `campos` sem teto de cardinalidade; data inexistente virando chave de razão.
-
-**Correção.** A liga partida na gravação; o desdobramento de revisão criando itens sem liga; distribuição retroativa apagando crédito em silêncio; anexo órfão no disco que nenhuma retenção alcança; o desempate por grupo decidindo com dado obsoleto.
-
-**Honestidade dos números.** O alarme de conservação, que disparava em toda devolução e ensinava a equipe a ignorá-lo; a métrica "Em revisão", que mentia quando se estreitava o período; seis erros com mensagem escrita para humano que chegavam à tela como "Erro interno".
-
-**Ajuda embutida (`A15`).** Assistente que responde sobre como o sistema funciona, sem autoridade sobre nada: não executa, não consulta demanda, não vê dado de outra pessoa, não recebe conteúdo de e-mail nem nota do setor. Filtragem por papel em código, duas vezes. Com `IA_ADAPTER=mock` responde por busca no manual — sem rede, sem custo, incapaz de inventar.
+- **A CSP quebrava a verificação de tela em desenvolvimento.** `unsafe-eval` agora entra só em desenvolvimento; em produção nada mudou. Conferir tela com `npm run dev` voltou a funcionar — e foi essa correção que permitiu achar dois defeitos de interface desta etapa.
+- **Os testes passavam contra código defeituoso.** No zod 4, um `ZodError` construído à mão **não é `instanceof Error`**, e os dubles de teste não o lançavam. Corrigido, com o porquê no código. A regra que ficou: **um teste que passa não prova nada até alguém verificar que ele falha contra o defeito.** Cada correção desta etapa foi verificada revertendo-a.
 
 ---
 
 ## Continuando em outra máquina
-## Continuando em outra máquina
 
-Tudo está na **`main`**. O [PR #12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) foi mesclado em 31/08/2026, e com ele o aviso que esta seção carregava deixou de ter função.
+**Atenção: a `main` NÃO está em dia.** O trabalho de 07/09/2026 vive na branch `maturacao/fechamento-de-etapa` ([PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35)), aberto. Clonar e ficar na `main` entrega o sistema sem as correções de segurança, sem o assistente e sem a marca.
+
+```bash
+git checkout maturacao/fechamento-de-etapa
+```
+
+O [PR #12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) foi mesclado em 31/08/2026, e com ele o aviso que esta seção carregava antes deixou de ter função.
 
 ```bash
 git clone https://github.com/fernando123-hue/Sistema-SBP.git
@@ -108,7 +160,7 @@ Depois:
 npx prisma migrate deploy   # cria o banco e aplica as 10 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 470 testes
+npm run verificar           # typecheck + 494 testes
 npm run dev                 # http://localhost:3000
 ```
 
@@ -146,7 +198,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
 | Notas do setor | O que a equipe aprendeu operando, escrito por quem opera. Uma porta só, texto livre, vinculável a categoria e liga. Aparece nas quatro telas de trabalho |
-| Testes | **470 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, assistente, dois adapters de IA, agrupamento por liga, conservação, distribuição retroativa, pipeline de integração) |
+| Testes | **494 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, assistente, dois adapters de IA, agrupamento por liga, conservação, distribuição retroativa, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
@@ -774,7 +826,7 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 470 testes |
+| `npm run verificar` | Typecheck + 494 testes |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |
