@@ -111,6 +111,26 @@ describe('armazenamento em disco', () => {
     expect(Array.from(lido!)).toEqual(Array.from(PDF))
   })
 
+  it('recusa alto quando a chave mudou, em vez de devolver lixo (H-D19)', async () => {
+    // O cenário real não é adulteração: é alguém rotacionar `SESSAO_SECRET` sem
+    // ter fixado `ANEXOS_SECRET`. Antes disto, nada no repositório provava o
+    // que acontece com os documentos já gravados quando isso ocorre.
+    const guardador = new ArmazenamentoEmDisco(raiz, 'segredo-de-teste-antigo')
+    const chave = await guardador.guardar(PDF, '.pdf')
+
+    const depoisDaRotacao = new ArmazenamentoEmDisco(raiz, 'segredo-de-teste-NOVO')
+
+    await expect(depoisDaRotacao.ler(chave)).rejects.toThrow(FalhaDeArmazenamento)
+    // A mensagem é a única pista que quem investiga recebe: precisa nomear a
+    // hipótese certa, não só dizer "falhou".
+    await expect(depoisDaRotacao.ler(chave)).rejects.toThrow(/ANEXOS_SECRET/)
+
+    // E com a chave certa o mesmo arquivo continua legível — o dado não sumiu,
+    // ficou trancado.
+    const lido = await guardador.ler(chave)
+    expect(Array.from(lido!)).toEqual(Array.from(PDF))
+  })
+
   it('falha ao tentar decifrar anexo com tag de integridade adulterada', async () => {
     const chave = await armazenamento.guardar(PDF, '.pdf')
     const caminho = join(raiz, chave)

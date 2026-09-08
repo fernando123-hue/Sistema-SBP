@@ -71,7 +71,46 @@ const AmbienteSchema = z.object({
    * Ao migrar para nuvem, troca-se o adapter de armazenamento e esta variável
    * deixa de ser usada.
    */
-  ARMAZENAMENTO_DIR: z.string().default('./armazenamento'),
+  //
+  // `.default()` cobre a variável AUSENTE; `ARMAZENAMENTO_DIR=` (presente e
+  // vazia) atravessava como `''`, e `resolve('')` é o diretório do processo —
+  // a raiz do repositório. O primeiro anexo nasceria em `01/....pdf` ao lado do
+  // código, fora do que o `.gitignore` protege, e um `git add -A` comitaria
+  // documento de associado. A trava de travessia não pega: a raiz É o repo.
+  ARMAZENAMENTO_DIR: z
+    .string()
+    .trim()
+    .min(1, 'ARMAZENAMENTO_DIR não pode ser vazio')
+    .default('./armazenamento'),
+  /**
+   * Segredo que cifra os bytes de anexo em repouso (`H-D19`).
+   *
+   * Separado de `SESSAO_SECRET` porque os dois têm ciclos de vida OPOSTOS.
+   * Rotacionar o segredo de sessão é rotina de segurança — custa uma reentrada
+   * por pessoa e nada mais. Rotacionar a chave dos anexos torna ILEGÍVEL todo
+   * documento já gravado, porque não existe rotina de recifragem.
+   *
+   * Vazio significa "usa `SESSAO_SECRET`", que é o que mantém a instalação
+   * atual funcionando sem migração. Quem for rotacionar o segredo de sessão
+   * precisa ANTES fixar esta variável com o valor antigo — senão os anexos
+   * param de abrir, e a mensagem de erro em `armazenamento-disco.ts` é a única
+   * pista de por quê.
+   */
+  //
+  // `ANEXOS_SECRET=` (presente e vazia) precisa significar o mesmo que ausente:
+  // é o que a linha comentada do `.env.example` promete, e `.optional()`
+  // sozinho cobre só o ausente. Sem o `transform`, a instalação que seguiu a
+  // documentação ao pé da letra RECUSAVA SUBIR — testado.
+  ANEXOS_SECRET: z
+    .string()
+    .transform((valor) => (valor.trim() === '' ? undefined : valor))
+    .pipe(
+      z
+        .string()
+        .min(16, 'ANEXOS_SECRET, quando definido, precisa de no mínimo 16 caracteres')
+        .optional(),
+    )
+    .optional(),
   /**
    * Quantos proxies confiáveis ficam na frente da aplicação.
    *
