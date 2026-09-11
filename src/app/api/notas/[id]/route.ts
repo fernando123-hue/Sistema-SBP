@@ -1,5 +1,5 @@
 import { arquivar } from '../../../../servicos/notas'
-import { corpoJson, responder, rota } from '../../../../servidor/http'
+import { corpoJsonOpcional, responder, rota } from '../../../../servidor/http'
 import { obterPrisma } from '../../../../servidor/prisma'
 import { exigirAtor } from '../../../../servidor/sessao'
 
@@ -22,9 +22,10 @@ export async function DELETE(
     const { id } = await contexto.params
 
     // O motivo é opcional, então o corpo também é: `DELETE` sem corpo é uma
-    // requisição legítima aqui, e tratá-la como erro obrigaria toda tela a
-    // enviar `{}` só para satisfazer o analisador.
-    const corpo = await corpoJson(requisicao).catch(() => ({}))
+    // requisição legítima aqui. `corpoJsonOpcional`, e não `corpoJson` com um
+    // `.catch` — que nunca disparava, porque `corpoJson` não lança: ele
+    // registrava um aviso de "JSON inválido" a cada arquivamento sem motivo.
+    const corpo = await corpoJsonOpcional(requisicao)
 
     return responder(await arquivar(obterPrisma(), id, corpo, ator))
   })

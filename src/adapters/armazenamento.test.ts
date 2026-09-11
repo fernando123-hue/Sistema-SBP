@@ -75,11 +75,13 @@ describe('armazenamento em disco', () => {
 
   it('espalha em subpastas em vez de amontoar tudo numa só', async () => {
     await armazenamento.guardar(PDF, '.pdf')
-    const entradas = await readdir(raiz)
+    // Só diretórios: a raiz também guarda a sentinela da chave, que não é anexo.
+    const pastas = (await readdir(raiz, { withFileTypes: true })).filter((e) => e.isDirectory())
 
     // Diretório único com dezenas de milhares de arquivos fica lento em
     // qualquer sistema de arquivos.
-    expect(entradas[0]!.length).toBe(2)
+    expect(pastas).toHaveLength(1)
+    expect(pastas[0]!.name.length).toBe(2)
   })
 
   it('grava os bytes cifrados no disco e decifra na leitura (H-D19)', async () => {

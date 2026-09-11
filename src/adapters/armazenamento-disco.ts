@@ -1,13 +1,57 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { link, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 
 import { FalhaDeArmazenamento, type ArmazenamentoPort } from '../ports/armazenamento'
 import { ambiente } from '../servidor/ambiente'
+import { registrarLog } from '../servidor/observabilidade'
 
 const CABECALHO_MAGICO = Buffer.from('SBP_ENC_v1!!') // 12 bytes
 const TAMANHO_IV = 12 // 12 bytes para AES-GCM
 const TAMANHO_TAG = 16 // 16 bytes para tag de autenticação
+
+/**
+ * Sentinela da chave: um arquivo na RAIZ, cifrado com a chave em uso, cujo
+ * conteúdo é conhecido. Fica fora das subpastas de dois caracteres, então
+ * nenhuma listagem de anexo (inclusive `scripts/recifrar-anexos.ts`) o conta.
+ */
+const NOME_DA_SENTINELA = '.sentinela-da-chave'
+const CONTEUDO_DA_SENTINELA = Buffer.from('SBP-SENTINELA-DA-CHAVE-v1')
+
+/**
+ * A conferência de cada raiz, por chave, neste processo — a PROMESSA, não só o
+ * resultado. Chaveado pelo `Buffer` que `chaveDeCifragem` memoriza: a mesma
+ * chave é o mesmo objeto.
+ *
+ * Guardar a promessa em voo é o que fecha a corrida que a revisão reproduziu:
+ * duas primeiras gravações simultâneas faziam cada uma a sua conferência, e a
+ * que perdia o `EEXIST` relia a sentinela da outra AINDA SENDO ESCRITA —
+ * acusando "a chave mudou", um 503 falso com a chave certa. Agora a segunda
+ * espera a primeira. Conferência que falhou sai do mapa: a próxima confere de
+ * novo, e falha de novo, se for o caso.
+ */
+const conferencias = new WeakMap<Buffer, Map<string, Promise<void>>>()
+
+/**
+ * Sistemas de arquivos sem link físico respondem com um destes.
+ *
+ * `EPERM` NÃO está aqui, e não é esquecimento. No Windows ele é o balde genérico
+ * de `CreateHardLink`: antivírus segurando o temporário, ACL da pasta, arquivo
+ * em uso. Tratá-lo como "disco sem link" degradava calado para a publicação não
+ * atômica num disco que suporta link — reabrindo a corrida entre processos. Um
+ * `EPERM` sobe como falha, com nome.
+ */
+const SEM_LINK_FISICO = new Set(['ENOTSUP', 'EXDEV', 'ENOSYS', 'EOPNOTSUPP'])
+
+function codigoDoErro(erro: unknown): string | undefined {
+  return erro instanceof Error && 'code' in erro && typeof erro.code === 'string'
+    ? erro.code
+    : undefined
+}
+
+function mensagemDoErro(erro: unknown): string {
+  return erro instanceof Error ? erro.message : String(erro)
+}
 
 /**
  * Armazenamento em disco local, cifrado em repouso (`H-D19`).
@@ -142,12 +186,232 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
       // investiga precisa ler essa hipótese aqui, não descobrir depois.
       throw new FalhaDeArmazenamento(
         'decifrar',
-        `anexo não decifra — chave errada (${'ANEXOS_SECRET'} mudou?) ou arquivo adulterado: ${erro instanceof Error ? erro.message : String(erro)}`,
+        `anexo não decifra — chave errada (${'ANEXOS_SECRET'} mudou?) ou arquivo adulterado: ${mensagemDoErro(erro)}`,
       )
     }
   }
 
+  /**
+   * Confere que a chave em uso é a mesma que cifrou os anexos desta raiz.
+   *
+   * ═══ O QUE ISTO FECHA ═══
+   *
+   * Rotacionar `SESSAO_SECRET` sem fixar `ANEXOS_SECRET` troca a chave dos
+   * anexos. Existiam a variável, o aviso e a mensagem de erro — mas a falha só
+   * ACONTECIA quando alguém abria um documento antigo, meses depois, e pela
+   * pessoa errada. E nesse meio-tempo cada anexo novo era gravado com a chave
+   * nova: a pasta passava a guardar documentos em duas chaves, e nenhuma das
+   * duas abria tudo. Achado 34 da auditoria de 08/09/2026.
+   *
+   * Roda antes da primeira leitura ou gravação de cada processo, para cada
+   * chave: a chave errada falha ANTES de o primeiro documento ser gravado com
+   * ela. Não é "na partida do servidor", e isso é escolha: a documentação do
+   * Next não diz o que acontece quando `instrumentation.register` lança, nem se
+   * ele roda no build — e uma conferência cujo efeito não se prova seria outra
+   * promessa sem prova.
+   *
+   * Instalação antiga, sem sentinela: antes de adotar a chave atual, ela é
+   * testada contra um anexo cifrado que já exista. Sem isso, a primeira
+   * sentinela seria gravada justamente com a chave errada, e passaria a
+   * confirmá-la para sempre.
+   */
+  async conferirChave(): Promise<void> {
+    const raiz = resolve(this.raiz)
+    let porRaiz = conferencias.get(this.chaveCifra)
+    if (!porRaiz) {
+      porRaiz = new Map()
+      conferencias.set(this.chaveCifra, porRaiz)
+    }
+
+    const emCurso = porRaiz.get(raiz)
+    if (emCurso) return emCurso
+
+    const conferencia = this.conferirNoDisco(raiz)
+    porRaiz.set(raiz, conferencia)
+    const mapa = porRaiz
+    conferencia.catch(() => mapa.delete(raiz))
+    return conferencia
+  }
+
+  private async conferirNoDisco(raiz: string): Promise<void> {
+    const caminho = join(raiz, NOME_DA_SENTINELA)
+    const sentinela = await this.lerSeExistir(caminho)
+
+    if (sentinela !== null) {
+      if (!this.sentinelaConfere(sentinela)) throw this.chaveDosAnexosMudou()
+      return
+    }
+
+    await this.conferirContraAnexoExistente(raiz)
+
+    if (await this.publicarSentinela(raiz, caminho)) return
+
+    // Outro PROCESSO publicou primeiro. Com link físico, o que ele expôs já
+    // estava escrito inteiro; a sentinela dele vale — se for da mesma chave.
+    const publicadaPorOutro = await this.lerSeExistir(caminho)
+    if (publicadaPorOutro === null || !this.sentinelaConfere(publicadaPorOutro)) {
+      throw this.chaveDosAnexosMudou()
+    }
+  }
+
+  /**
+   * Publica a sentinela de forma atômica. `true` quando ESTA chamada publicou.
+   *
+   * Grava inteira num arquivo temporário e só então a expõe com `link`, que
+   * falha com `EEXIST` se o destino já existir. Assim ninguém — nem outro
+   * processo — lê uma sentinela pela metade. A promessa compartilhada em
+   * `conferirChave` resolve o caso de dentro do processo; isto, o de fora.
+   *
+   * LIMITE ASSUMIDO: disco sem link físico (alguns compartilhamentos de rede)
+   * cai na gravação direta com `wx`, e aí a corrida entre DOIS PROCESSOS na
+   * primeira gravação de uma pasta nova volta a ser possível. Não entre
+   * requisições do mesmo servidor.
+   */
+  private async publicarSentinela(raiz: string, caminho: string): Promise<boolean> {
+    const cifrada = this.cifrar(CONTEUDO_DA_SENTINELA)
+    const temporario = join(raiz, `${NOME_DA_SENTINELA}.${randomBytes(8).toString('hex')}.tmp`)
+
+    // UM `finally` para as duas etapas. A limpeza morava só na segunda: se a
+    // gravação do temporário criasse o arquivo e falhasse no meio (disco cheio),
+    // o `.tmp` ficava órfão na raiz — um a mais por tentativa, porque a
+    // conferência que falhou volta a ser tentada com outro nome.
+    try {
+      try {
+        await mkdir(raiz, { recursive: true })
+        await writeFile(temporario, cifrada, { flag: 'wx' })
+      } catch (erro) {
+        throw new FalhaDeArmazenamento('conferir-chave', mensagemDoErro(erro))
+      }
+
+      try {
+        await link(temporario, caminho)
+        return true
+      } catch (erro) {
+        const codigo = codigoDoErro(erro)
+        if (codigo === 'EEXIST') return false
+        if (codigo === undefined || !SEM_LINK_FISICO.has(codigo)) {
+          throw new FalhaDeArmazenamento('conferir-chave', mensagemDoErro(erro))
+        }
+        // Degradar é decisão com custo — a corrida entre processos volta a ser
+        // possível —, então fica escrito. Sem este registro, "o disco não tem
+        // link físico" seria uma hipótese presumida, nunca conferível.
+        registrarLog('aviso', 'armazenamento sem link físico: sentinela publicada sem atomicidade entre processos', {
+          codigo,
+          raiz,
+        })
+        // `await`: sem ele o `finally` apagaria o temporário antes de a gravação
+        // alternativa terminar.
+        return await this.publicarSemLink(caminho, cifrada)
+      }
+    } finally {
+      // Falhar ao APAGAR o temporário não pode esconder o erro que trouxe até
+      // aqui — mas também não some: vira aviso.
+      await rm(temporario, { force: true }).catch((erro: unknown) =>
+        registrarLog('aviso', 'temporário da sentinela da chave não foi apagado', {
+          temporario,
+          causa: mensagemDoErro(erro),
+        }),
+      )
+    }
+  }
+
+  private async publicarSemLink(caminho: string, cifrada: Buffer): Promise<boolean> {
+    try {
+      await writeFile(caminho, cifrada, { flag: 'wx' })
+      return true
+    } catch (erro) {
+      if (codigoDoErro(erro) === 'EEXIST') return false
+      throw new FalhaDeArmazenamento('conferir-chave', mensagemDoErro(erro))
+    }
+  }
+
+  /** `null` quando o arquivo não existe; qualquer outra falha sobe com nome. */
+  private async lerSeExistir(caminho: string): Promise<Buffer | null> {
+    try {
+      return await readFile(caminho)
+    } catch (erro) {
+      if (codigoDoErro(erro) === 'ENOENT') return null
+      throw new FalhaDeArmazenamento('conferir-chave', mensagemDoErro(erro))
+    }
+  }
+
+  /**
+   * Entradas de um diretório; vazio quando ele não existe.
+   *
+   * Era `readdir(...).catch(() => [])`, que engolia QUALQUER falha — permissão
+   * negada na raiz virava "pasta vazia", e a chave em uso seria adotada sem ser
+   * conferida contra anexo nenhum. Ausente é resposta legítima; o resto não.
+   */
+  private async listarSeExistir(diretorio: string): Promise<string[]> {
+    try {
+      return await readdir(diretorio)
+    } catch (erro) {
+      if (codigoDoErro(erro) === 'ENOENT') return []
+      throw new FalhaDeArmazenamento('conferir-chave', mensagemDoErro(erro))
+    }
+  }
+
+  /**
+   * As subpastas da raiz — só elas guardam anexo. Pelo TIPO da entrada, não pelo
+   * nome: na raiz também moram a sentinela e os temporários dela, e um arquivo
+   * solto qualquer não pode ser tratado como pasta.
+   */
+  private async listarSubpastas(raiz: string): Promise<string[]> {
+    try {
+      const entradas = await readdir(raiz, { withFileTypes: true })
+      return entradas.filter((entrada) => entrada.isDirectory()).map((entrada) => entrada.name)
+    } catch (erro) {
+      if (codigoDoErro(erro) === 'ENOENT') return []
+      throw new FalhaDeArmazenamento('conferir-chave', mensagemDoErro(erro))
+    }
+  }
+
+  private sentinelaConfere(conteudo: Buffer): boolean {
+    // Sem cabeçalho, `decifrar` devolveria o arquivo como "legado" — e uma
+    // sentinela em texto puro colocada na pasta confirmaria qualquer chave.
+    if (!conteudo.subarray(0, CABECALHO_MAGICO.length).equals(CABECALHO_MAGICO)) return false
+    try {
+      return Buffer.from(this.decifrar(conteudo)).equals(CONTEUDO_DA_SENTINELA)
+    } catch {
+      return false
+    }
+  }
+
+  private async conferirContraAnexoExistente(raiz: string): Promise<void> {
+    const minimo = CABECALHO_MAGICO.length + TAMANHO_IV + TAMANHO_TAG
+
+    for (const pasta of await this.listarSubpastas(raiz)) {
+      // Dentro da subpasta, TUDO é lido: uma pasta no lugar de um arquivo é
+      // estrutura corrompida, e tem de falhar com nome, não ser pulada.
+      for (const nome of await this.listarSeExistir(join(raiz, pasta))) {
+        const conteudo = await this.lerSeExistir(join(raiz, pasta, nome))
+        // Removido entre a listagem e a leitura — a retenção pode estar
+        // expurgando agora. Não diz nada sobre a chave.
+        if (conteudo === null) continue
+        // Legado em texto puro e gravação truncada também não.
+        const cifrado = conteudo.subarray(0, CABECALHO_MAGICO.length).equals(CABECALHO_MAGICO)
+        if (!cifrado || conteudo.length < minimo) continue
+        try {
+          this.decifrar(conteudo)
+          return
+        } catch {
+          throw this.chaveDosAnexosMudou()
+        }
+      }
+    }
+  }
+
+  private chaveDosAnexosMudou(): FalhaDeArmazenamento {
+    return new FalhaDeArmazenamento(
+      'conferir-chave',
+      'a chave em uso NÃO é a que cifrou os anexos desta pasta — ANEXOS_SECRET (ou SESSAO_SECRET, ' +
+        'quando ANEXOS_SECRET não está definido) mudou. Nada foi lido nem gravado. Volte a chave ' +
+        'anterior, ou fixe ANEXOS_SECRET com o valor antigo antes de trocar o segredo de sessão.',
+    )
+  }
+
   async guardar(bytes: Uint8Array, extensao: string): Promise<string> {
+    await this.conferirChave()
     const sorteio = randomBytes(16).toString('hex')
     const seguraExtensao = /^\.[a-z0-9]{1,10}$/i.test(extensao) ? extensao.toLowerCase() : ''
     const chave = join(sorteio.slice(0, 2), `${sorteio}${seguraExtensao}`)
@@ -159,13 +423,16 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
       // uma colisão de chave, que aqui significaria defeito no sorteio.
       await writeFile(caminho, this.cifrar(bytes), { flag: 'wx' })
     } catch (erro) {
-      throw new FalhaDeArmazenamento('guardar', erro instanceof Error ? erro.message : String(erro))
+      throw new FalhaDeArmazenamento('guardar', mensagemDoErro(erro))
     }
 
     return chave
   }
 
   async ler(chave: string): Promise<Uint8Array | null> {
+    // Fora do `try`: chave trocada não é "arquivo ausente", e o `catch` abaixo
+    // devolveria `null` para um ENOENT qualquer do caminho.
+    await this.conferirChave()
     try {
       const conteudo = await readFile(this.caminhoDe(chave))
       return this.decifrar(conteudo)
@@ -176,8 +443,8 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
       // Ausente é resposta legítima: o arquivo pode ter sido expurgado pela
       // retenção. Qualquer OUTRA falha (permissão, disco) precisa subir alto,
       // porque significa que o arquivo existe e não conseguimos entregá-lo.
-      if (erro instanceof Error && 'code' in erro && erro.code === 'ENOENT') return null
-      throw new FalhaDeArmazenamento('ler', erro instanceof Error ? erro.message : String(erro))
+      if (codigoDoErro(erro) === 'ENOENT') return null
+      throw new FalhaDeArmazenamento('ler', mensagemDoErro(erro))
     }
   }
 
@@ -185,8 +452,7 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
     try {
       await rm(this.caminhoDe(chave), { force: true })
     } catch (erro) {
-      throw new FalhaDeArmazenamento('remover', erro instanceof Error ? erro.message : String(erro))
+      throw new FalhaDeArmazenamento('remover', mensagemDoErro(erro))
     }
   }
 }
-

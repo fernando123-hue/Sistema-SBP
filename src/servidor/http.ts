@@ -322,3 +322,29 @@ export async function corpoJson(requisicao: Request): Promise<unknown> {
     return {}
   }
 }
+
+/**
+ * Corpo JSON OPCIONAL: ausente vira `{}`, sem aviso.
+ *
+ * `DELETE /api/notas/:id` aceita um motivo que não é obrigatório. Com
+ * `corpoJson`, todo arquivamento sem corpo — o caso comum — gravava "corpo da
+ * requisição não é JSON válido": um aviso por operação legítima, que ensina a
+ * ignorar justamente o aviso do dia em que o corpo chegar quebrado de verdade.
+ * Achado 21 da auditoria de 08/09/2026.
+ *
+ * Corpo PRESENTE e ilegível continua registrado, igual a `corpoJson`.
+ */
+export async function corpoJsonOpcional(requisicao: Request): Promise<unknown> {
+  const texto = await requisicao.text()
+  if (texto.trim() === '') return {}
+
+  try {
+    return JSON.parse(texto) as unknown
+  } catch (erro) {
+    registrarLog('aviso', 'corpo da requisição não é JSON válido', {
+      caminho: new URL(requisicao.url).pathname,
+      causa: mensagemDoErro(erro),
+    })
+    return {}
+  }
+}

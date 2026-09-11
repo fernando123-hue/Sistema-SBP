@@ -182,11 +182,23 @@ export function NotasDoSetor({
     }
   }
 
+  /**
+   * Por que a nota deixou de valer — opcional, e agora de fato gravável.
+   *
+   * O esquema aceitava, o serviço gravava e o tipo levava à tela, mas a tela
+   * nunca mandava: `motivoArquivo` era nulo em 100% das linhas, por construção.
+   * Campo que só existe no tipo é a doença que este sistema veio curar. Achado
+   * 21 da auditoria de 08/09/2026.
+   */
+  const [motivoDoArquivo, definirMotivoDoArquivo] = useState('')
+
   async function arquivar(nota: NotaDoSetor) {
+    const motivo = motivoDoArquivo.trim()
     try {
       definirErro(null)
       definirConfirmando(null)
-      await api.remover(`/notas/${nota.id}`)
+      await api.remover(`/notas/${nota.id}`, { motivo: motivo === '' ? null : motivo })
+      definirMotivoDoArquivo('')
       await carregar()
     } catch (falha) {
       definirErro(mensagemDoErro(falha))
@@ -285,24 +297,52 @@ export function NotasDoSetor({
                   </span>
                   <span>{nota.autorNome}</span>
                   <span>{comoData(nota.criadoEm)}</span>
-                  {podeArquivar(perfil, nota) ? (
-                    // Dois cliques, sem caixa de diálogo. Arquivar tira a nota
-                    // da vista de todo o setor e não há desfazer na interface —
-                    // um clique acidental num link de uma linha custaria a
-                    // memória de outra pessoa.
+                  {!podeArquivar(perfil, nota) ? null : confirmando === nota.id ? (
+                    // Dois passos, sem caixa de diálogo: arquivar tira a nota da
+                    // vista de todo o setor e não há desfazer na interface. O
+                    // segundo passo pede o PORQUÊ — é o que a próxima pessoa a
+                    // esbarrar no mesmo problema vai precisar ler. Opcional de
+                    // propósito: obrigar a escrever mataria o arquivamento, como
+                    // obrigar a classificar mataria a captura (`A14(d)`).
+                    <span className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                      <input
+                        value={motivoDoArquivo}
+                        onChange={(evento) => definirMotivoDoArquivo(evento.target.value)}
+                        maxLength={500}
+                        placeholder="Por quê? (opcional)"
+                        aria-label="Por que esta nota deixou de valer (opcional)"
+                        className="min-h-9 min-w-0 flex-1 rounded-md border border-borda-forte bg-papel-fundo px-2 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void arquivar(nota)}
+                        className="min-h-9 underline decoration-dotted underline-offset-2 hover:text-tinta"
+                      >
+                        Confirmar: tirar da vista
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          definirConfirmando(null)
+                          definirMotivoDoArquivo('')
+                        }}
+                        className="min-h-9 hover:text-tinta"
+                      >
+                        cancelar
+                      </button>
+                    </span>
+                  ) : (
                     <button
                       type="button"
-                      onClick={() =>
-                        confirmando === nota.id
-                          ? void arquivar(nota)
-                          : definirConfirmando(nota.id)
-                      }
-                      onBlur={() => definirConfirmando((atual) => (atual === nota.id ? null : atual))}
+                      onClick={() => {
+                        definirMotivoDoArquivo('')
+                        definirConfirmando(nota.id)
+                      }}
                       className="ml-auto min-h-9 underline decoration-dotted underline-offset-2 hover:text-tinta"
                     >
-                      {confirmando === nota.id ? 'Confirmar: tirar da vista' : 'Não vale mais'}
+                      Não vale mais
                     </button>
-                  ) : null}
+                  )}
                 </div>
               </li>
             )

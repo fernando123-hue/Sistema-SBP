@@ -126,7 +126,9 @@ export const api = {
   atualizar: <T,>(caminho: string, corpo?: unknown) => requisitar<T>(caminho, { metodo: 'PUT', corpo }),
   /** `PATCH`: muda UM campo, sem afirmar nada sobre o resto do registro. */
   ajustar: <T,>(caminho: string, corpo?: unknown) => requisitar<T>(caminho, { metodo: 'PATCH', corpo }),
-  remover: <T,>(caminho: string) => requisitar<T>(caminho, { metodo: 'DELETE' }),
+  /** Corpo opcional: arquivar nota leva o motivo; sair e cancelar afastamento, não. */
+  remover: <T,>(caminho: string, corpo?: unknown) =>
+    requisitar<T>(caminho, { metodo: 'DELETE', corpo }),
 }
 
 export function mensagemDoErro(erro: unknown): string {
