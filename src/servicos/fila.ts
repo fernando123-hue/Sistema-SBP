@@ -167,6 +167,7 @@ export async function transferir(
   await banco.$transaction(async (tx) => {
     const atual = await tx.atribuicao.findFirst({
       where: { itemId: entrada.itemId, ativa: true },
+      include: { item: { select: { status: true } } },
     })
     if (!atual) throw new ErroDeNegocio(`Item "${entrada.itemId}" não tem responsável ativo.`)
 
@@ -176,7 +177,50 @@ export async function transferir(
       exigirPapel(ator, 'transferir item de outra pessoa', 'operador', 'gestor')
     }
 
+    // ITEM CONCLUÍDO NÃO TROCA DE DONO.
+    //
+    // `concluir` grava a `Execucao` e deixa a atribuição ativa, então este
+    // caminho aceitava de bom grado transferir trabalho já feito. O resultado
+    // não aparecia em fila nenhuma (`minhaFila` só lista `distribuido` e
+    // `em_andamento`) e estragava duas coisas de uma vez: quem fez perdia 1 em
+    // "Atribuídos" no painel, e quem recebeu ganhava uma linha em que
+    // atribuídos, concluídos e pendentes deixam de fechar. A `Atribuicao`
+    // vigente passava a dizer que o dono é quem não executou, contradizendo a
+    // `Execucao` — duas tabelas afirmando coisas diferentes sobre o mesmo fato.
+    //
+    // `devolver` já tinha esta trava; `transferir`, não.
+    if (atual.item.status === 'concluido') {
+      throw new ErroDeNegocio('Item já concluído não pode ser transferido.')
+    }
+
     if (atual.colaboradorId === entrada.paraColaboradorId) return
+
+    // O DESTINO PRECISA PODER ABRIR A FILA DELE.
+    //
+    // Nada conferia isto. A chave estrangeira recusa um id inventado, mas
+    // aceita de bom grado o id de alguém DESATIVADO — e `perfilAtual` recusa a
+    // sessão de quem está inativo, então o item ia parar numa fila que a pessoa
+    // não consegue mais abrir. Ninguém recebe erro, ninguém recebe aviso, e o
+    // item some do mundo por um caminho que o sistema oferece na tela.
+    //
+    // É a doença que este sistema existe para curar, reconstruída dentro dele.
+    //
+    // Só a ATIVAÇÃO é conferida aqui. Transferir para quem está afastado é
+    // outra conversa — pode ser deliberado ("ela volta amanhã e é o caso dela")
+    // e a resposta é do dono do processo, não do código. Ver `DECISOES.md § C`.
+    const destino = await tx.colaborador.findUnique({
+      where: { id: entrada.paraColaboradorId },
+      select: { id: true, nome: true, ativo: true },
+    })
+    if (!destino) {
+      throw new ErroDeNegocio(`Colaborador "${entrada.paraColaboradorId}" não existe.`)
+    }
+    if (!destino.ativo) {
+      throw new ErroDeNegocio(
+        `${destino.nome} está com o acesso desativado e não consegue abrir a própria fila. ` +
+          'Escolha outra pessoa, ou peça ao gestor para reativar o acesso antes de transferir.',
+      )
+    }
 
     // `ativa: null` libera o índice único `(itemId, ativa)` para a nova
     // atribuição — a garantia de responsável único é do banco, não do código.

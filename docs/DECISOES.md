@@ -67,7 +67,7 @@ Registrar não é implementar, e a distância precisa ficar explícita — senã
 | A7 — prioridade por idade | ✅ **Completo em 06/09/2026.** *Minha Fila* ordena pelo item mais antigo e o painel mostra há quantos dias o mais velho está parado |
 | A8 — lembrete semanal | ❌ Backlog declarado. Depende de capacidade de **envio**, que o A5 adiou |
 | A9 — janela deslizante | ✅ Implementada, com 30 dias (ver acima) |
-| A10 — `Afastamento` | ✅ **Implementado em 06/09/2026.** Entidade, migração, exclusão automática do rateio, tela no Acesso e marcação na tela de plantão. O crédito congela por consequência, não por mecanismo. **Falta só a exibição no Painel**, que virou pergunta de privacidade (§ H.4, item 9) |
+| A10 — `Afastamento` | ✅ **Completo em 06/09/2026.** Entidade, migração, exclusão automática do rateio, tela no Acesso, marcação na tela de plantão e a linha "Fora hoje" no Painel, com a redação por papel do `A13`. O crédito congela por consequência, não por mecanismo |
 | A11 — peso por categoria | ✅ **Implementado em 06/09/2026.** `DOC = 4`, `FICHA = 1,75`, resto `1`. Ver *Peso e limiar por categoria* abaixo |
 | A12 — limiar por categoria | ✅ **Implementado em 06/09/2026.** `DOC = 0,95`, `FICHA = 0,90`, resto `0,85` |
 
@@ -196,7 +196,7 @@ Formato: hipótese · motivo · impacto · status.
 **Hipótese:** `peso = 1` para todas as categorias.
 **Motivo:** o único modelo de esforço do arquivo é `documentos = 7 × inscrições`, e pertence à frente `TÍTULOS`, fora da V1.
 **Impacto:** o balanceamento equaliza contagem, não esforço real. Um `DOC` pesa igual a um `E-MAIL`.
-**Status:** ✅ **respondida em 26/08/2026 (ver A11)** — não é igual: `DOC = 4`, `FICHA = 1,75`, resto `1`. Junto veio o cuidado por categoria (A12). ⚠️ **A resposta ainda não está no código:** `PESO_PADRAO = 1` para todas em `src/core/config.ts`. A hipótese deixou de valer; o comportamento dela ainda é o que roda. Ver *Reconciliação: A4–A12* em § A.
+**Status:** ✅ **encerrada.** Respondida em 26/08/2026 (A11) e **implementada em 06/09/2026**: `src/core/config.ts` traz `DOC = 4`, `FICHA = 1,75`, resto `1`, com migração aplicada e `src/servicos/peso-e-limiar.test.ts` cobrindo. O aviso de "ainda não está no código" ficou de pé por dois dias depois de deixar de ser verdade, contradizendo o § A da mesma página — corrigido em 08/09/2026 pela auditoria de documentação.
 
 ### AT-03 — `INADIMP.` e `ISENTO`
 
@@ -265,6 +265,40 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 **Impacto sobre a carga:** nenhum. Fragmentar não perde item nem quebra conservação — só produz grupos menores.
 
 **Status:** ⏳ provisório. Duas evoluções possíveis quando houver dado real: (a) tela para o operador **fundir** duas ligas, que é o caminho seguro; (b) sugestão de possível duplicata **para revisão humana**, nunca fusão automática. Nenhuma das duas foi implementada.
+
+### AT-11 — Prazo de retenção da observação de afastamento *(08/09/2026)*
+
+**Hipótese:** 90 dias depois de a ausência terminar, a observação do afastamento é redigida para `[EXPURGADO LGPD]`. O afastamento, o tipo e as datas ficam.
+
+**Motivo:** a rotina de expurgo passou a existir (`src/servicos/expurgo-lgpd.ts`, `npm run db:expurgar`), e uma rotina precisa de um número para rodar. O número **não** é resposta ao `§ H.4` item 12 — que é da chefia do setor e continua aberto, e continua sendo o item mais urgente daquela lista. É andaime: a capacidade existe antes da decisão, para que responder a pergunta seja mudar uma constante e não construir um sistema.
+
+**Impacto:** enquanto o número for hipótese, a rotina **não é agendada** — não há cron, gatilho nem rota que a chame. Roda só por comando de quem executa. Ligá-la a um agendador antes da resposta transformaria hipótese em regra em silêncio.
+
+**O que a rotina NÃO alcança:** `EmailConteudo`, bytes de anexo, `Item.payload` e `Revisao` — os itens 10 e 11 do `§ H.4`, também sem resposta. O nome do arquivo fala de LGPD; o alcance é um campo.
+
+**Status:** ⏳ hipótese registrada, capacidade construída, prazo aguardando a chefia.
+
+### AT-12 — Anexo em texto puro é lido como legado *(08/09/2026)*
+
+**Hipótese:** um arquivo sem o cabeçalho `SBP_ENC_v1!!` foi gravado antes de a cifragem existir, e é lido em texto puro.
+
+**Motivo:** a cifragem (`H-D19`) entrou sem rotina de migração. Recusar o que não tem cabeçalho apagaria da operação todo anexo anterior à versão, sem que ninguém tivesse decidido isso.
+
+**Impacto:** enquanto o ramo existir, um arquivo em texto puro colocado no diretório de armazenamento é aceito como legítimo. Quem já pode escrever ali, porém, também poderia sobrescrever um cifrado — o ganho do atacante é pequeno, e o custo de fechar sem migração é perder documento.
+
+**O que já não é mais assim:** arquivo **com** cabeçalho e curto demais para conter IV e tag deixou de cair neste ramo. Era gravação interrompida sendo devolvida como documento — degradação em silêncio dentro do único adapter que trata anexo. Agora falha alto.
+
+**Status:** ⏳ a rotina de migração já existe (`npm run anexos:recifrar`). O ramo sai quando ela for EXECUTADA em cada instalação; aí a ausência do cabeçalho passa a ser erro.
+
+### AT-13 — A chave dos anexos cai para `SESSAO_SECRET` quando não é declarada *(08/09/2026)*
+
+**Hipótese:** `ANEXOS_SECRET` vazio significa "usa `SESSAO_SECRET`".
+
+**Motivo:** exigir a variável nova quebraria toda instalação existente na subida, e a cifragem entrou sem migração.
+
+**Impacto — e é o que importa:** os dois segredos têm ciclos de vida **opostos**. Rotacionar o de sessão é rotina de segurança e custa uma reentrada por pessoa; rotacionar o dos anexos torna **ilegível todo documento já gravado**, porque não existe recifragem. Com a queda ativa, o gesto seguro executa o gesto destrutivo junto. O que existe hoje contra isso: a variável separada, o aviso no `.env.example`, a mensagem de erro que nomeia `ANEXOS_SECRET` como primeira hipótese, e um teste que prova as duas coisas.
+
+**Status:** ⏳ a queda sai quando houver rotina de recifragem — e aí `ANEXOS_SECRET` passa a ser obrigatória como `SESSAO_SECRET` já é.
 
 ---
 
@@ -382,7 +416,7 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 | ~~H-D4~~ | ~~`INADIMP`/`ISENTO` sem caminho de criação manual (`POST /api/itens`)~~ | **RESOLVIDO em 28/08/2026** — `POST /api/itens` e o formulário na Caixa de entrada. Seção *Registro manual de item* abaixo |
 | ~~H-D5~~ | ~~Painel sem recorte de data e com definição própria de "pendente"~~ | **RESOLVIDO em 28/08/2026** — `?de=&ate=`, colunas mapeadas uma a uma para as da planilha, e o carry-over deixa de ser digitado. Seção *Painel com recorte de período* abaixo |
 | H-D6 | Escopo do livro-razão global antes de a frente `TÍTULOS` entrar | Acrescentar escopo a um razão já acumulado exige recomputar histórico |
-| H-D7 | Contratos de API duplicados à mão nas telas — já divergiram (`emAndamento` sumiu; `Date` vs. string) | O legado vai consumir sem esquema contra o qual programar |
+| H-D7 | ⚠️ **Estreitada em 08/09/2026, não fechada.** As seis formas de resposta agora são declaradas uma vez em `core/tipos.ts`; serviço e tela olham para a mesma declaração, e `NaRede<T>` expressa o que o JSON faz com `Date`. Provado: renomear um campo quebra a compilação dos dois lados. **O que falta:** nada prova que a ROTA devolve a forma declarada — `api.buscar<T>()` acredita no que o tipo diz. Fechar exige validar a resposta no cliente contra o mesmo Zod | O legado vai consumir sem esquema contra o qual programar |
 | H-D8 | N+1 em `carregarElegiveis` e `painel.porPessoa` | Irrelevante com 4–7 pessoas; vira problema com equipe grande ou PostgreSQL remoto |
 | H-D9 | Rodada com `Q = 0` não é registrada, contrariando a Spec | Responderia "por que não houve distribuição de LIGA no dia 12?" |
 | H-D10 | Rodada compensatória (correção de lançamento) não existe como conceito | Acrescentar a coluna depois exige backfill |
@@ -394,7 +428,7 @@ Oito agentes especializados auditaram o sistema em paralelo: arquitetura, segura
 | ~~H-D16~~ | ~~`X-Forwarded-For` aceito sem proxy confiável~~ | **RESOLVIDO em 27/08/2026** — `PROXIES_CONFIAVEIS` declara os saltos confiáveis; sem eles o código admite que não sabe a origem em vez de fingir. Seção *Origem da requisição e proxy confiável* abaixo. Publicar fora da rede local ainda exige ajustar o número |
 | ~~H-D17~~ | ~~Sem cadastro de colaborador pela tela~~ | **RESOLVIDO em 27/08/2026** — cadastro e habilitação na tela de Acesso, entregues juntos. Seção *Cadastro de pessoa e habilitação* abaixo |
 | H-D18 | Agregados de métrica não são materializados | **Reclassificado em 27/08/2026.** Nenhuma métrica lê linha expurgável — todas saem de `Item`, `Atribuicao`, `SaldoCarga` e `Revisao`, e o invariante 11 proíbe apagar dado operacional. Deixou de ser pré-requisito da retenção; continua valendo por recorte histórico barato e por segurança contra uma retenção futura mais ampla |
-| H-D19 | Bytes de anexo sem criptografia em repouso e sem controle de acesso próprio | O diretório fica fora do repositório e não há rota que sirva arquivo. Antes de documento real de associado entrar: cifrar em repouso e decidir quem pode baixar o quê |
+| H-D19 | ⚠️ **Metade resolvida em 08/09/2026.** Os bytes vão para o disco em AES-256-GCM (chave derivada de `ANEXOS_SECRET`, com queda para `SESSAO_SECRET` — ver `AT-13`); arquivo adulterado ou truncado falha alto. **O que falta:** o controle de acesso — continua não havendo rota que sirva arquivo, então "quem pode baixar o quê" segue sem resposta, e é a metade que precisa existir antes de documento real entrar. A rotina de migração dos anexos em texto puro existe desde 08/09/2026 (`npm run anexos:recifrar`, com `anexos:conferir` para medir) e **não foi executada**: os 16 anexos do ambiente de desenvolvimento seguem legíveis com `cat`. Falta rodar, não escrever | O diretório fica fora do repositório e não há rota que sirva arquivo |
 
 ### H.3 Adequado como está
 
@@ -421,7 +455,7 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 **Itens 10 a 14 levantados em 07/09/2026**, com a intenção de separar retenção de dado bruto de retenção de memória operacional, e com a proposta de feedback da equipe. Ver *Memória operacional e feedback da equipe — 07/09/2026*. Os itens 10 a 13 estão na folha de decisão preparada para a chefia do setor; o 14 é do dono do negócio.
 
-10. **Por quanto tempo fica o corpo do e-mail?** `EmailConteudo` (remetente, assunto, corpo) e os bytes de anexo são expurgáveis por construção, e **nada os expurga hoje** — não existe rotina de retenção no código, só a estrutura que a permite. Sem prazo definido, o dado bruto acumula para sempre por omissão, que é o pior dos mundos: nem decidido, nem defensável. Decisão de operação + DPO.
+10. **Por quanto tempo fica o corpo do e-mail?** `EmailConteudo` (remetente, assunto, corpo) e os bytes de anexo são expurgáveis por construção, e **nada os expurga hoje**: a rotina que entrou em 08/09/2026 (`npm run db:expurgar`) alcança só a observação de afastamento, e o corpo do e-mail e os anexos continuam sem prazo e sem expurgo. Sem prazo definido, o dado bruto acumula para sempre por omissão, que é o pior dos mundos: nem decidido, nem defensável. Decisão de operação + DPO.
 
 11. **Por quanto tempo fica o que a IA extraiu?** Camada nova, que não estava separada até aqui. `Item.titulo`, `Item.payload`, `Revisao.sugestaoIa` e `Revisao.valorFinal` são de retenção longa hoje e carregam texto extraído do corpo — `payload.campos` é `record<string, string>` de até 2000 caracteres por valor, ou seja, um saco aberto onde CPF, CRM, nome e e-mail de associado caem naturalmente. A pergunta operacional que define o prazo: **até quando a equipe precisa reabrir um item antigo e ver o que foi extraído dele?**
 
@@ -1594,3 +1628,280 @@ As validações foram exercitadas pela rota real: fim anterior ao início e sobr
 Registrado, **não corrigido**: afrouxar a CSP em desenvolvimento é mexer numa defesa que está funcionando, e a decisão de como fazer isso (variar por `NODE_ENV`) merece ser própria, não carona numa entrega de outra coisa. Enquanto isso, verificação de tela neste projeto tende a precisar do caminho por HTTP.
 
 Testes: 295 → **309**.
+
+---
+
+## Fechamento e maturação — 07/09/2026
+
+Etapa pedida como *"deixar o projeto no melhor estado possível dentro do escopo
+atual"*, com segurança como prioridade máxima. Auditoria de dez dimensões em
+paralelo sobre o projeto inteiro — não só sobre as últimas alterações —, seguida
+de correção, verificação e revisão.
+
+**Vinte e nove achados levantados; catorze corrigidos; o restante ou já estava
+registrado como dívida, ou é decisão de operação e virou pergunta.** Cada
+correção foi verificada revertendo-a e vendo o teste falhar — o método vale
+registro porque a primeira leva de testes passou verde contra o código
+defeituoso, pelo motivo descrito em *O ZodError que não era um Error*, abaixo.
+
+Testes: 403 → **470**.
+
+### A15 — o assistente de ajuda
+
+O sistema não tinha ajuda nenhuma. Quem não sabia por que um item foi para
+revisão, ou qual a diferença entre devolver e transferir, perguntava a um colega
+— e a resposta dependia de o colega saber.
+
+**O que ele é:** responde dúvidas sobre COMO O SISTEMA FUNCIONA, a partir de um
+manual escrito por nós (`core/assistente/conhecimento.ts`), em vinte verbetes.
+
+**O que ele não recebe, e por quê:**
+
+- **Nenhum conteúdo de e-mail.** Corpo de e-mail é hostil por hipótese
+  (invariante 6). Alimentá-lo ao assistente transformaria uma injeção plantada
+  num e-mail em ataque persistente — o que o invariante 12 proíbe.
+- **Nenhum dado pessoal.** O que sai da casa é o manual, escrito por nós, mais a
+  pergunta de quem está logado. Nem o nome de quem pergunta vai ao modelo: ele
+  não muda a resposta, e o teste de admissão de todo campo é *quem pergunta já
+  vê isso na tela dela?*
+- **Nenhuma nota do setor.** É a tentação óbvia de contexto, e `§ A14(c)`
+  condiciona esse passo a uma decisão do dono, depois de medir o modelo real.
+
+**Autorização em código, duas vezes, nunca por instrução.** Cada verbete declara
+quem pode vê-lo, e a filtragem roda ANTES de o prompt existir — em vez de mandar
+o verbete de gestor com um pedido para o modelo não contar, que é autorização
+por boa vontade. Depois, a tela sugerida pelo modelo é conferida contra o papel
+de novo, porque a primeira garantia depende de o modelo respeitar o material.
+
+**O retorno não tem campo de ação, e não é omissão a corrigir depois.** Um
+assistente capaz de devolver `{acao: 'distribuir'}` seria um caminho para operar
+o sistema por texto livre, sujeito a quem escrever a pergunta mais persuasiva.
+
+**A pergunta de um colega passa pelas três camadas contra injeção.** Não por
+desconfiança da equipe: a pergunta que a operação vai fazer é *"o que quer dizer
+este e-mail?"*, com o e-mail colado junto — e nesse instante texto de terceiro
+entra no prompt pela mão de alguém de dentro, sem má intenção nenhuma.
+
+**Sem fornecedor como premissa.** Usa a mesma fronteira da interpretação, pelo
+mesmo `IA_ADAPTER` — uma variável só para as duas tarefas, porque a pergunta que
+ela responde é *qual empresa processa o texto que sai desta casa*, e essa
+autorização é por fornecedor, não por funcionalidade. Com `mock` (o padrão)
+responde uma busca no manual: determinística, sem rede, incapaz de inventar
+porque só sabe repetir. A tela sempre mostra quem respondeu.
+
+### As duas falhas mais graves
+
+**1. Texto de fora voltava como INSTRUÇÃO na segunda tentativa ao modelo.**
+
+A repetição montava as instruções com `erro.message` cru. `ZodError.message` é
+`JSON.stringify(issues)`, e os issues carregam texto vindo de fora por duas
+rotas independentes, ambas reproduzidas: o adapter Gemini fabricava um erro com
+`input: <resposta crua do modelo>` (até 16 mil tokens derivados do corpo do
+e-mail, com nome e CPF); e — sem depender de fornecedor — uma chave de `campos`
+acima de 60 caracteres entra literal no `path` da issue `invalid_key`.
+
+Nos dois casos o texto do remetente terminava colado na região de INSTRUÇÕES,
+FORA de `<<<CONTEUDO_NAO_CONFIAVEL>>>`, seguido de *"devolva o mesmo conteúdo
+corrigido"*. Uma injeção que a delimitação continha saía do bloco de dados e
+voltava com autoridade de sistema. Invariantes 6 e 12 — e 11 no caminho do log,
+porque `redigir()` redige por NOME de chave e ali tudo era um blob sob `causa`.
+
+Corrigido com `core/seguranca/resumo-de-validacao.ts`: o modelo recebe o CÓDIGO
+do defeito e o caminho até o campo, com todo segmento que ele possa ter
+escolhido virando `<chave-recusada>`. Nunca `input`, nunca a mensagem crua.
+
+**2. A liga era partida entre pessoas na gravação.**
+
+O motor decidia certo — `alocarPorGrupos` entrega cada lote inteiro a alguém —,
+mas devolvia só CONTAGENS, e quem gravava repartia os itens por POSIÇÃO numa
+lista ordenada por `criadoEm`. Com duas ligas cujos e-mails chegaram
+intercalados, a fatia cortava no meio de uma liga.
+
+E nada acusava: a soma continuava fechando, então a trava de conservação
+passava; a rodada gravava a alocação correta EM NÚMERO; e a liga partida só
+aparecia na mesa de quem atendia o associado. É o `A4` sendo anulado na última
+curva, com todos os indicadores verdes.
+
+`ResultadoRodada.atribuicaoDeGrupos` leva agora a decisão por lote até quem
+grava. Junto veio a segunda metade do mesmo defeito: **desdobrar uma revisão
+criava itens sem `ligaId`** — o caso canônico do `A4`, "um e-mail lista trinta
+ligantes" — e os trinta viravam trinta lotes de um.
+
+### O alarme que virava ruído
+
+`conferirConservacao` contava só atribuições ATIVAS. Mas `devolver` encerra a
+atribuição e NÃO cria substituta — o item fica sem dono até a próxima rodada
+(`AT-07`). Bastava alguém devolver um item para o painel dizer, todo dia e para
+sempre, que os números não são confiáveis.
+
+Um alarme que dispara na operação normal deixa de ser alarme: quem opera aprende
+a ignorá-lo, e no dia de uma violação de verdade ninguém olha. Passou a contar
+itens distintos por rodada, que é imune tanto à devolução quanto à transferência
+— e um teste garante que ele AINDA acusa quando uma atribuição some de verdade.
+
+### O ZodError que não era um `Error`
+
+Os primeiros testes escritos para a falha nº 1 passaram VERDES contra o código
+defeituoso. O motivo: **no zod 4, um `new z.ZodError([...])` construído à mão
+não é `instanceof Error`** — só o erro que o `.parse()` lança é. Os dubles de
+teste faziam `if (atual instanceof Error) throw atual` e portanto DEVOLVIAM o
+erro como se fosse a resposta do modelo, exercitando outro caminho.
+
+Fica registrado porque a lição é geral: **um teste que passa não prova nada até
+alguém verificar que ele falha contra o defeito.** Desde então, cada correção
+desta etapa foi verificada revertendo-a.
+
+### Outras correções
+
+| O quê | Por que importava |
+|---|---|
+| **Enumeração de contas pelo relógio** | `gastarTempoDeConferencia` igualava o custo do `scrypt`, e só ele. O ramo de conta ativa com senha errada faz duas escritas a mais depois do hash — medido: 23,5 ms de diferença mediana, suficiente para varrer quais e-mails têm conta. Agora toda recusa espera até um piso comum |
+| **"Sair" não revogava nada** | O cookie continuava válido por até 12 h. Entra `sessoesInvalidasAntes`, conferido na mesma consulta que `perfilAtual` já fazia |
+| **O botão "sair" engolia a falha** | Sem `try`, a navegação nunca acontecia e a tela ficava idêntica: a pessoa ia embora com a sessão de pé. `senha/page.tsx` tinha o oposto e igualmente ruim — `.catch(() => null)` navegava mesmo quando falhava |
+| **Distribuir fora de ordem apagava crédito** | `creditoGlobal` é total corrido; a rodada retroativa não propagava para os dias seguintes, e seu efeito sumia do rateio. Corrigido propagando — proibir seria proibir operação legítima |
+| **Anexo órfão no disco** | Bytes gravados antes da transação, sem desfazer. Transação abortada deixava arquivo que o expurgo por retenção nunca alcança, e cada retentativa gravava outra cópia |
+| **`2026-13-01` era data válida** | `DataIsoSchema` conferia formato, não calendário — e essa string é chave primária de `TravaDeDistribuicao` |
+| **Seis erros viravam "Erro interno"** | Classes de fronteira externa com mensagem escrita para humano estendiam `Error` puro. Entra `ErroOperacional`, com `statusHttp` e `mensagemPublica` separada de `message` |
+| **A camada 3 não removia o que a 2 detectava** | `delimitar()` removia marcador por string exata; a detecção reconhece variantes com outra caixa e espaços |
+| **Acerto da IA não separado por modelo** | A pergunta que justifica ter dois fornecedores era impossível de responder na tela |
+| **CSP quebrava a verificação de tela** | `unsafe-eval` agora só em desenvolvimento. Era a "armadilha conhecida" do `ESTADO`; foi ela que permitiu encontrar os dois itens de interface desta lista |
+| **Desempate por grupo com dado obsoleto** | A projeção atualizava `recebidoDia` e esquecia `recebidoPeriodo`, que é critério ANTERIOR |
+| **"Em revisão" mentia** | O painel filtrava linhas por recorte de período e somava uma coluna de estado atual |
+| **Motivo de arquivamento ia para a trilha** | Texto expurgável copiado para tabela append-only (invariante 11) |
+| **`SESSAO_SECRET` falhava tarde** | O sistema subia sem ele e quebrava na primeira entrada, depois de já ter gravado `entrada_autorizada` |
+
+### A cota gratuita do Gemini, medida
+
+O `ESTADO` descrevia `npm run ia:experimentar` como *"grátis, é só repetir"*. Não
+é: a cota é de **20 requisições por dia, por modelo**
+(`GenerateRequestsPerDayPerProjectPerModel-FreeTier`), e uma rodada da bateria
+gasta de 4 a 8. Dá cerca de três rodadas por dia, por modelo.
+
+A cota ser POR MODELO é a saída: a mesma bateria contra modelos diferentes tem
+orçamentos independentes. Medido em 07/09/2026, quatro casos sintéticos:
+
+| Modelo | Casos corretos | Latência |
+|---|---|---|
+| `gemini-3.6-flash` *(padrão do adapter)* | 2 de 12 tentativas — resto `503` | 54–63 s |
+| `gemini-3.5-flash` | 7 de 8 | 5–11 s |
+| `gemini-3.1-flash-lite` | 4 de 4 | 1–3 s |
+
+**A injeção foi recusada pelos três**, com os cinco sinais das duas defesas em
+todos. O `modeloPadrao` do adapter continua `gemini-3.6-flash` porque trocá-lo
+muda que modelo processa o conteúdo por omissão — é decisão do dono, não ajuste.
+
+### O que NÃO foi alterado, e virou pergunta
+
+Três achados eram decisões de operação, não defeitos. Nenhum foi alterado.
+
+15. **Transferir para quem está afastado.** A validação nova recusa destino
+    DESATIVADO — item numa fila que ninguém abre é perda silenciosa. Mas
+    transferir para quem está de férias pode ser deliberado (*"ela volta amanhã
+    e é o caso dela"*), e a resposta é do dono do processo.
+16. **E-mail suspeito que gera zero itens.** Sem item não existe `Revisao` para
+    criar, então ele não entra em fila nenhuma e, pela idempotência de
+    `messageId`, nunca volta. Para uma resposta automática está certo; para um
+    e-mail marcado como suspeito é a forma exata de um ataque bem-sucedido. Os
+    dois casos agora são distinguíveis no log e no evento — **criar uma fila
+    para eles é decisão, e tem consequência de schema.**
+17. **Quem vê o livro-razão por pessoa no Painel.** `GET /api/painel` entrega os
+    números de carga de toda a equipe a qualquer colaborador. O invariante 10
+    enquadra isso como observabilidade para balancear carga, e a equipe já
+    trabalha de caixa compartilhada — restringir mudaria a operação. Irmão do
+    item 5 de § H.4.
+
+### A16 — a marca como objeto interativo
+
+Pedido: que a logo *"se comporte como um objeto interativo dentro da interface"*,
+com liberdade criativa, sem comprometer usabilidade, desempenho,
+responsividade, acessibilidade nem a arquitetura existente. A referência técnica
+oferecida foi o **dossiê do `img2threejs`** — análise de arquitetura de outro
+projeto, do ecossistema `beyon.0`.
+
+#### O que o dossiê deu, e o que ele proibiu
+
+Ele não é sobre este sistema. O que transfere é **arquitetura, não tecnologia**:
+
+- **"Spec declarativo como IR; código como saída derivada."** É o ativo central
+  que ele identifica naquele projeto. Aqui: o arranjo dos P's é dado puro em
+  `core/marca/`, determinístico e testável; o SVG é *build*.
+- **"Pivô por peça + registros nomeados."** Cada P tem um `<g>` que é o alvo da
+  animação, separado do `<text>` que é o glifo. O laço nunca toca no glifo.
+- **"A IR nunca importa o motor; dependência só aponta para dentro."** É a
+  regra 1 deste projeto com outro nome — encaixou sem adaptação.
+
+E a advertência que **decidiu a stack**: *"não force 3D onde o CSS já entrega — o
+custo/benefício é ruim"*, e *"Three.js custa centenas de KB"*. O próprio veredito
+manda decidir **se** o projeto ganha com Three.js antes de qualquer código. Para
+uma marca de 24 px na barra de um sistema interno de 4-7 pessoas, com CSP
+restritiva e a regra da menor arquitetura que resolve o problema atual, a
+resposta é não. **Zero dependência nova.**
+
+#### Por que a marca da SBP é um caso especial
+
+A identidade é um P grande **composto por dezenas de P's pequenos**. Isso não é
+enfeite: a estrutura da marca já É um sistema de partículas. A interatividade
+sai da própria identidade em vez de ser colada por cima dela — e é o que separa
+"logo animado" de "logo que é um objeto".
+
+#### As decisões que valem registro
+
+**Física, não transição.** Uma `transition` faz o glifo *ir* de um ponto a outro;
+uma mola faz ele *ter inércia*. Cada P tem massa proporcional ao próprio tamanho
+— quadrática, porque peso se percebe pela ÁREA. O ponteiro espalha os miúdos
+primeiro e os graúdos quase não cedem. Sem massa, o campo se move em bloco e a
+leitura vira "imagem sendo distorcida" em vez de "muitas peças reagindo".
+
+**A marca é o indicador de atividade do sistema.** Respira enquanto há requisição
+em voo. O sinal vem de `componentes/api.ts`, que já era a porta única de toda
+tela — nenhuma precisa avisar nada. Não inventa métrica, não é gravado, e morre
+quando a resposta chega. Contador e não booleano: duas requisições terminando
+fora de ordem zerariam o sinal cedo demais.
+
+**O laço PARA.** Campo assentado e sem atividade cancela o `requestAnimationFrame`.
+Esta barra fica aberta o expediente inteiro; um laço eterno gastaria bateria o
+dia todo para não mostrar nada.
+
+**Abaixo de 48 px não há campo de ponteiro.** A 24 px a marca tem 17 de largura e
+o efeito move frações de pixel. A primeira ideia foi cortar GLIFOS nas versões
+pequenas — o "plano de LOD" que o dossiê descreve. **Medido, era errada:** os
+glifos menores são justamente os da BORDA, e é a borda que define a silhueta.
+Cortá-los deixa a letra mais leve e menos legível, o pior dos dois mundos. O
+corte certo foi no EFEITO, não nos nós.
+
+**Determinismo é requisito, não zelo.** O arranjo vem de um gerador com semente
+fixa. Um logotipo que se rearranja a cada carregamento não é um logotipo; e
+`Math.random()` faria servidor e cliente discordarem, quebrando a hidratação.
+
+#### Duas vezes o resultado medido derrubou o plano
+
+1. **A primeira densidade lia como chuvisco.** Glifos menores que a célula da
+   grade deixam fundo entre todos. A marca real faz o contrário: usa a maior
+   peça que couber, e a variação de tamanho vem da FORMA da letra — miolo largo,
+   borda estreita —, não de sorteio.
+2. **O transbordo da borda é deliberado.** A marca real deixa os P's da borda
+   passarem um pouco do contorno; é isso que faz a silhueta parecer feita de
+   letras em vez de recortada a tesoura. O teste guarda o TETO do transbordo, não
+   a ausência dele — sem teto, aumentar a tolerância até a letra virar nuvem
+   passaria despercebido.
+
+#### O contorno é reconstrução — e está isolado de propósito
+
+Só existe o PNG do logotipo. `core/marca/contorno.ts` descreve a letra como união
+e subtração de retângulos arredondados, com proporções medidas sobre a arte. Isso
+torna *"este ponto está dentro do P?"* uma conta de duas linhas, exata, sem
+tesselar e sem biblioteca de geometria.
+
+**É o único arquivo que muda quando o SVG oficial chegar.** Arranjo, física e
+desenho só perguntam `dentroDoP()` — nada mais no sistema sabe qual é a forma da
+letra. Pedir o vetor à SBP é barato e melhora a fidelidade de graça.
+
+#### O que ficou sem verificação
+
+**A animação nunca foi vista rodando.** O painel de navegador da automação executa
+a página oculta (`visibilityState: 'hidden'`), e nesse estado o navegador não
+entrega quadros — medido: zero `requestAnimationFrame` em 500 ms. Verificado: a
+física em 18 testes de núcleo, que o efeito monta e pede o quadro (instrumentado),
+o desenho estático nos dois temas, e o celular. **Falta confirmar o laço
+escrevendo `transform` nos elementos** — ver `ESTADO.md`, *A dívida honesta desta
+etapa*.

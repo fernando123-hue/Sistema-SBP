@@ -1,10 +1,14 @@
+import { ErroOperacional } from '../core/erros'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
+import type { AssistentePort } from '../ports/assistente'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { ambiente } from '../servidor/ambiente'
 import { ArmazenamentoEmDisco } from './armazenamento-disco'
-import { IaAnthropic } from './ia-anthropic'
-import { IaGemini } from './ia-gemini'
+import { AssistentePorBusca } from './assistente-busca'
+import { AssistenteComModelo } from './assistente-modelo'
+import { clienteAnthropic, IaAnthropic, PERFIL_ANTHROPIC } from './ia-anthropic'
+import { clienteGemini, IaGemini, PERFIL_GEMINI } from './ia-gemini'
 import { IaMock } from './ia-mock'
 import { IngestaoMock, type OpcoesIngestaoMock } from './ingestao-mock'
 
@@ -20,15 +24,16 @@ import { IngestaoMock, type OpcoesIngestaoMock } from './ingestao-mock'
  * Agora, pedir um adapter não implementado FALHA, e falha dizendo o que falta.
  */
 
-export class AdapterIndisponivelError extends Error {
+export class AdapterIndisponivelError extends ErroOperacional {
   readonly codigo = 'ADAPTER_INDISPONIVEL'
+  /** Configuração, não defeito: quem lê precisa saber que a variável está errada. */
+  readonly statusHttp = 503
 
   constructor(tipo: string, nome: string) {
     super(
       `Adapter de ${tipo} "${nome}" ainda não foi implementado. ` +
         `Ajuste a variável de ambiente ou implemente o adapter.`,
     )
-    this.name = 'AdapterIndisponivelError'
   }
 }
 
@@ -54,6 +59,34 @@ export function criarAiPort(): AiPort {
       return new IaGemini()
     default:
       throw new AdapterIndisponivelError('IA', nome)
+  }
+}
+
+/**
+ * O assistente de ajuda, pelo MESMO `IA_ADAPTER`.
+ *
+ * Uma variável só para as duas tarefas de IA, e não uma segunda variável para
+ * o assistente, porque a pergunta que ela responde é a mesma e tem consequência
+ * de privacidade: **qual empresa processa o texto que sai desta casa.** Duas
+ * chaves permitiriam configurar interpretação num fornecedor e ajuda em outro
+ * sem ninguém decidir isso — e a autorização do dado sair da casa é por
+ * fornecedor, não por funcionalidade (`DECISOES.md`, 27/08/2026).
+ *
+ * `mock` cai na busca no manual: determinística, sem rede, sem custo. Não é
+ * degradação em silêncio — a resposta carrega o nome do adapter que a produziu,
+ * e a tela mostra.
+ */
+export function criarAssistentePort(): AssistentePort {
+  const nome = ambiente().IA_ADAPTER
+  switch (nome) {
+    case 'mock':
+      return new AssistentePorBusca()
+    case 'anthropic':
+      return new AssistenteComModelo(PERFIL_ANTHROPIC, clienteAnthropic())
+    case 'gemini':
+      return new AssistenteComModelo(PERFIL_GEMINI, clienteGemini())
+    default:
+      throw new AdapterIndisponivelError('assistente', nome)
   }
 }
 

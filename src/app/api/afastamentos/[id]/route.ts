@@ -1,5 +1,7 @@
-import { cancelar } from '../../../../servicos/afastamentos'
-import { responder, rota } from '../../../../servidor/http'
+import { z } from 'zod'
+
+import { cancelar, encerrar } from '../../../../servicos/afastamentos'
+import { corpoJson, responder, rota } from '../../../../servidor/http'
 import { obterPrisma } from '../../../../servidor/prisma'
 import { exigirAtor } from '../../../../servidor/sessao'
 
@@ -20,5 +22,28 @@ export async function DELETE(
 
     await cancelar(obterPrisma(), id, ator)
     return responder({ cancelado: true })
+  })
+}
+
+const EncerramentoSchema = z.object({ fim: z.string() })
+
+/**
+ * Encerra uma ausência em aberto: a pessoa voltou.
+ *
+ * `PATCH` e não `DELETE`: encerrar não é cancelar. Cancelar afirma que a
+ * ausência NÃO aconteceu; encerrar afirma que ela acabou. Enquanto só existia o
+ * `DELETE`, o gestor que precisava trazer alguém de volta ao rateio era
+ * empurrado a gravar a primeira afirmação para conseguir a segunda.
+ */
+export async function PATCH(
+  requisicao: Request,
+  contexto: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  return rota(async () => {
+    const ator = await exigirAtor()
+    const { id } = await contexto.params
+    const corpo = EncerramentoSchema.parse(await corpoJson(requisicao))
+
+    return responder(await encerrar(obterPrisma(), { afastamentoId: id, fim: corpo.fim }, ator))
   })
 }

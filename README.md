@@ -21,6 +21,11 @@ Requisitos: **Node 22+** e npm. Nenhum banco externo — o protótipo usa SQLite
 ```bash
 npm install
 cp .env.example .env
+
+# SESSAO_SECRET é OBRIGATÓRIO e o sistema recusa subir sem ele.
+# Gere um e escreva no .env:
+node -e "console.log(crypto.randomUUID())"
+
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
@@ -57,7 +62,10 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 | `npm run demo` | Fluxo completo ponta a ponta |
 | `npm run ia:experimentar` | Compara mock e modelo real em 4 casos. Único caminho que gasta crédito |
 | `npm run db:seed` | Cadastro base sintético |
-| `npm run db:limpar` | Apaga dados transacionais, preserva o cadastro |
+| `PERMITIR_LIMPEZA=sim npm run db:limpar` | Apaga dados transacionais, preserva o cadastro. Exige o opt-in explícito: sem ele, recusa — a trava anterior deduzia segurança da ausência de `NODE_ENV` |
+| `npm run db:expurgar` | Redige a observação de afastamentos antigos (dado de saúde). **Irreversível**, não agendado, prazo hipotético — ver `DECISOES.md § AT-11` |
+| `npm run anexos:conferir` | Diz quantos anexos ainda estão em texto puro no disco |
+| `npm run anexos:recifrar` | Cifra os que faltam, conferindo cada um pela leitura antes de trocar |
 | `npm run db:migrate` | Cria e aplica migração |
 | `npm run db:studio` | Inspeciona o banco |
 
@@ -69,7 +77,7 @@ api/          endpoints REST — toda operação existe aqui primeiro
 servicos/     transações, Prisma, orquestração          -> depende de core
 core/         domínio puro: motor, esquemas, segurança  -> NÃO depende de nada
 ports/        contratos: AiPort, IngestaoPort, ArmazenamentoPort
-adapters/     mock | anthropic | disco   (imap, gmail, nuvem: previstos)
+adapters/     mock | anthropic | gemini | disco cifrado   (imap, gmail, nuvem: previstos)
 ```
 
 **Regra de dependência:** as setas apontam só para dentro. `core/` não importa Prisma, React, Next nem `fetch`. É isso que torna o motor testável em milissegundos e auditável para sempre.
@@ -106,7 +114,7 @@ Toda saída de IA passa por `InterpretacaoSchema` (Zod). Uma resposta que não v
 
 - **Conteúdo externo é dado, nunca instrução.** Corpo de e-mail, assunto e nome de anexo passam por truncar → detectar → delimitar ([`conteudo-nao-confiavel.ts`](src/core/seguranca/conteudo-nao-confiavel.ts)). A defesa real não é a regex: é a arquitetura — a IA não decide quem recebe nem quanto, então uma injeção bem-sucedida no máximo classifica errado, e a revisão pega.
 - **Anexos:** allowlist de extensão, travessia de diretório removida do nome, teto de tamanho e **conferência do tipo real pelos bytes** ([`assinatura-de-arquivo.ts`](src/core/seguranca/assinatura-de-arquivo.ts)) — um executável chamado `laudo.pdf` passa pela allowlist inteiro e só a assinatura o denuncia. O MIME type declarado pelo remetente é ignorado. Arquivo recusado não vai para o disco.
-- **Retenção:** conteúdo do e-mail e bytes de anexo vivem em linhas próprias, expurgáveis sem derrubar item, carga, conservação ou auditoria. Nenhuma política de prazo foi implementada — a estrutura permite, a decisão é do dono.
+- **Retenção:** conteúdo do e-mail e bytes de anexo vivem em linhas próprias, expurgáveis sem derrubar item, carga, conservação ou auditoria. Existe **uma** rotina de expurgo (`npm run db:expurgar`), que alcança só a observação de afastamento, não é agendada e roda com um prazo **hipotético** — a decisão de prazo é do dono do negócio, e está em aberto (`docs/DECISOES.md § H.4`, item 12). Para o corpo do e-mail e os anexos, nenhum prazo foi definido e nada apaga nada.
 - **Idempotência:** `Email.messageId` é único. Reprocessar nunca duplica carga.
 - **Responsável único:** garantido por índice do banco, não por código.
 - **Segredos:** só via ambiente, validados na inicialização. `.env` fora do repositório.
@@ -126,12 +134,12 @@ Toda saída de IA passa por `InterpretacaoSchema` (Zod). Uma resposta que não v
 
 ## Estado atual
 
-Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · adapters de IA (mock e Anthropic) · fila de revisão com divisão manual · distribuição transacional com conservação garantida · fila individual com devolução ao pool · painel derivado com recorte de período · **registro manual do que não chega por e-mail** (balcão, telefone, `INADIMP.`/`ISENTO`) · qualidade da IA medida · auditoria e observabilidade · **memória operacional consultável** (a trilha de auditoria deixa de ser write-only) · 24 caminhos REST em 29 operações · 9 telas · **autenticação por e-mail e senha** com troca obrigatória da provisória, bloqueio progressivo e revogação de sessão · tela de administração de acesso · **conteúdo separado do histórico operacional**, com anexos guardados fora do banco e tipo real conferido pelos bytes · **auditoria completa com 24 correções aplicadas** (`DECISOES.md § H`).
+Feito: motor puro com testes · modelo de dados com constraints · ingestão idempotente · adapters de IA (mock e Anthropic) · fila de revisão com divisão manual · distribuição transacional com conservação garantida · fila individual com devolução ao pool · painel derivado com recorte de período · **registro manual do que não chega por e-mail** (balcão, telefone, `INADIMP.`/`ISENTO`) · qualidade da IA medida · auditoria e observabilidade · **memória operacional consultável** (a trilha de auditoria deixa de ser write-only) · 31 caminhos REST em 38 operações · 9 telas · **autenticação por e-mail e senha** com troca obrigatória da provisória, bloqueio progressivo e revogação de sessão · tela de administração de acesso · **conteúdo separado do histórico operacional**, com anexos guardados fora do banco e tipo real conferido pelos bytes · **auditoria completa com 24 correções aplicadas** (`DECISOES.md § H`).
 
-**271 testes passando.**
+**A suíte inteira verde** (`npm run verificar`). Um número fixo aqui envelhece: este arquivo já disse 271 quando eram mais de 500.
 
 O adapter Anthropic está escrito e coberto por testes, mas **ainda não foi exercitado contra a API real** — rode `IA_ADAPTER=anthropic npm run ia:experimentar` com a chave configurada antes de confiar nele.
 
-A seguir, em ordem: validar o adapter contra a API · cifrar anexos em repouso (`H-D19`) · contratos de API derivados dos esquemas Zod (`H-D7`) · exportação para o sistema legado.
+A seguir, em ordem: **rodar `npm run anexos:recifrar`** (a cifragem em repouso existe e vale só para arquivo novo — os antigos seguem em texto puro) · levar à chefia as perguntas de retenção · validar o adapter contra a API real · validar no cliente a resposta das rotas contra o mesmo Zod, que é o resto da `H-D7` · exportação para o sistema legado.
 
 Retomando o trabalho em outra máquina? Leia [docs/ESTADO.md](docs/ESTADO.md).

@@ -59,8 +59,39 @@ export async function POST(requisicao: Request): Promise<Response> {
   })
 }
 
+/**
+ * Sair — e sair de verdade.
+ *
+ * Apagar o cookie do navegador NÃO era revogação: o valor de `sbp_sessao`
+ * continuava assinado e válido por até 12h, então uma cópia levada da máquina
+ * compartilhada seguia autenticando por mais que o dono clicasse em "sair". A
+ * revogação de verdade é o carimbo em `sessoesInvalidasAntes`, conferido em
+ * `perfilAtual` a cada requisição.
+ *
+ * ISTO ENCERRA AS SESSÕES DA PESSOA EM TODOS OS DISPOSITIVOS, e é deliberado.
+ * Encerrar só este navegador exigiria identificar cada cookie individualmente —
+ * uma tabela de sessões que este sistema não tem — e deixaria de pé justamente
+ * a cópia que o gesto existe para matar. Para quem opera, "saí do sistema"
+ * significar "saí do sistema" é o comportamento esperado; o custo é reentrar no
+ * celular, e ele é pequeno perto de um acesso indevido que dura meio dia.
+ *
+ * `atorAtual`, e não `exigirAtor`: quem está com a senha provisória também
+ * precisa conseguir sair, e `exigirAtor` recusa justamente essa pessoa. Sem
+ * sessão válida, apagar o cookie e responder sucesso é a resposta certa — não
+ * há nada a revogar, e devolver erro faria a saída falhar para quem já estava
+ * fora, que é o caso em que a tela mais precisa que ela funcione.
+ */
 export async function DELETE(): Promise<Response> {
   return rota(async () => {
+    const ator = await atorAtual()
+
+    if (ator) {
+      await obterPrisma().colaborador.update({
+        where: { id: ator.colaboradorId },
+        data: { sessoesInvalidasAntes: new Date() },
+      })
+    }
+
     const armazem = await cookies()
     armazem.set({ ...OPCOES_DO_COOKIE, value: '', maxAge: 0 })
     return responder({ encerrada: true })

@@ -1,12 +1,8 @@
 import { GoogleGenAI } from '@google/genai'
 import { z } from 'zod'
 
-import {
-  InterpretadorEstruturado,
-  RespostaDoModeloSchema,
-  type ClienteDeInterpretacao,
-  type PerfilDoFornecedor,
-} from './ia-estruturada'
+import { InterpretadorEstruturado } from './ia-estruturada'
+import { formaEsperadaEmTexto, type ClienteDeModelo, type PerfilDoFornecedor } from './fornecedor'
 import { ambiente } from '../servidor/ambiente'
 
 /**
@@ -52,7 +48,7 @@ import { ambiente } from '../servidor/ambiente'
  * do trabalho a API do fornecedor adianta.
  */
 
-export type { ClienteDeInterpretacao } from './ia-estruturada'
+export type { ClienteDeModelo } from './fornecedor'
 
 /**
  * Teto de saída.
@@ -72,6 +68,16 @@ const MAXIMO_DE_TOKENS = 16_000
  * e é justamente por isso que este arquivo existe separado.
  */
 const TEMPERATURA = 0
+
+/**
+ * Teto de tempo por chamada.
+ *
+ * Generoso porque a camada gratuita é lenta de verdade — 54 a 63 segundos por
+ * chamada, medidos —, e apertar demais transformaria operação normal em falha.
+ * O que ele impede é o caso sem teto: uma chamada que nunca volta e segura o
+ * laço de ingestão indefinidamente.
+ */
+const TEMPO_LIMITE_MS = 120_000
 
 /**
  * Motivos de parada que invalidam a resposta.
@@ -120,35 +126,31 @@ export const PERFIL_GEMINI: PerfilDoFornecedor = {
   },
 }
 
-/**
- * A forma esperada, dita ao modelo em texto.
- *
- * Derivada do MESMO Zod que valida a resposta depois — não redigitada à mão. É
- * a diferença entre uma forma que envelhece junto com a validação e duas que
- * divergem em silêncio.
- *
- * Vai nas INSTRUÇÕES, não em `responseJsonSchema`: ver o cabeçalho do arquivo
- * para o 400 que essa tentativa rendeu. `$schema` sai porque é metadado do
- * documento, não parte da forma, e só gastaria tokens.
- */
-function formaEsperadaEmTexto(): string {
-  const { $schema: _ignorado, ...forma } = z.toJSONSchema(RespostaDoModeloSchema, {
-    io: 'output',
-  }) as Record<string, unknown>
-
-  return `\n\nFORMATO DA RESPOSTA\nResponda com UM objeto JSON, sem texto em volta, sem cercas de código, obedecendo exatamente a este JSON Schema:\n${JSON.stringify(forma)}`
-}
-
-export function clienteGemini(): ClienteDeInterpretacao {
+export function clienteGemini(): ClienteDeModelo {
   const chave = ambiente().GOOGLE_AI_KEY
   // `ambiente()` já recusa `IA_ADAPTER=gemini` sem chave; esta é a segunda
   // tranca, para o caso de alguém construir o adapter direto.
   if (!chave) throw new Error('GOOGLE_AI_KEY ausente: o adapter Gemini não pode subir.')
 
-  const cliente = new GoogleGenAI({ apiKey: chave })
+  const cliente = new GoogleGenAI({
+    apiKey: chave,
+    // TETO DE TEMPO EXPLÍCITO.
+    //
+    // O núcleo declara, ao decidir não repetir falha de transporte, que "o SDK
+    // já tentou de novo por conta própria antes de desistir". Isso era verdade
+    // para a Anthropic e FALSO aqui: o SDK do Google não repete e, sem
+    // `timeout`, uma chamada pendurada segurava o laço de ingestão sem prazo
+    // para acabar. Medido nesta auditoria: 54 a 63 segundos por chamada em
+    // condição normal na camada gratuita, com `503` frequente.
+    //
+    // Um teto explícito transforma "pendurado para sempre" em falha de
+    // transporte, que o sistema já sabe tratar — o e-mail vai para revisão
+    // humana. É degradar do jeito certo em vez de travar.
+    httpOptions: { timeout: TEMPO_LIMITE_MS },
+  })
 
   return {
-    async interpretar({ instrucoes, conteudo, modelo }) {
+    async gerar({ instrucoes, conteudo, modelo, esquema }) {
       const resposta = await cliente.models.generateContent({
         model: modelo,
         contents: conteudo,
@@ -156,7 +158,7 @@ export function clienteGemini(): ClienteDeInterpretacao {
           // A forma vai anexada às instruções, não em `responseJsonSchema` —
           // ver o cabeçalho. `application/json` continua valendo: garante que
           // a resposta não venha embrulhada em prosa ou em cerca de código.
-          systemInstruction: `${instrucoes}${formaEsperadaEmTexto()}`,
+          systemInstruction: `${instrucoes}${formaEsperadaEmTexto(esquema)}`,
           responseMimeType: 'application/json',
           maxOutputTokens: MAXIMO_DE_TOKENS,
           temperature: TEMPERATURA,
@@ -192,12 +194,23 @@ export function clienteGemini(): ClienteDeInterpretacao {
       try {
         objeto = JSON.parse(texto)
       } catch {
+        // SEM `input: texto`, e isto é segurança, não economia.
+        //
+        // `ZodError.message` é `JSON.stringify(issues)`, e o replacer do Zod só
+        // remove `input` dos issues que ele mesmo cria — um issue escrito à mão
+        // preserva o campo. Com `input: texto`, a resposta CRUA do modelo (até
+        // `MAXIMO_DE_TOKENS`, derivada do corpo do e-mail, com nome e CPF do
+        // associado) entrava na mensagem do erro. Dali ela ia para o log, que
+        // não tem retenção, e — pior — era colada nas INSTRUÇÕES da segunda
+        // tentativa, fora dos marcadores de conteúdo não confiável.
+        //
+        // Para corrigir o formato, o modelo precisa saber que a resposta não
+        // era JSON. Não precisa que a devolvam a ele.
         throw new z.ZodError([
           {
             code: 'custom',
             path: [],
-            message: 'a resposta não é JSON válido',
-            input: texto,
+            message: `a resposta não é JSON válido (${texto.length} caracteres)`,
           },
         ])
       }
@@ -212,7 +225,7 @@ export function clienteGemini(): ClienteDeInterpretacao {
 }
 
 export class IaGemini extends InterpretadorEstruturado {
-  constructor(cliente: ClienteDeInterpretacao = clienteGemini()) {
+  constructor(cliente: ClienteDeModelo = clienteGemini()) {
     super(PERFIL_GEMINI, cliente)
   }
 }

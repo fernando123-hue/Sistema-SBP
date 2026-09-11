@@ -5,7 +5,7 @@ import { EmailBrutoSchema, type EmailBruto } from '../core/esquemas'
 import Anthropic from '@anthropic-ai/sdk'
 
 import { FalhaDeInterpretacao, InterpretacaoIndisponivelError } from '../ports/ia'
-import { IaAnthropic, type ClienteDeInterpretacao } from './ia-anthropic'
+import { IaAnthropic, type ClienteDeModelo } from './ia-anthropic'
 
 /**
  * Testes do adapter Anthropic.
@@ -47,7 +47,7 @@ const RESPOSTA_VALIDA = {
 }
 
 /** Duble que devolve, em ordem, o que lhe mandarem — e guarda o que recebeu. */
-function clienteFalso(respostas: (unknown | Error)[]): ClienteDeInterpretacao & {
+function clienteFalso(respostas: (unknown | Error)[]): ClienteDeModelo & {
   chamadas: { instrucoes: string; conteudo: string }[]
 } {
   const chamadas: { instrucoes: string; conteudo: string }[] = []
@@ -55,7 +55,7 @@ function clienteFalso(respostas: (unknown | Error)[]): ClienteDeInterpretacao & 
 
   return {
     chamadas,
-    async interpretar({ instrucoes, conteudo }) {
+    async gerar({ instrucoes, conteudo }) {
       chamadas.push({ instrucoes, conteudo })
       const atual = respostas[Math.min(posicao, respostas.length - 1)]
       posicao += 1

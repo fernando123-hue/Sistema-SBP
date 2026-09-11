@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
   Aviso,
+  Botao,
   CabecalhoDeSecao,
   Carregando,
   ListaResponsiva,
@@ -14,41 +15,18 @@ import {
   juntar,
 } from '../../componentes/matrizes'
 
-interface LinhaPainel {
-  categoriaCodigo: string
-  rotulo: string
-  grupo: string
-  saldoInicial: number
-  entrouNoPeriodo: number
-  aberto: number
-  concluidoNoPeriodo: number
-  canceladoNoPeriodo: number
-  pendente: number
-  aguardandoRevisao: number
-  aprovado: number
-  distribuido: number
-  emAndamento: number
-  diasDoMaisAntigo: number | null
-}
-
-interface LinhaPorPessoa {
-  colaboradorId: string
-  nome: string
-  atribuidos: number
-  concluidos: number
-  pendentes: number
-  creditoGlobal: number
-}
+import type { LinhaPainel, LinhaPorPessoa, NaRede } from '../../core/tipos'
 
 interface Periodo {
+
   de: string
   ate: string
 }
 
 interface Painel {
   periodo: Periodo
-  categorias: LinhaPainel[]
-  pessoas: LinhaPorPessoa[]
+  categorias: NaRede<LinhaPainel>[]
+  pessoas: NaRede<LinhaPorPessoa>[]
   conservacao: { rodadas: number; divergentes: { rodadaId: string }[] }
 }
 
@@ -70,6 +48,11 @@ interface Qualidade {
     confiancaMediaAceita: number | null
     confiancaMediaCorrigida: number | null
   }
+  /** A mesma taxa, separada por modelo. Vazio quando não há revisão resolvida. */
+  porModelo: {
+    modelo: string
+    taxa: { revisadas: number; aceitasSemCorrecao: number; taxaDeAceitacao: number | null }
+  }[]
   cobertura: {
     itensDeIa: number
     revisados: number
@@ -164,8 +147,13 @@ export default function PainelPagina() {
   /** Vazio = deixa o servidor escolher o mês corrente, a unidade da planilha. */
   const [de, setDe] = useState('')
   const [ate, setAte] = useState('')
+  /** Muda para pedir os dados de novo depois de uma falha. */
+  const [tentativa, setTentativa] = useState(0)
 
   useEffect(() => {
+    // Limpa o erro anterior: sem isto, a faixa vermelha da tentativa que falhou
+    // ficaria na tela por cima dos dados que a tentativa seguinte trouxe.
+    setErro(null)
     const recorte = de && ate ? `?de=${de}&ate=${ate}` : ''
     Promise.all([
       api.buscar<Painel>(`/painel${recorte}`),
@@ -184,27 +172,78 @@ export default function PainelPagina() {
         setFora(ausentes)
       })
       .catch((causa) => setErro(mensagemDoErro(causa)))
-  }, [de, ate])
+  }, [de, ate, tentativa])
 
-  if (erro) return <Aviso>{erro}</Aviso>
-  if (!dados) return <Carregando />
+  // ═══ ERRO NÃO APAGA A TELA ═══
+  //
+  // Este ramo era `if (erro) return <Aviso>{erro}</Aviso>`, e ele levava junto
+  // o cabeçalho e os DOIS CAMPOS DE PERÍODO. Como o efeito só dispara quando
+  // `de`/`ate` mudam, e não sobrava campo na tela para mudá-los, não existia
+  // caminho de volta dentro da página: uma piscada de rede no meio da consulta
+  // deixava a gestora com uma linha vermelha no branco e nada para clicar.
+  //
+  // Agora o erro aparece com o botão que refaz a consulta; e quando já havia
+  // dados na tela, eles ficam — refazer uma consulta que falhou não é motivo
+  // para apagar o que já estava certo.
+  if (!dados) {
+    return (
+      <div className="flex flex-col gap-4">
+        <CabecalhoDeSecao
+          titulo="Painel"
+          descricao="Todo número desta tela é calculado. Não existe campo digitável."
+        />
+        {erro ? (
+          <div className="flex flex-col items-start gap-3">
+            <Aviso>{erro}</Aviso>
+            <Botao onClick={() => setTentativa((numero) => numero + 1)}>Tentar de novo</Botao>
+          </div>
+        ) : (
+          <Carregando />
+        )}
+      </div>
+    )
+  }
 
-  const comDados = dados.categorias.filter((linha) => linha.aberto > 0)
+  // ═══ DUAS NATUREZAS DE NÚMERO NESTA TELA, E ELAS NÃO SE FILTRAM IGUAL ═══
+  //
+  // `aberto`, `entrouNoPeriodo`, `concluidoNoPeriodo` e `pendente` são do
+  // PERÍODO escolhido. `aguardandoRevisao` é ESTADO ATUAL — quantos itens estão
+  // parados na revisão agora, sem recorte nenhum.
+  //
+  // O filtro `aberto > 0` valia para as quatro primeiras e mentia sobre a
+  // última: bastava escolher um período em que a categoria não teve movimento
+  // para a linha sumir, e com ela sumiam do total itens que estão em revisão
+  // NESTE momento. O operador estreitava o período para investigar e o número
+  // "Em revisão" caía — dando a entender que o trabalho tinha andado.
+  //
+  // Uma métrica que responde a pergunta errada é pior que uma ausente: esta
+  // levava a decisão exatamente para o lado contrário do certo.
+  const temTrabalhoAgora = (linha: NaRede<LinhaPainel>) =>
+    linha.aberto > 0 || linha.aguardandoRevisao > 0
+  const comDados = dados.categorias.filter(temTrabalhoAgora)
+
   const total = comDados.reduce(
     (soma, linha) => ({
       aberto: soma.aberto + linha.aberto,
       entrou: soma.entrou + linha.entrouNoPeriodo,
       concluido: soma.concluido + linha.concluidoNoPeriodo,
       pendente: soma.pendente + linha.pendente,
-      revisao: soma.revisao + linha.aguardandoRevisao,
     }),
-    { aberto: 0, entrou: 0, concluido: 0, pendente: 0, revisao: 0 },
+    { aberto: 0, entrou: 0, concluido: 0, pendente: 0 },
+  )
+
+  // Sobre TODAS as categorias, nunca sobre as filtradas: é estado atual, e não
+  // depende do período que a pessoa escolheu para olhar.
+  const emRevisaoAgora = dados.categorias.reduce(
+    (soma, linha) => soma + linha.aguardandoRevisao,
+    0,
   )
 
   const conservacaoOk = dados.conservacao.divergentes.length === 0
 
   return (
     <div className="flex flex-col gap-6">
+      {erro ? <Aviso>{erro}</Aviso> : null}
       <CabecalhoDeSecao
         titulo="Painel"
         descricao="Todo número desta tela é calculado. Não existe campo digitável."
@@ -251,8 +290,8 @@ export default function PainelPagina() {
         <Metrica rotulo="Pendente" valor={total.pendente} detalhe="aberto no fim do período" />
         <Metrica
           rotulo="Em revisão"
-          valor={total.revisao}
-          tom={total.revisao > 0 ? 'atencao' : 'neutro'}
+          valor={emRevisaoAgora}
+          tom={emRevisaoAgora > 0 ? 'atencao' : 'neutro'}
           detalhe="aguardando decisão humana · estado atual"
         />
       </div>
@@ -522,6 +561,42 @@ function QualidadeDaIa({ medida }: { medida: Qualidade }) {
               detalhe="média informada pelo modelo"
             />
           </div>
+
+          {/*
+            COMPARAÇÃO ENTRE MODELOS.
+            A razão de o sistema manter dois fornecedores é poder responder se
+            algum acerta mais neste trabalho. Enquanto a medida era um número
+            agregado, a resposta não existia em lugar nenhum — as revisões dos
+            dois iam somadas na mesma taxa. Aparece só com dois ou mais: com um
+            modelo só, a linha repetiria o número de cima.
+          */}
+          {medida.porModelo.length > 1 ? (
+            <div className="mt-3">
+              <p className="mb-1.5 text-xs font-medium tracking-wide text-tinta-fraca uppercase">
+                Por modelo
+              </p>
+              <ul className="flex flex-col gap-1">
+                {medida.porModelo.map((linha) => (
+                  <li
+                    key={linha.modelo}
+                    className="flex items-center justify-between gap-3 rounded-md border border-borda px-3 py-2 text-sm"
+                  >
+                    <span className="font-medium">{linha.modelo}</span>
+                    <span className="text-tinta-suave">
+                      <span className="numerico">{percentual(linha.taxa.taxaDeAceitacao)}</span>{' '}
+                      <span className="text-xs">
+                        · {linha.taxa.aceitasSemCorrecao} de {linha.taxa.revisadas}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1.5 text-xs text-tinta-fraca">
+                Compare pela amostra, não só pela porcentagem: taxa alta sobre poucas revisões
+                ainda não diz nada.
+              </p>
+            </div>
+          ) : null}
 
           {separacao !== null && separacao < 0.05 ? (
             <div className="mt-3">

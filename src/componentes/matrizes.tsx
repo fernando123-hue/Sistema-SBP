@@ -18,13 +18,28 @@ export function Cartao({
   children,
   className,
   destaque,
+  ref,
+  role,
+  'aria-live': ariaLive,
 }: {
   children: ReactNode
   className?: string
   destaque?: boolean
+  /** React 19 aceita `ref` como prop comum — sem `forwardRef`. */
+  ref?: React.Ref<HTMLDivElement>
+  /**
+   * Para o cartão que aparece SOZINHO em resposta a uma ação — a senha
+   * provisória, por exemplo. Sem `role="status"`, quem usa leitor de tela não
+   * fica sabendo que ele existe, e ele "aparece uma única vez".
+   */
+  role?: string
+  'aria-live'?: 'off' | 'polite' | 'assertive'
 }) {
   return (
     <div
+      ref={ref}
+      role={role}
+      aria-live={ariaLive}
       className={juntar(
         'rounded-[var(--radius-cartao)] border bg-papel',
         destaque ? 'border-acento shadow-sm' : 'border-borda',
@@ -96,7 +111,19 @@ export function Selo({
  * Nunca esconde incerteza: o número aparece sempre, e a cor diz se o item
  * passou ou não pelo limiar da categoria.
  */
-export function SeloDeConfianca({ valor, limiar = 0.85 }: { valor: number; limiar?: number }) {
+/**
+ * O limiar é OBRIGATÓRIO, e o default de 0,85 foi removido de propósito.
+ *
+ * Ele existia, ninguém passava o valor, e os dois únicos chamadores não tinham
+ * como passar: nem `ItemDaCaixa` nem `ItemEmRevisao` carregavam o limiar da
+ * categoria. Resultado na tela de Revisão: um item de `DOC_CADASTRO` (limiar
+ * 0,95) com confiança 0,90 mostrava, na MESMA linha, o selo "confiança abaixo
+ * do limiar" em amarelo e este selo em verde, com o tooltip citando 0,85 — um
+ * limiar que não é o daquela categoria.
+ *
+ * Com o parâmetro obrigatório, o próximo chamador não repete o defeito calado.
+ */
+export function SeloDeConfianca({ valor, limiar }: { valor: number; limiar: number }) {
   const tom: TomDoSelo = valor >= limiar ? 'ok' : valor >= limiar - 0.2 ? 'atencao' : 'alerta'
   return (
     <Selo tom={tom} titulo={`Confiança da classificação automática (limiar ${limiar})`}>

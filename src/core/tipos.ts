@@ -2,6 +2,8 @@
  * Tipos do domínio. Núcleo puro: nenhum import de banco, rede ou UI.
  */
 
+import type { RotuloDeAfastamento } from './afastamento-visivel'
+
 export type ColaboradorId = string
 export type CategoriaId = string
 
@@ -129,8 +131,229 @@ export interface ResultadoRodada {
    */
   elegiveis: Elegivel[]
   alocacao: Record<ColaboradorId, number>
+  /**
+   * Qual lote indivisível foi para quem. Presente só no critério `por_grupo`.
+   *
+   * ═══ POR QUE O NÚMERO NÃO BASTAVA ═══
+   *
+   * `alocacao` diz QUANTOS itens cada pessoa recebe. Enquanto o rateio era por
+   * quantidade isso era suficiente: qualquer conjunto de N itens serve. Com o
+   * `A4` deixou de ser — o motor passou a decidir por LOTE, e a identidade do
+   * lote é a decisão.
+   *
+   * Sem este campo, o serviço recebia "Ana: 5, Bruno: 3" e repartia os itens
+   * por POSIÇÃO numa lista ordenada por `criadoEm`. Duas ligas cujos e-mails
+   * chegaram intercalados eram partidas entre as duas pessoas — exatamente o
+   * que o `A4` existe para impedir —, e nada acusava, porque a soma continuava
+   * fechando e a trava de conservação só olha a soma.
+   *
+   * A decisão do motor tem de chegar inteira a quem grava. Este campo é ela.
+   */
+  atribuicaoDeGrupos?: Record<string, ColaboradorId>
   creditoCategoriaAntes: Record<ColaboradorId, number>
   creditoCategoriaDepois: Record<ColaboradorId, number>
   creditoGlobalAntes: Record<ColaboradorId, number>
   creditoGlobalDepois: Record<ColaboradorId, number>
+}
+
+// ─── O contrato entre o serviço e a tela (`H-D7`) ─────────────────────────
+//
+// Estas formas são declaradas UMA vez. O serviço as devolve, a rota as
+// serializa em JSON, e a tela lê o resultado — e como as três olham para a
+// mesma declaração, mudar um campo no serviço quebra a compilação da tela em
+// vez de quebrar a tela em produção.
+//
+// A primeira tentativa de fechar a `H-D7` copiou as interfaces das telas para
+// cá e deixou as originais nos serviços. Não fechou nada: virou uma terceira
+// cópia, e as duas JÁ divergiam — `recebidoEm` era `Date` no serviço e
+// `string` na cópia, que é exatamente a divergência que a dívida descreve.
+//
+// O que a serialização faz com os tipos está em `NaRede`, abaixo: uma única
+// regra, verificada pelo compilador, em vez de um `string` digitado à mão em
+// cada tela na esperança de que o JSON combine.
+//
+// O que isto NÃO resolve: nada aqui prova que a ROTA devolve mesmo esta forma
+// — ela pode omitir um campo, e o `await api.buscar<T>()` acredita. Fechar
+// isso de verdade exige validar a resposta no cliente contra o mesmo Zod, e
+// está registrado em `DECISOES.md § H.2` como a parte que sobra da `H-D7`.
+
+/**
+ * A mesma forma, depois de passar pelo JSON.
+ *
+ * `Date` não sobrevive à serialização: `JSON.stringify(new Date())` devolve a
+ * string ISO, e é ela que a tela recebe. Declarar o campo como `Date` na tela
+ * compilaria e explodiria em `.getTime is not a function` no navegador; digitar
+ * `string` à mão numa cópia esconde a diferença. Aqui a conversão é uma regra
+ * só, aplicada pelo compilador.
+ */
+export type NaRede<T> = { [K in keyof T]: NaRedeCampo<T[K]> }
+
+type NaRedeCampo<V> = V extends Date
+  ? string
+  : V extends readonly (infer U)[]
+    ? NaRedeCampo<U>[]
+    : V extends object
+      ? { [K in keyof V]: NaRedeCampo<V[K]> }
+      : V
+
+/**
+ * Estado de acesso de uma pessoa, como `GET /api/colaboradores` devolve.
+ *
+ * O hash da senha nunca entra aqui, em nenhuma forma: `senhaDefinidaEm`
+ * responde "esta pessoa já tem acesso?" sem revelar nada sobre a senha.
+ */
+export interface ColaboradorResumo {
+  id: string
+  nome: string
+  papel: string
+  email: string
+  ativo: boolean
+  precisaTrocarSenha: boolean
+  senhaDefinidaEm: Date | null
+  bloqueadoAte: Date | null
+  tentativasFalhas: number
+  /** Categorias em que a pessoa pode receber trabalho. */
+  categorias: string[]
+}
+
+export interface ItemDaCaixa {
+  itemId: string
+  titulo: string
+  categoriaCodigo: string
+  categoriaRotulo: string
+  /**
+   * O limiar de confiança DESTA categoria (`A12`).
+   *
+   * Sobe até aqui porque a tela precisa dele para colorir o selo de confiança.
+   * Sem ele, a tela usava 0,85 para todo mundo e contradizia o motivo da
+   * revisão em itens de `DOC` (0,95) e `FICHA` (0,90).
+   */
+  limiarConfianca: number
+  grupo: string
+  status: string
+  confianca: number
+  /**
+   * A IA classificou este item?
+   *
+   * Sem isto, item registrado à mão aparecia com "Confiança 100%" — um número
+   * de aparência ótima sobre uma classificação que modelo nenhum fez. É a
+   * mesma família de defeito que o `SUBTOTAL(109)` da planilha: o valor está
+   * lá, parece resultado, e não significa o que quem lê acha que significa.
+   * `modeloIa` é o mesmo critério que a taxa de acerto usa para montar o
+   * denominador.
+   */
+  classificadaPorIa: boolean
+  remetente: string | null
+  assunto: string | null
+  recebidoEm: Date | null
+  /** Quantos itens o mesmo e-mail gerou. Mostra o desdobramento na tela. */
+  irmaos: number
+  responsavel: string | null
+  /**
+   * A liga do item, quando tem (`A4`).
+   *
+   * Governava a distribuição desde o `A4` e não aparecia em tela nenhuma. Sobe
+   * até aqui para que a Caixa possa filtrar por liga — e, com isso, para que a
+   * memória do setor sobre aquela liga tenha onde ser lida e escrita.
+   */
+  ligaId: string | null
+  ligaNome: string | null
+}
+export interface LinhaPainel {
+  categoriaCodigo: string
+  rotulo: string
+  grupo: string
+
+  /** Entrou antes do período e ainda estava aberto quando ele começou. */
+  saldoInicial: number
+  /** Entrou dentro do período. */
+  entrouNoPeriodo: number
+  /** `saldoInicial + entrouNoPeriodo` — tudo que esteve na mesa no período. */
+  aberto: number
+  /** Fechado dentro do período. */
+  concluidoNoPeriodo: number
+  /** Cancelado dentro do período. A planilha não tem coluna equivalente. */
+  canceladoNoPeriodo: number
+  /** Ainda aberto no fim do período. */
+  pendente: number
+
+  /** Estado AGORA, para tocar o dia. Não tem recorte de período. */
+  aguardandoRevisao: number
+  aprovado: number
+  distribuido: number
+  emAndamento: number
+  /**
+   * Há quantos dias está parado o item aberto mais antigo desta categoria.
+   * `null` quando não há nada aberto.
+   *
+   * É o indicador de atraso do `A7`. Também é estado AGORA, e por isso ignora
+   * o recorte de período: a pergunta é "o que está envelhecendo neste momento",
+   * e um recorte de mês esconderia justamente o item de março que ninguém tocou.
+   */
+  diasDoMaisAntigo: number | null
+}
+export interface LinhaPorPessoa {
+  colaboradorId: string
+  nome: string
+  atribuidos: number
+  concluidos: number
+  pendentes: number
+  creditoGlobal: number
+}
+export interface LinhaDaEscala {
+  colaboradorId: string
+  nome: string
+  papel: string
+  disponivel: boolean
+  capacidadeRelativa: number
+  /** Categorias em que a pessoa está habilitada nesta data. */
+  categorias: string[]
+  /**
+   * A ausência que cobre esta data, **já redigida para quem está lendo**.
+   *
+   * Existe porque sem ela a tela deixava marcar como de plantão alguém que
+   * está de férias: `carregarElegiveis` a excluiria do rateio de qualquer
+   * jeito, a prévia viria com uma pessoa a menos, e NADA explicaria por quê.
+   *
+   * NÃO é o tipo cru. Para quem não é gestor, `atestado`, `licença`, `falta` e
+   * `outro` chegam todos como `indisponivel` — a operação precisa saber quem
+   * não recebe hoje, não o motivo médico. Ver `core/afastamento-visivel.ts`.
+   */
+  afastamento: RotuloDeAfastamento | null
+}
+export interface ResumoIngestao {
+  correlacaoId: string
+  recebidos: number
+  novos: number
+  duplicados: number
+  itensCriados: number
+  /**
+   * E-mails interpretados que não geraram item nenhum.
+   *
+   * Zero item é resultado legítimo — resposta automática, aviso de entrega,
+   * boletim. Mas é indistinguível de "a IA não entendeu e a carga sumiu", e o
+   * e-mail fica marcado como processado, então nunca mais volta. Sem este
+   * contador na tela, a diferença entre os dois casos não existiria para
+   * ninguém: seria exatamente a perda silenciosa que a planilha comete.
+   */
+  emailsSemItem: number
+  itensAprovados: number
+  itensParaRevisao: number
+  falhas: number
+  anexosRejeitados: number
+}
+
+export interface ItemEmRevisao {
+  revisaoId: string
+  itemId: string
+  motivo: string
+  confianca: number
+  campoIncerto: string | null
+  titulo: string
+  categoriaCodigo: string
+  /** O limiar da categoria, para a tela colorir o selo pelo número certo. */
+  limiarConfianca: number
+  remetente: string | null
+  assunto: string | null
+  sugestaoIa: string
 }

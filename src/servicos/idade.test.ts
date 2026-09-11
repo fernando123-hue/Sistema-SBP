@@ -126,6 +126,31 @@ describe('A7 — indicador de atraso no painel', () => {
     expect(inadimp.diasDoMaisAntigo).toBe(12)
   })
 
+  it('item DEVOLVIDO continua envelhecendo — pendente e atraso não podem discordar', async () => {
+    // O defeito: `ABERTOS` não incluía `devolvido`. Como `pendente` CONTA o
+    // devolvido e o indicador de atraso NÃO contava, a mesma linha da mesma
+    // tela dizia, ao mesmo tempo, que havia trabalho parado e que nada estava
+    // envelhecendo. O item devolvido volta ao pool e é recolhido pela próxima
+    // rodada — ele é trabalho a fazer, e envelhece como qualquer outro.
+    const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 1 })
+    const pessoa = base.colaboradores[0]!
+
+    const feito = await registrarManual(
+      banco,
+      { categoriaCodigo: 'INADIMP', titulo: 'Devolvido e esquecido', colaboradorId: pessoa.id },
+      base.operador,
+    )
+    const itemId = feito.itensCriados[0]!
+    await envelhecer(itemId, 19)
+    await banco.item.update({ where: { id: itemId }, data: { status: 'devolvido' } })
+
+    const linhas = await porCategoria(banco)
+    const inadimp = linhas.find((linha) => linha.categoriaCodigo === 'INADIMP')!
+
+    expect(inadimp.pendente).toBe(1)
+    expect(inadimp.diasDoMaisAntigo).toBe(19)
+  })
+
   it('é nulo quando não há nada aberto — ausência de fila não é atraso zero', async () => {
     await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 1 })
 

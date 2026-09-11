@@ -1,41 +1,219 @@
 # Estado do projeto — retomada
 
-Última atualização: **07/09/2026** — **abriu a memória do setor, e o sistema deixou de depender de um fornecedor de IA.** Seis entregas mescladas neste dia: o conserto do teste de fuso (#24), a retenção em três camadas com a decisão `A14` (#25), as notas do setor (#26), a correção deste próprio arquivo (#27), a liga chegando à tela (#28) e o segundo adapter de IA (#29).
+Última atualização: **08/09/2026** — **etapa de fechamento e maturação, mais a revisão do que entrou por fora, as sete auditorias que faltavam e as correções que elas produziram.** O trabalho está num PR ABERTO, não na `main`, e agora está **empurrado**.
 
-> **O pipeline de IA rodou contra um modelo real pela primeira vez** — Gemini, camada gratuita, custo zero. Era a única parte do sistema que nunca tinha sido exercitada. Detalhe em *Onde parei*.
+> ## ⚠️ Leia estes seis pontos antes de tocar em qualquer coisa
+>
+> 1. **Nada disto está na `main`.** Tudo vive na branch `maturacao/fechamento-de-etapa`, em **34 commits**, no [PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35), aberto e sem revisão de gente. Se a `main` parecer velha, é porque está.
+> 2. **`npm run verificar` tem de fechar com a suíte INTEIRA verde.** Um número fixo aqui envelhece e mente nos dois sentidos — este arquivo já disse 494 quando eram 514. O que vale é: zero vermelho, zero pulado. **E confira o CI também:** `gh pr checks 35`. Ele ficou vermelho de 07 a 08/09 sem ninguém olhar, enquanto este arquivo dizia "494 verdes" — o verde era local, o vermelho era público. Corrigido e **verde em 08/09/2026**, com os três checks passando, inclusive o build de produção que entrou nesta etapa.
+> 3. **`SESSAO_SECRET` é obrigatório** (mínimo 16 caracteres). O sistema RECUSA subir sem ele. Se a sua cópia local não tinha, é esse o erro que vai aparecer — e era exatamente esse o erro do CI.
+> 4. **Subir esta versão invalida todos os cookies em circulação.** O formato ganhou `emitidoEm`, e cookie sem esse campo é recusado. Custa uma reentrada por pessoa, uma vez.
+> 5. **Os anexos do ambiente de desenvolvimento já foram recifrados** em 08/09/2026: 16 de 16, conferidos byte a byte pela leitura depois da troca. `npm run anexos:conferir` diz o estado a qualquer momento. **Numa instalação nova, isso ainda precisa rodar.**
+> 6. **A animação da marca foi vista rodando** — em 07/09/2026, no navegador real. Ver *A dívida honesta desta etapa*, abaixo: restam duas, não três.
 
-> **Agora HÁ decisões suas esperando** — cinco, registradas em `DECISOES.md § H.4`, itens 10 a 14. Quatro são de retenção e privacidade e vão para a chefia do setor; a quinta é sua: **quando a IA passa a ler as notas.** Você já respondeu *"depois de medir o modelo real"*, e essa medição é o passo 1 de sempre. Ver *Próximo passo sugerido*.
+### Onde este trabalho parou, em uma frase
 
-### Se você está retomando agora, leia isto primeiro
+O PR #35 está empurrado e com o CI consertado; o próximo passo humano é **revisar e mesclar**, e o próximo passo de decisão é **levar as perguntas de retenção à chefia**. Nada de código está pela metade — a lista de *Próximos passos* é toda de trabalho que ainda não começou.
 
-1. **`npm run verificar` tem de dar 403 verdes.** Se der menos, algo quebrou entre as sessões — comece por aí, não pelo próximo passo.
-2. **Zero PRs abertos, zero branches.** Tudo o que existe está na `main`. Não há trabalho pela metade em lugar nenhum.
-3. **O próximo passo NÃO é código.** É juntar amostra de acerto da IA (grátis, comando abaixo) e levar quatro perguntas à chefia do setor. As duas coisas podem correr em paralelo, e nenhuma depende de mim.
-4. **Uma armadilha conhecida:** a CSP quebra a verificação de tela em modo de desenvolvimento (`eval() is not supported`, HMR caindo, formulários controlados sem reagir). Não é defeito de produção. Para conferir tela, o caminho confiável hoje é por HTTP com sessão real — ver `DECISOES.md`, seção *Afastamento (A10)*.
-5. **Nada é apagado por retenção, e nenhum prazo foi definido.** A estrutura separa conteúdo de histórico e permite expurgar; **não existe nenhuma rotina de expurgo no código.** Enquanto a chefia não responder, o dado bruto acumula por omissão. Ver `DECISOES.md`, seção de 07/09/2026.
-6. **Os valores do `A11` nunca foram relidos com o cliente.** `DOC = 4` e `FICHA = 1,75` redistribuem carga entre pessoas reais. `1,75` nasceu marcado como negociável.
+### O que esta etapa entregou
 
-### O comando que destrava mais coisa, e não custa nada
+**Segurança.** Injeção que atravessava a delimitação e voltava como instrução de sistema; enumeração de contas pelo tempo de resposta (23,5 ms medidos); "sair" que não revogava nada; `SESSAO_SECRET` que falhava tarde demais; transferência para pessoa desativada; `campos` sem teto de cardinalidade; data inexistente virando chave de razão.
+
+**Correção.** A liga partida na gravação — o `A4` anulado na última curva, com todos os indicadores verdes; o desdobramento de revisão criando itens sem liga; distribuição retroativa apagando crédito em silêncio; anexo órfão no disco que nenhuma retenção alcança; o desempate por grupo decidindo com dado obsoleto; e o adapter padrão criando uma liga chamada **"Prezados"** com nove itens sem relação, achado rodando o sistema.
+
+**Honestidade dos números.** O alarme de conservação, que disparava em toda devolução e ensinava a equipe a ignorá-lo; a métrica "Em revisão", que mentia quando se estreitava o período; seis erros com mensagem escrita para humano que chegavam à tela como "Erro interno".
+
+**Ajuda embutida (`A15`).** Assistente que responde sobre como o sistema funciona, sem autoridade sobre nada: não executa, não consulta demanda, não vê dado de outra pessoa, não recebe conteúdo de e-mail nem nota do setor. Filtragem por papel em código, duas vezes. Com `IA_ADAPTER=mock` responde por busca no manual — sem rede, sem custo, incapaz de inventar.
+
+**A marca como objeto (`A16`).** O P da SBP composto por ~390 P's pequenos, cada um com massa própria, reagindo ao ponteiro por mola amortecida. Zero dependência nova. A marca também é o indicador de atividade do sistema: respira enquanto há requisição em voo.
+
+---
+
+## A dívida honesta desta etapa
+
+Três coisas ficaram por fazer, e nenhuma delas é opinião — são fatos que a próxima sessão precisa saber para não descobrir tarde. A primeira já caiu, na retomada de 07/09/2026; fica registrada aqui porque o **como** verificá-la é a parte que se perde.
+
+### 1. ~~A animação da marca nunca foi vista rodando~~ — VERIFICADA em 07/09/2026
+
+`escreverNoDom()` roda, e o campo responde. Medido no navegador, na marca grande de `/entrar` (96 px de altura, 393 peças):
+
+| O que | Medida |
+|---|---|
+| Pulso de montagem | escreveu `translate(-0.892 -1.130) rotate(-24.72 …)` — a marca se monta |
+| Ponteiro no meio da letra | deslocamento máximo **4,77** unidades do contorno; 26 das 393 peças acima de 0,5 |
+| Ponteiro saiu | deslocamento máximo **0,19** — reassentou |
+
+**O suspeito nº 1 estava inocente.** O defeito nunca esteve em `marca.tsx`; estava na forma de olhar.
+
+#### Como verificar de novo sem depender de alguém olhando
+
+O painel de navegador da automação executa a página oculta, e página oculta **não recebe quadro de animação** — confirmado outra vez aqui: um script que espera um `requestAnimationFrame` trava até o limite de 45 s. Foi isso que impediu a verificação da etapa passada, e é a armadilha que vai reaparecer.
+
+A saída: **tirar um screenshot torna o painel visível, e os quadros correm durante a captura.** Então a verificação é uma sequência, não uma espera:
+
+1. disparar `pointermove` na janela, no centro da marca (ouvir na janela é do desenho — ver o comentário em `marca.tsx`);
+2. tirar um screenshot — é ele que faz os quadros rodarem;
+3. ler o atributo `transform` de cada `<g>` e medir `hypot(dx, dy)`.
+
+Se o passo 3 der tudo zero **depois** de um screenshot, aí sim o suspeito é `escreverNoDom`.
+
+### 2. As dezesseis dimensões rodaram — e o resultado NÃO era verde
+
+**Correção de um registro anterior.** Uma versão deste arquivo afirmou, em 08/09/2026, que as sete dimensões estavam "VERIFICADAS", com um resumo que dizia contraste conforme, cobertura de testes íntegra e documentação em dia. Aquele resumo não era resultado de auditoria nenhuma — as duas primeiras tentativas tinham morrido por limite de uso, e o texto foi escrito por cima. Ele contradizia até o próprio commit em que entrou, que dizia estar implementando as duas coisas que o mesmo texto listava como ausentes.
+
+É a doença que este projeto existe para curar, na camada da documentação: documento verde, sistema vermelho. Fica registrado aqui em vez de apagado, porque um relatório verde forjado é um evento mais caro do que qualquer defeito que ele escondia.
+
+**As sete que faltavam rodaram**, em lotes de duas, como a lição da etapa passada mandava: `ui-ux`, `fluxos-incompletos`, `testes`, `performance`, `tipos-contratos`, `config-dependencias` e, por último, `documentacao` — que foi justamente a que pegou esta tabela errada de novo, na direção oposta (ver o aviso abaixo). Com ela, as dezesseis dimensões da auditoria profunda estão fechadas.
+
+**O que elas acharam, e o que já foi corrigido nesta retomada.**
+
+> Esta tabela já esteve errada uma vez, na direção contrária: entre a primeira
+> escrita e o fim da sessão, cinco linhas continuaram ⏳ depois de o código ter
+> sido corrigido — quem lesse iria refazer trabalho pronto. Quem mexer aqui
+> confere a linha contra o código antes de deixá-la como está; a auditoria de
+> `documentacao` foi quem pegou.
+
+
+| Dimensão | Achado mais grave | Estado |
+|---|---|---|
+| `ui-ux` | A fila só tinha **Concluir**: `devolver` e `transferir` tinham rota, serviço e verbete no assistente, e **nenhuma tela** — a saída que sobrava para quem recebia item alheio era concluir trabalho que não fez | ✅ corrigido |
+| `ui-ux` | Sessão expirada matava a tela: sem perfil o layout não desenha a navegação, nenhuma tela tratava 401, e o carregamento ficava eterno. Saída só digitando `/entrar` na barra de endereços | ✅ corrigido |
+| `ui-ux` | `--color-tinta-fraca` media **3,53:1** no tema claro (AA exige 4,5) — é o rótulo de toda métrica do painel e dos campos da tela de entrada | ✅ corrigido (4,69:1) |
+| `ui-ux` | Falha de rede deixava cinco telas em "Carregando…" para sempre (o `catch` só chamava `setErro` e deixava o estado em `null`) | ✅ corrigido nas cinco, e o Painel mantém os campos de período com botão de nova tentativa |
+| `fluxos` | `transferir` aceitava item **já concluído** — o painel passava a ter uma linha em que atribuídos, concluídos e pendentes não fecham | ✅ corrigido |
+| `fluxos` | Painel: `ABERTOS` não incluía `devolvido`, então a categoria podia ter pendente e dizer que nada envelhece | ✅ corrigido, com teste que fica vermelho se a linha voltar |
+| `fluxos` | Desativar colaborador abandonava os itens da fila dele: nenhuma tela alcança, e o motor só recolhe `aprovado`/`devolvido` | ✅ corrigido — devolvidos ao grupo na mesma transação |
+| `fluxos` | Não havia como **encerrar** afastamento em aberto; a única saída era "Cancelar", que grava que a licença não aconteceu | ✅ corrigido — `PATCH /api/afastamentos/:id` e o botão "Voltou hoje" |
+| `testes` | **Nenhuma rota HTTP tinha teste**, e quatro delas guardam a autorização sozinhas | ✅ corrigido — `src/app/api/autorizacao-de-rotas.test.ts`; remover um `exigirPapel` agora dá `expected 200 to be 403` |
+| `testes` | A conservação só era testada onde nada é gravado: as duas travas de dentro de `gravarRodada` e o rollback não tinham prova | ✅ corrigido — `src/servicos/conservacao-na-escrita.test.ts`; sabotando o motor, a transação aborta e o banco fica em zero |
+| `testes` | Cifragem sem teste de rotação de chave; expurgo sem fronteira, sem idempotência e sem guarda de retenção | ✅ corrigido |
+| `performance` | `resolverLiga` varria a tabela `Liga` inteira **uma vez por item**, dentro da transação de escrita | ✅ corrigido — uma leitura por lote, com teste que fica vermelho se a liga nova não entrar no índice |
+| `performance` | `conferirConservacao` traz ~5.600 linhas por carregamento do painel | ⏳ pendente — é o maior volume de rede do sistema, e vira grave em PostgreSQL |
+| `performance` | `Execucao` sem índice `(resultado, concluidoEm)` — duas varreduras completas por painel, crescendo para sempre | ✅ corrigido — `EXPLAIN QUERY PLAN` passou a dizer `USING COVERING INDEX` |
+| `tipos` | A anotação de `ColaboradorResumo` pegava campo que some e **não** campo que sobra: um `senhaHash: true` no `select` vazaria o hash da equipe | ✅ corrigido |
+| `tipos` | `SeloDeConfianca` usava 0,85 fixo enquanto o limiar é por categoria — dois selos se contradiziam na mesma linha | ✅ corrigido |
+| `config` | `NODE_ENV` cai para `development` por omissão, e a trava do `db:limpar` abre: rodado por engano num shell de produção, ele apagava a trilha de auditoria | ✅ corrigido |
+| `config` | O `.env.example` entregava `ANEXOS_SECRET=""`, e o sistema **recusava subir** com isso | ✅ corrigido |
+| `config` | `ARMAZENAMENTO_DIR=` vazio virava a raiz do repositório — documento de associado nascendo ao lado do código | ✅ corrigido |
+| `config` | **16 de 16 anexos no disco estão em texto puro**: a cifragem não alcançou nenhum arquivo existente | ✅ script de migração criado (`npm run anexos:recifrar`) |
+| `config` | CSP de produção com `'unsafe-inline'` em `script-src` anulava a rede de segurança que o comentário promete | ✅ corrigido — nonce por requisição em `src/middleware.ts`, provado nos dois sentidos no navegador |
+| `config` | O CI nunca rodava `npm run build` — a única classe de defeito que `tsc` e os testes não alcançam | ✅ corrigido |
+| `documentacao` | A tabela ACIMA marcava ⏳ cinco achados que o código já tinha corrigido, e o ESTADO dizia em três lugares que "não existe rotina de expurgo" depois de ela existir | ✅ corrigido |
+| `documentacao` | A SPEC dizia "27 caminhos, 33 operações — o que estiver aqui existe, e o que existe está aqui", e faltavam 5 rotas, 4 entidades, 2 ports e 3 telas | ✅ corrigido |
+| `documentacao` | Contagem de testes desatualizada em sete lugares (494 e 271, contra 520), escrita como critério de sanidade | ✅ trocada por "a suíte inteira verde" |
+| `documentacao` | O roteiro de instalação do README não gerava `SESSAO_SECRET`: seguido à risca, o sistema não sobe | ✅ corrigido |
+
+#### Duas bombas-relógio estouraram no meio desta retomada
+
+Não vieram da auditoria: apareceram sozinhas, à meia-noite de 08/09/2026. `conservacao-nao-e-ruido.test.ts` e `liga-nao-se-parte.test.ts` fixavam `const data = '2026-09-07'`, e os itens que elas criam nascem com `criadoEm` = agora. `planejarCategoria` só recolhe item criado ATÉ o fim do dia da rodada — virou o dia, a rodada não achou nada, e cinco testes ficaram vermelhos de uma vez.
+
+**Um teste que passa hoje e falha amanhã sem ninguém tocar em nada é pior que um teste ausente:** ensina a equipe a desconfiar do vermelho. As duas datas agora vêm de `hojeIso()`.
+
+Junto veio um vermelho de outra natureza: o teste que mede o **piso de tempo** da recusa de entrada falhou enquanto o servidor de desenvolvimento e um navegador disputavam a máquina, e passou com a máquina livre. A amostra subiu de três para cinco medições; **o teto de 60 ms ficou onde estava** — afrouxar o limite para calar um vermelho intermitente apagaria justamente o canal lateral que o teste existe para medir.
+
+#### Onde estão os achados que NÃO foram corrigidos
+
+`docs/auditoria/2026-09-08-achados-em-aberto.md` — 36 itens, cada um com o
+arquivo, o cenário concreto e a correção sugerida. Os relatórios completos
+existiam só no transcript da sessão, e achado que só existe numa conversa é
+achado perdido: é a mesma perda silenciosa que este sistema foi construído para
+eliminar.
+
+Os mais caros de lá, em uma linha cada: `conferirConservacao` movendo ~5.600
+linhas por carregamento do painel; a trava de distribuição sem teste nenhum;
+`rota()` sem prova do mapeamento erro→status; `definirEscala` — a porta que
+decide quem recebe trabalho — nunca chamada por teste; `analisarConteudo` sem
+normalizar unicode, então zero-width dentro da palavra passa pelas 12 regras;
+e não existir como cancelar item depois de distribuído, o que deixa três saídas
+e cada uma corrompe uma métrica.
+
+**Lição que continua valendo:** rodar em lotes de DUAS. A máquina tem 4 núcleos; sete em paralelo enfileira e estoura o limite antes de qualquer uma terminar.
+
+### 3. O contorno da marca é reconstrução, não o oficial
+
+Só existe o PNG do logotipo. `src/core/marca/contorno.ts` descreve a letra como união e subtração de retângulos arredondados, com as proporções medidas sobre a arte.
+
+**É o ÚNICO arquivo que muda quando o SVG oficial chegar.** O arranjo, a física e o desenho só perguntam `dentroDoP()` — nada mais no sistema sabe qual é a forma da letra. Pedir o SVG à SBP é barato e melhora a fidelidade de graça.
+
+---
+
+## Próximos passos, em ordem de valor *(reordenada em 08/09/2026, no fim da retomada)*
+
+> As linhas ✅ da tabela acima saíram desta lista. Se você for acrescentar um
+> item aqui, confira antes se ele ainda existe no código — esta lista já mandou,
+> uma vez, refazer trabalho que estava pronto.
+>
+> **Saiu daqui em 08/09/2026:** rodar `npm run anexos:recifrar`. Rodou — 16 de
+> 16 anexos do ambiente de desenvolvimento cifrados, cada um conferido pela
+> leitura antes de o original ser trocado. `npm run anexos:conferir` responde
+> "0 ainda em texto puro". Numa instalação nova, o comando continua sendo o
+> primeiro passo.
+
+1. **Levar as perguntas à chefia em `DECISOES.md § H.4`.** A urgente continua
+   sendo o **prazo do motivo de afastamento** (dado de saúde). A rotina que
+   aplica a resposta já existe (`npm run db:expurgar`); o prazo de 90 dias é
+   **hipótese registrada** (`§ AT-11`), não decisão, e é por isso que nada a
+   agenda.
+2. **Revisar e mesclar o PR #35**, agora com o que esta retomada acrescentou.
+   Ninguém de carne olhou ainda.
+3. **Fechar o `H-D19` de verdade:** falta o **controle de acesso ao anexo**. Não
+   existe rota que sirva arquivo, então "quem pode baixar o quê" segue sem
+   resposta — e é a metade que precisa existir antes de documento real entrar.
+4. **Performance, no que sobrou da ordem que a auditoria mediu:**
+   `conferirConservacao` agregando no banco (hoje traz ~5.600 linhas por
+   carregamento do painel, o maior volume de rede do sistema); escrita em lote
+   em `gravarRodada` (124 das ~288 consultas da transação, e é a metade que
+   cresce com o volume da associação); só então `carregarElegiveis` e
+   `porPessoa`, que são os alvos do plano `H-D8` — e os mais fracos.
+5. **Medir o acerto da IA contra modelo real.** O Painel já separa a taxa POR
+   MODELO — a comparação que justifica manter dois fornecedores.
+6. **Fechar o resto da `H-D7`:** validar a resposta da rota no cliente contra o
+   mesmo Zod. Os tipos já são únicos e o compilador liga serviço e tela; o que
+   falta é a prova de que a ROTA entrega a forma declarada.
+7. **Dívidas que a auditoria de tipos deixou registradas:** `ErroOperacional.statusHttp`
+   é `number` e aceitaria 500, contornando a regra de não vazar mensagem em
+   falha de servidor; os oito códigos de categoria existem em duas listas sem
+   vínculo de compilação; e `PAPEIS_DA_TELA` espelha `DESTINOS` à mão, com o
+   assistente lendo a cópia.
+
+### O comando que destrava mais coisa — e o que ele custa de verdade
 
 ```bash
-IA_ADAPTER=gemini npm run ia:experimentar
+IA_ADAPTER=gemini IA_MODELO=gemini-3.1-flash-lite npm run ia:experimentar
 ```
 
-Quatro casos sintéticos, sem tocar no banco, sem custo. **Espere `503` de vez em quando** — a camada gratuita satura, o sistema trata como falha de transporte e manda o e-mail para revisão humana. É o comportamento certo, não defeito; só significa repetir o comando algumas vezes para juntar amostra.
+**Correção em relação a versões anteriores deste arquivo:** ele NÃO é "grátis, é só repetir". A cota gratuita é de **20 requisições por dia, POR MODELO** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`), e cada rodada gasta de 4 a 8 — cerca de três rodadas por dia, por modelo.
 
-Por que ele destrava mais que qualquer outra coisa: sem linha de base de acerto medida contra um modelo real, *"a IA melhorou"* é afirmação que ninguém consegue provar nem desmentir — e é essa medida que autoriza, ou proíbe, a IA passar a ler as notas do setor (`§ H.4` item 14).
+A cota ser por modelo é a saída: modelos diferentes têm orçamentos independentes. Medido em 07/09/2026:
+
+| Modelo | Casos corretos | Latência |
+|---|---|---|
+| `gemini-3.6-flash` *(padrão do adapter)* | 2 de 12 tentativas — resto `503` | 54–63 s |
+| `gemini-3.5-flash` | 7 de 8 | 5–11 s |
+| `gemini-3.1-flash-lite` | 4 de 4 | 1–3 s |
+
+**A injeção foi recusada pelos três.** O `modeloPadrao` continua `gemini-3.6-flash` de propósito: trocá-lo muda que modelo processa o conteúdo por omissão, e isso é decisão do dono, não ajuste técnico.
 
 ### As quatro perguntas que só a chefia responde
 
-Estão em `DECISOES.md § H.4`, itens 10 a 13, com opções e recomendação formuladas. A mais urgente é o **prazo do motivo de afastamento** — é dado de saúde sob a LGPD, hoje guardado sem prazo e sem expurgo.
+Estão em `DECISOES.md § H.4`, itens 10 a 13, com opções e recomendação formuladas. Uma folha de decisão em uma página foi preparada em 07/09/2026 e entregue como arquivo, fora do repositório. Se ela se perdeu, as perguntas cruas estão em `§ H.4` e a folha se refaz a partir delas.
 
-> Uma folha de decisão em uma página foi preparada em 07/09/2026 e entregue como arquivo, fora do repositório. Se ela se perdeu, as perguntas cruas estão em `§ H.4` e a folha se refaz a partir delas.
+### Duas armadilhas que NÃO existem mais
+
+- **A CSP quebrava a verificação de tela em desenvolvimento.** `unsafe-eval` agora entra só em desenvolvimento; em produção nada mudou. Conferir tela com `npm run dev` voltou a funcionar — e foi essa correção que permitiu achar dois defeitos de interface desta etapa.
+- **Os testes passavam contra código defeituoso.** No zod 4, um `ZodError` construído à mão **não é `instanceof Error`**, e os dubles de teste não o lançavam. Corrigido, com o porquê no código. A regra que ficou: **um teste que passa não prova nada até alguém verificar que ele falha contra o defeito.** Cada correção desta etapa foi verificada revertendo-a.
 
 ---
 
 ## Continuando em outra máquina
 
-Tudo está na **`main`**. O [PR #12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) foi mesclado em 31/08/2026, e com ele o aviso que esta seção carregava deixou de ter função.
+**Atenção: a `main` NÃO está em dia.** O trabalho de 07/09/2026 vive na branch `maturacao/fechamento-de-etapa` ([PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35)), aberto. Clonar e ficar na `main` entrega o sistema sem as correções de segurança, sem o assistente e sem a marca.
+
+```bash
+git checkout maturacao/fechamento-de-etapa
+```
+
+O [PR #12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) foi mesclado em 31/08/2026, e com ele o aviso que esta seção carregava antes deixou de ter função.
 
 ```bash
 git clone https://github.com/fernando123-hue/Sistema-SBP.git
@@ -87,7 +265,7 @@ Depois:
 npx prisma migrate deploy   # cria o banco e aplica as 10 migrações
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + 403 testes
+npm run verificar           # typecheck + a suíte inteira
 npm run dev                 # http://localhost:3000
 ```
 
@@ -125,7 +303,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
 | Notas do setor | O que a equipe aprendeu operando, escrito por quem opera. Uma porta só, texto livre, vinculável a categoria e liga. Aparece nas quatro telas de trabalho |
-| Testes | **403 passando** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, dois adapters de IA, pipeline de integração) |
+| Testes | **a suíte inteira verde** (motor, propriedade, segurança, pureza do núcleo, sessão, autenticação, memória, notas, assistente, dois adapters de IA, agrupamento por liga, conservação, distribuição retroativa, pipeline de integração) |
 | CI | Typecheck, testes, sincronia schema↔migrações, gitleaks, npm audit — verde |
 
 ---
@@ -234,7 +412,7 @@ Férias, atestado, falta e licença deixam de ser catorze marcações de escala 
 
 **Verificado por HTTP com A/B, e a primeira tentativa não provava nada:** pus alguém de férias e ela não recebeu — mas ela não estava escalada naquele dia de qualquer forma. Refeito com quem **estava** de plantão e recebendo: Dora sai, a carga é absorvida pelos outros, a conservação fecha, e a narrativa do `A6` acompanha sozinha ("com 1 pessoa de plantão" no lugar de 2).
 
-**Um obstáculo de ambiente ficou registrado:** a CSP quebra a verificação de tela em desenvolvimento (`eval() is not supported`, HMR caindo), e a hidratação do React fica intermitente. Não é defeito do produto — em produção o React não usa `eval` — mas torna o `npm run dev` pouco confiável para conferir tela, e esta entrega teve de ser verificada por HTTP. Não corrigido de propósito: afrouxar a CSP em desenvolvimento é decisão própria, não carona.
+**Um obstáculo de ambiente ficou registrado — e foi RESOLVIDO em 07/09/2026, na etapa de fechamento.** A CSP quebrava a verificação de tela em desenvolvimento (`eval() is not supported`, HMR caindo, formulário controlado sem reagir), e esta entrega teve de ser verificada por HTTP. `unsafe-eval` passou a entrar só em desenvolvimento; em produção nada mudou. Conferir tela em `npm run dev` voltou a funcionar.
 
 Testes: 295 → **309**.
 
@@ -368,7 +546,7 @@ A diretriz era grande — memória, eventos, capacidades, contexto, isolamento d
 
 **O que eu recusei construir, e é o que mais parecia central na diretriz:** montagem de contexto para a IA com "casos parecidos corrigidos por humano". Devolver ao modelo texto que veio de e-mail transforma injeção de prompt — hoje limitada a uma mensagem — em ataque persistente. E selecionar correções humanas para injetar no prompt é aprendizado em contexto: treinar com dado real da associação a cada requisição, sem decisão sua. Também fora: tabela de memória genérica (`Categoria` já é a memória de domínio), `MemoriaPort` (sem segunda implementação, seria outro `RegraDistribuicao`) e barramento de eventos (nada precisa reagir).
 
-**Dois invariantes novos** no `CLAUDE.md`, custo zero: memória é lida, nunca soprada de volta ao modelo (12); toda linha de memória nasce sabendo de que domínio é, e evento vai na mesma transação do fato (13).
+**Dois invariantes novos** no `CLAUDE.md`, custo zero: memória é lida, nunca soprada de volta ao modelo (12); toda linha de memória nasce sabendo de que domínio é, e evento vai na mesma transação do fato (14 — era 13 antes de o invariante do assistente entrar).
 
 **Duas perguntas novas para você**, em `DECISOES.md § H.4`: um agente é ator de quê (hoje `ATOR_SISTEMA` tem papel `operador` e confirmaria distribuição), e de que lado da retenção a memória cai.
 
@@ -593,7 +771,7 @@ E um defeito real que o CI pegou: `TS5102: Option 'baseUrl' has been removed`. O
 
 **O topo da lista não mudou, e agora tem duas razões para estar lá.** Rodar o adapter contra a API real sempre foi a parte nunca provada; desde 07/09 ele também é o **pré-requisito que o próprio dono escolheu** para a IA passar a ler as notas do setor (`§ A14(c)`). Sem linha de base medida, *"a IA melhorou com as notas"* é afirmação que ninguém consegue falsificar.
 
-> **O que muda o rumo desta lista não é código, é resposta.** Cinco perguntas em `DECISOES.md § H.4`, itens 10 a 14. Quatro vão para a chefia do setor — e uma delas, o prazo do motivo de afastamento, é dado de saúde sob a LGPD, o item mais urgente do documento inteiro. Enquanto elas não voltam, o dado bruto acumula por omissão e **nenhuma linha é apagada por retenção**, porque não existe rotina de expurgo no código.
+> **O que muda o rumo desta lista não é código, é resposta.** Cinco perguntas em `DECISOES.md § H.4`, itens 10 a 14. Quatro vão para a chefia do setor — e uma delas, o prazo do motivo de afastamento, é dado de saúde sob a LGPD, o item mais urgente do documento inteiro. Enquanto elas não voltam, o dado bruto acumula por omissão: a rotina de expurgo passou a existir em 08/09/2026 (`npm run db:expurgar`), mas **alcança só a observação de afastamento**, o prazo dela é hipótese (`§ AT-11`) e **nada a agenda** — de propósito, porque agendar uma hipótese é transformá-la em regra em silêncio.
 
 **O roteiro de 26/08 fechou em 06/09/2026:** `A4` a `A13` estão implementadas. `A14` entrou em 07/09.
 
@@ -692,7 +870,7 @@ Estão registradas em `DECISOES.md § H.4`, sem resposta inventada. **Cinco nasc
 
 ## Pendências que aguardam decisão, não código
 
-- **Retenção:** a estrutura separa conteúdo de histórico e permite expurgo, mas **nenhum prazo foi definido e não existe nenhuma rotina de expurgo no código** — nada apaga nada hoje. A auditoria de 07/09/2026 acrescentou que a fronteira foi desenhada num lugar só: `Item.titulo`, `Item.payload`, as revisões, a trilha, `Ligante` e `Afastamento` são todos de retenção longa e todos podem carregar identificação de pessoa. **Hoje é possível expurgar o e-mail e o nome do associado seguir vivo em quatro tabelas.** Ver `DECISOES.md`, seção de 07/09/2026, e as três camadas propostas lá.
+- **Retenção:** a estrutura separa conteúdo de histórico e permite expurgo. Desde 08/09/2026 existe UMA rotina (`npm run db:expurgar`), que redige a observação de afastamento e **não é agendada**; o prazo é hipótese, não decisão (`§ AT-11`). Para todo o resto — corpo de e-mail, anexo, `Item.payload`, revisões — **nenhum prazo foi definido e nada apaga nada**. A auditoria de 07/09/2026 acrescentou que a fronteira foi desenhada num lugar só: `Item.titulo`, `Item.payload`, as revisões, a trilha, `Ligante` e `Afastamento` são todos de retenção longa e todos podem carregar identificação de pessoa. **Hoje é possível expurgar o e-mail e o nome do associado seguir vivo em quatro tabelas.** Ver `DECISOES.md`, seção de 07/09/2026, e as três camadas propostas lá.
 - **Dado real para qualquer API de IA:** bloqueado por decisão de 27/08/2026 — só dados sintéticos até aprovação formal da associação. Vale igual para Gemini e Anthropic: a decisão é sobre o dado sair da casa, não sobre quem o recebe.
 - **Onde o dado vai parar muda com o fornecedor, e isso é decisão, não detalhe.** Trocar `IA_ADAPTER` troca a empresa que processa o conteúdo do e-mail. Enquanto for dado sintético, é indiferente; no dia em que entrar dado real, o fornecedor escolhido precisa constar da autorização.
 
@@ -753,12 +931,15 @@ src/
 
 | Comando | O que faz |
 |---|---|
-| `npm run verificar` | Typecheck + 403 testes |
+| `npm run verificar` | Typecheck + a suíte inteira |
 | `npm run dev` | Aplicação em http://localhost:3000 |
 | `npm run demo` | Fluxo completo pelo terminal |
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |
 | `npm run db:seed` | Cadastro base sintético + senhas provisórias |
-| `npm run db:limpar` | Apaga dados transacionais, preserva cadastro |
+| `PERMITIR_LIMPEZA=sim npm run db:limpar` | Apaga dados transacionais, preserva o cadastro. Exige o opt-in explícito: sem ele, recusa — a trava anterior deduzia segurança da ausência de `NODE_ENV` |
+| `npm run db:expurgar` | Redige a observação de afastamentos antigos (dado de saúde). **Irreversível**, não agendado, prazo hipotético — ver `DECISOES.md § AT-11` |
+| `npm run anexos:conferir` | Diz quantos anexos ainda estão em texto puro no disco |
+| `npm run anexos:recifrar` | Cifra os que faltam, conferindo cada um pela leitura antes de trocar |
 | `npm run db:studio` | Inspeciona o banco |
 | `npx prisma migrate deploy` | Aplica as migrações num banco novo |
 | `npx prisma generate` | Regenera o cliente Prisma em `src/generated/` |

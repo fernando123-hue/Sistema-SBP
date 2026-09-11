@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { CadastroDeColaboradorSchema } from '../../core/esquemas'
+import { hojeIso } from '../../core/util/datas'
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
   Aviso,
@@ -13,19 +14,11 @@ import {
   Selo,
   Vazio,
 } from '../../componentes/matrizes'
+import type { ColaboradorResumo, NaRede } from '../../core/tipos'
 
-interface Colaborador {
-  id: string
-  nome: string
-  papel: string
-  email: string
-  ativo: boolean
-  precisaTrocarSenha: boolean
-  senhaDefinidaEm: string | null
-  bloqueadoAte: string | null
-  tentativasFalhas: number
-  categorias: string[]
-}
+/** O que a rota devolve: as datas chegam como texto ISO. */
+type Colaborador = NaRede<ColaboradorResumo>
+
 
 interface Categoria {
   codigo: string
@@ -59,6 +52,16 @@ export default function Acesso() {
   const [ocupado, setOcupado] = useState<string | null>(null)
   /** Senha recém-sorteada, exibida UMA vez. Nunca volta do servidor depois disto. */
   const [senhaGerada, setSenhaGerada] = useState<{ nome: string; senha: string } | null>(null)
+  /**
+   * Quem está esperando o segundo clique para ter a senha trocada.
+   *
+   * Gerar uma senha nova invalida a atual na hora, não tem desfazer, e o botão
+   * era um clique único visualmente idêntico ao "Categorias" ao lado. Criar a
+   * PRIMEIRA senha não precisa disso: não há o que invalidar.
+   */
+  const [confirmandoSenha, definirConfirmandoSenha] = useState<string | null>(null)
+  /** Cartão da senha recém-gerada, para levar a vista até ele. */
+  const cartaoDaSenha = useRef<HTMLDivElement>(null)
   const [cadastrando, setCadastrando] = useState(false)
   const [novo, setNovo] = useState<Cadastro>(CADASTRO_VAZIO)
   /** Quem está com o editor de categorias aberto, e o rascunho da seleção. */
@@ -73,6 +76,12 @@ export default function Acesso() {
       setEquipe(pessoas)
       setCategorias(disponiveis)
     } catch (causa) {
+      // Estado neutro, e não `null`: `null` é a condição que desenha
+      // "Carregando…", então uma falha de rede deixava erro E carregando na
+      // tela ao mesmo tempo, para sempre. Quem olha conclui "hoje está lento",
+      // espera, e nunca tenta de novo.
+      setEquipe([])
+      setCategorias([])
       setErro(mensagemDoErro(causa))
     }
   }, [])
@@ -102,6 +111,14 @@ export default function Acesso() {
         colaboradorId: pessoa.id,
       })
       setSenhaGerada({ nome: pessoa.nome, senha: resposta.senhaProvisoria })
+      definirConfirmandoSenha(null)
+      // O botão que gera fica no RODAPÉ do cartão da pessoa; o cartão da senha
+      // nasce no TOPO da página. Com sete pessoas cadastradas, a senha aparecia
+      // fora da vista, e ela "aparece uma única vez e não fica gravada em lugar
+      // nenhum": sair da tela sem rolar para cima trancava a pessoa para fora.
+      requestAnimationFrame(() =>
+        cartaoDaSenha.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+      )
     })
   }
 
@@ -196,7 +213,12 @@ export default function Acesso() {
       {erro ? <Aviso>{erro}</Aviso> : null}
 
       {senhaGerada ? (
-        <Cartao className="border-atencao/40 bg-atencao-claro px-4 py-3">
+        <Cartao
+          ref={cartaoDaSenha}
+          role="status"
+          aria-live="assertive"
+          className="border-atencao/40 bg-atencao-claro px-4 py-3"
+        >
           <p className="text-sm font-medium text-atencao">Senha provisória de {senhaGerada.nome}</p>
           <p className="mt-2 font-mono text-lg break-all select-all">{senhaGerada.senha}</p>
           <p className="mt-2 text-xs text-atencao">
@@ -419,12 +441,20 @@ export default function Acesso() {
 
                     {pessoa.ativo ? (
                       <Botao
-                        variante="secundario"
+                        variante={confirmandoSenha === pessoa.id ? 'perigo' : 'secundario'}
                         tamanho="pequeno"
                         desabilitado={ocupado !== null}
-                        onClick={() => gerarSenha(pessoa)}
+                        onClick={() =>
+                          !pessoa.senhaDefinidaEm || confirmandoSenha === pessoa.id
+                            ? void gerarSenha(pessoa)
+                            : definirConfirmandoSenha(pessoa.id)
+                        }
                       >
-                        {pessoa.senhaDefinidaEm ? 'Nova senha provisória' : 'Criar senha'}
+                        {!pessoa.senhaDefinidaEm
+                          ? 'Criar senha'
+                          : confirmandoSenha === pessoa.id
+                            ? `Confirmar: a senha atual de ${pessoa.nome.split(' ')[0]} deixa de valer`
+                            : 'Nova senha provisória'}
                       </Botao>
                     ) : null}
 
@@ -517,6 +547,8 @@ function Afastamentos({
   const [abrindo, setAbrindo] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [novo, setNovo] = useState({ colaboradorId: '', tipo: 'ferias', inicio: '', fim: '', observacao: '' })
+  /** Qual cancelamento está esperando o segundo clique. */
+  const [confirmando, definirConfirmando] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     try {
@@ -554,11 +586,35 @@ function Afastamentos({
     }
   }
 
+  /**
+   * A pessoa voltou: a ausência em aberto ganha data de fim.
+   *
+   * Sem isto, a única saída era "Cancelar" — que grava que a ausência NÃO
+   * aconteceu. O gestor precisava afirmar uma coisa falsa para conseguir a
+   * verdadeira, e a trilha deixava de responder por que alguém ficou fora do
+   * rateio em março.
+   */
+  async function encerrar(afastamento: Afastamento) {
+    setSalvando(true)
+    aoFalhar(null)
+    try {
+      await api.ajustar(`/afastamentos/${afastamento.id}`, { fim: hojeIso() })
+      definirConfirmando(null)
+      await carregar()
+      await aoMudar()
+    } catch (causa) {
+      aoFalhar(mensagemDoErro(causa))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
   async function cancelar(afastamento: Afastamento) {
     setSalvando(true)
     aoFalhar(null)
     try {
       await api.remover(`/afastamentos/${afastamento.id}`)
+      definirConfirmando(null)
       await carregar()
       await aoMudar()
     } catch (causa) {
@@ -712,12 +768,38 @@ function Afastamentos({
                       entender por que alguém não recebeu não teria resposta.
                     */}
                     {afastamento.vigente ? <Selo tom="atencao">fora hoje</Selo> : null}
+                    {/*
+                      Duas ações com significados OPOSTOS, e antes só existia a
+                      segunda: "encerrar" diz que a ausência acabou, "cancelar"
+                      diz que ela não aconteceu. Quem precisava trazer alguém de
+                      volta ao rateio era empurrado a gravar a afirmação falsa.
+
+                      "Cancelar" pede dois cliques porque devolve a pessoa ao
+                      rateio na hora e some da lista: um toque errado no celular
+                      colocava alguém de férias de volta na distribuição do dia.
+                    */}
+                    {afastamento.fim === null ? (
+                      <Botao
+                        tamanho="pequeno"
+                        onClick={() => encerrar(afastamento)}
+                        desabilitado={salvando || ocupado}
+                      >
+                        Voltou hoje
+                      </Botao>
+                    ) : null}
                     <Botao
                       tamanho="pequeno"
-                      onClick={() => cancelar(afastamento)}
+                      variante={confirmando === afastamento.id ? 'perigo' : 'secundario'}
+                      onClick={() =>
+                        confirmando === afastamento.id
+                          ? void cancelar(afastamento)
+                          : definirConfirmando(afastamento.id)
+                      }
                       desabilitado={salvando || ocupado}
                     >
-                      Cancelar
+                      {confirmando === afastamento.id
+                        ? 'Confirmar: não aconteceu'
+                        : 'Não aconteceu'}
                     </Botao>
                   </div>
                 </div>
@@ -728,7 +810,8 @@ function Afastamentos({
       )}
 
       <p className="mt-3 text-xs text-tinta-fraca">
-        Cancelar um afastamento não apaga o registro: a trilha precisa continuar respondendo por que
+        "Voltou hoje" fecha uma ausência sem data de volta. "Não aconteceu" é outra coisa: cancela o
+        registro, e nenhum dos dois apaga a linha — a trilha precisa continuar respondendo por que
         alguém ficou fora do rateio numa data passada.
       </p>
     </section>

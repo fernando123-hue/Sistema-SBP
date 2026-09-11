@@ -22,24 +22,13 @@ const config: NextConfig = {
             key: 'Strict-Transport-Security',
             value: 'max-age=31536000; includeSubDomains',
           },
-          // Rede de segurança para o dia em que uma dependência introduzir um
-          // `innerHTML` que passe despercebido na revisão. `unsafe-inline` em
-          // `style-src` é exigência do Next para estilos críticos embutidos.
-          {
-            key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline'",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data:",
-              "font-src 'self'",
-              "connect-src 'self'",
-              "form-action 'self'",
-              "base-uri 'self'",
-              "frame-ancestors 'none'",
-              "object-src 'none'",
-            ].join('; '),
-          },
+          // A CSP NÃO está aqui: ela mora em `src/middleware.ts`.
+          //
+          // Cabeçalho estático não tem como carregar nonce, e sem nonce a única
+          // forma de o Next funcionar era `script-src 'unsafe-inline'` — que
+          // anula a proteção inteira. O middleware sorteia um nonce por
+          // requisição; os cabeçalhos que não dependem da requisição continuam
+          // aqui, onde custam menos.
         ],
       },
     ]

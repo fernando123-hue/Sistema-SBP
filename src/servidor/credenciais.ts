@@ -1,4 +1,5 @@
 import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
+import { PISO_DE_RESPOSTA_DE_ENTRADA_MS } from '../core/autenticacao'
 import { promisify } from 'node:util'
 
 /**
@@ -142,9 +143,33 @@ export function precisaRehash(hashGravado: string): boolean {
  * Sem isto, "e-mail não existe" responde em 1 ms e "senha errada" em ~80 ms:
  * o relógio conta quais e-mails estão cadastrados, mesmo com a mensagem de
  * erro idêntica nos dois casos.
+ *
+ * NÃO É SUFICIENTE SOZINHO, e é importante saber por quê: isto iguala o custo
+ * do hash, e só ele. O que vem depois do hash em cada ramo — escrita de
+ * contador, linha de auditoria — continua diferente, e foi medido em 23,5 ms.
+ * Quem fecha essa fresta é o piso de tempo total, `esperarAtePisoDeEntrada`.
+ * As duas coisas convivem: esta mantém a CPU ocupada de forma parecida, aquela
+ * garante o relógio.
  */
 export async function gastarTempoDeConferencia(): Promise<void> {
   await conferirSenha('senha-inexistente', HASH_DE_REFERENCIA)
+}
+
+/**
+ * Segura a recusa de entrada até o piso de tempo.
+ *
+ * Chamado imediatamente antes de lançar a falha, nos DOIS ramos de recusa, para
+ * que os dois custem o mesmo relógio independentemente do que fizeram por
+ * dentro. Ver `PISO_DE_RESPOSTA_DE_ENTRADA_MS` para a medição que motivou isto.
+ *
+ * Recebe o instante inicial em vez de medi-lo: quem sabe quando a requisição
+ * começou é quem a atendeu, e passar o começo é o que torna o piso um teto de
+ * informação, não um atraso fixo somado ao trabalho já feito.
+ */
+export async function esperarAtePisoDeEntrada(inicioEmMs: number): Promise<void> {
+  const restante = PISO_DE_RESPOSTA_DE_ENTRADA_MS - (Date.now() - inicioEmMs)
+  if (restante <= 0) return
+  await new Promise((resolver) => setTimeout(resolver, restante))
 }
 
 /** Hash descartável de valor fixo, só para dar trabalho equivalente à CPU. */

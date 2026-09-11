@@ -12,6 +12,7 @@ import {
 import { exigirPapel, type Ator } from '../servidor/ator'
 import {
   conferirSenha,
+  esperarAtePisoDeEntrada,
   gastarTempoDeConferencia,
   gerarHash,
   precisaRehash,
@@ -34,9 +35,12 @@ import { auditar } from './auditoria'
  * 1. **Uma mensagem só para qualquer falha de entrada.** "E-mail não existe",
  *    "senha errada" e "conta desativada" respondem exatamente igual. Distinguir
  *    seria entregar de graça a lista de quem tem acesso ao sistema.
- * 2. **Custo de CPU constante.** Mesmo quando o e-mail não existe, a
+ * 2. **Tempo de resposta constante.** Mesmo quando o e-mail não existe, a
  *    conferência é executada contra um hash de referência — senão o relógio
- *    responde o que a mensagem se recusa a dizer.
+ *    responde o que a mensagem se recusa a dizer. E, porque igualar o hash não
+ *    basta, toda recusa espera até um PISO comum antes de responder: os ramos
+ *    fazem trabalho diferente depois do hash, e a diferença foi medida em
+ *    23,5 ms. Ver `PISO_DE_RESPOSTA_DE_ENTRADA_MS`.
  */
 
 const FALHA_DE_ENTRADA = 'E-mail ou senha incorretos.'
@@ -53,6 +57,9 @@ export interface EntradaAutorizada {
 export async function autenticar(banco: Banco, entrada: unknown): Promise<EntradaAutorizada> {
   const dados = CredenciaisSchema.parse(entrada)
   const correlacaoId = novaCorrelacao()
+  // Marcado ANTES da consulta: o piso mede a requisição inteira, senão o tempo
+  // da própria busca por e-mail (que acha ou não acha) voltaria a diferenciar.
+  const inicio = Date.now()
 
   const colaborador = await banco.colaborador.findUnique({
     where: { email: dados.email },
@@ -71,6 +78,7 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
 
   if (!colaborador?.ativo || !colaborador.senhaHash) {
     await gastarTempoDeConferencia()
+    await esperarAtePisoDeEntrada(inicio)
     throw new ErroDeNegocio(FALHA_DE_ENTRADA, 'FALHA_DE_ENTRADA')
   }
 
@@ -119,6 +127,9 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
       correlacaoId,
     })
 
+    // Depois de TODAS as escritas deste ramo — são elas que o outro ramo não
+    // faz, e é a soma delas que o piso precisa absorver.
+    await esperarAtePisoDeEntrada(inicio)
     throw new ErroDeNegocio(FALHA_DE_ENTRADA, 'FALHA_DE_ENTRADA')
   }
 
@@ -353,7 +364,7 @@ export async function definirAtivacao(
   banco: Banco,
   entrada: unknown,
   ator: Ator,
-): Promise<{ colaboradorId: string; ativo: boolean }> {
+): Promise<{ colaboradorId: string; ativo: boolean; itensDevolvidos: number }> {
   exigirPapel(ator, 'ativar ou desativar colaborador', 'gestor')
   const dados = AtivacaoSchema.parse(entrada)
   const correlacaoId = novaCorrelacao()
@@ -381,20 +392,74 @@ export async function definirAtivacao(
     }
   }
 
-  await banco.colaborador.update({
-    where: { id: colaborador.id },
-    data: { ativo: dados.ativo },
+  // ═══ DESLIGAR O ACESSO NÃO PODE ABANDONAR O TRABALHO ═══
+  //
+  // Os itens da fila de quem foi desligado ficavam `distribuido`, com atribuição
+  // ativa, PARA SEMPRE: a pessoa não abre sessão (`perfilAtual` recusa inativo),
+  // então não conclui; `planejarCategoria` só recolhe `aprovado` e `devolvido`,
+  // então a rodada não os pega; e nenhuma tela abre a fila de outra pessoa.
+  //
+  // O efeito medido era pior que "some": eles continuavam contando em
+  // `pendente` e envelhecendo no indicador de atraso, mas sumiam de "Por
+  // pessoa" no painel (que filtra `ativo: true`) — trabalho real, invisível
+  // para quem decide, sem erro nenhum. A doença que este sistema existe para
+  // curar, reconstruída dentro dele.
+  //
+  // Devolver ao pool na MESMA transação é a saída que não depende de uma tela
+  // que não existe: o item volta a não ter dono, a próxima rodada o recolhe com
+  // o crédito atualizado, e a trilha registra por quê.
+  const devolvidos = await banco.$transaction(async (tx) => {
+    await tx.colaborador.update({
+      where: { id: colaborador.id },
+      data: { ativo: dados.ativo },
+    })
+
+    await auditar(tx, {
+      entidade: 'Colaborador',
+      entidadeId: colaborador.id,
+      acao: dados.ativo ? 'acesso_reativado' : 'acesso_desativado',
+      antes: { ativo: colaborador.ativo },
+      depois: { ativo: dados.ativo },
+      usuario: ator.colaboradorId,
+      correlacaoId,
+    })
+
+    if (dados.ativo) return 0
+
+    const abertos = await tx.atribuicao.findMany({
+      where: {
+        colaboradorId: colaborador.id,
+        ativa: true,
+        item: { status: { in: ['distribuido', 'em_andamento'] } },
+      },
+      select: { id: true, itemId: true },
+    })
+
+    for (const atribuicao of abertos) {
+      await tx.atribuicao.update({
+        where: { id: atribuicao.id },
+        data: {
+          ativa: null,
+          encerradoEm: new Date(),
+          motivo: 'devolucao',
+          justificativa: 'Acesso da pessoa desativado; item devolvido ao grupo.',
+        },
+      })
+      await tx.item.update({ where: { id: atribuicao.itemId }, data: { status: 'devolvido' } })
+
+      await auditar(tx, {
+        entidade: 'Item',
+        entidadeId: atribuicao.itemId,
+        acao: 'devolvido',
+        antes: { colaboradorId: colaborador.id },
+        depois: { status: 'devolvido', motivo: 'acesso_desativado' },
+        usuario: ator.colaboradorId,
+        correlacaoId,
+      })
+    }
+
+    return abertos.length
   })
 
-  await auditar(banco, {
-    entidade: 'Colaborador',
-    entidadeId: colaborador.id,
-    acao: dados.ativo ? 'acesso_reativado' : 'acesso_desativado',
-    antes: { ativo: colaborador.ativo },
-    depois: { ativo: dados.ativo },
-    usuario: ator.colaboradorId,
-    correlacaoId,
-  })
-
-  return { colaboradorId: colaborador.id, ativo: dados.ativo }
+  return { colaboradorId: colaborador.id, ativo: dados.ativo, itensDevolvidos: devolvidos }
 }

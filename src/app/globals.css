@@ -12,7 +12,17 @@
 @theme {
   --color-tinta: oklch(0.21 0.02 250);
   --color-tinta-suave: oklch(0.45 0.02 250);
-  --color-tinta-fraca: oklch(0.62 0.015 250);
+  /*
+   * Medido: a 0.62 este token dava 3,53:1 sobre o papel e 3,24:1 sobre o fundo
+   * — abaixo do mínimo AA de 4,5:1 para texto normal, e ele é usado quase só em
+   * 12px: o rótulo de TODA métrica do painel, os rótulos da tela de entrada, os
+   * cabeçalhos de tabela e os cartões do celular. A 0.53 mede 4,69:1.
+   *
+   * O tema escuro já media 6,01:1 e não muda. Duas correções de contraste
+   * anteriores (--color-sobre-acento e --color-atencao) tinham deixado este de
+   * fora.
+   */
+  --color-tinta-fraca: oklch(0.53 0.015 250);
 
   --color-papel: oklch(0.99 0.002 250);
   --color-papel-fundo: oklch(0.96 0.005 250);

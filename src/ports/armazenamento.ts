@@ -1,3 +1,4 @@
+import { ErroOperacional } from '../core/erros'
 /**
  * Contrato do armazenamento de arquivos.
  *
@@ -24,11 +25,12 @@ export interface ArmazenamentoPort {
   remover(chave: string): Promise<void>
 }
 
-export class FalhaDeArmazenamento extends Error {
+export class FalhaDeArmazenamento extends ErroOperacional {
   readonly codigo = 'FALHA_DE_ARMAZENAMENTO'
+  /** Disco cheio, permissão negada, caminho inválido: repetir sozinho não resolve. */
+  readonly statusHttp = 503
 
   constructor(operacao: string, causa: string) {
     super(`Falha ao ${operacao} arquivo no armazenamento: ${causa}`)
-    this.name = 'FalhaDeArmazenamento'
   }
 }

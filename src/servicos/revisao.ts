@@ -7,6 +7,7 @@ import {
 } from '../core/esquemas'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import { novaCorrelacao } from '../servidor/observabilidade'
+import type { ItemEmRevisao } from '../core/tipos'
 import type { Banco, Transacao } from '../servidor/prisma'
 import { auditar } from './auditoria'
 
@@ -37,19 +38,6 @@ async function exigirColaborador(tx: Transacao, colaboradorId: string): Promise<
  * (ou não) afrouxar o limiar de confiança depois.
  */
 
-export interface ItemEmRevisao {
-  revisaoId: string
-  itemId: string
-  motivo: string
-  confianca: number
-  campoIncerto: string | null
-  titulo: string
-  categoriaCodigo: string
-  remetente: string | null
-  assunto: string | null
-  sugestaoIa: string
-}
-
 /**
  * A fila de revisão, com o TOTAL ao lado.
  *
@@ -59,6 +47,8 @@ export interface ItemEmRevisao {
  * PERMANENTEMENTE: nunca sobe, nunca aparece, ninguém resolve. Fila que
  * esconde o próprio tamanho é indistinguível de fila sob controle.
  */
+export type { ItemEmRevisao }
+
 export interface FilaDeRevisao {
   itens: ItemEmRevisao[]
   /** Quantas revisões pendentes existem de verdade, ignorando o limite. */
@@ -74,7 +64,7 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaD
     include: {
       item: {
         include: {
-          categoria: { select: { codigo: true } },
+          categoria: { select: { codigo: true, limiarConfianca: true } },
           email: { include: { conteudo: true } },
         },
       },
@@ -89,6 +79,7 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaD
     campoIncerto: registro.campoIncerto,
     titulo: registro.item.titulo,
     categoriaCodigo: registro.item.categoria.codigo,
+    limiarConfianca: registro.item.categoria.limiarConfianca,
     remetente: registro.item.email?.conteudo?.remetente ?? null,
     assunto: registro.item.email?.conteudo?.assunto ?? null,
     sugestaoIa: registro.sugestaoIa,
@@ -225,6 +216,19 @@ export async function resolver(
           data: {
             emailId: revisao.item.emailId,
             categoriaId: categoria.id,
+            // HERDA A LIGA DO ITEM DE ORIGEM.
+            //
+            // Sem isto, o desdobramento — que é EXATAMENTE o caso do `A4`,
+            // "um e-mail lista trinta ligantes" — criava trinta itens com
+            // `ligaId` nulo. Cada um virava um lote de um só (é o que
+            // `agruparPorLiga` faz com item sem liga), a liga era espalhada
+            // entre a equipe inteira, e o agrupamento que o operador acabara
+            // de justificar na tela deixava de valer justamente para os itens
+            // que ele criou.
+            //
+            // O item extra é o mesmo trabalho da mesma liga: a única resposta
+            // correta é a liga do item de origem.
+            ligaId: revisao.item.ligaId,
             sequencia: proximaSequencia,
             titulo: extra.titulo,
             payload: serializar({

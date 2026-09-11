@@ -1,3 +1,5 @@
+import { ErroOperacional } from '../core/erros'
+
 import type { EmailBruto, Interpretacao } from '../core/esquemas'
 
 /**
@@ -19,13 +21,16 @@ export interface AiPort {
   interpretar(email: EmailBruto): Promise<Interpretacao>
 }
 
-export class FalhaDeInterpretacao extends Error {
+export class FalhaDeInterpretacao extends ErroOperacional {
+  readonly codigo = 'FALHA_DE_INTERPRETACAO'
+  /** Este e-mail não foi interpretado; o resto do sistema segue de pé. */
+  readonly statusHttp = 422
+
   constructor(
     readonly messageId: string,
     readonly causa: string,
   ) {
     super(`Falha ao interpretar o e-mail "${messageId}": ${causa}`)
-    this.name = 'FalhaDeInterpretacao'
   }
 }
 
@@ -38,9 +43,17 @@ export class FalhaDeInterpretacao extends Error {
  * ambiente errada — enterrada no meio delas. Este erro sobe ACIMA do laço de
  * ingestão: o lote para na primeira ocorrência e a mensagem diz o que arrumar.
  */
-export class InterpretacaoIndisponivelError extends Error {
+export class InterpretacaoIndisponivelError extends ErroOperacional {
+  readonly codigo = 'INTERPRETACAO_INDISPONIVEL'
+  /** Não é defeito deste e-mail: é configuração. Repetir sem arrumar não adianta. */
+  readonly statusHttp = 503
+
   constructor(readonly causa: string) {
     super(`Camada de interpretação indisponível: ${causa}`)
-    this.name = 'InterpretacaoIndisponivelError'
   }
+
+  // A causa crua SAI para a tela, e é deliberado: a sincronização exige papel
+  // de operador ou gestor, e "API key not valid" é exatamente o que essa pessoa
+  // precisa ler para saber a quem recorrer. Trocá-la por um texto genérico
+  // devolveria o problema que esta classe existe para resolver.
 }

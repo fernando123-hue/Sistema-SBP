@@ -18,24 +18,18 @@ import {
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
 import { hojeIso } from '../../core/util/datas'
+import type { ItemDaCaixa, NaRede } from '../../core/tipos'
 
-interface ItemDaCaixa {
-  itemId: string
-  titulo: string
-  categoriaCodigo: string
-  categoriaRotulo: string
-  grupo: string
-  status: string
-  confianca: number
-  classificadaPorIa: boolean
-  remetente: string | null
-  assunto: string | null
-  recebidoEm: string | null
-  irmaos: number
-  responsavel: string | null
-  ligaId: string | null
-  ligaNome: string | null
-}
+
+/**
+ * Quantos itens a lista traz por vez.
+ *
+ * A Revisão já avisava quando cortava; a Caixa cortava calada. Com alguns meses
+ * de uso a pastilha "todas" mostra o total de itens JÁ EXISTENTES — milhares —
+ * e a lista abaixo tem 200 linhas: quem conta conclui que o sistema perdeu
+ * itens, que é a desconfiança que este projeto existe para eliminar.
+ */
+const TETO_DA_LISTA = 200
 
 interface Resumo {
   total: number
@@ -91,7 +85,7 @@ const REGISTRO_VAZIO: Registro = {
  * proibida de classificá-las e o motor as ignora.
  */
 export default function Caixa() {
-  const [dados, setDados] = useState<{ itens: ItemDaCaixa[]; resumo: Resumo } | null>(null)
+  const [dados, setDados] = useState<{ itens: NaRede<ItemDaCaixa>[]; resumo: Resumo } | null>(null)
   const [filtro, setFiltro] = useState<string | null>(null)
   /**
    * Liga escolhida, `null` para todas.
@@ -115,13 +109,18 @@ export default function Caixa() {
   const carregar = useCallback(async (categoria: string | null, liga: string | null) => {
     setDados(null)
     try {
-      const parametros = new URLSearchParams({ limite: '200' })
+      const parametros = new URLSearchParams({ limite: String(TETO_DA_LISTA) })
       if (categoria) parametros.set('categoria', categoria)
       if (liga) parametros.set('liga', liga)
       setDados(
-        await api.buscar<{ itens: ItemDaCaixa[]; resumo: Resumo }>(`/itens?${parametros}`),
+        await api.buscar<{ itens: NaRede<ItemDaCaixa>[]; resumo: Resumo }>(`/itens?${parametros}`),
       )
     } catch (causa) {
+      // Estado neutro, e não `null`: `null` é a condição que desenha
+      // "Carregando…", então uma falha de rede deixava erro E carregando na
+      // tela ao mesmo tempo, para sempre. Quem olha conclui "hoje está lento",
+      // espera, e nunca tenta de novo.
+      setDados({ itens: [], resumo: { total: 0, porStatus: {}, porCategoria: [] } })
       setErro(mensagemDoErro(causa))
     }
   }, [])
@@ -240,6 +239,16 @@ export default function Caixa() {
           ) : undefined
         }
       />
+
+      {dados !== null && dados.itens.length >= TETO_DA_LISTA ? (
+        <Aviso tom="atencao">
+          <strong>
+            Esta tela mostra {dados.itens.length} itens; o filtro atual tem mais do que isso.
+          </strong>{' '}
+          Estreite por categoria ou por liga para ver o resto — sem este aviso, a lista parecia
+          completa e o número da pastilha parecia errado.
+        </Aviso>
+      ) : null}
 
       {erro ? <Aviso>{erro}</Aviso> : null}
       {confirmacao ? <Aviso tom="ok">{confirmacao}</Aviso> : null}
@@ -479,7 +488,7 @@ export default function Caixa() {
                   // decisão que nenhum modelo tomou.
                   conteudo: (item) =>
                     item.classificadaPorIa ? (
-                      <SeloDeConfianca valor={item.confianca} />
+                      <SeloDeConfianca valor={item.confianca} limiar={item.limiarConfianca} />
                     ) : (
                       <Selo titulo="Registrado à mão: nenhum modelo classificou este item.">
                         manual

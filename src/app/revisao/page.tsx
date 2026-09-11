@@ -14,19 +14,10 @@ import {
   Vazio,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
+import type { ItemEmRevisao, NaRede } from '../../core/tipos'
 
-interface ItemEmRevisao {
-  revisaoId: string
-  itemId: string
-  motivo: string
-  confianca: number
-  campoIncerto: string | null
-  titulo: string
-  categoriaCodigo: string
-  remetente: string | null
-  assunto: string | null
-  sugestaoIa: string
-}
+/** A forma vem do núcleo; a tela lê o que sobrevive ao JSON (`H-D7`). */
+type ItemNaTela = NaRede<ItemEmRevisao>
 
 const CATEGORIAS = [
   'DOC_CADASTRO',
@@ -66,16 +57,18 @@ const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutr
  * medida de acerto do modelo — e é ela que autoriza afrouxar o limiar depois.
  */
 export default function Revisao() {
-  const [pendentes, setPendentes] = useState<ItemEmRevisao[] | null>(null)
+  const [pendentes, setPendentes] = useState<ItemNaTela[] | null>(null)
   /** Quantas existem de verdade. Maior que a lista = a fila está truncada. */
   const [totalPendentes, setTotalPendentes] = useState(0)
   const [erro, setErro] = useState<string | null>(null)
-  const [ocupado, setOcupado] = useState<string | null>(null)
+  const [ocupado, setOcupado] = useState<{ revisaoId: string; aprovar: boolean } | null>(null)
+  /** Qual descarte está esperando o segundo clique. */
+  const [confirmando, definirConfirmando] = useState<string | null>(null)
   const [edicao, setEdicao] = useState<Record<string, Edicao>>({})
 
   const carregar = useCallback(async () => {
     try {
-      const fila = await api.buscar<{ itens: ItemEmRevisao[]; total: number }>('/revisao')
+      const fila = await api.buscar<{ itens: ItemNaTela[]; total: number }>('/revisao')
       const lista = fila.itens
       setTotalPendentes(fila.total)
       setPendentes(lista)
@@ -93,6 +86,11 @@ export default function Revisao() {
         ),
       )
     } catch (causa) {
+      // Estado neutro, e não `null`: `null` é a condição que desenha
+      // "Carregando…", então uma falha de rede deixava erro E carregando na
+      // tela ao mesmo tempo, para sempre. Quem olha conclui "hoje está lento",
+      // espera, e nunca tenta de novo.
+      setPendentes([])
       setErro(mensagemDoErro(causa))
     }
   }, [])
@@ -154,7 +152,7 @@ export default function Revisao() {
       return
     }
 
-    setOcupado(item.revisaoId)
+    setOcupado({ revisaoId: item.revisaoId, aprovar })
     setErro(null)
     try {
       await api.enviar('/revisao/resolver', {
@@ -168,6 +166,7 @@ export default function Revisao() {
         itensExtras: aprovar ? extras : [],
       })
       setPendentes((lista) => (lista ?? []).filter((linha) => linha.revisaoId !== item.revisaoId))
+      definirConfirmando(null)
     } catch (causa) {
       setErro(mensagemDoErro(causa))
     } finally {
@@ -175,7 +174,7 @@ export default function Revisao() {
     }
   }
 
-  function camposSugeridos(item: ItemEmRevisao): Record<string, string> {
+  function camposSugeridos(item: ItemNaTela): Record<string, string> {
     try {
       const sugestao = JSON.parse(item.sugestaoIa) as { campos?: Record<string, string> }
       return sugestao.campos ?? {}
@@ -228,7 +227,7 @@ export default function Revisao() {
                 <Cartao className="px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Selo tom={info.tom}>{info.texto}</Selo>
-                    <SeloDeConfianca valor={item.confianca} />
+                    <SeloDeConfianca valor={item.confianca} limiar={item.limiarConfianca} />
                     {item.campoIncerto ? <Selo>falta: {item.campoIncerto}</Selo> : null}
                   </div>
 
@@ -347,14 +346,38 @@ export default function Revisao() {
                     ))}
                   </div>
 
+                  {/*
+                    ═══ DESCARTAR PEDE DOIS CLIQUES, APROVAR NÃO ═══
+
+                    Descartar grava `cancelado` e não existe caminho de volta —
+                    nem serviço, nem rota, nem tela —, e a idempotência por
+                    `messageId` impede que uma nova sincronização recrie o item.
+                    Um clique errado numa fila de 40 revisões resolvidas em
+                    sequência apaga o pedido de um associado para sempre.
+
+                    Arquivar uma NOTA, que não apaga nada de operacional, já
+                    exigia dois cliques. A assimetria era ao contrário.
+
+                    E o rótulo de progresso ia para o botão errado: `ocupado`
+                    guardava só o id, então quem clicava em Descartar via o botão
+                    "Aprovar", ao lado, anunciar "salvando…".
+                  */}
                   <div className="mt-3 flex justify-end gap-2">
                     <Botao
                       variante="perigo"
                       tamanho="pequeno"
-                      onClick={() => resolver(item, false)}
+                      onClick={() =>
+                        confirmando === item.revisaoId
+                          ? void resolver(item, false)
+                          : definirConfirmando(item.revisaoId)
+                      }
                       desabilitado={ocupado !== null}
                     >
-                      Descartar
+                      {ocupado?.revisaoId === item.revisaoId && !ocupado.aprovar
+                        ? 'descartando…'
+                        : confirmando === item.revisaoId
+                          ? 'Confirmar: descartar para sempre'
+                          : 'Descartar'}
                     </Botao>
                     <Botao
                       variante="principal"
@@ -362,7 +385,9 @@ export default function Revisao() {
                       onClick={() => resolver(item, true)}
                       desabilitado={ocupado !== null}
                     >
-                      {ocupado === item.revisaoId ? 'salvando…' : 'Aprovar'}
+                      {ocupado?.revisaoId === item.revisaoId && ocupado.aprovar
+                        ? 'salvando…'
+                        : 'Aprovar'}
                     </Botao>
                   </div>
                 </Cartao>

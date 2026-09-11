@@ -5,7 +5,7 @@
  * Serve para repetir a demo e a simulação do zero sem recriar o banco inteiro.
  * NUNCA deve ser exposto fora de desenvolvimento — por isso a trava abaixo.
  *
- *   npm run db:limpar
+ *   PERMITIR_LIMPEZA=sim npm run db:limpar
  */
 
 import { ambiente } from '../src/servidor/ambiente'
@@ -14,8 +14,28 @@ import { obterPrisma } from '../src/servidor/prisma'
 async function principal(): Promise<void> {
   const config = ambiente()
 
+  // ═══ A TRAVA É POR OPT-IN, E NÃO POR DEDUÇÃO ═══
+  //
+  // A versão anterior recusava só quando `NODE_ENV === 'production'`. Parecia
+  // proteção e não era: `NODE_ENV` tem padrão `'development'` no `ambiente.ts`,
+  // não está no `.env.example`, e quem define `production` é o `next start`
+  // DENTRO do processo da aplicação — não o shell de quem entra por SSH. Então
+  // este script, rodado à mão no servidor de produção, via `'development'`,
+  // liberava, e apagava `LogAuditoria` junto. Uma trilha que o invariante 14
+  // promete nunca reescrever, apagada por uma linha escrita para protegê-la.
+  //
+  // Agora a ausência de informação recusa, em vez de liberar: sem o opt-in
+  // explícito, não roda em lugar nenhum.
   if (config.NODE_ENV === 'production') {
     throw new Error('Recusado: limpeza de dados transacionais não roda em produção.')
+  }
+
+  if (process.env.PERMITIR_LIMPEZA !== 'sim') {
+    throw new Error(
+      'Recusado: esta rotina APAGA itens, atribuições, saldos e a trilha de auditoria.\n' +
+        'Se é isto mesmo que você quer, e este banco é de desenvolvimento:\n' +
+        '  PERMITIR_LIMPEZA=sim npm run db:limpar',
+    )
   }
 
   const banco = obterPrisma()

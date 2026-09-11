@@ -1,3 +1,4 @@
+import { LimiteDeListagemSchema } from '../../../core/esquemas'
 import { listarCaixa, resumirCaixa } from '../../../servicos/caixa'
 import { registrarManual } from '../../../servicos/itens'
 import { corpoJson, responder, rota } from '../../../servidor/http'
@@ -16,7 +17,14 @@ export async function GET(requisicao: Request): Promise<Response> {
         status: url.searchParams.get('status') ?? undefined,
         categoriaCodigo: url.searchParams.get('categoria') ?? undefined,
         ligaId: url.searchParams.get('liga') ?? undefined,
-        limite: Number(url.searchParams.get('limite') ?? 100),
+        // `Number('abc')` é `NaN`, e `NaN` chegava a `take:` do Prisma como
+        // erro de driver — 500 com id de correlação, em vez de "parâmetro
+        // inválido". Um link torto não é falha de servidor.
+        //
+        // O teto também deixa de ser sugestão: sem ele, `?limite=999999`
+        // atravessava a caixa inteira numa consulta, e a resposta cresce com o
+        // tempo de vida do sistema.
+        limite: LimiteDeListagemSchema.parse(url.searchParams.get('limite')),
       }),
       resumirCaixa(banco),
     ])

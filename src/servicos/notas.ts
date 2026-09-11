@@ -169,7 +169,7 @@ export async function registrar(
       select: CAMPOS,
     })
 
-    // Na MESMA transação do fato, nunca depois — invariante 13. Publicar antes
+    // Na MESMA transação do fato, nunca depois — invariante 14. Publicar antes
     // do commit deixaria a memória afirmando uma nota que a transação abortou.
     await auditar(tx, {
       entidade: 'Nota',
@@ -253,7 +253,21 @@ export async function arquivar(
       entidadeId: nota.id,
       acao: 'nota_arquivada',
       antes: { arquivadaEm: null },
-      depois: { arquivadaEm: nota.arquivadaEm, motivo: dados.motivo },
+      // O TEXTO DO MOTIVO NÃO VAI PARA A TRILHA — só o fato de haver um.
+      //
+      // É a mesma decisão que a função vizinha já tomava para o texto da nota,
+      // e ela vale igual aqui: `LogAuditoria` é append-only e sobrevive à
+      // política de retenção (invariante 11), enquanto `Nota.motivoArquivo` é
+      // expurgável junto com a nota. Copiar o texto para cá criava a mesma
+      // frase em dois lugares com políticas OPOSTAS — e a cópia eterna seria
+      // justamente a que ninguém consegue arquivar.
+      //
+      // O motivo é texto livre escrito por gente sobre trabalho de gente:
+      // "a Bianca errava esse campo toda semana" é uma frase plausível ali.
+      depois: {
+        arquivadaEm: nota.arquivadaEm,
+        temMotivo: dados.motivo !== null && dados.motivo.length > 0,
+      },
       usuario: ator.colaboradorId,
       correlacaoId,
     })

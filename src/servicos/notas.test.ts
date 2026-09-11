@@ -157,7 +157,7 @@ describe('a trilha registra a nota sem copiar o texto', () => {
     expect(linha.depois).toContain('tamanhoDoTexto')
   })
 
-  it('nada é gravado quando a transação aborta — invariante 13', async () => {
+  it('nada é gravado quando a transação aborta — invariante 14', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
 
     await expect(

@@ -1,3 +1,4 @@
+import type { LinhaPainel, LinhaPorPessoa } from '../core/tipos'
 import {
   deslocarDias,
   diasEntre,
@@ -8,6 +9,8 @@ import {
 } from '../core/util/datas'
 import type { Banco } from '../servidor/prisma'
 
+export type { LinhaPainel, LinhaPorPessoa }
+
 /** Janela padrão da conferência de conservação exibida no painel. */
 export const JANELA_PADRAO_DE_DIAS = 90
 
@@ -17,8 +20,15 @@ export const JANELA_PADRAO_DE_DIAS = 90
  * Fonte única do que "aberto" significa no painel: os contadores de estado
  * atual e o indicador de atraso do `A7` leem esta mesma lista. Item concluído
  * ou cancelado saiu da mesa e, por definição, parou de envelhecer.
+ *
+ * `devolvido` ESTÁ aqui, e a ausência dele era defeito: o item devolvido volta
+ * ao pool esperando a próxima rodada — `planejarCategoria` o recolhe junto com
+ * `aprovado` —, então ele continua sendo trabalho a fazer e continua
+ * envelhecendo. Sem ele, `pendente` (que o conta) e "Mais antigo (hoje)" (que
+ * não contava) discordavam na mesma linha da mesma tela: a categoria dizia ter
+ * pendência e, ao lado, que nada estava envelhecendo.
  */
-const ABERTOS = ['aguardando_revisao', 'aprovado', 'distribuido', 'em_andamento']
+const ABERTOS = ['aguardando_revisao', 'aprovado', 'distribuido', 'em_andamento', 'devolvido']
 
 /**
  * Painel.
@@ -54,52 +64,10 @@ const ABERTOS = ['aguardando_revisao', 'aprovado', 'distribuido', 'em_andamento'
  * então a subtração não tem como ficar negativa. Quando os dois números
  * divergirem num dia de limpeza de backlog, o certo é este.
  */
-export interface LinhaPainel {
-  categoriaCodigo: string
-  rotulo: string
-  grupo: string
-
-  /** Entrou antes do período e ainda estava aberto quando ele começou. */
-  saldoInicial: number
-  /** Entrou dentro do período. */
-  entrouNoPeriodo: number
-  /** `saldoInicial + entrouNoPeriodo` — tudo que esteve na mesa no período. */
-  aberto: number
-  /** Fechado dentro do período. */
-  concluidoNoPeriodo: number
-  /** Cancelado dentro do período. A planilha não tem coluna equivalente. */
-  canceladoNoPeriodo: number
-  /** Ainda aberto no fim do período. */
-  pendente: number
-
-  /** Estado AGORA, para tocar o dia. Não tem recorte de período. */
-  aguardandoRevisao: number
-  aprovado: number
-  distribuido: number
-  emAndamento: number
-  /**
-   * Há quantos dias está parado o item aberto mais antigo desta categoria.
-   * `null` quando não há nada aberto.
-   *
-   * É o indicador de atraso do `A7`. Também é estado AGORA, e por isso ignora
-   * o recorte de período: a pergunta é "o que está envelhecendo neste momento",
-   * e um recorte de mês esconderia justamente o item de março que ninguém tocou.
-   */
-  diasDoMaisAntigo: number | null
-}
 
 export interface Periodo {
   de: string
   ate: string
-}
-
-export interface LinhaPorPessoa {
-  colaboradorId: string
-  nome: string
-  atribuidos: number
-  concluidos: number
-  pendentes: number
-  creditoGlobal: number
 }
 
 /**
@@ -313,7 +281,6 @@ export async function conferirPendencia(
   })
 }
 
-
 export async function porPessoa(banco: Banco): Promise<LinhaPorPessoa[]> {
   const colaboradores = await banco.colaborador.findMany({
     where: { ativo: true },
@@ -386,25 +353,56 @@ export async function conferirConservacao(
 
   const rodadas = await banco.rodadaDistribuicao.findMany({
     where: { data: { gte: desde } },
-    select: {
-      id: true,
-      quantidadeEntrada: true,
-      // SÓ as atribuições ATIVAS. Contando todas, uma transferência — que cria
-      // a nova sem apagar a anterior, de propósito, para o histórico ficar
-      // imutável — somava +1 e marcava a rodada como divergente. O indicador
-      // que prova o valor do sistema acusava erro justamente quando o sistema
-      // funcionava como projetado.
-      _count: { select: { atribuicoes: { where: { ativa: true } } } },
-    },
+    select: { id: true, quantidadeEntrada: true },
   })
 
+  if (rodadas.length === 0) return { rodadas: 0, desde, divergentes: [] }
+
+  // ═══ O QUE ESTA CONTAGEM PRECISA MEDIR ═══
+  //
+  // A pergunta é "a rodada entregou tantos itens quantos entraram?", e a
+  // resposta certa é o número de ITENS DISTINTOS que aquela rodada atribuiu —
+  // não o número de atribuições, nem o de atribuições vigentes.
+  //
+  // As duas formas anteriores erravam, cada uma de um jeito, e as duas em
+  // situação NORMAL de operação:
+  //
+  //   - contando TODAS as atribuições, uma transferência somava +1 (ela encerra
+  //     a anterior e cria outra, de propósito, para o histórico ficar imutável)
+  //     e a rodada aparecia divergente;
+  //   - contando só as ATIVAS — a correção que veio depois —, toda DEVOLUÇÃO ao
+  //     pool passou a subtrair 1 para sempre: `devolver` encerra a atribuição e
+  //     NÃO cria substituta, porque o item fica sem dono esperando a próxima
+  //     rodada. A devolução é um caminho previsto do sistema (`AT-07`), então
+  //     bastava alguém devolver um item para o painel passar a dizer, todo dia,
+  //     que os números não são confiáveis.
+  //
+  // Um alarme que dispara na operação normal deixa de ser alarme: quem opera
+  // aprende a ignorá-lo, e no dia de uma violação de verdade ninguém olha. Isso
+  // é degradação silenciosa da própria trava que o invariante 3 institui.
+  //
+  // Item distinto por rodada é imune aos dois: a transferência não muda o
+  // conjunto de itens que a rodada tocou, e a devolução também não — o que
+  // muda é quem é o dono AGORA, que é outra pergunta.
+  const entregas = await banco.atribuicao.findMany({
+    where: { rodadaId: { in: rodadas.map((rodada) => rodada.id) } },
+    select: { rodadaId: true, itemId: true },
+    distinct: ['rodadaId', 'itemId'],
+  })
+
+  const itensPorRodada = new Map<string, number>()
+  for (const entrega of entregas) {
+    if (!entrega.rodadaId) continue
+    itensPorRodada.set(entrega.rodadaId, (itensPorRodada.get(entrega.rodadaId) ?? 0) + 1)
+  }
+
   const divergentes = rodadas
-    .filter((rodada) => rodada._count.atribuicoes !== rodada.quantidadeEntrada)
     .map((rodada) => ({
       rodadaId: rodada.id,
       entrada: rodada.quantidadeEntrada,
-      gravado: rodada._count.atribuicoes,
+      gravado: itensPorRodada.get(rodada.id) ?? 0,
     }))
+    .filter((rodada) => rodada.gravado !== rodada.entrada)
 
   return { rodadas: rodadas.length, desde, divergentes }
 }

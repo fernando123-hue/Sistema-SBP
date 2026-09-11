@@ -40,6 +40,20 @@ model Colaborador {
   /// Erros consecutivos. Zera a cada entrada bem-sucedida.
   tentativasFalhas   Int       @default(0)
   bloqueadoAte       DateTime?
+  /// Cookie emitido ANTES deste instante não vale mais. É o que torna "sair"
+  /// uma revogação de verdade, e não um gesto só do lado do navegador.
+  ///
+  /// Antes desta coluna, `DELETE /api/sessao` apagava o cookie do navegador e
+  /// mais nada: quem tivesse copiado o valor de `sbp_sessao` continuava
+  /// autenticado por até 12h, por mais vezes que o dono clicasse em "sair". O
+  /// cenário não é hipotético — a equipe atende em máquina compartilhada no
+  /// balcão, e `httpOnly` impede o JavaScript da página, não quem está sentado
+  /// na máquina.
+  ///
+  /// `senhaDefinidaEm` já resolvia isso para a TROCA DE SENHA (§ A-03); o
+  /// mesmo raciocínio faltava para o logout. A conferência é a mesma, na mesma
+  /// consulta que `perfilAtual` já fazia — nenhuma consulta a mais.
+  sessoesInvalidasAntes DateTime?
 
   criadoEm     DateTime  @default(now())
   atualizadoEm DateTime  @updatedAt
@@ -394,6 +408,13 @@ model Execucao {
 
   @@index([colaboradorId, concluidoEm])
   @@index([itemId])
+  /// O painel pergunta duas vezes por carregamento "o que foi concluído neste
+  /// período?" — e sem este índice as duas viram varredura completa de
+  /// `Execucao`, confirmado por `EXPLAIN QUERY PLAN`. `Execucao` é a única
+  /// tabela do caminho do painel que cresce para sempre (uma linha por
+  /// conclusão, ~16 mil por ano): as outras seis agregações usam índice de
+  /// cobertura, esta não usava nenhum.
+  @@index([resultado, concluidoEm])
 }
 
 /// O livro-razão do balanceamento. É o que a planilha não tem em lugar nenhum.
@@ -545,7 +566,7 @@ model Nota {
   arquivadaPor String?
   motivoArquivo String?
 
-  /// Invariante 13: toda linha de memória nasce sabendo de que domínio é.
+  /// Invariante 14: toda linha de memória nasce sabendo de que domínio é.
   /// Ver `DominioSchema` e a nota em `LogAuditoria.dominio`.
   dominio String @default("distribuicao")
 

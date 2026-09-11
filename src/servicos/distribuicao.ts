@@ -1,6 +1,6 @@
 import { ALGORITMO_VERSAO, distribuir } from '../core/distribuicao/motor'
 import { narrarRodada } from '../core/distribuicao/narrativa'
-import { SemElegiveisError } from '../core/erros'
+import { ConservacaoVioladaError, ErroDeNegocio, SemElegiveisError } from '../core/erros'
 import { serializar, type PedidoDistribuicao } from '../core/esquemas'
 import type {
   Categoria,
@@ -42,6 +42,15 @@ export interface PlanoCategoria {
   categoria: Categoria
   quantidade: number
   itensIds: string[]
+  /**
+   * Os mesmos itens de `itensIds`, com o vínculo de liga.
+   *
+   * `itensIds` sozinho bastava enquanto a entrega era por quantidade. Com o
+   * `A4` a entrega passou a seguir o LOTE, e o lote é definido pelo `ligaId` —
+   * então quem grava precisa saber a que liga cada item pertence, não só
+   * quantos itens existem. Ver `repartirItens`.
+   */
+  itens: { id: string; ligaId: string | null }[]
   resultado: ResultadoRodada | null
   erro: string | null
 }
@@ -154,7 +163,12 @@ export async function planejarCategoria(
     categoria.frente,
     ajusteGlobal,
   )
-  const base = { categoria, quantidade: itens.length, itensIds: itens.map((item) => item.id) }
+  const base = {
+    categoria,
+    quantidade: itens.length,
+    itensIds: itens.map((item) => item.id),
+    itens,
+  }
 
   try {
     const resultado = distribuir({
@@ -203,14 +217,73 @@ export async function planejarCategoria(
  * Item SEM liga vira grupo de um item só — indivisível por definição, e
  * portanto neutro. A chave leva o id do item para não colidir com outra.
  */
+/**
+ * A chave do lote de um item. Uma definição só, usada nos dois lados.
+ *
+ * Existe como função porque a chave é montada duas vezes — ao formar os grupos
+ * para o motor e ao devolver os itens de cada grupo na hora de gravar. Duas
+ * cópias da mesma regra de nomeação divergiriam em silêncio, e a divergência
+ * apareceria como liga partida, sem erro nenhum.
+ */
+function chaveDoLote(item: { id: string; ligaId: string | null }): string {
+  // `item:` e `liga:` são prefixos de espaço de nomes: sem eles, um id de
+  // item igual a um id de liga fundiria dois grupos que não têm relação.
+  return item.ligaId === null ? `item:${item.id}` : `liga:${item.ligaId}`
+}
+
+/**
+ * Que itens concretos vão para cada pessoa.
+ *
+ * Dois modos, e a escolha é do critério da rodada:
+ *
+ * - `por_grupo`: cada lote vai INTEIRO para quem o motor escolheu. É o `A4`.
+ * - todos os demais: fatia posicional na ordem de desempate, como sempre foi —
+ *   quando a decisão é por quantidade, qualquer conjunto de N itens serve, e a
+ *   ordem por `criadoEm` entrega os mais antigos primeiro (`A7`).
+ */
+function repartirItens(
+  plano: PlanoCategoria,
+  resultado: ResultadoRodada,
+): Map<string, string[]> {
+  const porDono = new Map<string, string[]>()
+
+  const donoDoGrupo = resultado.atribuicaoDeGrupos
+  if (donoDoGrupo) {
+    for (const item of plano.itens) {
+      const dono = donoDoGrupo[chaveDoLote(item)]
+      // Item sem dono seria item perdido — a doença que o sistema cura. A
+      // conferência de tamanho no chamador o transformaria em erro de qualquer
+      // jeito; aqui a mensagem diz o que de fato aconteceu.
+      if (!dono) {
+        throw new ErroDeNegocio(
+          `O item "${item.id}" não pertence a nenhum lote da rodada. ` +
+            'A distribuição foi abortada: nenhum item pode ficar sem responsável.',
+        )
+      }
+      const fatia = porDono.get(dono) ?? []
+      fatia.push(item.id)
+      porDono.set(dono, fatia)
+    }
+    return porDono
+  }
+
+  let cursor = 0
+  for (const colaboradorId of resultado.ordemDesempate) {
+    const cota = resultado.alocacao[colaboradorId] ?? 0
+    porDono.set(colaboradorId, plano.itensIds.slice(cursor, cursor + cota))
+    cursor += cota
+  }
+  return porDono
+}
+
 function agruparPorLiga(itens: readonly { id: string; ligaId: string | null }[]): GrupoIndivisivel[] {
   const porLiga = new Map<string, number>()
 
   for (const item of itens) {
-    // `item:` e `liga:` são prefixos de espaço de nomes: sem eles, um id de
-    // item igual a um id de liga fundiria dois grupos que não têm relação.
-    const chave = item.ligaId === null ? `item:${item.id}` : `liga:${item.ligaId}`
-    porLiga.set(chave, (porLiga.get(chave) ?? 0) + 1)
+    // A MESMA função que `repartirItens` usa para achar o dono do item. Duas
+    // cópias da regra de nomeação divergiriam em silêncio, e a divergência
+    // apareceria como liga partida — sem erro nenhum.
+    porLiga.set(chaveDoLote(item), (porLiga.get(chaveDoLote(item)) ?? 0) + 1)
   }
 
   return [...porLiga].map(([chave, tamanho]) => ({ chave, tamanho }))
@@ -393,15 +466,40 @@ async function gravarRodada(
     },
   })
 
-  // Reparte os itens CONCRETOS seguindo a ordem de desempate. A planilha diz
-  // "Paulo: 24"; aqui fica registrado QUAIS 24.
-  let cursor = 0
+  // Reparte os itens CONCRETOS. A planilha diz "Paulo: 24"; aqui fica
+  // registrado QUAIS 24.
+  //
+  // ═══ QUANDO O MOTOR DECIDIU POR LOTE, A FATIA POSICIONAL ESTAVA ERRADA ═══
+  //
+  // Este laço fatiava `plano.itensIds` por posição — `slice(cursor, cursor +
+  // cota)` — sobre uma lista ordenada por `criadoEm`. Para o rateio por
+  // quantidade isso é correto: qualquer conjunto de N itens serve.
+  //
+  // Para o `A4` não era. O motor escolhe por LOTE ("a liga X inteira vai para
+  // a Ana"), e o corte por posição só devolveria a liga inteira por acaso — se
+  // os e-mails das duas ligas tivessem chegado sem se intercalar. Com duas
+  // ligas intercaladas no tempo, a Ana levava as cinco PRIMEIRAS linhas, que
+  // eram três de uma liga e duas de outra: a liga era partida entre pessoas,
+  // que é exatamente o que o `A4` existe para impedir.
+  //
+  // E nada acusava. A soma continuava fechando, então a trava de conservação
+  // — que só olha a soma — passava; a rodada gravava a alocação correta em
+  // número; e a divergência aparecia só na mesa de quem atendia a liga.
+  //
+  // Agora, quando o motor decidiu por lote, a entrega segue o lote.
+  const itensPorDono = repartirItens(plano, resultado)
+
   let atribuidos = 0
 
   for (const colaboradorId of resultado.ordemDesempate) {
     const cota = resultado.alocacao[colaboradorId] ?? 0
-    const fatia = plano.itensIds.slice(cursor, cursor + cota)
-    cursor += cota
+    const fatia = itensPorDono.get(colaboradorId) ?? []
+
+    // A entrega concreta tem de bater com a decisão. Divergir aqui significaria
+    // gravar uma alocação que o snapshot da rodada não explica.
+    if (fatia.length !== cota) {
+      throw new ConservacaoVioladaError(cota, fatia.length, resultado.alocacao)
+    }
 
     for (const itemId of fatia) {
       await tx.atribuicao.create({
@@ -532,6 +630,38 @@ async function atualizarSaldos(
       creditoGlobal: { increment: entrada.deltaCreditoGlobal },
     },
   })
+
+  // ═══ O CRÉDITO GLOBAL É UM TOTAL CORRIDO, E TOTAL CORRIDO PRECISA PROPAGAR ═══
+  //
+  // `carregarElegiveis` lê o crédito global pegando a linha MAIS RECENTE com
+  // `data <= data` — ou seja, cada linha guarda o acumulado até aquele dia, não
+  // o movimento do dia.
+  //
+  // Enquanto os dias forem distribuídos em ordem, isso funciona: cada nova
+  // linha nasce de `creditoGlobalAnterior + delta`. Distribuir uma data
+  // ANTERIOR a outra já distribuída quebrava a cadeia — a linha retroativa
+  // nascia certa, e as linhas dos dias seguintes continuavam com o valor que
+  // tinham antes, calculado sem ela. A partir daí toda leitura para uma data
+  // posterior pegava uma dessas linhas, e o efeito da rodada retroativa
+  // simplesmente não existia para o desempate. Nenhum erro, nenhum aviso: o
+  // razão que sustenta a justiça do rateio passava a afirmar um equilíbrio que
+  // não era verdade.
+  //
+  // Distribuir fora de ordem é operação legítima — sexta-feira esquecida,
+  // feriado processado depois. A correção é propagar, não proibir.
+  //
+  // No caminho normal (dia mais recente) não existe linha posterior e este
+  // `updateMany` não toca em nada.
+  if (entrada.deltaCreditoGlobal !== 0) {
+    await tx.saldoCargaGlobal.updateMany({
+      where: {
+        colaboradorId: entrada.colaboradorId,
+        escopo: entrada.escopo,
+        data: { gt: entrada.data },
+      },
+      data: { creditoGlobal: { increment: entrada.deltaCreditoGlobal } },
+    })
+  }
 }
 
 // ─── Carregamento de estado ──────────────────────────────────

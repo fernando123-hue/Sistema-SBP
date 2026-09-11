@@ -66,7 +66,51 @@ const LINHA_DE_LISTA = /^\s*(?:[-*•]|\d{1,3}[.)])\s+(.{2,120})$/gm
 const CAMPO_CPF = /\bCPF[:\s]+([\d.\-]{11,14})\b/i
 const CAMPO_CRM = /\bCRM[:\s/-]*([A-Z]{2})?\s*([\d]{3,8})\b/i
 const CAMPO_NOME = /\bnome[:\s]+([^\n]{3,120})/i
-const MENCAO_LIGA = /\bliga\s+(?:acad[êe]mica\s+)?(?:de\s+)?([A-ZÁÉÍÓÚÂÊÔÃÕÇ][^\n,.;]{2,60})/i
+/**
+ * Menção a uma liga no texto.
+ *
+ * ═══ SEM `/i`, E ISSO É A CORREÇÃO ═══
+ *
+ * Com a flag, `[A-ZÁÉ...]` passava a casar minúscula também, e a expressão
+ * agarrava qualquer coisa depois da palavra "liga". Medido numa ingestão real
+ * em 07/09/2026, com este adapter (que é o PADRÃO do sistema): duas ligas
+ * nasceram no banco, chamadas `"Prezados"` — com NOVE itens de e-mails sem
+ * relação nenhuma — e `"Solicitamos o cadastro de liga acadêmica junto à
+ * associação"`.
+ *
+ * O estrago não é o nome feio. Com o `A4`, a liga é a unidade que não se
+ * separa: os nove itens de remetentes diferentes viravam UM lote entregue a
+ * uma pessoa só, como se fossem o mesmo assunto. É exatamente o erro que
+ * `core/ligas.ts` documenta como inaceitável — *"unir duas ligas diferentes →
+ * trabalho de uma entregue como se fosse da outra; ninguém descobre, nunca"* —
+ * cometido antes de a comparação de nomes sequer entrar em cena.
+ *
+ * Agora `Liga` precisa vir capitalizada e o nome capturado também. A
+ * consequência é assumida: *"liga acadêmica de cardiologia"* escrito todo em
+ * minúscula deixa de virar liga. Item sem liga é um lote de um item só —
+ * inofensivo. Item na liga ERRADA é trabalho entregue à pessoa errada.
+ *
+ * A captura também deixou de ser "tudo até a pontuação" e passou a ser uma
+ * sequência de palavras CAPITALIZADAS: em *"Liga de Cardiologia para cadastro"*
+ * ela para em `Cardiologia`, em vez de levar `para cadastro` junto para dentro
+ * do nome da liga — e nome com lixo no fim é nome que não casa com o mesmo
+ * nome escrito de outro jeito no dia seguinte.
+ *
+ * Montada por `new RegExp` porque as três partes se repetem; o custo é ter de
+ * escapar a barra em `ESPACO`, e o ganho é a expressão caber numa linha legível.
+ */
+const INICIAL = 'A-ZÁÉÍÓÚÂÊÔÃÕÇ'
+/** `Ø-Þ` e não `Ø-ÿ`: `×` (0xD7) e `÷` (0xF7) são sinais de multiplicação e divisão, não letras. */
+const RESTO = 'a-zà-öø-ÿA-ZÀ-ÖØ-Þ0-9'
+/** Só espaço e tabulação separam — `\s` atravessaria a quebra de linha. */
+const ESPACO = '[ \\t]+'
+/** Uma palavra capitalizada, possivelmente ligada por `de`/`da`/`do` minúsculo. */
+const PALAVRA = `[${INICIAL}][${RESTO}]*`
+
+const MENCAO_LIGA = new RegExp(
+  `\\bLiga${ESPACO}(?:Acad[êe]mica${ESPACO})?(?:d[aeo]s?${ESPACO})?` +
+    `(${PALAVRA}(?:${ESPACO}(?:d[aeo]s?${ESPACO})?${PALAVRA})*)`,
+)
 
 function classificar(texto: string): { categoria: ItemExtraido['categoriaCodigo']; confianca: number } {
   for (const regra of REGRAS) {

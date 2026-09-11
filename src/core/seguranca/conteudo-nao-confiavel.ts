@@ -121,10 +121,25 @@ export function truncar(texto: string, limite: number): string {
  * Remove marcadores forjados no próprio conteúdo antes de envelopar, para que
  * o remetente não consiga "fechar" o bloco de dados e escrever fora dele.
  */
+/**
+ * As formas que contam como marcador forjado.
+ *
+ * A MESMA expressão que a camada 2 usa para DETECTAR (`delimitador_forjado`),
+ * e é essencial que sejam a mesma: a remoção fazia `replaceAll` de string
+ * exata, então `<<< fim_conteudo_nao_confiavel >>>` — minúsculo, com espaços —
+ * era reconhecido pela detecção e sobrevivia à remoção. O remetente escrevia o
+ * fechamento do bloco de dados numa variante que a camada 3 não enxergava.
+ *
+ * A camada 2 ainda levantaria a mão, e o item iria para revisão humana. Mas a
+ * chamada ao modelo acontece ANTES da revisão — detecção não bloqueia, por
+ * decisão — então o prompt seguia com o bloco potencialmente fechado no meio.
+ * Uma camada que documenta "o remetente não consegue fechar o bloco" precisa
+ * cumprir isso, não quase.
+ */
+const MARCADOR_FORJADO = /<<<\s*(?:CONTEUDO_NAO_CONFIAVEL|FIM_CONTEUDO_NAO_CONFIAVEL)\s*>>>/gi
+
 export function delimitar(texto: string): string {
-  const limpo = texto
-    .replaceAll(MARCADOR_INICIO, '[marcador removido]')
-    .replaceAll(MARCADOR_FIM, '[marcador removido]')
+  const limpo = texto.replace(MARCADOR_FORJADO, '[marcador removido]')
 
   return `${MARCADOR_INICIO}\n${limpo}\n${MARCADOR_FIM}`
 }

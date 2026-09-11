@@ -16,17 +16,7 @@ import {
   juntar,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
-
-interface LinhaDaEscala {
-  colaboradorId: string
-  nome: string
-  papel: string
-  disponivel: boolean
-  capacidadeRelativa: number
-  categorias: string[]
-  /** Tipo do afastamento que cobre esta data, ou `null` (`A10`). */
-  afastamento: string | null
-}
+import type { LinhaDaEscala, NaRede, ResumoIngestao } from '../../core/tipos'
 
 /**
  * O servidor já redigiu conforme o papel de quem pediu (decisão de 06/09/2026).
@@ -64,21 +54,6 @@ interface LinhaDaPrevia {
   fatias: Fatia[]
 }
 
-/**
- * O que a busca de e-mails produziu.
- *
- * A tela descartava este objeto inteiro. Com isso, e-mail que falhou e e-mail
- * que não virou item nenhum sumiam sem que o operador tivesse como saber —
- * exatamente a perda silenciosa que o sistema existe para eliminar.
- */
-interface ResumoDaIngestao {
-  recebidos: number
-  novos: number
-  duplicados: number
-  itensCriados: number
-  emailsSemItem: number
-  falhas: number
-}
 
 interface Narrativa {
   categoriaCodigo: string
@@ -112,23 +87,38 @@ const CRITERIO: Record<string, { texto: string; explicacao: string }> = {
     texto: 'lote inteiro',
     explicacao: 'Volume baixo: o lote vai inteiro para uma pessoa em vez de fragmentar.',
   },
+  // Faltava, e o buraco aparecia na tela: toda rodada de LIGANTE ou EMAIL_LIGA
+  // usa este critério, então o operador via o identificador interno cru
+  // (`por_grupo`) sem nenhuma explicação — justamente na categoria em que a
+  // regra é menos óbvia e mais precisa ser explicada.
+  por_grupo: {
+    texto: 'liga inteira',
+    explicacao:
+      'Cada liga vai inteira para uma pessoa, a que estiver com mais crédito no momento. ' +
+      'Ligas diferentes podem ir para pessoas diferentes.',
+  },
   sem_demanda: { texto: 'sem demanda', explicacao: 'Nada a distribuir nesta categoria.' },
 }
 
 export default function Distribuicao() {
   const [data, setData] = useState(hoje)
-  const [escala, setEscala] = useState<LinhaDaEscala[] | null>(null)
+  const [escala, setEscala] = useState<NaRede<LinhaDaEscala>[] | null>(null)
   const [previa, setPrevia] = useState<Resumo | null>(null)
   const [confirmado, setConfirmado] = useState<Resumo | null>(null)
   const [erro, setErro] = useState<string | null>(null)
-  const [ingestao, setIngestao] = useState<ResumoDaIngestao | null>(null)
+  const [ingestao, setIngestao] = useState<NaRede<ResumoIngestao> | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
 
   const carregarEscala = useCallback(async (dia: string) => {
     setEscala(null)
     try {
-      setEscala(await api.buscar<LinhaDaEscala[]>(`/escala?data=${dia}`))
+      setEscala(await api.buscar<NaRede<LinhaDaEscala>[]>(`/escala?data=${dia}`))
     } catch (causa) {
+      // Estado neutro, e não `null`: `null` é a condição que desenha
+      // "Carregando…", então uma falha de rede deixava erro E carregando na
+      // tela ao mesmo tempo, para sempre. Quem olha conclui "hoje está lento",
+      // espera, e nunca tenta de novo.
+      setEscala([])
       setErro(mensagemDoErro(causa))
     }
   }, [])
@@ -146,11 +136,11 @@ export default function Distribuicao() {
   // duas, sem explicação.
   const dePlantao = (escala ?? []).filter((linha) => linha.disponivel && linha.afastamento === null)
 
-  async function alternar(linha: LinhaDaEscala) {
+  async function alternar(linha: NaRede<LinhaDaEscala>) {
     setErro(null)
     setPrevia(null)
     try {
-      const atualizada = await api.atualizar<LinhaDaEscala[]>('/escala', {
+      const atualizada = await api.atualizar<NaRede<LinhaDaEscala>[]>('/escala', {
         data,
         colaboradorId: linha.colaboradorId,
         disponivel: !linha.disponivel,
@@ -167,7 +157,7 @@ export default function Distribuicao() {
     setErro(null)
     try {
       if (acao === 'sincronizar') {
-        setIngestao(await api.enviar<ResumoDaIngestao>('/ingestao'))
+        setIngestao(await api.enviar<NaRede<ResumoIngestao>>('/ingestao'))
         setPrevia(null)
       } else if (acao === 'previa') {
         setPrevia(await api.enviar<Resumo>('/distribuicao/previa', { data, categorias: [] }))
@@ -189,6 +179,21 @@ export default function Distribuicao() {
   const mostrado = previa ?? confirmado
   const comItens = mostrado?.linhas.filter((linha) => linha.quantidade > 0) ?? []
   const comErro = comItens.filter((linha) => linha.erro)
+  /**
+   * Só trava quando NENHUMA categoria pode ser distribuída.
+   *
+   * Era `comErro.length > 0`: uma categoria sem ninguém habilitado de plantão
+   * bloqueava o dia inteiro. Com equipe de 4-7 pessoas e 2-3 de plantão, isso
+   * não é excepcional — é rotina, e o custo era os itens das OUTRAS categorias
+   * ficarem parados sem motivo.
+   *
+   * O serviço nunca precisou disso: `confirmar` pula o plano sem resultado,
+   * grava os demais e registra os pulados em `EventoProcessamento` como
+   * `reprocessavel`. O aviso logo abaixo é o que a tela deve fazer — avisar —, e
+   * o texto dele já promete que "o trabalho fica na fila até haver plantão".
+   * O botão desabilitado impedia a própria promessa de acontecer.
+   */
+  const nadaADistribuir = comItens.length > 0 && comErro.length === comItens.length
   const total = comItens.reduce((soma, linha) => soma + linha.quantidade, 0)
 
   return (
@@ -315,7 +320,7 @@ export default function Distribuicao() {
               <Botao
                 variante="principal"
                 onClick={() => executar('confirmar')}
-                desabilitado={ocupado !== null || previa === null || comErro.length > 0}
+                desabilitado={ocupado !== null || previa === null || nadaADistribuir}
               >
                 {ocupado === 'confirmar' ? 'gravando…' : 'Confirmar'}
               </Botao>
@@ -327,7 +332,10 @@ export default function Distribuicao() {
           <div className="mb-3">
             <Aviso tom="atencao">
               <strong>{comErro.length} categoria(s) sem ninguém elegível.</strong> O trabalho fica na
-              fila até haver plantão — nada é descartado. Marque alguém habilitado e recalcule.
+              fila até haver plantão — nada é descartado.{' '}
+              {nadaADistribuir
+                ? 'Como nenhuma categoria tem quem receba, não há o que confirmar: marque alguém habilitado e recalcule.'
+                : 'Confirmar distribui as demais; estas voltam na próxima rodada.'}
             </Aviso>
           </div>
         ) : null}

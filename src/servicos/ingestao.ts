@@ -10,6 +10,7 @@ import { CategoriaDesconhecidaError } from '../core/erros'
 import { chaveDaLiga } from '../core/ligas'
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
+import type { ResumoIngestao } from '../core/tipos'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import { InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
@@ -23,6 +24,8 @@ import {
   registrarLog,
 } from '../servidor/observabilidade'
 import { auditar } from './auditoria'
+
+export type { ResumoIngestao }
 
 /**
  * Ingestão e interpretação.
@@ -45,28 +48,6 @@ export interface DependenciasIngestao {
    * significa exatamente "os bytes não estão aqui".
    */
   armazenamento?: ArmazenamentoPort | undefined
-}
-
-export interface ResumoIngestao {
-  correlacaoId: string
-  recebidos: number
-  novos: number
-  duplicados: number
-  itensCriados: number
-  /**
-   * E-mails interpretados que não geraram item nenhum.
-   *
-   * Zero item é resultado legítimo — resposta automática, aviso de entrega,
-   * boletim. Mas é indistinguível de "a IA não entendeu e a carga sumiu", e o
-   * e-mail fica marcado como processado, então nunca mais volta. Sem este
-   * contador na tela, a diferença entre os dois casos não existiria para
-   * ninguém: seria exatamente a perda silenciosa que a planilha comete.
-   */
-  emailsSemItem: number
-  itensAprovados: number
-  itensParaRevisao: number
-  falhas: number
-  anexosRejeitados: number
 }
 
 export async function sincronizar(
@@ -141,16 +122,39 @@ export async function sincronizar(
       // Silenciar isto era perder carga sem que ninguém pudesse notar.
       if (resultado.criados === 0) {
         resumo.emailsSemItem += 1
-        registrarLog('aviso', 'e-mail interpretado sem nenhum item', {
+
+        // ZERO ITENS + CONTEÚDO SUSPEITO NÃO É A MESMA COISA QUE ZERO ITENS.
+        //
+        // Sem item não existe `Revisao` para criar — a tabela exige `itemId` —,
+        // então este e-mail nunca entra numa fila de trabalho e, pela
+        // idempotência de `messageId`, também nunca volta. Para uma resposta
+        // automática isso está certo: é o comportamento que evita encher a fila
+        // de ruído.
+        //
+        // Para um e-mail que as defesas marcaram como suspeito, não está. É
+        // exatamente a forma que um ataque bem-sucedido teria — o conteúdo
+        // convence o modelo a não devolver item nenhum, e some com um aviso
+        // igual ao de um "obrigado, recebido". Os dois casos precisavam ser
+        // distinguíveis por quem investiga, e não eram.
+        //
+        // A separação é de VISIBILIDADE, não de fluxo: nada muda para a
+        // operação, e a decisão de criar uma fila para estes casos é do dono do
+        // processo (`DECISOES.md § C`).
+        const suspeito = resultado.conteudoSuspeito
+        registrarLog(suspeito ? 'erro' : 'aviso', 'e-mail interpretado sem nenhum item', {
           correlacaoId,
           messageId: email.messageId,
+          conteudoSuspeito: suspeito,
         })
         await registrarEvento(deps.banco, {
           correlacaoId,
           etapa: 'ingestao',
           situacao: 'falha',
           referencia: email.messageId,
-          mensagem: 'e-mail interpretado sem nenhum item — confira se havia trabalho ali',
+          mensagem: suspeito
+            ? 'e-mail SUSPEITO interpretado sem nenhum item — pode ser tentativa de fazer o trabalho desaparecer'
+            : 'e-mail interpretado sem nenhum item — confira se havia trabalho ali',
+          detalhe: { conteudoSuspeito: suspeito },
         })
       }
     } catch (erro) {
@@ -211,6 +215,15 @@ interface ResultadoDeUm {
   aprovados: number
   paraRevisao: number
   anexosRejeitados: number
+  /**
+   * Se as defesas contra injeção levantaram a mão sobre este e-mail.
+   *
+   * Sobe até o laço porque "não gerou item nenhum" tem duas causas muito
+   * diferentes: resposta automática (rotina) e conteúdo suspeito que o modelo
+   * não conseguiu — ou não quis — estruturar. As duas caíam no mesmo aviso
+   * genérico, indistinguíveis para quem fosse investigar depois.
+   */
+  conteudoSuspeito: boolean
 }
 
 /** `P2002` é o código do Prisma para violação de constraint única. */
@@ -268,73 +281,120 @@ async function processarUm(
   )
   const anexosRejeitados = anexosAvaliados.filter((anexo) => !anexo.veredicto.aceito).length
 
-  return deps.banco.$transaction(async (tx) => {
-    // Segunda checagem, agora DENTRO da transação: fecha a janela entre a
-    // verificação de existência e a gravação.
-    const jaProcessado = await tx.email.findUnique({
-      where: { messageId: email.messageId },
-      select: { processadoEm: true },
-    })
-    if (jaProcessado?.processadoEm) return null
+  // ═══ BYTES NO DISCO ANTES DA TRANSAÇÃO PRECISAM DE VOLTA ATRÁS ═══
+  //
+  // Os arquivos são gravados acima, fora da transação — e isso está certo:
+  // escrever no armazenamento dentro dela seguraria lock de banco durante uma
+  // operação de I/O que pode ser lenta ou remota.
+  //
+  // O que faltava era o desfazer. Se a transação abortar — categoria
+  // desconhecida, corrida de unicidade, qualquer defeito —, o arquivo fica no
+  // disco sem nenhuma linha de `Anexo` apontando para ele. E é um órfão que a
+  // política de retenção NUNCA alcança: o expurgo caminha a partir das linhas
+  // do banco, então bytes sem linha são invisíveis para ele — documento de
+  // associado que fica no disco para sempre sem que nada saiba que existe
+  // (invariante 11), e sem nada registrando que ele está lá (invariante 7).
+  //
+  // Pior no caso comum: e-mail que falha não é marcado como processado, então
+  // a próxima sincronização o reprocessa e grava OUTRA cópia. Um defeito
+  // repetido enche o disco de cópias do mesmo documento.
+  //
+  // `remover` é idempotente por contrato, então limpar o que talvez nem tenha
+  // sido escrito é seguro.
+  const chavesGravadas = anexosAvaliados
+    .map((anexo) => anexo.chaveArmazenamento)
+    .filter((chave): chave is string => chave !== null)
 
-    // Metadado e conteúdo nascem juntos, mas em linhas separadas: é o que
-    // permite, depois, expurgar o conteúdo pela retenção sem levar junto o
-    // histórico operacional que sustenta métrica, auditoria e conservação.
-    const registro = await tx.email.upsert({
-      where: { messageId: email.messageId },
-      create: {
-        messageId: email.messageId,
-        origem: email.origem,
-        recebidoEm: email.recebidoEm,
-        modeloIa: interpretacao.modelo,
-        versaoPrompt: interpretacao.versaoPrompt,
-        processadoEm: new Date(),
-        conteudo: {
-          create: {
-            remetente: email.remetente,
-            assunto: email.assunto,
-            corpo: email.corpo,
+  /** Apaga o que esta tentativa escreveu. Nunca substitui o erro original. */
+  async function desfazerArquivos(): Promise<void> {
+    if (!deps.armazenamento) return
+    for (const chave of chavesGravadas) {
+      try {
+        await deps.armazenamento.remover(chave)
+      } catch (aoRemover) {
+        // Falhou a limpeza: o arquivo continua órfão, e agora pelo menos
+        // existe uma linha dizendo qual é.
+        registrarLog('erro', 'anexo órfão no armazenamento após transação abortada', {
+          correlacaoId,
+          chave,
+          erro: mensagemDoErro(aoRemover),
+        })
+      }
+    }
+  }
+
+  try {
+    return await deps.banco.$transaction(async (tx) => {
+      // Segunda checagem, agora DENTRO da transação: fecha a janela entre a
+      // verificação de existência e a gravação.
+      const jaProcessado = await tx.email.findUnique({
+        where: { messageId: email.messageId },
+        select: { processadoEm: true },
+      })
+      if (jaProcessado?.processadoEm) return null
+
+      // Metadado e conteúdo nascem juntos, mas em linhas separadas: é o que
+      // permite, depois, expurgar o conteúdo pela retenção sem levar junto o
+      // histórico operacional que sustenta métrica, auditoria e conservação.
+      const registro = await tx.email.upsert({
+        where: { messageId: email.messageId },
+        create: {
+          messageId: email.messageId,
+          origem: email.origem,
+          recebidoEm: email.recebidoEm,
+          modeloIa: interpretacao.modelo,
+          versaoPrompt: interpretacao.versaoPrompt,
+          processadoEm: new Date(),
+          conteudo: {
+            create: {
+              remetente: email.remetente,
+              assunto: email.assunto,
+              corpo: email.corpo,
+            },
+          },
+          anexos: {
+            create: anexosAvaliados.map((anexo) => ({
+              nomeSeguro: anexo.veredicto.nomeSeguro,
+              tipoDeclarado: anexo.tipoDeclarado,
+              tamanho: anexo.tamanho,
+              hash: anexo.hash,
+              aceito: anexo.veredicto.aceito,
+              motivo: anexo.veredicto.motivo ?? null,
+              chaveArmazenamento: anexo.chaveArmazenamento,
+              armazenadoEm: anexo.chaveArmazenamento ? new Date() : null,
+            })),
           },
         },
-        anexos: {
-          create: anexosAvaliados.map((anexo) => ({
-            nomeSeguro: anexo.veredicto.nomeSeguro,
-            tipoDeclarado: anexo.tipoDeclarado,
-            tamanho: anexo.tamanho,
-            hash: anexo.hash,
-            aceito: anexo.veredicto.aceito,
-            motivo: anexo.veredicto.motivo ?? null,
-            chaveArmazenamento: anexo.chaveArmazenamento,
-            armazenadoEm: anexo.chaveArmazenamento ? new Date() : null,
-          })),
+        update: { processadoEm: new Date() },
+      })
+
+      const resultado = await criarItens(tx, {
+        emailId: registro.id,
+        interpretacao,
+        anexosRejeitados,
+        correlacaoId,
+        usuario,
+      })
+
+      await auditar(tx, {
+        entidade: 'Email',
+        entidadeId: registro.id,
+        acao: 'ingerido',
+        depois: {
+          messageId: email.messageId,
+          itens: resultado.criados,
+          conteudoSuspeito: interpretacao.conteudoSuspeito,
         },
-      },
-      update: { processadoEm: new Date() },
-    })
+        usuario,
+        correlacaoId,
+      })
 
-    const resultado = await criarItens(tx, {
-      emailId: registro.id,
-      interpretacao,
-      anexosRejeitados,
-      correlacaoId,
-      usuario,
+      return { ...resultado, anexosRejeitados, conteudoSuspeito: interpretacao.conteudoSuspeito }
     })
-
-    await auditar(tx, {
-      entidade: 'Email',
-      entidadeId: registro.id,
-      acao: 'ingerido',
-      depois: {
-        messageId: email.messageId,
-        itens: resultado.criados,
-        conteudoSuspeito: interpretacao.conteudoSuspeito,
-      },
-      usuario,
-      correlacaoId,
-    })
-
-    return { ...resultado, anexosRejeitados }
-  })
+  } catch (erro) {
+    await desfazerArquivos()
+    throw erro
+  }
 }
 
 async function criarItens(
@@ -346,8 +406,10 @@ async function criarItens(
     correlacaoId: string
     usuario: string
   },
-): Promise<Omit<ResultadoDeUm, 'anexosRejeitados'>> {
+): Promise<Omit<ResultadoDeUm, 'anexosRejeitados' | 'conteudoSuspeito'>> {
   const { interpretacao } = contexto
+  // Uma leitura de `Liga` por LOTE, não por item — ver `indiceDeLigas`.
+  const ligas = await indiceDeLigas(tx)
   let criados = 0
   let aprovados = 0
   let paraRevisao = 0
@@ -395,7 +457,7 @@ async function criarItens(
     // e `Ligante` existiam no schema desde a fundação e nunca tiveram um
     // escritor. O motor precisa saber QUAL liga é para não separar o lote
     // dela, e `ligaMencionada` sozinho é texto, não identidade.
-    const ligaId = await resolverLiga(tx, extraido.ligaMencionada)
+    const ligaId = await resolverLiga(tx, ligas, extraido.ligaMencionada)
 
     const item = await tx.item.create({
       data: {
@@ -449,21 +511,48 @@ async function criarItens(
  * O nome ORIGINAL é guardado como veio — é o que a tela mostra, e reescrevê-lo
  * para a forma normalizada faria a liga aparecer sem acento na interface.
  */
-async function resolverLiga(tx: Transacao, mencionada: string | null): Promise<string | null> {
+async function resolverLiga(
+  tx: Transacao,
+  indice: Map<string, string>,
+  mencionada: string | null,
+): Promise<string | null> {
   const chave = chaveDaLiga(mencionada)
   if (chave === null) return null
 
-  // A comparação acontece sobre a chave, então a busca traz as candidatas com
-  // o mesmo primeiro caractere e compara em memória. Com o volume desta
-  // operação (dezenas de ligas), é mais simples e mais previsível do que
-  // gravar uma coluna normalizada agora — e trocar por uma coluna indexada
-  // depois não muda o comportamento, só o custo.
-  const existentes = await tx.liga.findMany({ select: { id: true, nome: true } })
-  const achada = existentes.find((liga) => chaveDaLiga(liga.nome) === chave)
-  if (achada) return achada.id
+  const achada = indice.get(chave)
+  if (achada) return achada
 
   const criada = await tx.liga.create({ data: { nome: mencionada!.trim() } })
+  // A liga nova entra no índice: o mesmo e-mail pode mencioná-la de novo nos
+  // itens seguintes, e sem isto cada menção criaria uma linha.
+  indice.set(chave, criada.id)
   return criada.id
+}
+
+/**
+ * Índice de ligas por chave normalizada, montado UMA vez por lote.
+ *
+ * A varredura em si é decisão (`AT-10`: a comparação é exata, sobre a chave, e
+ * não aproximada) — o defeito era repeti-la por item. Um e-mail de liga com 30
+ * ligantes fazia 30 leituras da tabela inteira DENTRO da transação de escrita,
+ * mais 30 × N normalizações: com 300 ligas cadastradas, 9.000 chamadas de
+ * `chaveDaLiga` medidas em 37,8 ms de CPU, tudo segurando a trava.
+ *
+ * É exatamente o defeito que `criarItens` já tinha corrigido para `Categoria`,
+ * vinte linhas acima, com o comentário explicando por quê. A correção não tinha
+ * sido aplicada a `Liga`.
+ */
+async function indiceDeLigas(tx: Transacao): Promise<Map<string, string>> {
+  const existentes = await tx.liga.findMany({ select: { id: true, nome: true } })
+  const indice = new Map<string, string>()
+  for (const liga of existentes) {
+    const chave = chaveDaLiga(liga.nome)
+    // Primeira vencendo: se duas linhas normalizam para a mesma chave (dado
+    // anterior à regra), o comportamento continua sendo o da varredura, que
+    // parava no primeiro `find`.
+    if (chave !== null && !indice.has(chave)) indice.set(chave, liga.id)
+  }
+  return indice
 }
 
 /**

@@ -1,12 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 
-import {
-  InterpretadorEstruturado,
-  RespostaDoModeloSchema,
-  type ClienteDeInterpretacao,
-  type PerfilDoFornecedor,
-} from './ia-estruturada'
+import { InterpretadorEstruturado } from './ia-estruturada'
+import type { ClienteDeModelo, PerfilDoFornecedor } from './fornecedor'
 import { ambiente } from '../servidor/ambiente'
 
 /**
@@ -25,7 +21,7 @@ import { ambiente } from '../servidor/ambiente'
  * `IA_ADAPTER`. Nenhum serviço, rota ou tela sabe da diferença.
  */
 
-export type { ClienteDeInterpretacao } from './ia-estruturada'
+export type { ClienteDeModelo } from './fornecedor'
 
 /**
  * Esforço de raciocínio.
@@ -41,6 +37,9 @@ const ESFORCO = 'low' as const
 
 /** Teto de saída. Estourar não é truncado em silêncio — vira falha e revisão humana. */
 const MAXIMO_DE_TOKENS = 16_000
+
+/** Teto de tempo por chamada. Igual ao do Gemini, para os dois falharem no mesmo prazo. */
+const TEMPO_LIMITE_MS = 120_000
 
 /**
  * Perfil do fornecedor.
@@ -60,23 +59,33 @@ export const PERFIL_ANTHROPIC: PerfilDoFornecedor = {
     erro instanceof Anthropic.PermissionDeniedError,
 }
 
-export function clienteAnthropic(): ClienteDeInterpretacao {
+export function clienteAnthropic(): ClienteDeModelo {
   const chave = ambiente().ANTHROPIC_API_KEY
   // `ambiente()` já recusa `IA_ADAPTER=anthropic` sem chave; esta é a segunda
   // tranca, para o caso de alguém construir o adapter direto.
   if (!chave) throw new Error('ANTHROPIC_API_KEY ausente: o adapter Anthropic não pode subir.')
 
-  const cliente = new Anthropic({ apiKey: chave })
+  // `maxRetries` e `timeout` EXPLÍCITOS, mesmo coincidindo com o padrão do SDK.
+  //
+  // O núcleo justifica não repetir falha de transporte dizendo que "o SDK já
+  // tentou de novo por conta própria". Enquanto isso ficou implícito, a frase
+  // valia aqui e era falsa no Gemini — e ninguém tinha como saber lendo o
+  // código. Declarar em cada adapter o que ele de fato faz é o que torna a
+  // afirmação do núcleo verificável nos dois.
+  const cliente = new Anthropic({ apiKey: chave, maxRetries: 2, timeout: TEMPO_LIMITE_MS })
 
   return {
-    async interpretar({ instrucoes, conteudo, modelo }) {
+    async gerar({ instrucoes, conteudo, modelo, esquema }) {
       const resposta = await cliente.messages.parse({
         model: modelo,
         max_tokens: MAXIMO_DE_TOKENS,
         system: instrucoes,
         messages: [{ role: 'user', content: conteudo }],
         output_config: {
-          format: zodOutputFormat(RespostaDoModeloSchema),
+          // O esquema vem de quem chama, não fixo aqui: é o que permite este
+          // mesmo cliente atender a interpretação de e-mail e o assistente sem
+          // uma segunda cópia da chamada ao SDK.
+          format: zodOutputFormat(esquema),
           effort: ESFORCO,
         },
       })
@@ -97,7 +106,7 @@ export function clienteAnthropic(): ClienteDeInterpretacao {
 }
 
 export class IaAnthropic extends InterpretadorEstruturado {
-  constructor(cliente: ClienteDeInterpretacao = clienteAnthropic()) {
+  constructor(cliente: ClienteDeModelo = clienteAnthropic()) {
     super(PERFIL_ANTHROPIC, cliente)
   }
 }
