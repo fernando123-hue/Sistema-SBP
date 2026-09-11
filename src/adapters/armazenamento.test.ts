@@ -131,6 +131,47 @@ describe('armazenamento em disco', () => {
     expect(Array.from(lido!)).toEqual(Array.from(PDF))
   })
 
+  /**
+   * A fronteira dos 40 bytes (cabeçalho 12 + IV 12 + tag 16).
+   *
+   * Achado 15 da auditoria de 08/09/2026. O ramo de "gravação interrompida" foi
+   * corrigido, mas a fronteira não tinha prova: um `<` virando `<=` num ajuste
+   * recusaria todo anexo VAZIO legítimo como truncado — e anexo vazio existe
+   * (formulário exportado em branco). No sentido oposto, recusar 39 bytes é o
+   * que impede o IV de ser devolvido como se fosse o documento.
+   */
+  it('arquivo com cabeçalho e payload vazio decifra como vazio, não como truncado', async () => {
+    const chave = await armazenamento.guardar(new Uint8Array(), '.pdf')
+    const bruto = await import('node:fs/promises').then((fs) => fs.readFile(join(raiz, chave)))
+
+    expect(bruto.length).toBe(40)
+    const lido = await armazenamento.ler(chave)
+    expect(lido).not.toBeNull()
+    expect(lido!.length).toBe(0)
+  })
+
+  it('arquivo com cabeçalho e um byte a menos que o mínimo é recusado como truncado', async () => {
+    const chave = await armazenamento.guardar(new Uint8Array(), '.pdf')
+    const caminho = join(raiz, chave)
+    const { readFile, writeFile } = await import('node:fs/promises')
+
+    await writeFile(caminho, (await readFile(caminho)).subarray(0, 39))
+
+    await expect(armazenamento.ler(chave)).rejects.toThrow(/truncado/)
+  })
+
+  it('arquivo SEM cabeçalho, mesmo curto, segue lido como legado — limite registrado em AT-12', async () => {
+    // Não é o comportamento ideal, e é o decidido: enquanto o ramo legado
+    // existir, ausência de cabeçalho não prova nada. O teste fixa o limite para
+    // que ele mude por decisão, não por acidente.
+    const { writeFile, mkdir } = await import('node:fs/promises')
+    const chaveLegada = '00/curto.txt'
+    await mkdir(join(raiz, '00'), { recursive: true })
+    await writeFile(join(raiz, chaveLegada), Buffer.from('abc'))
+
+    expect(Array.from((await armazenamento.ler(chaveLegada))!)).toEqual([0x61, 0x62, 0x63])
+  })
+
   it('falha ao tentar decifrar anexo com tag de integridade adulterada', async () => {
     const chave = await armazenamento.guardar(PDF, '.pdf')
     const caminho = join(raiz, chave)
