@@ -302,6 +302,28 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **Status:** ⏳ a queda sai quando houver rotina de recifragem — e aí `ANEXOS_SECRET` passa a ser obrigatória como `SESSAO_SECRET` já é.
 
+### AT-14 — Sem ESLint enquanto o projeto usar TypeScript 7 *(11/09/2026)*
+
+**Hipótese:** o lint de regras de hooks e de acessibilidade (`eslint-plugin-react-hooks`, `jsx-a11y`) fica fora do projeto por ora.
+
+**Motivo:** a revisão dos PRs #35 e #36 apontou a ausência. Mas o projeto usa `typescript@^7`, que ainda não expõe a API de compilador em JavaScript (a própria documentação do Next registra isso) — e o parser de TypeScript do ESLint depende dela para ler `.tsx`. Instalar hoje seria dependência que não roda, ou rebaixar o TypeScript só para o lint.
+
+**Impacto:** regra de hooks e acessibilidade continuam dependendo de revisão; o `tsc` e o `next build` seguem como portões. **Status:** ⏳ reavaliar quando `typescript-eslint` suportar TypeScript 7.
+
+### AT-15 — Linha de domínio fechado inválida no banco: isolar onde bloqueia o dia, falhar alto onde não *(11/09/2026)*
+
+**Hipótese:** `lerDoBanco` (achado 23) falha alto quando uma coluna `String` traz valor fora do enum. Na **distribuição**, uma categoria inválida vira aviso na prévia e na confirmação, e as demais seguem. Na **lista de afastamentos** do gestor, a falha continua alta (500 com correlação).
+
+**Motivo:** a revisão de conjunto do PR #36 mostrou que, dentro do `.map()` de uma lista, uma única linha ruim derrubava tudo — a distribuição do dia inteiro por causa de uma categoria. Na distribuição o custo é o trabalho de toda a equipe; na lista de afastamentos é uma tela de gestor, e só uma edição à mão no banco produz a linha ruim (toda escrita passa pelo Zod).
+
+**Impacto:** a categoria inválida não é distribuída, aparece nomeada na tela e fica no evento da rodada; ninguém a distribui "por cima" com o tipo errado. **Status:** ✅ adotado; muda por decisão, não por acidente.
+
+### AT-16 — A trava do último gestor em PostgreSQL *(11/09/2026)*
+
+**Hipótese:** a contagem dos outros gestores passou para dentro da transação que desativa (revisão do PR #35), e isso fecha a corrida no SQLite, que admite um escritor por vez.
+
+**Impacto:** em PostgreSQL com `READ COMMITTED`, duas transações ainda podem ler "há outro gestor" antes de qualquer uma gravar. **Status:** ⏳ na migração para PostgreSQL, bloquear as linhas de gestor (`SELECT ... FOR UPDATE`) ou usar isolamento serializável nessa transação.
+
 ---
 
 ## D. Pendências do cliente final

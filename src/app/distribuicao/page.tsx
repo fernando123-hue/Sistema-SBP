@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { hojeIso } from '../../core/util/datas'
 import { api, mensagemDoErro } from '../../componentes/api'
@@ -67,6 +67,8 @@ interface Resumo {
   rodadasGravadas: number
   linhas: LinhaDaPrevia[]
   narrativas: Narrativa[]
+  /** Categorias com cadastro inválido no banco, que ficaram fora da rodada. */
+  categoriasInvalidas: { codigo: string; motivo: string }[]
 }
 
 // `hojeIso` vem do núcleo puro (pode ser importado no cliente) e resolve no
@@ -109,11 +111,25 @@ export default function Distribuicao() {
   const [ingestao, setIngestao] = useState<NaRede<ResumoIngestao> | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
 
+  /**
+   * Número da carga de escala mais recente. Só ela escreve na tela.
+   *
+   * Trocar a data duas vezes seguidas disparava duas buscas; se a primeira
+   * chegasse por último, a tela mostrava o plantão de um dia com outra data no
+   * campo. Revisão do PR #35.
+   */
+  const ultimaCargaDeEscala = useRef(0)
+
   const carregarEscala = useCallback(async (dia: string) => {
+    ultimaCargaDeEscala.current += 1
+    const estaCarga = ultimaCargaDeEscala.current
     setEscala(null)
     try {
-      setEscala(await api.buscar<NaRede<LinhaDaEscala>[]>(`/escala?data=${dia}`))
+      const resposta = await api.buscar<NaRede<LinhaDaEscala>[]>(`/escala?data=${dia}`)
+      if (estaCarga !== ultimaCargaDeEscala.current) return
+      setEscala(resposta)
     } catch (causa) {
+      if (estaCarga !== ultimaCargaDeEscala.current) return
       // Estado neutro, e não `null`: `null` é a condição que desenha
       // "Carregando…", então uma falha de rede deixava erro E carregando na
       // tela ao mesmo tempo, para sempre. Quem olha conclui "hoje está lento",
@@ -378,6 +394,23 @@ export default function Distribuicao() {
             </div>
           }
         />
+
+        {/* Categoria com cadastro inválido no banco não derruba o dia inteiro:
+            sai nomeada aqui, e as demais seguem. `DECISOES.md § AT-15`. */}
+        {mostrado && mostrado.categoriasInvalidas.length > 0 ? (
+          <div className="mb-3">
+            <Aviso>
+              <strong>
+                {mostrado.categoriasInvalidas.length} categoria(s) fora desta rodada por cadastro
+                inválido no banco:
+              </strong>{' '}
+              {mostrado.categoriasInvalidas
+                .map((categoria) => `${categoria.codigo} — ${categoria.motivo}`)
+                .join(' · ')}
+              . As demais seguem normalmente; corrija o cadastro antes de distribuir estas.
+            </Aviso>
+          </div>
+        ) : null}
 
         {comErro.length > 0 ? (
           <div className="mb-3">

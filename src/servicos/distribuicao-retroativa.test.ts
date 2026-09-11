@@ -86,6 +86,20 @@ async function creditoLidoPara(colaboradorId: string, data: string): Promise<num
   return linha?.creditoGlobal ?? 0
 }
 
+/** O acumulado DE CATEGORIA que o desempate leria — o critério primário. */
+async function creditoDeCategoriaLidoPara(
+  colaboradorId: string,
+  categoriaId: string,
+  data: string,
+): Promise<number> {
+  const linha = await banco.saldoCarga.findFirst({
+    where: { colaboradorId, categoriaId, data: { lte: data } },
+    orderBy: { data: 'desc' },
+    select: { creditoAcumulado: true },
+  })
+  return linha?.creditoAcumulado ?? 0
+}
+
 beforeEach(async () => {
   await limparTudo(banco)
 })
@@ -135,6 +149,49 @@ describe('distribuição fora de ordem', () => {
     const doUltimoDia = await banco.saldoCargaGlobal.findMany({ where: { data: dia3 } })
     const soma = doUltimoDia.reduce((total, linha) => total + linha.creditoGlobal, 0)
     expect(Math.abs(soma)).toBeLessThan(0.001)
+  })
+
+  /**
+   * A conta exata, nos DOIS razões.
+   *
+   * Com o dia 2 distribuído antes, a linha dele guarda só o movimento do dia 2
+   * (não havia nada antes). Quando o dia 1 entra depois, o total corrido que o
+   * dia 2 enxerga tem de passar a ser dia 1 + movimento do dia 2 — nem mais, nem
+   * menos. "Mudou" não bastava: a primeira correção só propagava o global, e o
+   * crédito POR CATEGORIA — o critério primário do desempate — ficou parado
+   * (revisão do PR #35). Um teste que só olhava o global não tinha como ver.
+   */
+  it('o total corrido do dia seguinte passa a ser exatamente dia anterior + movimento, nos dois razões', async () => {
+    const base = await semear()
+    const [dia1, dia2] = base.dias as [string, string, string]
+
+    await criarItens(base.categoria.id, dia2, 3)
+    await confirmar(banco, { data: dia2, categorias: [] }, base.operador)
+
+    const movimentoDoDia2 = {
+      global: await creditoLidoPara(base.ana.id, dia2),
+      categoria: await creditoDeCategoriaLidoPara(base.ana.id, base.categoria.id, dia2),
+    }
+    // Sem movimento, a conta abaixo passaria com zero em tudo.
+    expect(movimentoDoDia2.categoria).not.toBe(0)
+
+    await criarItens(base.categoria.id, dia1, 3)
+    await confirmar(banco, { data: dia1, categorias: [] }, base.operador)
+
+    const dia1Gravado = {
+      global: await creditoLidoPara(base.ana.id, dia1),
+      categoria: await creditoDeCategoriaLidoPara(base.ana.id, base.categoria.id, dia1),
+    }
+    expect(dia1Gravado.categoria).not.toBe(0)
+
+    expect(await creditoLidoPara(base.ana.id, dia2)).toBeCloseTo(
+      dia1Gravado.global + movimentoDoDia2.global,
+      6,
+    )
+    expect(await creditoDeCategoriaLidoPara(base.ana.id, base.categoria.id, dia2)).toBeCloseTo(
+      dia1Gravado.categoria + movimentoDoDia2.categoria,
+      6,
+    )
   })
 
   it('no caminho normal, em ordem, nada muda', async () => {

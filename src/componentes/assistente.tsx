@@ -159,8 +159,13 @@ export function Assistente({ papel }: { papel: string }) {
   }
 
   return (
+    // `region`, e não `dialog`: o painel é deliberadamente NÃO modal — a página
+    // atrás continua usável, e Tab sai dele. Anunciar `dialog` sem `aria-modal`
+    // nem foco retido prometia ao leitor de tela um comportamento que não
+    // existe. Foco ao abrir, retorno ao fechar e Escape continuam valendo.
+    // Revisão do PR #35.
     <div
-      role="dialog"
+      role="region"
       aria-label="Ajuda sobre o sistema"
       className="fixed inset-x-0 bottom-0 z-40 flex max-h-[85dvh] flex-col border-t border-borda bg-papel shadow-2xl sm:inset-x-auto sm:right-4 sm:bottom-4 sm:max-h-[min(32rem,85dvh)] sm:w-[26rem] sm:rounded-[var(--radius-cartao)] sm:border"
     >

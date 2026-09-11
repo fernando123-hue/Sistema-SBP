@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
@@ -102,16 +102,30 @@ export default function Caixa() {
   const [gravando, setGravando] = useState(false)
   const [confirmacao, setConfirmacao] = useState<string | null>(null)
 
+  /**
+   * Número da carga mais recente. Só ela escreve na tela.
+   *
+   * Clicar na pastilha A e logo na B dispara duas buscas; se a de A chegasse
+   * depois, a lista mostrava os itens de A com o filtro marcado em B — e nada
+   * na tela dizia que estava errado. Revisão do PR #35.
+   */
+  const ultimaCarga = useRef(0)
+
   const carregar = useCallback(async (categoria: string | null, liga: string | null) => {
+    ultimaCarga.current += 1
+    const estaCarga = ultimaCarga.current
     setDados(null)
     try {
       const parametros = new URLSearchParams({ limite: String(TETO_DA_LISTA) })
       if (categoria) parametros.set('categoria', categoria)
       if (liga) parametros.set('liga', liga)
-      setDados(
-        await api.buscar<{ itens: NaRede<ItemDaCaixa>[]; resumo: Resumo }>(`/itens?${parametros}`),
+      const resposta = await api.buscar<{ itens: NaRede<ItemDaCaixa>[]; resumo: Resumo }>(
+        `/itens?${parametros}`,
       )
+      if (estaCarga !== ultimaCarga.current) return
+      setDados(resposta)
     } catch (causa) {
+      if (estaCarga !== ultimaCarga.current) return
       // Estado neutro, e não `null`: `null` é a condição que desenha
       // "Carregando…", então uma falha de rede deixava erro E carregando na
       // tela ao mesmo tempo, para sempre. Quem olha conclui "hoje está lento",

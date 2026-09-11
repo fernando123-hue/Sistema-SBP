@@ -160,18 +160,31 @@ export default function PainelPagina() {
   // refazia também `/qualidade` (janela própria) e `/afastamentos/hoje` (estado
   // atual) — oito consultas de banco a cada data escolhida, para trazer de
   // novo exatamente o que já estava na tela.
+  // Cada efeito descarta a própria resposta quando já foi substituído. Sem
+  // isto, ajustar as duas pontas do período disparava duas buscas, e se a
+  // primeira chegasse por último a tela mostrava os números de um período com
+  // outro escrito nos campos. Revisão do PR #35.
   useEffect(() => {
+    let vigente = true
     // Limpa o erro anterior: sem isto, a faixa vermelha da tentativa que falhou
     // ficaria na tela por cima dos dados que a tentativa seguinte trouxe.
     setErroDoPeriodo(null)
     const recorte = de && ate ? `?de=${de}&ate=${ate}` : ''
     api
       .buscar<Painel>(`/painel${recorte}`)
-      .then(setDados)
-      .catch((causa) => setErroDoPeriodo(mensagemDoErro(causa)))
+      .then((painel) => {
+        if (vigente) setDados(painel)
+      })
+      .catch((causa) => {
+        if (vigente) setErroDoPeriodo(mensagemDoErro(causa))
+      })
+    return () => {
+      vigente = false
+    }
   }, [de, ate, tentativa])
 
   useEffect(() => {
+    let vigente = true
     setErroDoEstadoAtual(null)
     Promise.all([
       // Janela padrão, NUNCA `dias=tudo`. Esta é a tela mais visitada do
@@ -184,10 +197,16 @@ export default function PainelPagina() {
       api.buscar<Ausente[]>('/afastamentos/hoje'),
     ])
       .then(([medida, ausentes]) => {
+        if (!vigente) return
         setQualidade(medida)
         setFora(ausentes)
       })
-      .catch((causa) => setErroDoEstadoAtual(mensagemDoErro(causa)))
+      .catch((causa) => {
+        if (vigente) setErroDoEstadoAtual(mensagemDoErro(causa))
+      })
+    return () => {
+      vigente = false
+    }
   }, [tentativa])
 
   // ═══ ERRO NÃO APAGA A TELA ═══
@@ -259,7 +278,15 @@ export default function PainelPagina() {
 
   return (
     <div className="flex flex-col gap-6">
-      {erro ? <Aviso>{erro}</Aviso> : null}
+      {/* Com dados na tela, a falha seguinte também oferece o caminho de volta.
+          Antes o botão só existia antes do primeiro carregamento, e para tentar
+          de novo era preciso mudar o período — revisão do PR #35. */}
+      {erro ? (
+        <div className="flex flex-col items-start gap-3">
+          <Aviso>{erro}</Aviso>
+          <Botao onClick={() => setTentativa((numero) => numero + 1)}>Tentar de novo</Botao>
+        </div>
+      ) : null}
       <CabecalhoDeSecao
         titulo="Painel"
         descricao="Todo número desta tela é calculado. Não existe campo digitável."

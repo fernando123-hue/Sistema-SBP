@@ -2,7 +2,11 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:
 import { link, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 
-import { FalhaDeArmazenamento, type ArmazenamentoPort } from '../ports/armazenamento'
+import {
+  ChaveDosAnexosMudouError,
+  FalhaDeArmazenamento,
+  type ArmazenamentoPort,
+} from '../ports/armazenamento'
 import { ambiente } from '../servidor/ambiente'
 import { registrarLog } from '../servidor/observabilidade'
 
@@ -401,13 +405,8 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
     }
   }
 
-  private chaveDosAnexosMudou(): FalhaDeArmazenamento {
-    return new FalhaDeArmazenamento(
-      'conferir-chave',
-      'a chave em uso NÃO é a que cifrou os anexos desta pasta — ANEXOS_SECRET (ou SESSAO_SECRET, ' +
-        'quando ANEXOS_SECRET não está definido) mudou. Nada foi lido nem gravado. Volte a chave ' +
-        'anterior, ou fixe ANEXOS_SECRET com o valor antigo antes de trocar o segredo de sessão.',
-    )
+  private chaveDosAnexosMudou(): ChaveDosAnexosMudouError {
+    return new ChaveDosAnexosMudouError()
   }
 
   async guardar(bytes: Uint8Array, extensao: string): Promise<string> {

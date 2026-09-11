@@ -1,6 +1,6 @@
 # Estado do projeto — retomada
 
-Última atualização: **10/09/2026** — **os 36 achados em aberto da auditoria de 08/09/2026**, trabalhados numa branch empilhada sobre a etapa de fechamento e maturação. Ver *Esta retomada*, logo abaixo.
+Última atualização: **11/09/2026** — **os 36 achados em aberto da auditoria de 08/09/2026**, trabalhados numa branch empilhada sobre a etapa de fechamento e maturação, e depois **a revisão dos PRs #35 e #36 e a correção do que ela achou**. Ver *Esta retomada*, logo abaixo.
 
 > ## ⚠️ Leia estes seis pontos antes de tocar em qualquer coisa
 >
@@ -13,7 +13,7 @@
 
 ### Onde este trabalho parou, em uma frase
 
-Os 36 achados em aberto de 08/09/2026 foram corrigidos, respondidos ou convertidos em pergunta, na branch `maturacao/achados-em-aberto`; o próximo passo humano é **entrar no sistema para verificar as telas que ninguém viu rodando** e **responder `DECISOES.md § H.4` itens 15 a 18**. Nada de código está pela metade.
+Os 36 achados em aberto de 08/09/2026 foram corrigidos, respondidos ou convertidos em pergunta, na branch `maturacao/achados-em-aberto`, e os achados da revisão publicada nos PRs #35 e #36 foram corrigidos na mesma branch; o próximo passo humano é **entrar no sistema para verificar as telas que ninguém viu rodando** e **responder `DECISOES.md § H.4` itens 15 a 18**. Nada de código está pela metade.
 
 ## Esta retomada — 10/09/2026
 
@@ -31,6 +31,24 @@ O quadro completo, achado por achado, está no topo de `docs/auditoria/2026-09-0
 1. **Nenhuma mudança de tela foi vista rodando.** Toda tela além de `/entrar` exige login, e o agente não digita senha nem forja sessão. As telas mudadas passaram em `tsc`, `npm run build` e revisão de React, e **precisam ser olhadas por alguém logado**: Distribuição (caixas e data travadas enquanto a marcação de plantão salva; hora da prévia), Painel, Caixa ("Quem atendeu"; a lista em tela estreita e larga), navegação (alvos de toque; links por papel) e notas (motivo ao arquivar).
 2. **`motivoArquivo` passa a ser gravado, e não é exibido**: não existe tela de notas arquivadas.
 3. **A sentinela da chave confere na primeira operação de anexo, não na partida do servidor.** A razão está no código e em `§ AT-13`.
+
+### Revisão dos PRs #35 e #36, e as correções — 11/09/2026
+
+A pedido do dono, os dois PRs foram revisados por agentes por área, com cada achado conferido no código, e a revisão foi **publicada como comentário** em cada um ([#35](https://github.com/fernando123-hue/Sistema-SBP/pull/35#pullrequestreview-5182897191), [#36](https://github.com/fernando123-hue/Sistema-SBP/pull/36#pullrequestreview-5182897515)) — para que outras IAs possam avaliar o projeto a partir dela. Decisão nos dois: pedir mudanças. As correções entraram **no #36**, que contém o #35; o #35 sozinho continua com os achados.
+
+**Corrigido e provado por sabotagem** (cada teste visto falhando contra o defeito):
+
+- **ALTO** — a distribuição retroativa propagava só o crédito global; o crédito **por categoria**, critério primário do desempate, ficava desatualizado. Sabotado, o teste leu `-0,5` onde tinha de ler `-1`.
+- A chave dos anexos trocada agora para a ingestão **antes da primeira chamada de IA**, com o motivo legível na memória operacional (`ChaveDosAnexosMudouError`).
+- A trava do último gestor conta os outros gestores **dentro** da transação que desativa (em PostgreSQL ainda falta bloqueio — `DECISOES.md § AT-16`).
+- `FalhaDeArmazenamento` não devolve mais o caminho do disco à tela.
+- Uma categoria com cadastro inválido no banco não derruba mais a distribuição do dia: sai nomeada e as demais seguem (`§ AT-15`).
+
+**Corrigido nas telas, conferido por tipos e build — não visto rodando** (acrescenta à dívida honesta acima): resposta velha que sobrescrevia a nova na Caixa, na escala da Distribuição e no Painel; "Tentar de novo" também com dados na tela; `prefers-reduced-motion` respeitado sem recarregar; painel de ajuda anunciado como região, não como diálogo.
+
+**Configuração:** `next-env.d.ts` saiu do git, como a documentação do Next manda, e `npm run typecheck` passou a rodar `next typegen` antes do `tsc` — provado apagando o arquivo.
+
+**Registrado, não corrigido:** ESLint fica fora enquanto o projeto usar TypeScript 7, cuja API de compilador o parser do ESLint exige (`§ AT-14`).
 
 ### O que a etapa de fechamento (08/09/2026) entregou
 

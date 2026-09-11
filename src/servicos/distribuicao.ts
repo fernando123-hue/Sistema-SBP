@@ -74,6 +74,21 @@ export interface RelatorioDistribuicao {
    * Ver `core/distribuicao/narrativa.ts`.
    */
   narrativas: NarrativaDeCategoria[]
+  /**
+   * Categorias ativas cujo cadastro no banco traz valor fora do domínio
+   * (`frente` ou `grupo`), e por isso ficaram FORA desta rodada.
+   *
+   * Antes, uma única linha assim fazia `lerDoBanco` lançar dentro do `.map()` de
+   * `carregarCategorias`, e a prévia e a confirmação de TODAS as categorias do
+   * dia falhavam juntas. Agora a inválida sai nomeada, na tela e no evento, e as
+   * demais seguem. Revisão do PR #36; `DECISOES.md § AT-15`.
+   */
+  categoriasInvalidas: CategoriaInvalida[]
+}
+
+export interface CategoriaInvalida {
+  codigo: string
+  motivo: string
 }
 
 export interface NarrativaDeCategoria {
@@ -306,8 +321,8 @@ function agruparPorLiga(itens: readonly { id: string; ligaId: string | null }[])
 export async function planejar(
   banco: Banco | Transacao,
   pedido: PedidoDistribuicao,
-): Promise<PlanoCategoria[]> {
-  const categorias = await carregarCategorias(banco, pedido.categorias)
+): Promise<PlanoDoDia> {
+  const { categorias, invalidas } = await carregarCategorias(banco, pedido.categorias)
   const planos: PlanoCategoria[] = []
   const ajusteGlobal: AjusteDeCredito = new Map()
 
@@ -325,7 +340,13 @@ export async function planejar(
     }
   }
 
-  return planos
+  return { planos, categoriasInvalidas: invalidas }
+}
+
+/** O plano do dia: o que dá para distribuir, e o que ficou de fora por cadastro inválido. */
+export interface PlanoDoDia {
+  planos: PlanoCategoria[]
+  categoriasInvalidas: CategoriaInvalida[]
 }
 
 export async function previa(
@@ -334,7 +355,7 @@ export async function previa(
   ator: Ator,
 ): Promise<RelatorioDistribuicao> {
   exigirPapel(ator, 'ver prévia da distribuição', 'operador', 'gestor')
-  const planos = await planejar(banco, pedido)
+  const { planos, categoriasInvalidas } = await planejar(banco, pedido)
 
   return {
     correlacaoId: 'previa',
@@ -346,6 +367,7 @@ export async function previa(
     // porquê antes de gravar é o que a torna útil para conferir. Depois de
     // confirmado, ela vira registro; antes, é revisão.
     narrativas: await narrar(banco, planos),
+    categoriasInvalidas,
   }
 }
 
@@ -382,7 +404,7 @@ export async function confirmar(
 
     // Replaneja DENTRO da transação: o estado pode ter mudado entre a prévia
     // que o operador viu e o clique em confirmar. Mesma função da prévia.
-    const planos = await planejar(tx, pedido)
+    const { planos, categoriasInvalidas } = await planejar(tx, pedido)
     let rodadasGravadas = 0
     let totalDistribuido = 0
 
@@ -401,6 +423,7 @@ export async function confirmar(
       planos,
       totalDistribuido,
       rodadasGravadas,
+      categoriasInvalidas,
     } satisfies Omit<RelatorioDistribuicao, 'narrativas'>
   })
 
@@ -413,10 +436,13 @@ export async function confirmar(
     })
   }
 
+  const invalidas = relatorio.categoriasInvalidas
+  const ficouAlgoDeFora = comErro.length > 0 || invalidas.length > 0
+
   await registrarEvento(banco, {
     correlacaoId,
     etapa: 'distribuicao',
-    situacao: comErro.length > 0 ? 'reprocessavel' : 'sucesso',
+    situacao: ficouAlgoDeFora ? 'reprocessavel' : 'sucesso',
     referencia: pedido.data,
     mensagem: `${relatorio.rodadasGravadas} rodadas · ${relatorio.totalDistribuido} itens`,
     // QUAIS categorias falharam, não só que alguma falhou.
@@ -424,14 +450,20 @@ export async function confirmar(
     // O aviso acima vai para stdout, que roda e some. O evento dizia apenas
     // "N rodadas · M itens", então "quais categorias ficaram sem distribuir na
     // semana passada, e por quê?" exigia ter o terminal do servidor guardado.
-    // Aqui o motivo fica na memória do sistema, junto do dia.
-    ...(comErro.length > 0
+    // Aqui o motivo fica na memória do sistema, junto do dia — inclusive o de
+    // categoria que ficou de fora por cadastro inválido no banco.
+    ...(ficouAlgoDeFora
       ? {
           detalhe: {
-            naoDistribuidas: comErro.map((plano) => ({
-              categoria: plano.categoria.codigo,
-              motivo: plano.erro,
-            })),
+            ...(comErro.length > 0
+              ? {
+                  naoDistribuidas: comErro.map((plano) => ({
+                    categoria: plano.categoria.codigo,
+                    motivo: plano.erro,
+                  })),
+                }
+              : {}),
+            ...(invalidas.length > 0 ? { categoriasInvalidas: invalidas } : {}),
           },
         }
       : {}),
@@ -555,6 +587,9 @@ async function gravarRodada(
       escopo: plano.categoria.frente,
       cotaJusta: resultado.cotaJusta,
       creditoCategoria: resultado.creditoCategoriaDepois[colaboradorId] ?? 0,
+      deltaCreditoCategoria:
+        (resultado.creditoCategoriaDepois[colaboradorId] ?? 0) -
+        (resultado.creditoCategoriaAntes[colaboradorId] ?? 0),
       creditoGlobalAnterior: resultado.creditoGlobalAntes[colaboradorId] ?? 0,
       deltaCreditoGlobal:
         (resultado.creditoGlobalDepois[colaboradorId] ?? 0) -
@@ -601,6 +636,8 @@ async function atualizarSaldos(
     escopo: string
     cotaJusta: number
     creditoCategoria: number
+    /** Movimento do crédito DE CATEGORIA nesta rodada. Propaga para os dias seguintes. */
+    deltaCreditoCategoria: number
     creditoGlobalAnterior: number
     deltaCreditoGlobal: number
   },
@@ -692,6 +729,28 @@ async function atualizarSaldos(
       data: { creditoGlobal: { increment: entrada.deltaCreditoGlobal } },
     })
   }
+
+  // ═══ O CRÉDITO DE CATEGORIA TAMBÉM É TOTAL CORRIDO ═══
+  //
+  // A propagação acima nasceu só para o global, e a revisão do PR #35 pegou a
+  // metade que faltou: `carregarElegiveis` lê `SaldoCarga.creditoAcumulado`
+  // exatamente do mesmo jeito — a linha mais recente com `data <= data` —, e é
+  // ele o critério PRIMÁRIO do desempate. Distribuir o dia 1 depois do dia 2
+  // deixava a linha do dia 2 sem o efeito do dia 1, e todo desempate dali em
+  // diante decidia com a categoria desatualizada, sem erro nenhum.
+  //
+  // A linha do próprio dia continua gravada absoluta, como vem do motor; o que
+  // vai para as linhas posteriores é o MOVIMENTO desta rodada.
+  if (entrada.deltaCreditoCategoria !== 0) {
+    await tx.saldoCarga.updateMany({
+      where: {
+        colaboradorId: entrada.colaboradorId,
+        categoriaId: entrada.categoriaId,
+        data: { gt: entrada.data },
+      },
+      data: { creditoAcumulado: { increment: entrada.deltaCreditoCategoria } },
+    })
+  }
 }
 
 // ─── Carregamento de estado ──────────────────────────────────
@@ -699,7 +758,7 @@ async function atualizarSaldos(
 async function carregarCategorias(
   banco: Banco | Transacao,
   codigos: readonly string[],
-): Promise<Categoria[]> {
+): Promise<{ categorias: Categoria[]; invalidas: CategoriaInvalida[] }> {
   const registros = await banco.categoria.findMany({
     where: {
       ativa: true,
@@ -709,20 +768,42 @@ async function carregarCategorias(
     orderBy: { ordem: 'asc' },
   })
 
-  return registros.map((registro) => ({
-    id: registro.id,
-    codigo: registro.codigo,
-    rotulo: registro.rotulo,
-    // `frente` vira `SaldoCargaGlobal.escopo`: um `'CADASTROS'` semeado à mão
-    // abria um segundo razão global sem que nada acusasse. Ver `FrenteSchema`.
-    frente: lerDoBanco(FrenteSchema, registro.frente, `Categoria.frente (${registro.codigo})`),
-    grupo: lerDoBanco(GrupoSchema, registro.grupo, `Categoria.grupo (${registro.codigo})`),
-    divisivel: registro.divisivel,
-    peso: registro.peso,
-    agrupaPorLiga: registro.agrupaPorLiga,
-    limiarIndivisivel: registro.limiarIndivisivel,
-    entraNoRateio: registro.entraNoRateio,
-  }))
+  const categorias: Categoria[] = []
+  const invalidas: CategoriaInvalida[] = []
+
+  for (const registro of registros) {
+    // ═══ UMA LINHA RUIM NÃO DERRUBA O DIA ═══
+    //
+    // `lerDoBanco` falha alto com valor fora do domínio, e é o certo: um
+    // `'CADASTROS'` semeado à mão em `frente` viraria `SaldoCargaGlobal.escopo`
+    // e abriria um segundo razão global calado. Mas lançado dentro de um
+    // `.map()` sobre a lista inteira, levava junto a prévia e a confirmação de
+    // TODAS as categorias do dia. A inválida sai daqui nomeada — no log, na
+    // tela e no evento da rodada —, e as demais seguem. `DECISOES.md § AT-15`.
+    try {
+      categorias.push({
+        id: registro.id,
+        codigo: registro.codigo,
+        rotulo: registro.rotulo,
+        frente: lerDoBanco(FrenteSchema, registro.frente, `Categoria.frente (${registro.codigo})`),
+        grupo: lerDoBanco(GrupoSchema, registro.grupo, `Categoria.grupo (${registro.codigo})`),
+        divisivel: registro.divisivel,
+        peso: registro.peso,
+        agrupaPorLiga: registro.agrupaPorLiga,
+        limiarIndivisivel: registro.limiarIndivisivel,
+        entraNoRateio: registro.entraNoRateio,
+      })
+    } catch (erro) {
+      const motivo = erro instanceof Error ? erro.message : String(erro)
+      registrarLog('erro', 'categoria com cadastro inválido ficou fora da distribuição', {
+        codigo: registro.codigo,
+        motivo,
+      })
+      invalidas.push({ codigo: registro.codigo, motivo })
+    }
+  }
+
+  return { categorias, invalidas }
 }
 
 /**
