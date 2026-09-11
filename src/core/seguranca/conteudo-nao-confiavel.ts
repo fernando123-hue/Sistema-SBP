@@ -25,6 +25,8 @@
  * revisão humana pega.
  */
 
+import { dobrar } from './dobra'
+
 export const MARCADOR_INICIO = '<<<CONTEUDO_NAO_CONFIAVEL>>>'
 export const MARCADOR_FIM = '<<<FIM_CONTEUDO_NAO_CONFIAVEL>>>'
 
@@ -96,11 +98,19 @@ export interface AnaliseDeConteudo {
   truncado: boolean
 }
 
-/** Camada 2 — detecção. Sinaliza, não bloqueia. */
+/**
+ * Camada 2 — detecção. Sinaliza, não bloqueia.
+ *
+ * Procura nas DUAS formas, a crua e a dobrada (ver `dobra.ts`). Só a dobrada
+ * não bastaria: ela decompõe `…` em três pontos, e `[^.\n]` passaria a barrar a
+ * janela entre `Ignore…` e `as instruções` — o que o texto cru já detectava
+ * seria perdido. A dobra só pode ACRESCENTAR detecção, nunca tirar.
+ */
 export function analisarConteudo(texto: string, limite: number): AnaliseDeConteudo {
-  const padroes = PADROES_INJECAO.filter(({ expressao }) => expressao.test(texto)).map(
-    ({ nome }) => nome,
-  )
+  const formas = [texto, dobrar(texto).dobrado]
+  const padroes = PADROES_INJECAO.filter(({ expressao }) =>
+    formas.some((forma) => expressao.test(forma)),
+  ).map(({ nome }) => nome)
 
   return {
     suspeito: padroes.length > 0,
@@ -135,11 +145,27 @@ export function truncar(texto: string, limite: number): string {
  * decisão — então o prompt seguia com o bloco potencialmente fechado no meio.
  * Uma camada que documenta "o remetente não consegue fechar o bloco" precisa
  * cumprir isso, não quase.
+ *
+ * O mesmo buraco reapareceu um nível abaixo: `<<<FIM_CONTEUDO`+U+200B+`_NAO…`,
+ * com sinais `＜＜＜` de largura total ou com um `О` cirílico, escapava das duas
+ * camadas. Por isso a procura é feita na forma dobrada, e o recorte, no original.
  */
 const MARCADOR_FORJADO = /<<<\s*(?:CONTEUDO_NAO_CONFIAVEL|FIM_CONTEUDO_NAO_CONFIAVEL)\s*>>>/gi
 
 export function delimitar(texto: string): string {
-  const limpo = texto.replace(MARCADOR_FORJADO, '[marcador removido]')
+  const { dobrado, inicio, fim } = dobrar(texto)
+  let limpo = ''
+  let cursor = 0
+
+  // A forma dobrada nunca é devolvida: ela diz ONDE está o marcador, e o corte
+  // acontece no texto que chegou. Fora dos marcadores, o conteúdo segue intacto.
+  for (const achado of dobrado.matchAll(MARCADOR_FORJADO)) {
+    const primeira = achado.index
+    const ultima = primeira + achado[0].length - 1
+    limpo += `${texto.slice(cursor, inicio[primeira])}[marcador removido]`
+    cursor = fim[ultima]!
+  }
+  limpo += texto.slice(cursor)
 
   return `${MARCADOR_INICIO}\n${limpo}\n${MARCADOR_FIM}`
 }
