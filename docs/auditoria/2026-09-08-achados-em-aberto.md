@@ -11,7 +11,32 @@ suficiente para agir sem precisar reabrir nada.
 > mesma perda silenciosa que o sistema inteiro foi construído para eliminar.
 
 Cada item traz: onde, o que acontece, o cenário concreto, e a correção sugerida.
-Nenhum foi implementado.
+
+## Situação em 10/09/2026
+
+Trabalhados na branch `maturacao/achados-em-aberto`. **Corrigido** quer dizer
+corrigido e provado: cada teste novo foi visto falhando contra uma sabotagem do
+código que ele guarda, e a sabotagem desfeita. O texto original de cada achado,
+abaixo, ficou como estava — é o registro do que foi encontrado.
+
+| # | Situação |
+|---|---|
+| 1, 2, 3 | ✅ corrigido — conservação agregada no banco (zero linhas no caso normal), rodada gravada em lote, uma variante da lista por vez |
+| 4, 5, 6 | ✅ corrigido — `select` na fila, efeitos do painel separados, `escopo` explícito em `porPessoa` |
+| 7 a 17 | ✅ testes escritos — trava, `rota()`, assistente, `definirEscala`, datas, `limitarPorOrigem`, `delimitar`, fronteira dos 40 bytes, `NaRede`, `DataIsoSchema`. O **14** também mudou código: a detecção passou a ver texto ofuscado (`core/seguranca/dobra.ts`) |
+| 18, 19, 20 | ✅ corrigido — `statusHttp: 422 \| 503`, código de categoria preso ao enum, `core/telas.ts` como fonte única |
+| 21 | ✅ corrigido — o segundo passo de "Não vale mais" pede o porquê (opcional), `api.remover` aceita corpo, e a rota usa `corpoJsonOpcional`: arquivar sem motivo deixou de gravar aviso de JSON inválido. **O motivo ainda não é exibido**: não existe tela de notas arquivadas; ele fica no banco e em `?todas=1` |
+| 22 | ✅ o elo mais fraco fechou — `GET /api/categorias` tipado por `CategoriaDisponivel`, lido pela rota, pela Caixa e pelo Acesso (renomear campo do `select` deixou de compilar, provado). As outras formas redigitadas continuam registradas na `H-D7`, sem divergência hoje |
+| 23 | ✅ corrigido — `lerDoBanco` em frente, grupo, tipo de afastamento e papel (falha como 500, não como 400) |
+| 24, 25, 30, 31 | ✅ corrigido na tela — **tipos e build conferidos; ver rodando exige login, e isso é do dono** |
+| 26, 27, 28 | ❓ viraram pergunta: `DECISOES.md § H.4` itens 16, 17 e 18. O comentário do 28 foi corrigido |
+| 29 | ➖ **não mudado, e é deliberado.** `pipeline.test.ts` exige `motivo = 'devolucao'` na atribuição encerrada, e a desativação de colaborador grava o mesmo: hoje `Atribuicao.motivo` registra como a atribuição *terminou*. Guardar também como começou pede coluna nova; o dano é contido, porque nada lê o campo — e a devolução, com justificativa, está na trilha |
+| 32 | ➖ registro, não defeito — a decisão sobre o CodeQL segue válida |
+| 33 | ✅ corrigido — `adapters/fronteira-do-fornecedor.test.ts`, inclusive `import()` com crase, que a revisão pegou escapando |
+| 34 | ✅ corrigido — sentinela cifrada na raiz do armazenamento, conferida antes da primeira leitura ou gravação de cada processo; instalação sem sentinela testa a chave contra um anexo existente antes de adotá-la; sentinela em texto puro não confirma nada; primeiras gravações simultâneas não se acusam mutuamente (a revisão reproduziu essa corrida na primeira versão); falha de disco não deixa temporário órfão, e `EPERM` não degrada calado para a publicação não atômica (segunda revisão). Oito sabotagens, oito falhas. **Não é na partida do servidor** — ver `DECISOES.md § AT-13` |
+| 35, 36 | ✅ corrigido — a saída do Prisma aparece quando a migração falha; `prisma.config.ts` não inventa mais `DATABASE_URL` (provado sem `.env`: `validate` passa, `migrate status` recusa) |
+
+**Nenhum achado ficou sem destino.** Os três que fecharam por último foram o 21, o 22 e o 34. O que continua aberto é decisão (`§ H.4` itens 15 a 18) ou limite registrado — as telas não vistas rodando, o motivo de arquivamento que não é exibido, e o resto da `H-D7`.
 
 ---
 

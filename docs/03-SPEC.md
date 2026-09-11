@@ -269,7 +269,12 @@ O adapter mock da IA é determinístico de propósito: permite testar todo o pip
 
 Envelope único em toda resposta: `{ sucesso, dados, erro, correlacaoId? }`.
 
-**Estado em 08/09/2026 — 31 caminhos, 38 operações.** Auditado contra o código; o que estiver aqui existe, e o que existe está aqui.
+**Estado em 10/09/2026 — 31 caminhos, 39 operações.** Auditado contra o código (contagem dos handlers exportados em `src/app/api/**/route.ts`); o que estiver aqui existe, e o que existe está aqui.
+
+> **E a própria correção de 08/09/2026 perdeu uma.** Esta seção passou a dizer 38
+> operações no mesmo dia em que o `PATCH /api/afastamentos/:id` ("Voltou hoje")
+> entrou no código, e a linha dele nunca chegou aqui. Encontrada em 10/09/2026
+> contando os handlers, não relendo a lista.
 
 > A auditoria de documentação de 08/09/2026 encontrou cinco operações fora desta
 > lista, num documento que promete completude — inclusive a do assistente, que é
@@ -332,6 +337,8 @@ POST   /api/colaboradores/destravar   tira do bloqueio por tentativas
 GET    /api/afastamentos              ficha completa (gestor) — motivo e observação
 GET    /api/afastamentos/hoje         quem está fora hoje, redigido pelo papel
 POST   /api/afastamentos              registra ausência (tira do rateio no período)
+PATCH  /api/afastamentos/:id          encerra hoje ("Voltou hoje") — grava o fim,
+                                      não cancela: a licença aconteceu
 DELETE /api/afastamentos/:id          cancela — CARIMBA, não apaga
 GET    /api/diagnostico/origem        confere o tratamento de proxy
 ```

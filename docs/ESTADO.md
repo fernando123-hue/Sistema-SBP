@@ -1,10 +1,10 @@
 # Estado do projeto — retomada
 
-Última atualização: **08/09/2026** — **etapa de fechamento e maturação, mais a revisão do que entrou por fora, as sete auditorias que faltavam e as correções que elas produziram.** O trabalho está num PR ABERTO, não na `main`, e agora está **empurrado**.
+Última atualização: **10/09/2026** — **os 36 achados em aberto da auditoria de 08/09/2026**, trabalhados numa branch empilhada sobre a etapa de fechamento e maturação. Ver *Esta retomada*, logo abaixo.
 
 > ## ⚠️ Leia estes seis pontos antes de tocar em qualquer coisa
 >
-> 1. **Nada disto está na `main`.** Tudo vive na branch `maturacao/fechamento-de-etapa`, em **34 commits**, no [PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35), aberto e sem revisão de gente. Se a `main` parecer velha, é porque está.
+> 1. **Nada disto está na `main`, e são DUAS camadas.** A etapa de fechamento vive em `maturacao/fechamento-de-etapa` ([PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35), aberto e sem revisão de gente). O trabalho de 10/09/2026 vive em `maturacao/achados-em-aberto`, criada a partir dela — **mesclar a segunda arrasta a primeira junto**, então a ordem é #35 primeiro. Antes de confiar que ela está no GitHub, confira `git log origin/maturacao/achados-em-aberto`: memória de sessão não é prova. Se a `main` parecer velha, é porque está.
 > 2. **`npm run verificar` tem de fechar com a suíte INTEIRA verde.** Um número fixo aqui envelhece e mente nos dois sentidos — este arquivo já disse 494 quando eram 514. O que vale é: zero vermelho, zero pulado. **E confira o CI também:** `gh pr checks 35`. Ele ficou vermelho de 07 a 08/09 sem ninguém olhar, enquanto este arquivo dizia "494 verdes" — o verde era local, o vermelho era público. Corrigido e **verde em 08/09/2026**, com os três checks passando, inclusive o build de produção que entrou nesta etapa.
 > 3. **`SESSAO_SECRET` é obrigatório** (mínimo 16 caracteres). O sistema RECUSA subir sem ele. Se a sua cópia local não tinha, é esse o erro que vai aparecer — e era exatamente esse o erro do CI.
 > 4. **Subir esta versão invalida todos os cookies em circulação.** O formato ganhou `emitidoEm`, e cookie sem esse campo é recusado. Custa uma reentrada por pessoa, uma vez.
@@ -13,9 +13,26 @@
 
 ### Onde este trabalho parou, em uma frase
 
-O PR #35 está empurrado e com o CI consertado; o próximo passo humano é **revisar e mesclar**, e o próximo passo de decisão é **levar as perguntas de retenção à chefia**. Nada de código está pela metade — a lista de *Próximos passos* é toda de trabalho que ainda não começou.
+Os 36 achados em aberto de 08/09/2026 foram corrigidos, respondidos ou convertidos em pergunta, na branch `maturacao/achados-em-aberto`; o próximo passo humano é **entrar no sistema para verificar as telas que ninguém viu rodando** e **responder `DECISOES.md § H.4` itens 15 a 18**. Nada de código está pela metade.
 
-### O que esta etapa entregou
+## Esta retomada — 10/09/2026
+
+O quadro completo, achado por achado, está no topo de `docs/auditoria/2026-09-08-achados-em-aberto.md`. O de maior peso:
+
+- **Segurança.** A detecção de injeção deixava passar texto ofuscado — caractere invisível no meio da palavra, `о` cirílico, largura total, acento decomposto. Agora ela procura também numa forma dobrada (`core/seguranca/dobra.ts`), e o conteúdo que vai ao modelo segue intacto fora dos marcadores. `ErroOperacional.statusHttp` virou `422 | 503` por tipo, então falha de servidor não atravessa mais como falha operacional. A chave dos anexos trocada falha antes de gravar o primeiro documento (sentinela; `DECISOES.md § AT-13`).
+- **Performance.** A conferência de conservação do painel agrega no banco e devolve só as rodadas divergentes — eram ~5.600 linhas por carregamento. `gravarRodada` escreve em lote. `minhaFila` parou de carregar o corpo do e-mail. O painel parou de refazer consultas que não dependem do período. A lista responsiva desenha uma variante só.
+- **Prova.** Ganharam teste as portas que decidem trabalho ou guardam dado e não tinham nenhum: trava do dia, `definirEscala`, `rota()`, `limitarPorOrigem`, fronteira do fornecedor de IA, serviço do assistente, datas no fuso, fronteira dos 40 bytes do anexo. **Cada teste novo foi visto falhando contra uma sabotagem do código que guarda**, e a sabotagem desfeita.
+- **Contratos.** `core/telas.ts` é a fonte única de telas e papéis (navegação e assistente liam cópias). `CategoriaDisponivel` tipa `/api/categorias`. Frente, grupo, tipo de afastamento e papel lidos do banco passam por `lerDoBanco`, que falha como 500 e não como 400.
+
+**O que virou pergunta**, com opções e recomendação: `§ H.4` item 15 (quem baixa anexo — a metade que falta do `H-D19`), 16 (cancelar item distribuído), 17 (`em_andamento` e `novo`) e 18 (fusão de liga duplicada).
+
+### A dívida honesta desta retomada
+
+1. **Nenhuma mudança de tela foi vista rodando.** Toda tela além de `/entrar` exige login, e o agente não digita senha nem forja sessão. As telas mudadas passaram em `tsc`, `npm run build` e revisão de React, e **precisam ser olhadas por alguém logado**: Distribuição (caixas e data travadas enquanto a marcação de plantão salva; hora da prévia), Painel, Caixa ("Quem atendeu"; a lista em tela estreita e larga), navegação (alvos de toque; links por papel) e notas (motivo ao arquivar).
+2. **`motivoArquivo` passa a ser gravado, e não é exibido**: não existe tela de notas arquivadas.
+3. **A sentinela da chave confere na primeira operação de anexo, não na partida do servidor.** A razão está no código e em `§ AT-13`.
+
+### O que a etapa de fechamento (08/09/2026) entregou
 
 **Segurança.** Injeção que atravessava a delimitação e voltava como instrução de sistema; enumeração de contas pelo tempo de resposta (23,5 ms medidos); "sair" que não revogava nada; `SESSAO_SECRET` que falhava tarde demais; transferência para pessoa desativada; `campos` sem teto de cardinalidade; data inexistente virando chave de razão.
 
@@ -149,32 +166,33 @@ Só existe o PNG do logotipo. `src/core/marca/contorno.ts` descreve a letra como
 > "0 ainda em texto puro". Numa instalação nova, o comando continua sendo o
 > primeiro passo.
 
-1. **Levar as perguntas à chefia em `DECISOES.md § H.4`.** A urgente continua
-   sendo o **prazo do motivo de afastamento** (dado de saúde). A rotina que
-   aplica a resposta já existe (`npm run db:expurgar`); o prazo de 90 dias é
-   **hipótese registrada** (`§ AT-11`), não decisão, e é por isso que nada a
-   agenda.
-2. **Revisar e mesclar o PR #35**, agora com o que esta retomada acrescentou.
-   Ninguém de carne olhou ainda.
-3. **Fechar o `H-D19` de verdade:** falta o **controle de acesso ao anexo**. Não
-   existe rota que sirva arquivo, então "quem pode baixar o quê" segue sem
-   resposta — e é a metade que precisa existir antes de documento real entrar.
-4. **Performance, no que sobrou da ordem que a auditoria mediu:**
-   `conferirConservacao` agregando no banco (hoje traz ~5.600 linhas por
-   carregamento do painel, o maior volume de rede do sistema); escrita em lote
-   em `gravarRodada` (124 das ~288 consultas da transação, e é a metade que
-   cresce com o volume da associação); só então `carregarElegiveis` e
-   `porPessoa`, que são os alvos do plano `H-D8` — e os mais fracos.
+> **Reordenada de novo em 10/09/2026.** Saíram daqui, porque foram feitos e
+> provados: a conservação agregada no banco e a escrita em lote de
+> `gravarRodada` (antigo item 4), e as três dívidas de tipos (antigo item 7 —
+> `statusHttp`, códigos de categoria, `PAPEIS_DA_TELA`). O `H-D19` (antigo 3)
+> deixou de ser engenharia: virou pergunta.
+
+1. **Entrar no sistema e olhar as telas desta retomada.** Nenhuma foi vista
+   rodando — ver *A dívida honesta desta retomada*, lá em cima, com a lista do
+   que olhar. É o único passo que o agente não consegue dar sozinho, e é
+   barato: com alguém logado no painel do navegador, a conferência é dele.
+2. **Levar as perguntas à chefia em `DECISOES.md § H.4`.** A urgente continua
+   sendo o **prazo do motivo de afastamento** (dado de saúde, item 12). A rotina
+   que aplica a resposta já existe (`npm run db:expurgar`); o prazo de 90 dias é
+   **hipótese registrada** (`§ AT-11`), não decisão. Entraram quatro novas: **15**
+   (quem baixa anexo — sem ela, documento real não deve entrar), 16 (cancelar
+   item distribuído), 17 (`em_andamento` e `novo`) e 18 (fusão de liga).
+3. **Revisar e mesclar o PR #35, e depois o desta retomada.** Nessa ordem: a
+   branch `maturacao/achados-em-aberto` nasceu da do #35.
+4. **Performance, no que restou:** `carregarElegiveis` e `porPessoa` — os alvos
+   do plano `H-D8`, e os mais fracos da medição. `porPessoa` já filtra `escopo`,
+   que era a armadilha registrada para quem fosse reescrevê-lo em lote.
 5. **Medir o acerto da IA contra modelo real.** O Painel já separa a taxa POR
-   MODELO — a comparação que justifica manter dois fornecedores.
+   MODELO — a comparação que justifica manter dois fornecedores. Custa cota
+   gratuita (ver abaixo), e por isso não foi rodado sem o dono pedir.
 6. **Fechar o resto da `H-D7`:** validar a resposta da rota no cliente contra o
-   mesmo Zod. Os tipos já são únicos e o compilador liga serviço e tela; o que
-   falta é a prova de que a ROTA entrega a forma declarada.
-7. **Dívidas que a auditoria de tipos deixou registradas:** `ErroOperacional.statusHttp`
-   é `number` e aceitaria 500, contornando a regra de não vazar mensagem em
-   falha de servidor; os oito códigos de categoria existem em duas listas sem
-   vínculo de compilação; e `PAPEIS_DA_TELA` espelha `DESTINOS` à mão, com o
-   assistente lendo a cópia.
+   mesmo Zod. O elo mais fraco (`/api/categorias`) fechou; as demais formas
+   redigitadas estão listadas no achado 22 e não divergem hoje.
 
 ### O comando que destrava mais coisa — e o que ele custa de verdade
 
@@ -207,11 +225,13 @@ Estão em `DECISOES.md § H.4`, itens 10 a 13, com opções e recomendação for
 
 ## Continuando em outra máquina
 
-**Atenção: a `main` NÃO está em dia.** O trabalho de 07/09/2026 vive na branch `maturacao/fechamento-de-etapa` ([PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35)), aberto. Clonar e ficar na `main` entrega o sistema sem as correções de segurança, sem o assistente e sem a marca.
+**Atenção: a `main` NÃO está em dia.** O trabalho de 07 e 08/09/2026 vive na branch `maturacao/fechamento-de-etapa` ([PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35)), aberto; o de 10/09/2026, em `maturacao/achados-em-aberto`, que nasceu dela e a contém inteira. Clonar e ficar na `main` entrega o sistema sem as correções de segurança, sem o assistente, sem a marca e sem os achados fechados.
 
 ```bash
-git checkout maturacao/fechamento-de-etapa
+git checkout maturacao/achados-em-aberto
 ```
+
+Se essa branch não existir no GitHub, ela ainda não foi empurrada — o trabalho mais recente é o da `maturacao/fechamento-de-etapa`.
 
 O [PR #12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) foi mesclado em 31/08/2026, e com ele o aviso que esta seção carregava antes deixou de ter função.
 
@@ -262,7 +282,7 @@ Os outros vêm prontos do `.env.example`. `PROXIES_CONFIAVEIS="0"` é o correto 
 Depois:
 
 ```bash
-npx prisma migrate deploy   # cria o banco e aplica as 10 migrações
+npx prisma migrate deploy   # cria o banco e aplica as migrações (14 em 10/09/2026)
 npx prisma generate         # gera o cliente Prisma em src/generated/
 npm run db:seed             # cadastro sintético + senhas provisórias
 npm run verificar           # typecheck + a suíte inteira
@@ -286,7 +306,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Camada | Estado |
 |---|---|
 | Motor de distribuição | Função pura, determinística, versionada. Conservação garantida por transação |
-| Modelo de dados | 21 modelos, constraints reais, 10 migrações |
+| Modelo de dados | 22 modelos, constraints reais, 14 migrações *(contados em 10/09/2026: `^model ` no schema e `prisma migrate status`)* |
 | Retenção | Conteúdo do e-mail e bytes de anexo em linhas próprias, expurgáveis sem tocar no histórico operacional |
 | Ingestão | Idempotente por `message-id`, IA atrás de port, tipo real do anexo conferido pelos bytes |
 | Armazenamento | Arquivos fora do banco, atrás de port. Disco local hoje, nuvem trocando o adapter |
@@ -299,7 +319,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Painel | Agregação pura, zero campo digitável. Recorte por período, colunas mapeadas uma a uma para as da planilha |
 | Qualidade da IA | Taxa de aceitação, cobertura e calibração da confiança. Critério de aceitação nº 5 passa a ser verificável |
 | Cadastro de equipe | Gestor cadastra pessoa e define o que ela pode receber, pela tela. Quem fica sem categoria aparece em destaque |
-| API REST | 27 caminhos, 33 operações, envelope único, limite de taxa, papéis |
+| API REST | 31 caminhos, 39 operações *(contados em 10/09/2026 nos `route.ts`; este arquivo dizia 27 e 33)*, envelope único, limite de taxa, papéis |
 | Autenticação | E-mail e senha (scrypt), senha provisória do gestor com troca obrigatória, bloqueio progressivo |
 | Telas | 9: distribuição, revisão, caixa, fila, painel, acesso, entrada, troca de senha, raiz. Mobile-first, tema claro e escuro |
 | Notas do setor | O que a equipe aprendeu operando, escrito por quem opera. Uma porta só, texto livre, vinculável a categoria e liga. Aparece nas quatro telas de trabalho |
