@@ -4,7 +4,7 @@
 
 > ## ⚠️ Leia estes seis pontos antes de tocar em qualquer coisa
 >
-> 1. **Nada disto está na `main`, e são DUAS camadas.** A etapa de fechamento vive em `maturacao/fechamento-de-etapa` ([PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35), aberto e sem revisão de gente). O trabalho de 10 e 11/09/2026 vive em `maturacao/achados-em-aberto`, criada a partir dela e **empurrada** — [PR #36](https://github.com/fernando123-hue/Sistema-SBP/pull/36), também aberto e sem revisão de gente. **Mesclar o #36 arrasta o #35 junto**, então a ordem é #35 primeiro; enquanto isso, o diff do #36 mostra os commits dos dois. Se a `main` parecer velha, é porque está.
+> 1. **Tudo isto está na `main` desde 11/09/2026, em duas camadas.** A etapa de fechamento entrou pelo [PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35) e os achados em aberto, com as correções da revisão, pelo [PR #36](https://github.com/fernando123-hue/Sistema-SBP/pull/36) — ambos por squash, na ordem, a pedido do dono. A revisão foi feita por agentes e publicada nos dois PRs; **nenhuma pessoa revisou o código**. As branches foram apagadas na mesclagem.
 > 2. **`npm run verificar` tem de fechar com a suíte INTEIRA verde.** Um número fixo aqui envelhece e mente nos dois sentidos — este arquivo já disse 494 quando eram 514. O que vale é: zero vermelho, zero pulado. **E confira o CI também:** `gh pr checks 35` e `gh pr checks 36`. Ele ficou vermelho de 07 a 08/09 sem ninguém olhar, enquanto este arquivo dizia "494 verdes" — o verde era local, o vermelho era público. Corrigido e **verde em 08/09/2026**, com os três checks passando, inclusive o build de produção que entrou nesta etapa.
 > 3. **`SESSAO_SECRET` é obrigatório** (mínimo 16 caracteres). O sistema RECUSA subir sem ele. Se a sua cópia local não tinha, é esse o erro que vai aparecer — e era exatamente esse o erro do CI.
 > 4. **Subir esta versão invalida todos os cookies em circulação.** O formato ganhou `emitidoEm`, e cookie sem esse campo é recusado. Custa uma reentrada por pessoa, uma vez.
@@ -13,7 +13,7 @@
 
 ### Onde este trabalho parou, em uma frase
 
-Os 36 achados em aberto de 08/09/2026 foram corrigidos, respondidos ou convertidos em pergunta, na branch `maturacao/achados-em-aberto`, e os achados da revisão publicada nos PRs #35 e #36 foram corrigidos na mesma branch; o próximo passo humano é **entrar no sistema para verificar as telas que ninguém viu rodando** e **responder `DECISOES.md § H.4` itens 15 a 18**. Nada de código está pela metade.
+Os 36 achados em aberto de 08/09/2026 foram corrigidos, respondidos ou convertidos em pergunta, e os achados da revisão publicada nos PRs #35 e #36 foram corrigidos; os dois PRs estão mesclados na `main`. O próximo passo humano é **entrar no sistema para verificar as telas que ninguém viu rodando** e **responder `DECISOES.md § H.4` itens 15 a 18**. Nada de código está pela metade.
 
 ## Esta retomada — 10/09/2026
 
@@ -200,8 +200,9 @@ Só existe o PNG do logotipo. `src/core/marca/contorno.ts` descreve a letra como
    **hipótese registrada** (`§ AT-11`), não decisão. Entraram quatro novas: **15**
    (quem baixa anexo — sem ela, documento real não deve entrar), 16 (cancelar
    item distribuído), 17 (`em_andamento` e `novo`) e 18 (fusão de liga).
-3. **Revisar e mesclar o PR #35, e depois o desta retomada.** Nessa ordem: a
-   branch `maturacao/achados-em-aberto` nasceu da do #35.
+3. ~~**Revisar e mesclar o PR #35, e depois o desta retomada.**~~ Feito em
+   11/09/2026: revisão por agentes publicada nos dois, correções no #36, e os
+   dois mesclados por squash, nessa ordem.
 4. **Performance, no que restou:** `carregarElegiveis` e `porPessoa` — os alvos
    do plano `H-D8`, e os mais fracos da medição. `porPessoa` já filtra `escopo`,
    que era a armadilha registrada para quem fosse reescrevê-lo em lote.
