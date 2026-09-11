@@ -18,8 +18,24 @@ export async function setup(): Promise<void> {
     if (existsSync(alvo)) rmSync(alvo)
   }
 
-  execSync('npx prisma migrate deploy', {
-    stdio: 'ignore',
-    env: { ...process.env, DATABASE_URL: `file:${CAMINHO_RELATIVO}` },
-  })
+  // `pipe`, não `ignore`: a falha já subia, mas sem a única coisa que o Prisma
+  // tinha a dizer — o CI ficava vermelho com `Command failed` e nada mais, e
+  // descobrir que era uma migração quebrada exigia reproduzir na máquina.
+  try {
+    execSync('npx prisma migrate deploy', {
+      stdio: 'pipe',
+      encoding: 'utf8',
+      env: { ...process.env, DATABASE_URL: `file:${CAMINHO_RELATIVO}` },
+    })
+  } catch (erro) {
+    const saida = (campo: 'stdout' | 'stderr') =>
+      erro !== null && typeof erro === 'object' && campo in erro
+        ? String((erro as Record<typeof campo, unknown>)[campo] ?? '')
+        : ''
+    throw new Error(
+      `Não foi possível preparar o banco de teste: \`prisma migrate deploy\` falhou.\n` +
+        `${saida('stderr')}${saida('stdout')}`.trim(),
+      { cause: erro },
+    )
+  }
 }

@@ -177,7 +177,7 @@ export function Marca({ altura = 26, ocupado = false, className }: MarcaProps) {
     }
 
     function acordar() {
-      if (rodando) return
+      if (rodando || semMovimento.matches) return
       rodando = true
       instanteAnterior = 0
       quadro = requestAnimationFrame(laco)
@@ -211,6 +211,21 @@ export function Marca({ altura = 26, ocupado = false, className }: MarcaProps) {
     window.addEventListener('pointermove', aoMover, { passive: true })
     window.addEventListener('pointerleave', aoSair, { passive: true })
 
+    // A preferência pode mudar com a aba aberta — o expediente inteiro, que é o
+    // uso normal. Lida só na montagem, "reduzir movimento" ligado no meio do dia
+    // não desligava nada até recarregar (revisão do PR #35). Ao ligar, o laço
+    // para e as peças voltam ao lugar; `acordar` passa a recusar. Ao desligar, a
+    // marca volta a reagir no próximo movimento do ponteiro.
+    function aoMudarPreferencia() {
+      if (!semMovimento.matches) return
+      cancelAnimationFrame(quadro)
+      rodando = false
+      instanteAnterior = 0
+      Object.assign(estado, criarEstado(particulas.length))
+      escreverNoDom()
+    }
+    semMovimento.addEventListener('change', aoMudarPreferencia)
+
     // Um pulso na montagem: a marca se MONTA em vez de aparecer pronta.
     // Acontece uma vez por carregamento e dura menos de um segundo.
     //
@@ -229,6 +244,7 @@ export function Marca({ altura = 26, ocupado = false, className }: MarcaProps) {
       acordarRef.current = null
       window.removeEventListener('pointermove', aoMover)
       window.removeEventListener('pointerleave', aoSair)
+      semMovimento.removeEventListener('change', aoMudarPreferencia)
     }
   }, [])
 

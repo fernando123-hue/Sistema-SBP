@@ -309,8 +309,13 @@ export async function porPessoa(banco: Banco): Promise<LinhaPorPessoa[]> {
           item: { status: { in: ['distribuido', 'em_andamento'] } },
         },
       }),
+      // `escopo` explícito. Sem ele, a linha mais recente vinha de CADASTRO ou
+      // de TITULOS, qualquer que fosse — e o próprio modelo diz que somar os
+      // dois razões tira o sentido do crédito. Hoje só existe CADASTRO, então
+      // nada aparecia; a reescrita em lote do `H-D8` cimentaria o defeito no dia
+      // em que TITULOS entrasse. A V1 cobre só CADASTRO (`Frente`).
       banco.saldoCargaGlobal.findFirst({
-        where: { colaboradorId: colaborador.id },
+        where: { colaboradorId: colaborador.id, escopo: 'CADASTRO' },
         orderBy: { data: 'desc' },
         select: { creditoGlobal: true },
       }),
@@ -351,12 +356,9 @@ export async function conferirConservacao(
   // relatório sob demanda, não parte do carregamento síncrono.
   const desde = opcoes.desde ?? deslocarDias(hojeIso(), -JANELA_PADRAO_DE_DIAS)
 
-  const rodadas = await banco.rodadaDistribuicao.findMany({
-    where: { data: { gte: desde } },
-    select: { id: true, quantidadeEntrada: true },
-  })
+  const rodadas = await banco.rodadaDistribuicao.count({ where: { data: { gte: desde } } })
 
-  if (rodadas.length === 0) return { rodadas: 0, desde, divergentes: [] }
+  if (rodadas === 0) return { rodadas: 0, desde, divergentes: [] }
 
   // ═══ O QUE ESTA CONTAGEM PRECISA MEDIR ═══
   //
@@ -384,25 +386,39 @@ export async function conferirConservacao(
   // Item distinto por rodada é imune aos dois: a transferência não muda o
   // conjunto de itens que a rodada tocou, e a devolução também não — o que
   // muda é quem é o dono AGORA, que é outra pergunta.
-  const entregas = await banco.atribuicao.findMany({
-    where: { rodadaId: { in: rodadas.map((rodada) => rodada.id) } },
-    select: { rodadaId: true, itemId: true },
-    distinct: ['rodadaId', 'itemId'],
-  })
+  // ═══ AGREGADO NO BANCO, E SÓ AS DIVERGENTES VOLTAM ═══
+  //
+  // Era `atribuicao.findMany({ distinct })`. O `distinct` do Prisma roda no
+  // engine, não no banco: ~5.600 linhas (90 dias × 62 itens/dia) atravessavam a
+  // fronteira a cada carregamento do painel para produzir ~530 contagens — a
+  // maior resposta do sistema, na tela mais visitada, e a pior regressão de rede
+  // da migração para PostgreSQL. Achado 1 da auditoria de 08/09/2026.
+  //
+  // Agora a resposta normal tem ZERO linhas. `$queryRaw` com template, então
+  // `desde` vai como parâmetro, nunca concatenado; identificadores entre aspas
+  // valem igual em SQLite e PostgreSQL. O `LEFT JOIN` mantém a rodada cujas
+  // atribuições sumiram todas — é justamente a que mais precisa aparecer.
+  const linhas = await banco.$queryRaw<
+    { rodadaId: string; entrada: number | bigint; gravado: number | bigint }[]
+  >`
+    SELECT r."id" AS "rodadaId",
+           r."quantidadeEntrada" AS "entrada",
+           COUNT(DISTINCT a."itemId") AS "gravado"
+      FROM "RodadaDistribuicao" r
+      LEFT JOIN "Atribuicao" a ON a."rodadaId" = r."id"
+     WHERE r."data" >= ${desde}
+     GROUP BY r."id", r."quantidadeEntrada"
+    HAVING COUNT(DISTINCT a."itemId") <> r."quantidadeEntrada"
+  `
 
-  const itensPorRodada = new Map<string, number>()
-  for (const entrega of entregas) {
-    if (!entrega.rodadaId) continue
-    itensPorRodada.set(entrega.rodadaId, (itensPorRodada.get(entrega.rodadaId) ?? 0) + 1)
+  return {
+    rodadas,
+    desde,
+    // `COUNT` chega como `bigint` do driver; o painel fala `number`.
+    divergentes: linhas.map((linha) => ({
+      rodadaId: linha.rodadaId,
+      entrada: Number(linha.entrada),
+      gravado: Number(linha.gravado),
+    })),
   }
-
-  const divergentes = rodadas
-    .map((rodada) => ({
-      rodadaId: rodada.id,
-      entrada: rodada.quantidadeEntrada,
-      gravado: itensPorRodada.get(rodada.id) ?? 0,
-    }))
-    .filter((rodada) => rodada.gravado !== rodada.entrada)
-
-  return { rodadas: rodadas.length, desde, divergentes }
 }

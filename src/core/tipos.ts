@@ -2,20 +2,23 @@
  * Tipos do domínio. Núcleo puro: nenhum import de banco, rede ou UI.
  */
 
+import type { z } from 'zod'
+
 import type { RotuloDeAfastamento } from './afastamento-visivel'
+import type { FrenteSchema, GrupoSchema } from './esquemas'
 
 export type ColaboradorId = string
 export type CategoriaId = string
 
-/** Frente operacional. A V1 cobre apenas CADASTRO. */
-export type Frente = 'CADASTRO' | 'TITULOS'
+/** Frente operacional. A V1 cobre apenas CADASTRO. Derivada do esquema — uma lista só. */
+export type Frente = z.infer<typeof FrenteSchema>
 
 /**
  * Subgrupo dentro da frente.
  * Restaura a estrutura que as fórmulas `E=SUM(B:D)` e `I=SUM(F:H)` da planilha
  * revelam e que o documento de contexto havia achatado. Ver DECISOES.md § C7.
  */
-export type Grupo = 'ASSOCIADO' | 'LIGA'
+export type Grupo = z.infer<typeof GrupoSchema>
 
 export interface Categoria {
   id: CategoriaId
@@ -195,6 +198,23 @@ type NaRedeCampo<V> = V extends Date
     : V extends object
       ? { [K in keyof V]: NaRedeCampo<V[K]> }
       : V
+
+/**
+ * Categoria ativa, como `GET /api/categorias` devolve.
+ *
+ * Era o elo mais fraco da `H-D7`: a única rota consumida por duas telas sem
+ * interface nomeada em lugar nenhum. O `select` do Prisma na rota ERA o
+ * contrato, e Acesso e Caixa redeclaravam a forma cada uma do seu lado.
+ * Renomear `entraNoRateio` na rota fazia o seletor de responsável sumir da
+ * Caixa, três arquivos depois, com a compilação verde. Achado 22 da auditoria
+ * de 08/09/2026. Sem `Date`, então a forma na rede é esta mesma.
+ */
+export interface CategoriaDisponivel {
+  codigo: string
+  rotulo: string
+  grupo: string
+  entraNoRateio: boolean
+}
 
 /**
  * Estado de acesso de uma pessoa, como `GET /api/colaboradores` devolve.

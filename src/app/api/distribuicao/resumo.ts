@@ -35,6 +35,8 @@ export interface ResumoDaDistribuicao {
   linhas: LinhaDaPrevia[]
   /** O que foi feito, como e por quê, em português (`A6`). */
   narrativas: { categoriaCodigo: string; rotulo: string; linhas: string[] }[]
+  /** Categorias com cadastro inválido no banco, que ficaram fora da rodada. */
+  categoriasInvalidas: { codigo: string; motivo: string }[]
 }
 
 export function resumirPlanos(relatorio: RelatorioDistribuicao): ResumoDaDistribuicao {
@@ -44,6 +46,7 @@ export function resumirPlanos(relatorio: RelatorioDistribuicao): ResumoDaDistrib
     totalDistribuido: relatorio.totalDistribuido,
     rodadasGravadas: relatorio.rodadasGravadas,
     narrativas: relatorio.narrativas,
+    categoriasInvalidas: relatorio.categoriasInvalidas,
     linhas: relatorio.planos.map((plano) => ({
       categoriaCodigo: plano.categoria.codigo,
       rotulo: plano.categoria.rotulo,

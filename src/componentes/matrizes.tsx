@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useSyncExternalStore, type ReactNode } from 'react'
 
 /**
  * Matrizes do design system.
@@ -295,72 +295,116 @@ export function ListaResponsiva<T>({
   tituloDoCartao?: (linha: T) => ReactNode
   acoes?: (linha: T) => ReactNode
 }) {
+  // UMA variante por vez, escolhida em execução. Antes as duas eram emitidas e o
+  // CSS escondia metade: na Caixa, 200 linhas viravam ~10.000 nós de DOM, metade
+  // nunca vista, e cada `coluna.conteudo(linha)` rodava duas vezes por render.
+  const telaLarga = useTelaLarga()
+
+  if (!telaLarga) {
+    return <CartoesDaLista {...{ linhas, colunas, chaveDaLinha, tituloDoCartao, acoes }} />
+  }
+
   return (
-    <>
-      {/* Desktop */}
-      <div className="hidden overflow-x-auto md:block">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-borda-forte text-left">
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-borda-forte text-left">
+            {colunas.map((coluna) => (
+              <th
+                key={coluna.chave}
+                scope="col"
+                className={juntar(
+                  'px-3 py-2 text-xs font-semibold tracking-wide text-tinta-fraca uppercase',
+                  coluna.alinhamento === 'direita' && 'text-right',
+                )}
+              >
+                {coluna.cabecalho}
+              </th>
+            ))}
+            {acoes ? <th className="px-3 py-2" /> : null}
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.map((linha) => (
+            <tr key={chaveDaLinha(linha)} className="border-b border-borda last:border-0">
               {colunas.map((coluna) => (
-                <th
+                <td
                   key={coluna.chave}
-                  scope="col"
                   className={juntar(
-                    'px-3 py-2 text-xs font-semibold tracking-wide text-tinta-fraca uppercase',
+                    'px-3 py-2.5 align-middle',
                     coluna.alinhamento === 'direita' && 'text-right',
                   )}
                 >
-                  {coluna.cabecalho}
-                </th>
+                  {coluna.conteudo(linha)}
+                </td>
               ))}
-              {acoes ? <th className="px-3 py-2" /> : null}
+              {acoes ? <td className="px-3 py-2.5 text-right">{acoes(linha)}</td> : null}
             </tr>
-          </thead>
-          <tbody>
-            {linhas.map((linha) => (
-              <tr key={chaveDaLinha(linha)} className="border-b border-borda last:border-0">
-                {colunas.map((coluna) => (
-                  <td
-                    key={coluna.chave}
-                    className={juntar(
-                      'px-3 py-2.5 align-middle',
-                      coluna.alinhamento === 'direita' && 'text-right',
-                    )}
-                  >
-                    {coluna.conteudo(linha)}
-                  </td>
-                ))}
-                {acoes ? <td className="px-3 py-2.5 text-right">{acoes(linha)}</td> : null}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
-      {/* Mobile */}
-      <ul className="flex flex-col gap-2 md:hidden">
-        {linhas.map((linha) => (
-          <li key={chaveDaLinha(linha)}>
-            <Cartao className="px-3 py-3">
-              {tituloDoCartao ? (
-                <div className="mb-2 text-sm font-medium">{tituloDoCartao(linha)}</div>
-              ) : null}
-              <dl className="flex flex-col gap-1">
-                {colunas
-                  .filter((coluna) => !coluna.ocultarNoCartao)
-                  .map((coluna) => (
-                    <div key={coluna.chave} className="flex items-center justify-between gap-3">
-                      <dt className="text-xs text-tinta-fraca">{coluna.cabecalho}</dt>
-                      <dd className="text-right text-sm">{coluna.conteudo(linha)}</dd>
-                    </div>
-                  ))}
-              </dl>
-              {acoes ? <div className="mt-3 flex justify-end gap-2">{acoes(linha)}</div> : null}
-            </Cartao>
-          </li>
-        ))}
-      </ul>
-    </>
+/** A variante de celular: um cartão por linha, com as colunas como pares rótulo–valor. */
+function CartoesDaLista<T>({
+  linhas,
+  colunas,
+  chaveDaLinha,
+  tituloDoCartao,
+  acoes,
+}: {
+  linhas: T[]
+  colunas: ColunaDaLista<T>[]
+  chaveDaLinha: (linha: T) => string
+  tituloDoCartao?: ((linha: T) => ReactNode) | undefined
+  acoes?: ((linha: T) => ReactNode) | undefined
+}) {
+  return (
+    <ul className="flex flex-col gap-2">
+      {linhas.map((linha) => (
+        <li key={chaveDaLinha(linha)}>
+          <Cartao className="px-3 py-3">
+            {tituloDoCartao ? (
+              <div className="mb-2 text-sm font-medium">{tituloDoCartao(linha)}</div>
+            ) : null}
+            <dl className="flex flex-col gap-1">
+              {colunas
+                .filter((coluna) => !coluna.ocultarNoCartao)
+                .map((coluna) => (
+                  <div key={coluna.chave} className="flex items-center justify-between gap-3">
+                    <dt className="text-xs text-tinta-fraca">{coluna.cabecalho}</dt>
+                    <dd className="text-right text-sm">{coluna.conteudo(linha)}</dd>
+                  </div>
+                ))}
+            </dl>
+            {acoes ? <div className="mt-3 flex justify-end gap-2">{acoes(linha)}</div> : null}
+          </Cartao>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** A mesma fronteira do `md:` do Tailwind (`48rem`), para a lista e o resto da tela virarem juntos. */
+const CONSULTA_TELA_LARGA = '(min-width: 48rem)'
+
+function assinarLarguraDaTela(avisar: () => void): () => void {
+  const consulta = window.matchMedia(CONSULTA_TELA_LARGA)
+  consulta.addEventListener('change', avisar)
+  return () => consulta.removeEventListener('change', avisar)
+}
+
+/**
+ * `true` em tela larga. No servidor não há tela, e `true` desenha a tabela —
+ * mas as telas que usam a lista só a desenham depois que os dados chegam por
+ * `useEffect`, então a hidratação nunca chega a mostrar a variante errada.
+ */
+function useTelaLarga(): boolean {
+  return useSyncExternalStore(
+    assinarLarguraDaTela,
+    () => window.matchMedia(CONSULTA_TELA_LARGA).matches,
+    () => true,
   )
 }

@@ -6,7 +6,7 @@ import {
   type Interpretacao,
   type MotivoRevisao,
 } from '../core/esquemas'
-import { CategoriaDesconhecidaError } from '../core/erros'
+import { CategoriaDesconhecidaError, ErroOperacional } from '../core/erros'
 import { chaveDaLiga } from '../core/ligas'
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
@@ -81,6 +81,34 @@ export async function sincronizar(
     situacao: 'iniciado',
     mensagem: `${brutos.length} e-mails recebidos do adapter "${deps.ingestao.nome}"`,
   })
+
+  // ═══ A CHAVE DOS ANEXOS É CONFERIDA ANTES DE QUALQUER CHAMADA DE IA ═══
+  //
+  // A sentinela já conferia a chave dentro de `guardar` — mas `guardar` roda
+  // DEPOIS de `interpretar`. Com a chave errada, cada e-mail com anexo pagava a
+  // chamada de IA e só então falhava, um por um; o laço seguia, e o evento
+  // gravava só o nome da classe, sem o motivo. Nada era gravado com a chave
+  // errada, mas a falha "alta e clara" que a sentinela promete não acontecia.
+  // Revisão do PR #36.
+  //
+  // Mesmo tratamento da IA fora do ar logo abaixo: o lote para aqui, com a
+  // causa que manda consertar, antes de gastar uma chamada sequer.
+  if (deps.armazenamento?.conferirChave) {
+    try {
+      await deps.armazenamento.conferirChave()
+    } catch (erro) {
+      await registrarEvento(deps.banco, {
+        correlacaoId,
+        etapa: 'ingestao',
+        situacao: 'reprocessavel',
+        // `mensagemPublica`, não a crua: é o texto que a própria classe declara
+        // seguro para sair — e o de chave trocada é justamente o que precisa
+        // ficar legível na memória operacional.
+        mensagem: erro instanceof ErroOperacional ? erro.mensagemPublica : mensagemPersistivel(erro),
+      })
+      throw erro
+    }
+  }
 
   for (const candidato of brutos) {
     try {

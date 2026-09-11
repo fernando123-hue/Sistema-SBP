@@ -1,5 +1,9 @@
 node_modules/
 .worktrees/
+# Gerado por `next dev`, `next build` e `next typegen`, em variantes diferentes
+# para cada um. Commitado, sujava a árvore a cada execução. A documentação do
+# Next manda ignorar; o CI e o `typecheck` o geram com `next typegen`.
+next-env.d.ts
 .next/
 out/
 dist/

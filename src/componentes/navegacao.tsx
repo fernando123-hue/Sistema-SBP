@@ -7,19 +7,17 @@ import { useEffect, useState } from 'react'
 import { Assistente } from './assistente'
 import { Marca } from './marca'
 import { api, mensagemDoErro, observarAtividade } from './api'
+import { PAPEIS_DA_TELA, ROTULO_DA_TELA, TELAS } from '../core/telas'
 import { juntar } from './matrizes'
 
-const DESTINOS = [
-  { href: '/distribuicao', rotulo: 'Distribuição', papeis: ['operador', 'gestor'] },
-  { href: '/revisao', rotulo: 'Revisão', papeis: ['operador', 'gestor'] },
-  { href: '/caixa', rotulo: 'Caixa de entrada', papeis: ['operador', 'gestor', 'colaborador'] },
-  { href: '/fila', rotulo: 'Minha fila', papeis: ['operador', 'gestor', 'colaborador'] },
-  { href: '/painel', rotulo: 'Painel', papeis: ['operador', 'gestor', 'colaborador'] },
-  // A rota também é conferida no servidor. Esconder o link é conveniência, não
-  // proteção: quem digitar `/acesso` sem ser gestor recebe 403 da API e vê a
-  // tela vazia com o erro.
-  { href: '/acesso', rotulo: 'Acesso', papeis: ['gestor'] },
-] as const
+// Derivados de `core/telas.ts`, a mesma fonte que a segunda conferência do
+// assistente lê. Mantidos à mão em dois lugares, divergiam calados. Esconder o
+// link continua sendo conveniência, não proteção: a rota confere no servidor.
+const DESTINOS = TELAS.map((href) => ({
+  href,
+  rotulo: ROTULO_DA_TELA[href],
+  papeis: PAPEIS_DA_TELA[href],
+}))
 
 export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
   const caminho = usePathname()
@@ -121,10 +119,13 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
             <span className="block font-medium">{nome}</span>
             <span className="block text-tinta-fraca">{papel}</span>
           </span>
+          {/* Alvo de toque de 44 px no celular, como o `Botao` garante: com
+              ~26 px, "sair" no balcão compartilhado era o controle mais fácil
+              de errar — e sair errado é a sessão de pé para a próxima pessoa. */}
           <button
             onClick={() => void sair()}
             disabled={saindo}
-            className="rounded-md px-2 py-1 text-xs text-tinta-suave hover:bg-papel-fundo hover:text-tinta disabled:opacity-50"
+            className="min-h-11 rounded-md px-3 text-xs text-tinta-suave hover:bg-papel-fundo hover:text-tinta disabled:opacity-50 sm:min-h-9 sm:px-2"
           >
             {saindo ? 'saindo…' : 'sair'}
           </button>

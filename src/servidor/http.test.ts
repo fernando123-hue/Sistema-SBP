@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { limparCacheDeAmbiente } from './ambiente'
-import { origemDaRequisicao } from './http'
+import { FATOR_SEM_ORIGEM, limitarPorOrigem, origemDaRequisicao } from './http'
 
 /**
  * Identificação da origem da requisição.
@@ -165,5 +165,48 @@ describe('proxy que manda só x-real-ip', () => {
 
     expect(um.chave).toBe(outro.chave)
     expect(um.confiavel).toBe(false)
+  })
+})
+
+/**
+ * A função que junta as duas metades testadas acima.
+ *
+ * Achado 12 da auditoria de 08/09/2026: é um ternário, e a leitura invertida é
+ * fácil. Com ela, o balde de TODO MUNDO ganha o teto apertado — e um visitante
+ * tranca a equipe inteira fora de `/api/sessao`.
+ *
+ * O limitador guarda estado no módulo, então cada teste usa um prefixo próprio.
+ */
+describe('limitarPorOrigem', () => {
+  const JANELA_SEGUNDOS = 60
+  const POR_ORIGEM = 2
+  const prefixoNovo = () => `teste-limite-${crypto.randomUUID()}`
+
+  it('origem indistinguível afrouxa o teto em FATOR_SEM_ORIGEM', () => {
+    comProxies(0)
+    const prefixo = prefixoNovo()
+    const teto = POR_ORIGEM * FATOR_SEM_ORIGEM
+
+    for (let tentativa = 1; tentativa <= teto; tentativa += 1) {
+      expect(limitarPorOrigem(pedido({}), prefixo, POR_ORIGEM, JANELA_SEGUNDOS), `tentativa ${tentativa}`).toBeNull()
+    }
+    expect(limitarPorOrigem(pedido({}), prefixo, POR_ORIGEM, JANELA_SEGUNDOS)?.status).toBe(429)
+  })
+
+  it('origem confiável usa o teto apertado, responde 429 com Retry-After, e não pune outra origem', async () => {
+    comProxies(1)
+    const prefixo = prefixoNovo()
+    const vindoDe = (cliente: string) => pedido({ 'x-forwarded-for': `1.2.3.4, ${cliente}` })
+
+    for (let tentativa = 1; tentativa <= POR_ORIGEM; tentativa += 1) {
+      expect(limitarPorOrigem(vindoDe('203.0.113.9'), prefixo, POR_ORIGEM, JANELA_SEGUNDOS)).toBeNull()
+    }
+
+    const recusa = limitarPorOrigem(vindoDe('203.0.113.9'), prefixo, POR_ORIGEM, JANELA_SEGUNDOS)
+    expect(recusa?.status).toBe(429)
+    expect(Number(recusa?.headers.get('Retry-After'))).toBeGreaterThan(0)
+    expect((await recusa?.json())?.erro).toMatch(/Muitas requisições/)
+
+    expect(limitarPorOrigem(vindoDe('198.51.100.7'), prefixo, POR_ORIGEM, JANELA_SEGUNDOS)).toBeNull()
   })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
@@ -18,7 +18,7 @@ import {
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
 import { hojeIso } from '../../core/util/datas'
-import type { ItemDaCaixa, NaRede } from '../../core/tipos'
+import type { CategoriaDisponivel, ItemDaCaixa, NaRede } from '../../core/tipos'
 
 
 /**
@@ -37,12 +37,8 @@ interface Resumo {
   porCategoria: { codigo: string; rotulo: string; grupo: string; total: number }[]
 }
 
-interface Categoria {
-  codigo: string
-  rotulo: string
-  grupo: string
-  entraNoRateio: boolean
-}
+/** O contrato de `GET /api/categorias` — o mesmo que a rota e a tela de Acesso usam. */
+type Categoria = CategoriaDisponivel
 
 interface Liga {
   id: string
@@ -106,16 +102,30 @@ export default function Caixa() {
   const [gravando, setGravando] = useState(false)
   const [confirmacao, setConfirmacao] = useState<string | null>(null)
 
+  /**
+   * Número da carga mais recente. Só ela escreve na tela.
+   *
+   * Clicar na pastilha A e logo na B dispara duas buscas; se a de A chegasse
+   * depois, a lista mostrava os itens de A com o filtro marcado em B — e nada
+   * na tela dizia que estava errado. Revisão do PR #35.
+   */
+  const ultimaCarga = useRef(0)
+
   const carregar = useCallback(async (categoria: string | null, liga: string | null) => {
+    ultimaCarga.current += 1
+    const estaCarga = ultimaCarga.current
     setDados(null)
     try {
       const parametros = new URLSearchParams({ limite: String(TETO_DA_LISTA) })
       if (categoria) parametros.set('categoria', categoria)
       if (liga) parametros.set('liga', liga)
-      setDados(
-        await api.buscar<{ itens: NaRede<ItemDaCaixa>[]; resumo: Resumo }>(`/itens?${parametros}`),
+      const resposta = await api.buscar<{ itens: NaRede<ItemDaCaixa>[]; resumo: Resumo }>(
+        `/itens?${parametros}`,
       )
+      if (estaCarga !== ultimaCarga.current) return
+      setDados(resposta)
     } catch (causa) {
+      if (estaCarga !== ultimaCarga.current) return
       // Estado neutro, e não `null`: `null` é a condição que desenha
       // "Carregando…", então uma falha de rede deixava erro E carregando na
       // tela ao mesmo tempo, para sempre. Quem olha conclui "hoje está lento",
@@ -318,6 +328,14 @@ export default function Caixa() {
                     </option>
                   ))}
                 </select>
+                {/* A lista vem da escala, que só traz quem tem alguma categoria
+                    habilitada. Pessoa nova, sem categoria, atendia no balcão e
+                    não aparecia aqui — e o botão cinza sem explicação levava a
+                    concluir que ela nem estava cadastrada. */}
+                <span className="text-xs text-tinta-fraca">
+                  Não achou a pessoa? Aparece aqui quem tem ao menos uma categoria habilitada no
+                  Acesso.
+                </span>
               </label>
             ) : null}
 
@@ -369,7 +387,7 @@ export default function Caixa() {
             <button
               onClick={() => setFiltro(null)}
               className={juntar(
-                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                'min-h-11 rounded-full border px-3 py-1 text-xs font-medium transition-colors sm:min-h-8',
                 filtro === null
                   ? 'border-acento bg-acento-claro text-acento-escuro'
                   : 'border-borda text-tinta-suave hover:bg-papel-fundo',
@@ -382,7 +400,7 @@ export default function Caixa() {
                 key={categoria.codigo}
                 onClick={() => setFiltro(categoria.codigo)}
                 className={juntar(
-                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  'min-h-11 rounded-full border px-3 py-1 text-xs font-medium transition-colors sm:min-h-8',
                   filtro === categoria.codigo
                     ? 'border-acento bg-acento-claro text-acento-escuro'
                     : 'border-borda text-tinta-suave hover:bg-papel-fundo',

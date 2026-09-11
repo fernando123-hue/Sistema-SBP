@@ -53,8 +53,16 @@ export abstract class ErroOperacional extends Error {
    *
    * `503` para "a dependência está fora ou mal configurada — tente de novo, ou
    * avise quem cuida"; `422` para "esta entrada específica não deu certo".
+   *
+   * Os dois, e só os dois — por tipo, não por comentário. `rota()` trata esta
+   * classe ANTES do portão `status < 500` e devolve `mensagemPublica` direto ao
+   * cliente. Com `number`, uma subclasse nova com `500` e uma `message` montada
+   * a partir do erro cru do Prisma (que costuma trazer e-mail e id) atravessaria
+   * inteira, sem correlação e sem registro — o oposto da regra que o mesmo
+   * `rota()` declara, com ênfase, dez linhas abaixo. Falha de servidor não é
+   * falha operacional: ela sobe como `Error` e cai no ramo genérico.
    */
-  abstract readonly statusHttp: number
+  abstract readonly statusHttp: 422 | 503
 
   constructor(mensagem: string) {
     super(mensagem)

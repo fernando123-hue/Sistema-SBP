@@ -14,18 +14,14 @@ import {
   Selo,
   Vazio,
 } from '../../componentes/matrizes'
-import type { ColaboradorResumo, NaRede } from '../../core/tipos'
+import type { CategoriaDisponivel, ColaboradorResumo, NaRede } from '../../core/tipos'
 
 /** O que a rota devolve: as datas chegam como texto ISO. */
 type Colaborador = NaRede<ColaboradorResumo>
 
 
-interface Categoria {
-  codigo: string
-  rotulo: string
-  grupo: string
-  entraNoRateio: boolean
-}
+/** O contrato de `GET /api/categorias` — o mesmo que a rota e a Caixa usam. */
+type Categoria = CategoriaDisponivel
 
 interface Cadastro {
   nome: string

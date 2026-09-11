@@ -143,20 +143,50 @@ export default function PainelPagina() {
   const [dados, setDados] = useState<Painel | null>(null)
   const [qualidade, setQualidade] = useState<Qualidade | null>(null)
   const [fora, setFora] = useState<Ausente[]>([])
-  const [erro, setErro] = useState<string | null>(null)
   /** Vazio = deixa o servidor escolher o mês corrente, a unidade da planilha. */
   const [de, setDe] = useState('')
   const [ate, setAte] = useState('')
   /** Muda para pedir os dados de novo depois de uma falha. */
   const [tentativa, setTentativa] = useState(0)
+  // Um erro por efeito, e não um só: mudar o período limpa o erro DO PERÍODO,
+  // e não pode apagar calado a falha de `/qualidade`, que nem foi refeita.
+  const [erroDoPeriodo, setErroDoPeriodo] = useState<string | null>(null)
+  const [erroDoEstadoAtual, setErroDoEstadoAtual] = useState<string | null>(null)
+  const erro = erroDoPeriodo ?? erroDoEstadoAtual
 
+  // ═══ DOIS EFEITOS, PORQUE SÓ UMA DAS TRÊS CONSULTAS DEPENDE DO PERÍODO ═══
+  //
+  // Era um efeito só, com `[de, ate]`: ajustar as duas pontas do período
+  // refazia também `/qualidade` (janela própria) e `/afastamentos/hoje` (estado
+  // atual) — oito consultas de banco a cada data escolhida, para trazer de
+  // novo exatamente o que já estava na tela.
+  // Cada efeito descarta a própria resposta quando já foi substituído. Sem
+  // isto, ajustar as duas pontas do período disparava duas buscas, e se a
+  // primeira chegasse por último a tela mostrava os números de um período com
+  // outro escrito nos campos. Revisão do PR #35.
   useEffect(() => {
+    let vigente = true
     // Limpa o erro anterior: sem isto, a faixa vermelha da tentativa que falhou
     // ficaria na tela por cima dos dados que a tentativa seguinte trouxe.
-    setErro(null)
+    setErroDoPeriodo(null)
     const recorte = de && ate ? `?de=${de}&ate=${ate}` : ''
+    api
+      .buscar<Painel>(`/painel${recorte}`)
+      .then((painel) => {
+        if (vigente) setDados(painel)
+      })
+      .catch((causa) => {
+        if (vigente) setErroDoPeriodo(mensagemDoErro(causa))
+      })
+    return () => {
+      vigente = false
+    }
+  }, [de, ate, tentativa])
+
+  useEffect(() => {
+    let vigente = true
+    setErroDoEstadoAtual(null)
     Promise.all([
-      api.buscar<Painel>(`/painel${recorte}`),
       // Janela padrão, NUNCA `dias=tudo`. Esta é a tela mais visitada do
       // sistema; pedir a série inteira faria a consulta crescer com o tempo de
       // vida da instalação. `conferirConservacao` já documenta a mesma regra —
@@ -166,13 +196,18 @@ export default function PainelPagina() {
       // atual, como as outras colunas marcadas "(hoje)".
       api.buscar<Ausente[]>('/afastamentos/hoje'),
     ])
-      .then(([painel, medida, ausentes]) => {
-        setDados(painel)
+      .then(([medida, ausentes]) => {
+        if (!vigente) return
         setQualidade(medida)
         setFora(ausentes)
       })
-      .catch((causa) => setErro(mensagemDoErro(causa)))
-  }, [de, ate, tentativa])
+      .catch((causa) => {
+        if (vigente) setErroDoEstadoAtual(mensagemDoErro(causa))
+      })
+    return () => {
+      vigente = false
+    }
+  }, [tentativa])
 
   // ═══ ERRO NÃO APAGA A TELA ═══
   //
@@ -243,7 +278,15 @@ export default function PainelPagina() {
 
   return (
     <div className="flex flex-col gap-6">
-      {erro ? <Aviso>{erro}</Aviso> : null}
+      {/* Com dados na tela, a falha seguinte também oferece o caminho de volta.
+          Antes o botão só existia antes do primeiro carregamento, e para tentar
+          de novo era preciso mudar o período — revisão do PR #35. */}
+      {erro ? (
+        <div className="flex flex-col items-start gap-3">
+          <Aviso>{erro}</Aviso>
+          <Botao onClick={() => setTentativa((numero) => numero + 1)}>Tentar de novo</Botao>
+        </div>
+      ) : null}
       <CabecalhoDeSecao
         titulo="Painel"
         descricao="Todo número desta tela é calculado. Não existe campo digitável."

@@ -375,23 +375,6 @@ export async function definirAtivacao(
   })
   if (!colaborador) throw new ErroDeNegocio(`Colaborador "${dados.colaboradorId}" não existe.`)
 
-  // NUNCA deixar a associação sem gestor ativo.
-  //
-  // Desativar o último é uma porta que tranca por fora: só gestor cadastra
-  // senha, destrava conta e reativa acesso — inclusive o acesso que acabou de
-  // ser desligado. A recuperação seria mexer no banco na mão.
-  if (colaborador.ativo && !dados.ativo && colaborador.papel === 'gestor') {
-    const outrosGestores = await banco.colaborador.count({
-      where: { papel: 'gestor', ativo: true, id: { not: colaborador.id } },
-    })
-    if (outrosGestores === 0) {
-      throw new ErroDeNegocio(
-        'Este é o último gestor ativo. Promova ou ative outro gestor antes de desativar este — ' +
-          'sem nenhum, ninguém consegue cadastrar senha, destravar conta ou reativar acesso.',
-      )
-    }
-  }
-
   // ═══ DESLIGAR O ACESSO NÃO PODE ABANDONAR O TRABALHO ═══
   //
   // Os itens da fila de quem foi desligado ficavam `distribuido`, com atribuição
@@ -409,6 +392,31 @@ export async function definirAtivacao(
   // que não existe: o item volta a não ter dono, a próxima rodada o recolhe com
   // o crédito atualizado, e a trilha registra por quê.
   const devolvidos = await banco.$transaction(async (tx) => {
+    // NUNCA deixar a associação sem gestor ativo — conferido DENTRO da
+    // transação que desativa.
+    //
+    // Desativar o último é uma porta que tranca por fora: só gestor cadastra
+    // senha, destrava conta e reativa acesso — inclusive o acesso que acabou de
+    // ser desligado. A recuperação seria mexer no banco na mão.
+    //
+    // A contagem morava FORA da transação: dois gestores desativando um ao outro
+    // ao mesmo tempo contavam, cada um, o outro ainda ativo, e passavam os dois.
+    // Dentro dela, a leitura e a escrita ficam sob a mesma transação, e o SQLite
+    // admite um escritor por vez. Em PostgreSQL com READ COMMITTED isto sozinho
+    // não basta — seria preciso bloquear as linhas de gestor —, e fica
+    // registrado para a migração. Revisão do PR #35.
+    if (colaborador.ativo && !dados.ativo && colaborador.papel === 'gestor') {
+      const outrosGestores = await tx.colaborador.count({
+        where: { papel: 'gestor', ativo: true, id: { not: colaborador.id } },
+      })
+      if (outrosGestores === 0) {
+        throw new ErroDeNegocio(
+          'Este é o último gestor ativo. Promova ou ative outro gestor antes de desativar este — ' +
+            'sem nenhum, ninguém consegue cadastrar senha, destravar conta ou reativar acesso.',
+        )
+      }
+    }
+
     await tx.colaborador.update({
       where: { id: colaborador.id },
       data: { ativo: dados.ativo },

@@ -2,8 +2,10 @@ import { ErroDeNegocio } from '../core/erros'
 import {
   CadastroDeColaboradorSchema,
   HabilitacaoEntradaSchema,
+  PapelSchema,
   type Papel,
 } from '../core/esquemas'
+import { lerDoBanco } from '../core/lido-do-banco'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import { gerarHash, sortearSenhaProvisoria } from '../servidor/credenciais'
 import { novaCorrelacao } from '../servidor/observabilidade'
@@ -137,7 +139,7 @@ export async function criarColaborador(
       colaboradorId: colaborador.id,
       nome: colaborador.nome,
       email: colaborador.email,
-      papel: colaborador.papel as Papel,
+      papel: lerDoBanco(PapelSchema, colaborador.papel, 'Colaborador.papel'),
       categorias: categorias.map((categoria) => categoria.codigo),
     }
   })

@@ -24,6 +24,18 @@ export const CategoriaCodigoSchema = z.enum([
   'ISENTO',
 ])
 
+/**
+ * Frente operacional e subgrupo de categoria.
+ *
+ * O banco guarda `String`, e `Categoria.frente` vira `SaldoCargaGlobal.escopo`.
+ * Lido com `as`, uma linha semeada com `'CADASTROS'` (plural) abria um segundo
+ * razão global calado: o crédito passava a ser somado em dois livros que nunca
+ * se encontram, e o desempate enxergava metade da história. `tipos.ts` deriva
+ * `Frente` e `Grupo` daqui, e a leitura passa por `lerDoBanco`.
+ */
+export const FrenteSchema = z.enum(['CADASTRO', 'TITULOS'])
+export const GrupoSchema = z.enum(['ASSOCIADO', 'LIGA'])
+
 /** Categorias que a IA pode atribuir. `INADIMP`/`ISENTO` são registro manual. */
 export const CategoriaClassificavelSchema = z.enum([
   'DOC_CADASTRO',
