@@ -10,7 +10,10 @@
  * assimetria dos dois erros possíveis é a razão:
  *
  *   separar uma liga em duas   → duas pessoas podem atendê-la no mesmo dia;
- *                                 o operador VÊ a repetição e corrige
+ *                                 o operador VÊ a repetição — as duas aparecem
+ *                                 na Caixa. CORRIGIR ainda não existe: não há
+ *                                 fundir nem renomear liga pela tela
+ *                                 (`DECISOES.md § H.4` item 18)
  *   unir duas ligas diferentes → trabalho de uma entregue como se fosse da
  *                                 outra; ninguém descobre, nunca
  *

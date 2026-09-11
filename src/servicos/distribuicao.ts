@@ -1,7 +1,13 @@
 import { ALGORITMO_VERSAO, distribuir } from '../core/distribuicao/motor'
 import { narrarRodada } from '../core/distribuicao/narrativa'
 import { ConservacaoVioladaError, ErroDeNegocio, SemElegiveisError } from '../core/erros'
-import { serializar, type PedidoDistribuicao } from '../core/esquemas'
+import {
+  FrenteSchema,
+  GrupoSchema,
+  serializar,
+  type PedidoDistribuicao,
+} from '../core/esquemas'
+import { lerDoBanco } from '../core/lido-do-banco'
 import type {
   Categoria,
   Elegivel,
@@ -501,19 +507,43 @@ async function gravarRodada(
       throw new ConservacaoVioladaError(cota, fatia.length, resultado.alocacao)
     }
 
-    for (const itemId of fatia) {
-      await tx.atribuicao.create({
-        data: {
+    // ═══ EM LOTE, NÃO ITEM A ITEM ═══
+    //
+    // Eram `atribuicao.create` + `item.update` por item, em sequência, com a
+    // trava do dia segurada: 124 das ~288 consultas de uma confirmação típica, e
+    // justamente a metade que cresce com o volume da associação. ~15 ms em
+    // SQLite; ~0,9 s de trava por confirmação em PostgreSQL com 3 ms de RTT.
+    // Achado 2 da auditoria de 08/09/2026.
+    //
+    // A conferência fica MAIS forte, não mais fraca: passa a comparar o que o
+    // banco confirmou ter escrito. E o `updateMany` só marca item que ainda está
+    // na fila (`aprovado`/`devolvido`, o mesmo corte de `planejarCategoria`) —
+    // um item que tivesse mudado de estado dá contagem divergente e a transação
+    // inteira volta atrás, em vez de ser redistribuído por cima.
+    if (fatia.length > 0) {
+      const gravadas = await tx.atribuicao.createMany({
+        data: fatia.map((itemId) => ({
           itemId,
           colaboradorId,
           rodadaId: rodada.id,
           motivo: 'algoritmo',
           atribuidoPor: ator.colaboradorId,
           ativa: true,
-        },
+        })),
       })
-      await tx.item.update({ where: { id: itemId }, data: { status: 'distribuido' } })
-      atribuidos += 1
+      const marcados = await tx.item.updateMany({
+        where: { id: { in: fatia }, status: { in: ['aprovado', 'devolvido'] } },
+        data: { status: 'distribuido' },
+      })
+
+      if (gravadas.count !== fatia.length || marcados.count !== fatia.length) {
+        throw new Error(
+          `Conservação violada ao gravar: fatia de ${fatia.length} itens, ` +
+            `${gravadas.count} atribuições gravadas, ${marcados.count} itens marcados, ` +
+            `categoria ${plano.categoria.codigo}.`,
+        )
+      }
+      atribuidos += gravadas.count
     }
 
     await atualizarSaldos(tx, {
@@ -683,8 +713,10 @@ async function carregarCategorias(
     id: registro.id,
     codigo: registro.codigo,
     rotulo: registro.rotulo,
-    frente: registro.frente as Categoria['frente'],
-    grupo: registro.grupo as Categoria['grupo'],
+    // `frente` vira `SaldoCargaGlobal.escopo`: um `'CADASTROS'` semeado à mão
+    // abria um segundo razão global sem que nada acusasse. Ver `FrenteSchema`.
+    frente: lerDoBanco(FrenteSchema, registro.frente, `Categoria.frente (${registro.codigo})`),
+    grupo: lerDoBanco(GrupoSchema, registro.grupo, `Categoria.grupo (${registro.codigo})`),
     divisivel: registro.divisivel,
     peso: registro.peso,
     agrupaPorLiga: registro.agrupaPorLiga,

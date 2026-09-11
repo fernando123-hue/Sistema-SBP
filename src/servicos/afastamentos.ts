@@ -3,8 +3,10 @@ import { ErroDeNegocio } from '../core/erros'
 import {
   AfastamentoEntradaSchema,
   DataIsoSchema,
+  TipoDeAfastamentoSchema,
   type TipoDeAfastamento,
 } from '../core/esquemas'
+import { lerDoBanco } from '../core/lido-do-banco'
 import { hojeIso } from '../core/util/datas'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import { novaCorrelacao } from '../servidor/observabilidade'
@@ -307,7 +309,7 @@ export async function listar(
     id: linha.id,
     colaboradorId: linha.colaboradorId,
     nome: linha.colaborador.nome,
-    tipo: linha.tipo as TipoDeAfastamento,
+    tipo: lerDoBanco(TipoDeAfastamentoSchema, linha.tipo, 'Afastamento.tipo'),
     inicio: linha.inicio,
     fim: linha.fim,
     observacao: linha.observacao,

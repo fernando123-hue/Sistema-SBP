@@ -1,3 +1,4 @@
+import type { CategoriaDisponivel } from '../../../core/tipos'
 import { responder, rota } from '../../../servidor/http'
 import { obterPrisma } from '../../../servidor/prisma'
 import { exigirAtor } from '../../../servidor/sessao'
@@ -17,7 +18,10 @@ export async function GET(): Promise<Response> {
   return rota(async () => {
     await exigirAtor()
 
-    const categorias = await obterPrisma().categoria.findMany({
+    // Tipada pelo contrato que as duas telas leem: mudar o `select` sem mudar
+    // `CategoriaDisponivel` não compila mais, em vez de sumir com um campo da
+    // Caixa em produção.
+    const categorias: CategoriaDisponivel[] = await obterPrisma().categoria.findMany({
       where: { ativa: true },
       orderBy: { ordem: 'asc' },
       select: { codigo: true, rotulo: true, grupo: true, entraNoRateio: true },

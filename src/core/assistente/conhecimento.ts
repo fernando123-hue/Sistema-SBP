@@ -1,4 +1,5 @@
 import type { Papel } from '../esquemas'
+import { PAPEIS_DA_TELA, TELAS, type Tela } from '../telas'
 
 /**
  * O manual do sistema, em pedaços.
@@ -44,27 +45,10 @@ import type { Papel } from '../esquemas'
  * altera o sistema.
  */
 
-/** Telas do sistema. Fechada para o modelo não conseguir inventar destino. */
-export const TELAS = [
-  '/distribuicao',
-  '/revisao',
-  '/caixa',
-  '/fila',
-  '/painel',
-  '/acesso',
-] as const
-
-export type Tela = (typeof TELAS)[number]
-
-/** Quem alcança cada tela. Espelha `DESTINOS` em `componentes/navegacao.tsx`. */
-export const PAPEIS_DA_TELA: Record<Tela, readonly Papel[]> = {
-  '/distribuicao': ['operador', 'gestor'],
-  '/revisao': ['operador', 'gestor'],
-  '/caixa': ['operador', 'gestor', 'colaborador'],
-  '/fila': ['operador', 'gestor', 'colaborador'],
-  '/painel': ['operador', 'gestor', 'colaborador'],
-  '/acesso': ['gestor'],
-}
+// As telas e quem alcança cada uma moram em `core/telas.ts` — a MESMA fonte que
+// a navegação lê. Era uma cópia daqui, espelhada à mão. Reexportadas para quem
+// já as importava deste arquivo.
+export { PAPEIS_DA_TELA, TELAS, type Tela }
 
 export interface VerbeteDoManual {
   /** Estável: é o que o modelo cita e o que o servidor confere depois. */

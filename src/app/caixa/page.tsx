@@ -18,7 +18,7 @@ import {
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
 import { hojeIso } from '../../core/util/datas'
-import type { ItemDaCaixa, NaRede } from '../../core/tipos'
+import type { CategoriaDisponivel, ItemDaCaixa, NaRede } from '../../core/tipos'
 
 
 /**
@@ -37,12 +37,8 @@ interface Resumo {
   porCategoria: { codigo: string; rotulo: string; grupo: string; total: number }[]
 }
 
-interface Categoria {
-  codigo: string
-  rotulo: string
-  grupo: string
-  entraNoRateio: boolean
-}
+/** O contrato de `GET /api/categorias` — o mesmo que a rota e a tela de Acesso usam. */
+type Categoria = CategoriaDisponivel
 
 interface Liga {
   id: string
