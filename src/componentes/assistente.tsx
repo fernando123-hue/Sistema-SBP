@@ -174,7 +174,7 @@ export function Assistente({ papel }: { papel: string }) {
         <button
           onClick={() => setAberto(false)}
           aria-label="Fechar ajuda"
-          className="-mr-1 -mt-1 rounded-md px-2 py-1 text-sm text-tinta-suave hover:bg-papel-fundo hover:text-tinta"
+          className="-mr-1 -mt-1 inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-sm text-tinta-suave hover:bg-papel-fundo hover:text-tinta sm:min-h-9 sm:min-w-9"
         >
           ✕
         </button>

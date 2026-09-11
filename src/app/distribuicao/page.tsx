@@ -136,7 +136,21 @@ export default function Distribuicao() {
   // duas, sem explicação.
   const dePlantao = (escala ?? []).filter((linha) => linha.disponivel && linha.afastamento === null)
 
+  /**
+   * Quem está sendo marcado agora. Enquanto houver um, NENHUMA caixa responde.
+   *
+   * A caixa não reagia até o servidor responder, e nada dizia que o clique
+   * tinha pegado. Segunda-feira, cinco pessoas para marcar: a operadora clicava
+   * de novo achando que não foi, as respostas chegavam fora de ordem — cada uma
+   * traz a escala INTEIRA, então a mais velha sobrescrevia a mais nova — e ela
+   * pedia a prévia com a escala que ACHAVA ter marcado. Travar só a linha
+   * clicada não bastaria: é a resposta de outra linha que desfaz esta.
+   */
+  const [alternando, setAlternando] = useState<string | null>(null)
+
   async function alternar(linha: NaRede<LinhaDaEscala>) {
+    if (alternando !== null) return
+    setAlternando(linha.colaboradorId)
     setErro(null)
     setPrevia(null)
     try {
@@ -149,8 +163,22 @@ export default function Distribuicao() {
       setEscala(atualizada)
     } catch (causa) {
       setErro(mensagemDoErro(causa))
+    } finally {
+      setAlternando(null)
     }
   }
+
+  /**
+   * Quando a prévia na tela foi calculada.
+   *
+   * `confirmar` não recebe a prévia: o servidor REPLANEJA dentro da transação,
+   * com os dados do instante do clique. A tela dizia "o que aparece aqui é
+   * exatamente o que será gravado" — a função é a mesma, a ENTRADA não. Prévia
+   * das 9h20 com 38 itens, outro operador busca e-mails e entram 27, e às 14h a
+   * tela ainda mostra 38 com o botão habilitado. O horário não impede nada; ele
+   * impede que a tela afirme uma coisa que deixou de ser verdade.
+   */
+  const [previaCalculadaEm, setPreviaCalculadaEm] = useState<Date | null>(null)
 
   async function executar(acao: 'sincronizar' | 'previa' | 'confirmar') {
     setOcupado(acao)
@@ -161,6 +189,7 @@ export default function Distribuicao() {
         setPrevia(null)
       } else if (acao === 'previa') {
         setPrevia(await api.enviar<Resumo>('/distribuicao/previa', { data, categorias: [] }))
+        setPreviaCalculadaEm(new Date())
       } else {
         const resultado = await api.enviar<Resumo>('/distribuicao/confirmar', {
           data,
@@ -207,11 +236,15 @@ export default function Distribuicao() {
         </div>
         <label className="flex items-center gap-2 text-sm">
           <span className="text-tinta-suave">Data</span>
+          {/* Travada junto com as caixas de plantão: trocar de dia com uma
+              marcação no ar deixava a resposta atrasada — que traz a escala
+              inteira do dia ANTERIOR — sobrescrever a do dia novo, sem aviso. */}
           <input
             type="date"
             value={data}
+            disabled={alternando !== null}
             onChange={(evento) => setData(evento.target.value)}
-            className="numerico rounded-md border border-borda-forte bg-papel px-2.5 py-2 text-sm"
+            className="numerico rounded-md border border-borda-forte bg-papel px-2.5 py-2 text-sm disabled:opacity-60"
           />
         </label>
       </div>
@@ -277,12 +310,19 @@ export default function Distribuicao() {
                     <input
                       type="checkbox"
                       checked={linha.disponivel && linha.afastamento === null}
-                      disabled={linha.afastamento !== null}
+                      disabled={linha.afastamento !== null || alternando !== null}
                       onChange={() => alternar(linha)}
                       className="mt-1 size-4 accent-[var(--color-acento)]"
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium">{linha.nome}</span>
+                      <span className="block text-sm font-medium">
+                        {linha.nome}
+                        {alternando === linha.colaboradorId ? (
+                          <span className="ml-2 text-xs font-normal text-tinta-suave" role="status">
+                            salvando…
+                          </span>
+                        ) : null}
+                      </span>
                       {linha.afastamento !== null ? (
                         <span className="mt-1 block">
                           <Selo tom="atencao">
@@ -310,17 +350,28 @@ export default function Distribuicao() {
           descricao={
             confirmado && !previa
               ? `${confirmado.rodadasGravadas} rodadas registradas. Cada uma é auditável.`
-              : 'O que aparece aqui é exatamente o que será gravado — mesma função, mesmo cálculo.'
+              : previa && previaCalculadaEm
+                ? `Calculada às ${previaCalculadaEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. ` +
+                  'Confirmar recalcula com os dados deste instante, pela mesma função: se entrou e-mail ' +
+                  'ou mudou o plantão desde então, o que for gravado acompanha o agora.'
+                : 'Mesma função e mesmo cálculo da confirmação — que refaz a conta com os dados do instante do clique.'
           }
           acao={
             <div className="flex gap-2">
-              <Botao onClick={() => executar('previa')} desabilitado={ocupado !== null}>
+              {/* Com uma marcação de plantão ainda no ar, a prévia seria
+                  calculada com a escala de ANTES do clique. */}
+              <Botao
+                onClick={() => executar('previa')}
+                desabilitado={ocupado !== null || alternando !== null}
+              >
                 {ocupado === 'previa' ? 'calculando…' : 'Calcular prévia'}
               </Botao>
               <Botao
                 variante="principal"
                 onClick={() => executar('confirmar')}
-                desabilitado={ocupado !== null || previa === null || nadaADistribuir}
+                desabilitado={
+                  ocupado !== null || alternando !== null || previa === null || nadaADistribuir
+                }
               >
                 {ocupado === 'confirmar' ? 'gravando…' : 'Confirmar'}
               </Botao>

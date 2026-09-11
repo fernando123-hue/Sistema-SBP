@@ -309,8 +309,13 @@ export async function porPessoa(banco: Banco): Promise<LinhaPorPessoa[]> {
           item: { status: { in: ['distribuido', 'em_andamento'] } },
         },
       }),
+      // `escopo` explícito. Sem ele, a linha mais recente vinha de CADASTRO ou
+      // de TITULOS, qualquer que fosse — e o próprio modelo diz que somar os
+      // dois razões tira o sentido do crédito. Hoje só existe CADASTRO, então
+      // nada aparecia; a reescrita em lote do `H-D8` cimentaria o defeito no dia
+      // em que TITULOS entrasse. A V1 cobre só CADASTRO (`Frente`).
       banco.saldoCargaGlobal.findFirst({
-        where: { colaboradorId: colaborador.id },
+        where: { colaboradorId: colaborador.id, escopo: 'CADASTRO' },
         orderBy: { data: 'desc' },
         select: { creditoGlobal: true },
       }),

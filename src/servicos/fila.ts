@@ -70,8 +70,30 @@ export async function minhaFila(
     // `id` desempata: sem ele, itens criados no mesmo instante (um e-mail que
     // vira N itens) sairiam em ordem instável entre duas leituras da tela.
     orderBy: [{ item: { criadoEm: 'asc' } }, { itemId: 'asc' }],
-    include: {
-      item: { include: { categoria: true, email: { include: { conteudo: true } } } },
+    // `select` explícito, nunca `include: { conteudo: true }`.
+    //
+    // O `include` trazia `EmailConteudo.corpo` — texto livre, sem teto — de cada
+    // item da fila, para a tela usar só remetente e assunto. Numa fila de 40
+    // itens de ~3 KB, ~120 KB lidos e jogados fora a cada carregamento, na tela
+    // que a equipe abre no celular. Os dados sintéticos têm 148 caracteres de
+    // corpo, o que escondia isso em teste. `listarCaixa` já fazia assim.
+    select: {
+      itemId: true,
+      atribuidoEm: true,
+      item: {
+        select: {
+          titulo: true,
+          status: true,
+          criadoEm: true,
+          categoria: { select: { codigo: true, rotulo: true } },
+          email: {
+            select: {
+              recebidoEm: true,
+              conteudo: { select: { remetente: true, assunto: true } },
+            },
+          },
+        },
+      },
     },
   })
 

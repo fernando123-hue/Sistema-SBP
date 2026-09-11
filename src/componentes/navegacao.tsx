@@ -121,10 +121,13 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
             <span className="block font-medium">{nome}</span>
             <span className="block text-tinta-fraca">{papel}</span>
           </span>
+          {/* Alvo de toque de 44 px no celular, como o `Botao` garante: com
+              ~26 px, "sair" no balcão compartilhado era o controle mais fácil
+              de errar — e sair errado é a sessão de pé para a próxima pessoa. */}
           <button
             onClick={() => void sair()}
             disabled={saindo}
-            className="rounded-md px-2 py-1 text-xs text-tinta-suave hover:bg-papel-fundo hover:text-tinta disabled:opacity-50"
+            className="min-h-11 rounded-md px-3 text-xs text-tinta-suave hover:bg-papel-fundo hover:text-tinta disabled:opacity-50 sm:min-h-9 sm:px-2"
           >
             {saindo ? 'saindo…' : 'sair'}
           </button>

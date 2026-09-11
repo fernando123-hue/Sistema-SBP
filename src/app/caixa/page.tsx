@@ -318,6 +318,14 @@ export default function Caixa() {
                     </option>
                   ))}
                 </select>
+                {/* A lista vem da escala, que só traz quem tem alguma categoria
+                    habilitada. Pessoa nova, sem categoria, atendia no balcão e
+                    não aparecia aqui — e o botão cinza sem explicação levava a
+                    concluir que ela nem estava cadastrada. */}
+                <span className="text-xs text-tinta-fraca">
+                  Não achou a pessoa? Aparece aqui quem tem ao menos uma categoria habilitada no
+                  Acesso.
+                </span>
               </label>
             ) : null}
 
@@ -369,7 +377,7 @@ export default function Caixa() {
             <button
               onClick={() => setFiltro(null)}
               className={juntar(
-                'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                'min-h-11 rounded-full border px-3 py-1 text-xs font-medium transition-colors sm:min-h-8',
                 filtro === null
                   ? 'border-acento bg-acento-claro text-acento-escuro'
                   : 'border-borda text-tinta-suave hover:bg-papel-fundo',
@@ -382,7 +390,7 @@ export default function Caixa() {
                 key={categoria.codigo}
                 onClick={() => setFiltro(categoria.codigo)}
                 className={juntar(
-                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                  'min-h-11 rounded-full border px-3 py-1 text-xs font-medium transition-colors sm:min-h-8',
                   filtro === categoria.codigo
                     ? 'border-acento bg-acento-claro text-acento-escuro'
                     : 'border-borda text-tinta-suave hover:bg-papel-fundo',
