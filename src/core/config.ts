@@ -1,3 +1,6 @@
+import type { z } from 'zod'
+
+import type { CategoriaCodigoSchema } from './esquemas'
 import type { Categoria } from './tipos'
 
 /**
@@ -29,8 +32,17 @@ export const LIMIAR_CONFIANCA_PADRAO = 0.85
  * `limiarConfianca` de propósito NÃO faz parte do tipo `Categoria` do domínio:
  * ele é o corte **antes** do motor (a fila de revisão), e o motor não tem por
  * que conhecê-lo. Ele vive aqui só como semente, e em `Categoria` no banco.
+ *
+ * `codigo` é o enum de `CategoriaCodigoSchema`, não `string`. As duas listas
+ * existiam sem vínculo: acrescentar `ANUIDADE` só aqui semeava o banco, a tela
+ * oferecia a caixa, e marcar respondia `400 categorias.3: Invalid option` — a
+ * categoria visível e inutilizável, com o erro três telas depois da causa. Agora
+ * o código novo não compila até entrar no esquema; o caminho inverso (código no
+ * esquema sem definição aqui) é travado por `config.test.ts`.
  */
-type DefinicaoCategoria = Pick<Categoria, 'codigo' | 'rotulo' | 'grupo'> &
+type DefinicaoCategoria = Pick<Categoria, 'rotulo' | 'grupo'> & {
+  codigo: z.infer<typeof CategoriaCodigoSchema>
+} &
   Partial<
     Pick<
       Categoria,
@@ -95,7 +107,9 @@ export const CATEGORIAS_CADASTRO: readonly Categoria[] = DEFINICOES.map((definic
   agrupaPorLiga: definicao.agrupaPorLiga ?? false,
 }))
 
-const LIMIARES_DE_CONFIANCA = new Map(
+// Chave `string`, e não a união: quem consulta é o seed e o apoio de teste, com
+// o código lido de uma linha de banco.
+const LIMIARES_DE_CONFIANCA = new Map<string, number>(
   DEFINICOES.map((definicao) => [
     definicao.codigo,
     definicao.limiarConfianca ?? LIMIAR_CONFIANCA_PADRAO,
