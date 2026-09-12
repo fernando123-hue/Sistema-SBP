@@ -28,7 +28,7 @@ O quadro completo, achado por achado, está no topo de `docs/auditoria/2026-09-0
 
 ### A dívida honesta desta retomada
 
-1. **Nenhuma mudança de tela foi vista rodando.** Toda tela além de `/entrar` exige login, e o agente não digita senha nem forja sessão. As telas mudadas passaram em `tsc`, `npm run build` e revisão de React, e **precisam ser olhadas por alguém logado**: Distribuição (caixas e data travadas enquanto a marcação de plantão salva; hora da prévia), Painel, Caixa ("Quem atendeu"; a lista em tela estreita e larga), navegação (alvos de toque; links por papel) e notas (motivo ao arquivar).
+1. **Nenhuma mudança de tela foi vista rodando.** *(Em 12/09/2026 isto passou a ter caminho: o **acesso local sem senha** — `npm run dev:local`, e na tela de entrada aparecem as contas sintéticas para clicar. Travas e prova em `DECISOES.md § AT-17`. Com ele o agente entrou como gestora e viu a Distribuição rodando; a conferência das telas listadas abaixo ainda não foi feita.)* Toda tela além de `/entrar` exige login, e o agente não digita senha nem forja sessão. As telas mudadas passaram em `tsc`, `npm run build` e revisão de React, e **precisam ser olhadas por alguém logado**: Distribuição (caixas e data travadas enquanto a marcação de plantão salva; hora da prévia), Painel, Caixa ("Quem atendeu"; a lista em tela estreita e larga), navegação (alvos de toque; links por papel) e notas (motivo ao arquivar).
 2. **`motivoArquivo` passa a ser gravado, e não é exibido**: não existe tela de notas arquivadas.
 3. **A sentinela da chave confere na primeira operação de anexo, não na partida do servidor.** A razão está no código e em `§ AT-13`.
 

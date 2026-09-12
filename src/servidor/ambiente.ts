@@ -129,6 +129,25 @@ const AmbienteSchema = z.object({
    */
   PROXIES_CONFIAVEIS: z.coerce.number().int().min(0).max(10).default(0),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  /**
+   * Acesso local SEM SENHA, para conferir telas em desenvolvimento.
+   *
+   * Existe porque toda tela além de `/entrar` exige login, e quem verifica uma
+   * mudança de tela (o agente, inclusive) não digita senha. O dono pediu, em
+   * 12/09/2026, um jeito de entrar sem senha para ver o que está sendo feito —
+   * sem deixar falha de segurança. Ver `servidor/acesso-local.ts` para as
+   * travas; aqui só a mais importante: **ligado em produção, o sistema recusa
+   * subir**.
+   *
+   * Só `"1"` liga. Qualquer valor torto falha alto em vez de ser lido como
+   * desligado — um `"true"` escrito à mão não pode passar calado para nenhum
+   * dos dois lados. O jeito normal de ligar não é o `.env`: é `npm run
+   * dev:local`, que liga só para aquele processo.
+   */
+  ACESSO_LOCAL_SEM_SENHA: z
+    .enum(['', '0', '1'], { message: 'ACESSO_LOCAL_SEM_SENHA aceita só "0" ou "1"' })
+    .default('0')
+    .transform((valor) => valor === '1'),
 })
 
 export type Ambiente = z.infer<typeof AmbienteSchema>
@@ -145,6 +164,16 @@ export function ambiente(): Ambiente {
       .map((problema) => `  ${problema.path.join('.')}: ${problema.message}`)
       .join('\n')
     throw new Error(`Configuração de ambiente inválida:\n${problemas}`)
+  }
+
+  // Entrar sem senha em produção não é configuração: é a porta da frente
+  // aberta. Recusar subir é a única resposta que não depende de alguém lembrar
+  // de desligar a variável antes de publicar.
+  if (resultado.data.ACESSO_LOCAL_SEM_SENHA && resultado.data.NODE_ENV === 'production') {
+    throw new Error(
+      'ACESSO_LOCAL_SEM_SENHA=1 com NODE_ENV=production. O acesso sem senha existe só para ' +
+        'desenvolvimento local — desligue a variável antes de subir o sistema.',
+    )
   }
 
   // Todo adapter real de IA exige chave. Descobrir isso na primeira chamada ao

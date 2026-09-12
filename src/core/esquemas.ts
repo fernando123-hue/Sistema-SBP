@@ -106,6 +106,8 @@ export const AcaoAuditavelSchema = z.enum([
   'acesso_desativado',
   'entrada_autorizada',
   'entrada_recusada',
+  /** Entrada SEM senha pelo acesso local de desenvolvimento. Ver `servidor/acesso-local.ts`. */
+  'entrada_local_sem_senha',
   'senha_trocada',
   'senha_inicial_definida',
   'senha_redefinida_pelo_gestor',

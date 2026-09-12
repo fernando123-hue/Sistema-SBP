@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { cookies } from 'next/headers'
 
 import { PapelSchema, type Papel } from '../core/esquemas'
+import { acessoLocalHabilitado, ehContaSintetica } from './acesso-local'
 import { ambiente } from './ambiente'
 import { atorDaSessao, type Ator } from './ator'
 import { obterPrisma } from './prisma'
@@ -45,6 +46,14 @@ interface Conteudo {
    * cenário em que o gesto precisava funcionar.
    */
   senhaEm: number | null
+  /**
+   * Sessão aberta pelo acesso local sem senha (`servidor/acesso-local.ts`).
+   *
+   * Vai DENTRO da carga assinada: sem o segredo, ninguém acrescenta nem retira
+   * a marca. É ela que permite derrubar essas sessões no instante em que o
+   * acesso local é desligado, sem tocar nas sessões abertas com senha.
+   */
+  local?: true
 }
 
 function segredo(): string {
@@ -76,6 +85,7 @@ export function montarCookie(
   colaboradorId: string,
   papel: Papel,
   senhaDefinidaEm: Date | null,
+  opcoes: { local?: boolean } = {},
 ): string {
   const agora = Date.now()
   const conteudo: Conteudo = {
@@ -84,6 +94,7 @@ export function montarCookie(
     expiraEm: agora + VALIDADE_SEGUNDOS * 1000,
     emitidoEm: agora,
     senhaEm: senhaDefinidaEm?.getTime() ?? null,
+    ...(opcoes.local ? { local: true as const } : {}),
   }
   const carga = Buffer.from(JSON.stringify(conteudo)).toString('base64url')
   return `${carga}.${assinar(carga)}`
@@ -108,7 +119,14 @@ export function lerCookie(valor: string | undefined): Conteudo | null {
     // versão; aceitar manteria de pé exatamente os cookies que a mudança
     // existe para poder derrubar.
     if (typeof conteudo.emitidoEm !== 'number') return null
-    return { ...conteudo, papel: PapelSchema.parse(conteudo.papel) }
+    // `local` só vale como `true` exato; qualquer outro valor é tratado como
+    // sessão comum, que é a que recebe MENOS permissão, não mais.
+    const { local, ...resto } = conteudo
+    return {
+      ...resto,
+      papel: PapelSchema.parse(conteudo.papel),
+      ...(local === true ? { local: true as const } : {}),
+    }
   } catch {
     return null
   }
@@ -129,6 +147,8 @@ export interface PerfilAtual {
   papel: Papel
   /** Senha ainda é a provisória entregue pelo gestor: nada além da troca é permitido. */
   precisaTrocarSenha: boolean
+  /** Sessão aberta pelo acesso local sem senha. A tela mostra uma faixa enquanto for `true`. */
+  acessoLocal: boolean
 }
 
 /**
@@ -152,6 +172,7 @@ export async function perfilAtual(): Promise<PerfilAtual | null> {
     select: {
       id: true,
       nome: true,
+      email: true,
       papel: true,
       ativo: true,
       precisaTrocarSenha: true,
@@ -160,6 +181,15 @@ export async function perfilAtual(): Promise<PerfilAtual | null> {
     },
   })
   if (!colaborador?.ativo) return null
+
+  // SESSÃO DO ACESSO LOCAL SEM SENHA: vale só enquanto o acesso estiver ligado,
+  // e só para conta sintética. Desligar `ACESSO_LOCAL_SEM_SENHA` derruba todas
+  // estas sessões aqui, na próxima requisição — um cookie emitido em
+  // desenvolvimento não vira credencial em lugar nenhum depois.
+  const sessaoLocal = conteudo.local === true
+  if (sessaoLocal && !(acessoLocalHabilitado() && ehContaSintetica(colaborador.email))) {
+    return null
+  }
 
   // Senha mudou depois deste cookie: a sessão morre aqui. Vale para a troca
   // feita pelo dono e para a redefinição feita pelo gestor.
@@ -176,7 +206,12 @@ export async function perfilAtual(): Promise<PerfilAtual | null> {
     ator: atorDaSessao({ colaboradorId: colaborador.id, papel }),
     nome: colaborador.nome,
     papel,
-    precisaTrocarSenha: colaborador.precisaTrocarSenha,
+    // A troca de senha provisória protege a janela em que OUTRA pessoa conhece
+    // a senha. Na sessão local ninguém usou senha nenhuma — e as contas
+    // sintéticas do seed nascem todas com provisória, então exigir a troca aqui
+    // tornaria o acesso local inútil sem proteger nada.
+    precisaTrocarSenha: sessaoLocal ? false : colaborador.precisaTrocarSenha,
+    acessoLocal: sessaoLocal,
   }
 }
 
