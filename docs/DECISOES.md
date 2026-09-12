@@ -63,6 +63,8 @@ Nenhuma hipótese vira regra silenciosamente. Este arquivo é a fonte da verdade
 
 | A34 | E-mail suspeito que não gerou nenhum item vai para uma pessoa *(12/09/2026)* | **Zero itens com conteúdo suspeito é a forma exata de uma manipulação bem-sucedida** — o texto convence o modelo a não devolver nada, e o pedido some. Hoje isso fica só no log e no evento, fora de qualquer tela, e o e-mail nunca é relido. **Passa a existir uma lista de e-mails suspeitos sem item**, na Revisão, para **operador e gestor** — nunca para o colaborador, porque o conteúdo pode ser o próprio texto de ataque. Para cada um, uma pessoa decide com um clique: **não era trabalho** (arquiva) ou **tinha trabalho** (cria o item a partir dele). E-mail sem item e **sem** suspeita (resposta automática) **não** entra na lista: aparece como contagem no painel e no relatório semanal (`A32`), com a lista disponível a quem quiser conferir — lista cheia de ruído ensina a ignorar a lista. **O relógio de `A20` só corre depois da decisão**: o conteúdo não sai antes de alguém olhar. A `Revisao` hoje exige item, então isso pede estrutura nova. Responde a pergunta 16 de *O que NÃO foi alterado* (07/09/2026). |
 
+| A35 | Devolução desfaz a carga; lote pequeno segue inteiro para uma pessoa *(12/09/2026)* | **Devolver ao grupo desfaz a contagem de quem devolveu**, por lançamento de compensação, como a transferência (`A18`) e o cancelamento (`A27`): a carga acompanha quem fez o trabalho. Muda `AT-07`, e a razão precisa ficar escrita porque a hipótese original raciocinava ao contrário: "não estornar para ninguém manipular a própria carga". Com o motor como está, o crédito é `cota justa − recebido`, e a ordem de desempate põe primeiro quem está mais credor — então **manter** a contagem de quem devolveu o empurra para o fim da ordem, e ele passa a receber menos sobras e menos lotes pequenos. Era o não-estorno que dava vantagem a quem devolve, e ainda contava o mesmo item duas vezes. A justificativa continua obrigatória e na trilha; devolução frequente é sinal para oferecer ajuda (`A26`), nunca punição. **Lote de até 3 itens segue inteiro para o primeiro da ordem** (`AT-01`, `limiarIndivisivel = 3`), como **observação** (`A33`): o número veio de um único caso da planilha; é configurável por categoria e ajustado pelos feedbacks. |
+
 **Impacto em A4 — não é só configuração, é mudança no motor.** Hoje `distribuir()` (`src/core/distribuicao/motor.ts`) recebe uma `quantidade` escalar por categoria e reparte por resto-maior (RN-04); ele não sabe que um lote de ligantes se divide em grupos por `liga_id`. Para cumprir A4, a categoria `LIGANTE`/`E-MAIL LIGA` precisa de uma unidade de entrada nova — grupos (liga, tamanho) em vez de uma contagem plana — com alocação gulosa por maior-grupo-primeiro, mantendo a mesma trava de conservação (`Σ atribuições == quantidade de entrada`) e o mesmo livro-razão de crédito. Isso vai para `docs/03-SPEC.md` (contrato do motor) antes de mexer no código. Ver `ESTADO.md` → *Próximo passo sugerido*.
 
 ### Etapa 6 — fluxo atual e mapeamento (base de A5)
@@ -225,7 +227,7 @@ Formato: hipótese · motivo · impacto · status.
 **Hipótese:** `limiar_indivisivel = 3`, `Q <= limiar` vai inteiro para um só.
 **Motivo:** um único caso observado (`FICHA = 3`, `J = 2` → `3 + 0`).
 **Impacto:** categorias de volume baixo nunca fragmentam.
-**Status:** ⏳ configurável por categoria. Aguardando validação operacional.
+**Status:** ⏳ **mantida em 12/09/2026 como observação (`§ A35`, `§ A33`)** — configurável por categoria, ajustada pelos feedbacks da equipe.
 
 ### AT-02 — Peso por categoria
 
@@ -267,7 +269,7 @@ Formato: hipótese · motivo · impacto · status.
 **Hipótese:** devolver retorna o item ao pool com `status = devolvido`; entra na próxima rodada; **o crédito não é estornado**.
 **Motivo:** nenhum documento define. Estornar crédito abriria porta para manipulação de carga.
 **Impacto:** quem devolve muito não ganha vantagem no rateio.
-**Status:** ⏳ provisório. Revisar após uso real.
+**Status:** ⛔ **substituída em 12/09/2026 pela decisão `§ A35`** — devolver desfaz a contagem de quem devolveu. O motivo desta hipótese estava invertido em relação ao motor: não estornar é o que dava vantagem a quem devolve. Texto original: ⏳ provisório. Revisar após uso real.
 
 ### AT-08 — Autenticação
 
