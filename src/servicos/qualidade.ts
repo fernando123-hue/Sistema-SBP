@@ -228,7 +228,7 @@ function lerMedida(
  * Devolver um par "vazio" em vez de `null` contaminaria a média com uma
  * revisão que ninguém fez.
  */
-function lerPar(sugestaoIa: string, valorFinal: string | null): ParDeRevisao | null {
+export function lerPar(sugestaoIa: string, valorFinal: string | null): ParDeRevisao | null {
   if (valorFinal === null) return null
 
   try {

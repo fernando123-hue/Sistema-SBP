@@ -457,6 +457,14 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **Impacto:** a busca por um CPF pode trazer um item que não é daquela pessoa. Depois do prazo, esse item mostra só categoria, liga e posição, então o dano é confusão, não exposição de conteúdo. **Status:** ⏳ adotado; revisitar quando houver integração com o cadastro (`A22`) ou quando os feedbacks mostrarem resultado errado na busca.
 
+### AT-27 — Os dados do item saem em transação própria, logo depois do texto do e-mail (`A23(a)`) *(13/09/2026)*
+
+**Hipótese:** o plano dizia apagar título, campos extraídos e valores da revisão **na mesma transação** que apaga o texto do e-mail. Ficou diferente: `expurgarDadosDosItens` roda na mesma limpeza diária, **logo depois** de `expurgarConteudoDosEmails` e com o mesmo prazo, e trata cada item numa transação própria. O critério de "vencido" continua um só: para item de e-mail, o e-mail já teve o texto apagado; para item registrado à mão, o mesmo `conteudoVenceu`, contado da conclusão ou do cancelamento dele (`A40`, resposta 23).
+
+**Motivo:** um caminho só cobre também os itens de e-mails apagados **antes** desta limpeza existir — o carimbo do e-mail já os tirou da limpeza do `A20`, e na mesma transação eles nunca seriam alcançados. E a limpeza do conteúdo, que mexe com arquivo em disco, continua como estava.
+
+**Impacto:** se a execução cair entre as duas limpezas, o texto do e-mail já saiu e o título e os campos do item ficam até a próxima tentativa do dia — no máximo um dia, com a falha visível no aviso da gestora. Na primeira limpeza depois de subir esta versão, os itens de e-mails já apagados perdem título e campos de uma vez (no `dev.db` de 13/09/2026, só dado sintético). **Travas e limites, depois da revisão de segurança de 13/09/2026:** (1) item de e-mail só perde os dados se **ele próprio** estiver fechado — concluído com registro de conclusão, ou cancelado com data — e **sem revisão aberta**; o carimbo do e-mail sozinho não basta, porque essa garantia mora em outro serviço e um cancelamento ou reenvio futuro (`A27`, `A28`) poderia quebrá-la; (2) `Item.dadosExtraidosExpurgadosEm` tem índice, porque a pergunta é diária; (3) a consulta **não é paginada** — não há acúmulo antes de produção; se a primeira limpeza em produção demorar perto dos 30 minutos que dão a execução por abandonada, paginar; (4) item marcado como concluído sem registro de conclusão nunca vence e volta à consulta todo dia, por desenho ("na dúvida, fica") — é sinal de defeito em outro lugar, e hoje ninguém é avisado. **Status:** ⏳ adotado.
+
 ---
 
 ## D. Pendências do cliente final

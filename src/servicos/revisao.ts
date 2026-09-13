@@ -45,7 +45,7 @@ async function exigirColaborador(tx: Transacao, colaboradorId: string): Promise<
  * pessoa sobre o item vale mesmo quando a medida não pode ser feita. O aviso
  * no log diz QUAL revisão, na hora — o número agregado sozinho não diz.
  */
-function acertoDaRevisao(
+export function acertoDaRevisao(
   revisaoId: string,
   sugestaoIa: string,
   decisao: DecisaoHumana,

@@ -10,6 +10,7 @@ import {
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { Banco } from '../servidor/prisma'
 import { expurgarConteudoDosEmails, type ResultadoDoExpurgoDeConteudo } from './expurgo-conteudo'
+import { expurgarDadosDosItens, type ResultadoDoExpurgoDosDadosDoItem } from './expurgo-dados-do-item'
 import { expurgarMotivosDeAfastamento, type ResultadoDoExpurgoDeMotivos } from './expurgo-lgpd'
 import { prazoEmVigor } from './retencao'
 
@@ -40,6 +41,7 @@ export const TENTATIVAS_POR_DIA = 3
 export interface ResumoDaLimpeza {
   motivosDeAfastamento: ResultadoDoExpurgoDeMotivos & { prazoEmDias: number }
   conteudoDosEmails: ResultadoDoExpurgoDeConteudo & { prazoEmDias: number }
+  dadosDosItens: ResultadoDoExpurgoDosDadosDoItem & { prazoEmDias: number }
 }
 
 export type ResultadoDaRotina =
@@ -143,9 +145,18 @@ export async function rodarLimpezaDiaria(
       correlacaoId,
     })
 
+    // Depois do conteúdo, e com o MESMO prazo: os itens de um e-mail que acabou
+    // de ter o texto apagado perdem título e campos já nesta execução (`A23(a)`).
+    const dadosDosItens = await expurgarDadosDosItens(banco, {
+      diasDeRetencao: prazoDoConteudo,
+      hoje,
+      correlacaoId,
+    })
+
     const resumo: ResumoDaLimpeza = {
       motivosDeAfastamento: { ...motivos, prazoEmDias },
       conteudoDosEmails: { ...conteudo, prazoEmDias: prazoDoConteudo },
+      dadosDosItens: { ...dadosDosItens, prazoEmDias: prazoDoConteudo },
     }
 
     await banco.execucaoDeRotina.update({

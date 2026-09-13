@@ -322,6 +322,13 @@ model Item {
   /// `normalizarMatricula` recusa o que não parece matrícula (letra, 11
   /// dígitos ou mais), para um nome ou CPF não ficar guardado aqui.
   matricula    String?
+  /// Quando o título, os campos extraídos, a observação digitada e os valores
+  /// da revisão deste item saíram pelo prazo (`A23(a)`). O título vira neutro
+  /// (categoria · liga · posição, `A41`); ficam a chave de busca, a carga e a
+  /// trilha. Também é o que tira o item da lista da limpeza: sem este carimbo,
+  /// item de e-mail apagado ANTES desta coluna existir ficaria com os dados
+  /// para sempre, porque o carimbo do e-mail já o tirou da limpeza do `A20`.
+  dadosExtraidosExpurgadosEm DateTime?
 
   /// Quando o item foi cancelado, se foi.
   ///
@@ -351,6 +358,11 @@ model Item {
   @@index([categoriaId, status, criadoEm])
   @@index([cpfProtegido])
   @@index([matricula])
+  /// A limpeza diária pergunta todo dia "quais itens ainda guardam dados?".
+  /// Sem índice, a pergunta varre a tabela de itens inteira, que cresce para
+  /// sempre — mesma razão de `Afastamento.motivoExpurgadoEm`. Revisão de
+  /// segurança de 13/09/2026.
+  @@index([dadosExtraidosExpurgadosEm])
 }
 
 // ─────────────────────────────────────────────────────────────

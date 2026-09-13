@@ -166,7 +166,7 @@ export async function expurgarConteudoDosEmails(
  * ABERTO: é linha inconsistente, e na dúvida o conteúdo fica. Apagar a partir de
  * uma data inventada é o erro que não tem volta.
  */
-function situacaoNoRelogio(item: {
+export function situacaoNoRelogio(item: {
   status: string
   canceladoEm: Date | null
   execucoes: { concluidoEm: Date | null }[]

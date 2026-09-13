@@ -121,6 +121,8 @@ export const AcaoAuditavelSchema = z.enum([
   'afastamento_motivo_expurgado',
   /** `A20`: remetente, assunto, corpo e bytes dos anexos saíram pelo prazo. */
   'conteudo_do_email_expurgado',
+  /** `A23(a)`: título, campos extraídos, observação digitada e valores da revisão saíram pelo prazo. */
+  'dados_do_item_expurgados',
   // Retenção
   'prazo_de_retencao_alterado',
   // Memória do setor

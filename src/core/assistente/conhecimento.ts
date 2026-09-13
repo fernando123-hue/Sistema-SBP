@@ -210,6 +210,10 @@ export const MANUAL: readonly VerbeteDoManual[] = [
       'Sete dias depois de o último pedido de um e-mail ser concluído ou cancelado, remetente, assunto, texto e anexos são apagados do sistema; ' +
       'e-mail que não virou pedido conta do dia em que chegou. Enquanto houver pedido aberto, nada sai. ' +
       'No lugar do remetente, a Caixa mostra quando o texto foi apagado e o dia e a hora em que o e-mail chegou — com isso dá para achar o original no Outlook, que continua lá. ' +
+      'No mesmo dia, o nome do pedido troca para o tipo de trabalho, a liga e a posição no e-mail — por exemplo "Ligante · Liga de Neonatologia · 2" —, ' +
+      'e saem os dados que a leitura automática tirou do e-mail e os motivos escritos ao transferir ou devolver. ' +
+      'Para achar o pedido depois disso, use a busca por CPF ou matrícula, ou a data de chegada. ' +
+      'Pedido registrado à mão segue o mesmo prazo, contado do dia em que ele foi concluído ou cancelado. ' +
       'Quem é gestor pode mudar o prazo na tela Acesso, em "Prazos de retenção".',
   },
   {
