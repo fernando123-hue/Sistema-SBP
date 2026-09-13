@@ -10,7 +10,7 @@ As decisões estão em `docs/DECISOES.md § A`, de **A17 a A38**. Este arquivo n
 
 1. **Leia** `CLAUDE.md`, `docs/ESTADO.md`, este plano, `docs/DECISOES.md § A17–A38` e `§ AT-17`.
 2. **#40 e #41 foram mesclados na `main` em 12/09/2026** (`44fa73d` e `276aac1`). A versão original deste item dizia que estavam abertos.
-3. **Andamento, conferido em 12/09/2026:** fase 1 na branch `fase-1/privacidade-e-prazos` (só local) — **`A17` e `A20` prontos e commitados; falta `A23`**, com plano próprio em `docs/planos/2026-09-12-fase-1-a23.md`. As outras fases não começaram.
+3. **Andamento, conferido em 12/09/2026:** fase 1 na branch `fase-1/privacidade-e-prazos` (no GitHub, sem PR) — **`A17` e `A20` prontos e commitados; falta `A23`**, com plano próprio em `docs/planos/2026-09-12-fase-1-a23.md`. As outras fases não começaram.
 
 ## Como cada fase é feita
 

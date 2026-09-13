@@ -4,7 +4,7 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> 1. **Confira onde está:** `git branch --show-current` tem de dizer `fase-1/privacidade-e-prazos`, e `git log --oneline main..HEAD` tem de mostrar, do mais novo ao mais antigo, o commit desta passagem de documentos, `bec289e` (A20), `250850a`, `f0175aa` e `73aa8cc` (A17). **A branch NÃO está no GitHub** — existe só nesta máquina. Enviar e abrir o PR é do dono autorizar.
+> 1. **Confira onde está:** `git branch --show-current` tem de dizer `fase-1/privacidade-e-prazos`, e `git log --oneline main..HEAD` tem de mostrar, do mais novo ao mais antigo, o commit que registra a limpeza, `5b38889` (passagem de documentos), `bec289e` (A20), `250850a`, `f0175aa` e `73aa8cc` (A17). **A branch está no GitHub desde 12/09/2026** (`origin/fase-1/privacidade-e-prazos`), **sem PR** — abrir o PR é do dono autorizar, quando a fase 1 fechar. Worktree e branches antigas já mescladas foram limpas no mesmo dia.
 > 2. **Leia `docs/planos/2026-09-12-fase-1-a23.md`** — o plano do que falta: estado exato, perguntas ao dono, mapa conferido de onde o dado pessoal é gravado e lido (arquivo:linha), desenho proposto, ordem dos commits, como trabalhar e as armadilhas desta fase, com o roteiro de sabotagem.
 > 3. **Antes de codar a parte (a) do `A23`, pergunte ao dono os itens 22 a 26 de `DECISOES.md § H.4`.** A parte (c) — acerto gravado na revisão — pode começar já, e **tem de entrar antes** da (a).
 > 4. **Pergunta sobre tela vai com desenho das opções lado a lado.** Nesta fase o dono não entendeu duas vezes a pergunta da bolinha escrita, com exemplo; entendeu na hora com o desenho. Pergunta sobre regra vai com exemplo concreto do começo ao fim. Sempre linguagem simples e nomes fictícios.
