@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { AvisoDoGestor } from '../core/aviso-do-gestor'
+import type { AvisoParaATela } from '../core/aviso-do-gestor'
 import { api, mensagemDoErro } from './api'
 import { AvisoDoDia } from './aviso-do-gestor'
 import { Botao, juntar } from './matrizes'
@@ -83,6 +83,14 @@ function sugestoes(papel: string): readonly string[] {
   ]
 }
 
+/** De quanto em quanto tempo a tela pergunta se o aviso do dia mudou. */
+const MINUTOS_ENTRE_CONFERENCIAS_DO_AVISO = 15
+
+/** Identidade de um conjunto de chaves, sem depender da ordem. */
+function assinaturaDas(chaves: readonly string[]): string {
+  return [...chaves].sort().join('|')
+}
+
 export function Assistente({ papel }: { papel: string }) {
   const [aberto, setAberto] = useState(false)
   const [pergunta, setPergunta] = useState('')
@@ -90,8 +98,10 @@ export function Assistente({ papel }: { papel: string }) {
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   /** Só existe para gestor (`A17`). Montado no servidor, sem IA. */
-  const [aviso, setAviso] = useState<AvisoDoGestor | null>(null)
+  const [aviso, setAviso] = useState<AvisoParaATela | null>(null)
   const [erroDoAviso, setErroDoAviso] = useState<string | null>(null)
+  /** As chaves que esta tela já confirmou ao servidor como vistas. */
+  const [confirmado, setConfirmado] = useState<string | null>(null)
 
   const campo = useRef<HTMLInputElement>(null)
   const gatilho = useRef<HTMLButtonElement>(null)
@@ -115,46 +125,74 @@ export function Assistente({ papel }: { papel: string }) {
     } else gatilho.current?.focus()
   }, [aberto])
 
-  // `A17`: "aviso ao gestor ao entrar, no painel do assistente". Abre sozinho
-  // UMA vez por dia nesta aba — abrir a cada troca de tela ensinaria a fechar
-  // sem ler. Depois disso, o ponto no botão diz que há aviso.
+  const confirmarVisto = useCallback(async (dados: AvisoParaATela) => {
+    try {
+      await api.enviar('/assistente/aviso', { chaves: dados.chaves })
+      setConfirmado(assinaturaDas(dados.chaves))
+    } catch (causa) {
+      setErroDoAviso(mensagemDoErro(causa))
+    }
+  }, [])
+
+  // `A17` e `A39(e)`: o quadro abre SOZINHO só na primeira vez do dia — abrir a
+  // cada troca de tela ensinaria a fechar sem ler. Depois, o sistema confere de
+  // tempos em tempos, e o que mudou (inclusive a troca de uma pessoa por outra)
+  // acende a bolinha até ela olhar. Quem guarda o "já vi" é o servidor, então
+  // vale para o dia inteiro, em qualquer computador.
   useEffect(() => {
     if (papel !== 'gestor') return
     let vigente = true
 
-    api
-      .buscar<AvisoDoGestor>('/assistente/aviso')
-      .then((dados) => {
+    async function buscar(): Promise<void> {
+      try {
+        const dados = await api.buscar<AvisoParaATela>('/assistente/aviso')
         if (!vigente) return
         setAviso(dados)
         setErroDoAviso(null)
-        if (dados.vazio) return
+        if (!dados.primeiraVezHoje) return
 
-        const chave = `sbp:aviso-do-dia:${dados.hoje}`
-        try {
-          // Só a marca de "já mostrado hoje", nunca o conteúdo do aviso.
-          if (window.sessionStorage.getItem(chave) !== null) return
-          window.sessionStorage.setItem(chave, '1')
-        } catch {
-          // Armazenamento bloqueado pelo navegador: o aviso continua no painel e
-          // no ponto do botão; só não abre sozinho.
+        if (dados.vazio) {
+          // Nada a mostrar agora, mas a primeira olhada do dia fica marcada: o
+          // que aparecer mais tarde vira bolinha, e não um quadro abrindo no
+          // meio do trabalho.
+          void confirmarVisto(dados)
           return
         }
         abertoPeloAviso.current = true
         setAberto(true)
-      })
-      .catch((causa: unknown) => {
+      } catch (causa) {
         // A ajuda continua funcionando, e a falha aparece dentro do painel — não
         // some calada.
         if (vigente) setErroDoAviso(mensagemDoErro(causa))
-      })
+      }
+    }
+
+    void buscar()
+    const temporizador = window.setInterval(() => void buscar(), MINUTOS_ENTRE_CONFERENCIAS_DO_AVISO * 60_000)
 
     return () => {
       vigente = false
+      window.clearInterval(temporizador)
     }
-  }, [papel])
+  }, [papel, confirmarVisto])
 
-  const temAviso = aviso !== null && !aviso.vazio
+  const temNovidade =
+    aviso !== null &&
+    ((aviso.primeiraVezHoje && !aviso.vazio) ||
+      aviso.novidades.entraram.length > 0 ||
+      aviso.novidades.sairam.length > 0) &&
+    assinaturaDas(aviso.chaves) !== confirmado
+
+  const temAviso =
+    aviso !== null && (!aviso.vazio || aviso.novidades.entraram.length > 0 || aviso.novidades.sairam.length > 0)
+
+  // Painel aberto com novidade na tela: ela viu. O bloco "mudou desde a última
+  // vez" continua visível até a próxima conferência — confirmar não o apaga
+  // enquanto ela lê.
+  useEffect(() => {
+    if (!aberto || aviso === null || !temNovidade) return
+    void confirmarVisto(aviso)
+  }, [aberto, aviso, temNovidade, confirmarVisto])
 
   useEffect(() => {
     if (!aberto) return
@@ -211,10 +249,11 @@ export function Assistente({ papel }: { papel: string }) {
       >
         <span aria-hidden="true">?</span>
         Ajuda
-        {temAviso ? (
+        {/* Acende só com NOVIDADE (`A39(e)`): bolinha sempre acesa deixa de ser notada. */}
+        {temNovidade ? (
           <>
             <span aria-hidden="true" className="size-2 rounded-full bg-atencao" />
-            <span className="sr-only">(há aviso do dia)</span>
+            <span className="sr-only">(há novidade no aviso do dia)</span>
           </>
         ) : null}
       </button>

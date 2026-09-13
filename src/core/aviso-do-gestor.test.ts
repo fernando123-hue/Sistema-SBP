@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { montarAvisoDoGestor, type AusenciaParaAviso } from './aviso-do-gestor'
+import {
+  compararComOVisto,
+  lerChaveDoAviso,
+  montarAvisoDoGestor,
+  quemMexeuPorUltimo,
+  type AusenciaParaAviso,
+} from './aviso-do-gestor'
 
 /**
  * Hoje é sexta, 11/09/2026, prazo de 7 dias. Nomes fictícios.
@@ -13,6 +19,7 @@ const HOJE = '2026-09-11'
 
 function ausencia(parcial: Partial<AusenciaParaAviso> & Pick<AusenciaParaAviso, 'nome'>): AusenciaParaAviso {
   return {
+    id: `id-${parcial.nome}`,
     tipo: 'atestado',
     inicio: '2026-09-01',
     fim: null,
@@ -139,5 +146,139 @@ describe('quando não há o que dizer', () => {
 
     expect(resultado.vazio).toBe(false)
     expect(resultado.limpeza).toBe('falhou')
+  })
+})
+
+describe('as chaves do que a gestora viu', () => {
+  it('uma chave por linha, com o id do afastamento — nunca o nome', () => {
+    const resultado = aviso(
+      [
+        // Fora hoje e volta amanhã.
+        ausencia({ nome: 'Ana', id: 'a1', inicio: HOJE, fim: HOJE }),
+        // Motivo sai em 14/09.
+        ausencia({ nome: 'Lia', id: 'a2', fim: '2026-09-06' }),
+      ],
+      'falhou',
+    )
+
+    expect(resultado.chaves).toEqual(['fora:a1', 'volta:a1', 'sai:a2', 'limpeza:falhou'])
+    expect(resultado.chaves.join()).not.toContain('Ana')
+  })
+
+  it('quem mexeu por último: cancelar vem depois de encerrar, que vem depois de registrar', () => {
+    expect(quemMexeuPorUltimo({ registradoPor: 'ana', encerradoPor: null, canceladoPor: null })).toBe('ana')
+    expect(quemMexeuPorUltimo({ registradoPor: 'ana', encerradoPor: 'bia', canceladoPor: null })).toBe('bia')
+    expect(quemMexeuPorUltimo({ registradoPor: 'ana', encerradoPor: 'bia', canceladoPor: 'caio' })).toBe('caio')
+  })
+
+  it('chave fora do formato não é lida', () => {
+    expect(lerChaveDoAviso('fora:a1')).toEqual({ lista: 'fora', afastamentoId: 'a1' })
+    expect(lerChaveDoAviso('limpeza:falhou')).toEqual({ lista: 'limpeza', afastamentoId: null })
+    expect(lerChaveDoAviso('outra:a1')).toBeNull()
+    expect(lerChaveDoAviso('fora:a1:extra')).toBeNull()
+    expect(lerChaveDoAviso('fora:')).toBeNull()
+  })
+})
+
+describe('o que mudou desde a última olhada', () => {
+  // O dono pediu (12/09/2026) que a troca de uma pessoa por outra no mesmo dia
+  // não passe calada. É o caso que uma contagem não enxerga.
+  const nomes = new Map([
+    ['a1', 'Bianca'],
+    ['a2', 'Elias'],
+  ])
+  /** Nos casos abaixo, quem mexeu foi sempre outra pessoa. */
+  const autores = new Map([
+    ['a1', 'outra-gestora'],
+    ['a2', 'outra-gestora'],
+  ])
+
+  it('mudança feita por quem está olhando não conta como novidade — a de outra pessoa, sim', () => {
+    // Fabiana registrou a ausência do Elias; Ana cancelou a da Bianca.
+    const resultado = compararComOVisto({
+      hoje: HOJE,
+      chaves: ['fora:a2'],
+      visto: { data: HOJE, chaves: ['fora:a1'] },
+      nomePorAfastamento: nomes,
+      quemOlha: 'fabiana',
+      autorPorAfastamento: new Map([
+        ['a1', 'ana'],
+        ['a2', 'fabiana'],
+      ]),
+    })
+
+    expect(resultado.novidades).toEqual({ entraram: [], sairam: [{ lista: 'fora', nome: 'Bianca' }] })
+  })
+
+  it('a limpeza que falhou é novidade para todo mundo — não tem autor', () => {
+    const resultado = compararComOVisto({
+      hoje: HOJE,
+      chaves: ['limpeza:falhou'],
+      visto: { data: HOJE, chaves: [] },
+      nomePorAfastamento: nomes,
+      quemOlha: 'fabiana',
+      autorPorAfastamento: new Map(),
+    })
+
+    expect(resultado.novidades.entraram).toEqual([{ lista: 'limpeza', nome: '' }])
+  })
+
+  it('sem nada visto hoje, é a primeira vez do dia — e não lista novidade', () => {
+    for (const visto of [null, { data: '2026-09-10', chaves: ['fora:a1'] }]) {
+      expect(compararComOVisto({ hoje: HOJE, chaves: ['fora:a2'], visto, nomePorAfastamento: nomes, quemOlha: 'quem-olha', autorPorAfastamento: autores })).toEqual({
+        primeiraVezHoje: true,
+        novidades: { entraram: [], sairam: [] },
+      })
+    }
+  })
+
+  it('troca no mesmo dia: Bianca saiu e Elias entrou, os dois com nome', () => {
+    expect(
+      compararComOVisto({
+        hoje: HOJE,
+        chaves: ['fora:a2'],
+        visto: { data: HOJE, chaves: ['fora:a1'] },
+        nomePorAfastamento: nomes, quemOlha: 'quem-olha', autorPorAfastamento: autores,
+      }),
+    ).toEqual({
+      primeiraVezHoje: false,
+      novidades: { entraram: [{ lista: 'fora', nome: 'Elias' }], sairam: [{ lista: 'fora', nome: 'Bianca' }] },
+    })
+  })
+
+  it('nada mudou, nada a dizer', () => {
+    const resultado = compararComOVisto({
+      hoje: HOJE,
+      chaves: ['fora:a1', 'sai:a2'],
+      visto: { data: HOJE, chaves: ['sai:a2', 'fora:a1'] },
+      nomePorAfastamento: nomes, quemOlha: 'quem-olha', autorPorAfastamento: autores,
+    })
+
+    expect(resultado.novidades).toEqual({ entraram: [], sairam: [] })
+  })
+
+  it('a mesma pessoa mudando de lista sai de uma e entra na outra', () => {
+    const resultado = compararComOVisto({
+      hoje: HOJE,
+      chaves: ['volta:a1'],
+      visto: { data: HOJE, chaves: ['fora:a1'] },
+      nomePorAfastamento: nomes, quemOlha: 'quem-olha', autorPorAfastamento: autores,
+    })
+
+    expect(resultado.novidades).toEqual({
+      entraram: [{ lista: 'volta', nome: 'Bianca' }],
+      sairam: [{ lista: 'fora', nome: 'Bianca' }],
+    })
+  })
+
+  it('a limpeza que falhou entra como novidade, sem nome de pessoa', () => {
+    const resultado = compararComOVisto({
+      hoje: HOJE,
+      chaves: ['limpeza:falhou'],
+      visto: { data: HOJE, chaves: [] },
+      nomePorAfastamento: nomes, quemOlha: 'quem-olha', autorPorAfastamento: autores,
+    })
+
+    expect(resultado.novidades.entraram).toEqual([{ lista: 'limpeza', nome: '' }])
   })
 })

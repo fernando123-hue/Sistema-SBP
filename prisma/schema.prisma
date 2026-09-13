@@ -67,6 +67,7 @@ model Colaborador {
   saldosGlobais    SaldoCargaGlobal[]
   revisoesFeitas   Revisao[]
   notasEscritas    Nota[]
+  avisoVisto       AvisoVisto?
 
   @@index([ativo])
 }
@@ -169,6 +170,11 @@ model Afastamento {
   /// fora do rateio na terça-feira passada.
   canceladoEm   DateTime?
   canceladoPor  String?
+  /// Quem marcou "Voltou hoje" numa ausência sem data de volta. Junto com
+  /// `registradoPor` e `canceladoPor`, diz quem mexeu por último — e o aviso do
+  /// dia não acende a bolinha da gestora por uma mudança que ela mesma fez
+  /// (`A39(e)`).
+  encerradoPor  String?
 
   /// Quando o motivo saiu pelo prazo de retenção (`A17`): observação apagada e
   /// tipo reduzido. Mesmo papel de `Email.conteudoExpurgadoEm` — sem ele,
@@ -671,6 +677,26 @@ model ExecucaoDeRotina {
   correlacaoId String
 
   @@unique([rotina, data])
+}
+
+/// O que cada gestora já viu do aviso do dia (`A17`, `A39(e)`).
+///
+/// Existe para o aviso dizer o que MUDOU desde a última olhada — inclusive a
+/// troca de uma pessoa por outra no mesmo dia, que uma contagem não enxerga.
+///
+/// Guarda só chaves internas (`fora:<id do afastamento>`), nunca nome nem
+/// motivo: o motivo tem prazo (`A17`), e uma cópia dele aqui escaparia da
+/// limpeza. Uma linha por gestora, reescrita a cada olhada — é estado de tela,
+/// não histórico operacional, e por isso não vai para a trilha.
+model AvisoVisto {
+  colaboradorId String   @id
+  /// Dia da operação, `YYYY-MM-DD`.
+  data          String
+  /// JSON — `ChavesDoAvisoSchema`.
+  chaves        String
+  vistoEm       DateTime @updatedAt
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
 }
 
 /// Fila de exceções da IA — e dataset de melhoria contínua.

@@ -168,6 +168,7 @@ export const OperacaoSchema = z.enum([
   'ver prazos de retenção',
   'alterar prazo de retenção',
   'ver aviso do gestor',
+  'marcar aviso do gestor como visto',
   'registrar nota do setor',
   'arquivar nota do setor',
 ])
@@ -215,6 +216,15 @@ export type Rotina = z.infer<typeof RotinaSchema>
 
 export const SituacaoDaRotinaSchema = z.enum(['em_curso', 'sucesso', 'falha'])
 export type SituacaoDaRotina = z.infer<typeof SituacaoDaRotinaSchema>
+
+/**
+ * Chaves do aviso do dia que a gestora confirma ter visto (`A39(e)`).
+ *
+ * Tetos contra corpo abusivo: uma equipe real não tem 500 linhas no aviso, e
+ * uma chave é `sai:` mais um cuid.
+ */
+export const ChavesDoAvisoSchema = z.array(z.string().min(1).max(80)).max(500)
+export const AvisoVistoEntradaSchema = z.object({ chaves: ChavesDoAvisoSchema })
 export type SituacaoEvento = z.infer<typeof SituacaoEventoSchema>
 
 // ─── Limites de robustez ─────────────────────────────────────

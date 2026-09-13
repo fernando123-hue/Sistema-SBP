@@ -202,7 +202,7 @@ export async function encerrar(
 
     await tx.afastamento.update({
       where: { id: afastamento.id },
-      data: { fim: entrada.fim },
+      data: { fim: entrada.fim, encerradoPor: ator.colaboradorId },
     })
 
     await auditar(tx, {

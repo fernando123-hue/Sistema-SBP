@@ -1,5 +1,5 @@
-import { avisoDoGestor } from '../../../../servicos/aviso-do-gestor'
-import { responder, rota } from '../../../../servidor/http'
+import { avisoDoGestor, marcarAvisoComoVisto } from '../../../../servicos/aviso-do-gestor'
+import { corpoJson, responder, rota } from '../../../../servidor/http'
 import { obterPrisma } from '../../../../servidor/prisma'
 import { exigirAtor } from '../../../../servidor/sessao'
 
@@ -13,5 +13,13 @@ export async function GET(): Promise<Response> {
   return rota(async () => {
     const ator = await exigirAtor()
     return responder(await avisoDoGestor(obterPrisma(), ator))
+  })
+}
+
+/** A gestora viu o aviso (`A39(e)`). Quem viu vem da sessão, nunca do corpo. */
+export async function POST(requisicao: Request): Promise<Response> {
+  return rota(async () => {
+    const ator = await exigirAtor()
+    return responder(await marcarAvisoComoVisto(obterPrisma(), await corpoJson(requisicao), ator))
   })
 }
