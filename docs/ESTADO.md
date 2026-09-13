@@ -1,14 +1,15 @@
 # Estado do projeto — retomada
 
-Última atualização: **12/09/2026, noite** — **fase 1 em andamento**, na branch `fase-1/privacidade-e-prazos`. Pronto e provado: **`A17` inteiro** — prazo editável, limpeza diária automática e aviso do dia para a gestora — e **`A20`** — texto e anexos dos e-mails apagados 7 dias depois da conclusão do último item, com aviso na Caixa. Falta na fase 1: **`A23`** (o que a IA extraiu, chave de busca, acerto gravado na revisão, trilha sem valores pessoais).
+Última atualização: **12/09/2026, fim da sessão** — **fase 1 em andamento**, na branch `fase-1/privacidade-e-prazos`. Pronto e provado: **`A17` inteiro** — prazo editável, limpeza diária automática e aviso do dia para a gestora — e **`A20`** — texto e anexos dos e-mails apagados 7 dias depois da conclusão do último item, com aviso na Caixa. **Falta na fase 1 só o `A23`** (o que a IA extraiu, chave de busca, acerto gravado na revisão, trilha sem valores pessoais).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> 1. **Leia `docs/planos/2026-09-12-fases-de-implementacao.md`** — ordem das 5 fases, o que cada uma entrega, o que confirmar com o dono. A **fase 1 (privacidade e prazos)** está no meio: `A17` e `A20` feitos, `A23` a fazer, na mesma branch.
-> 2. **[#40](https://github.com/fernando123-hue/Sistema-SBP/pull/40) e [#41](https://github.com/fernando123-hue/Sistema-SBP/pull/41) foram mesclados na `main` em 12/09/2026** (`44fa73d` e `276aac1`). Uma versão anterior deste arquivo dizia que estavam abertos.
-> 3. **Para ver telas rodando:** `npm run dev:local` (ou `preview_start {name: "sbp-local"}`), e em `/entrar` clique numa conta `@exemplo.test`. Nunca digite senha. Travas em `DECISOES.md § AT-17`.
-> 4. **O repositório voltou a ser privado** em 12/09/2026 — estava público com nomes reais da equipe nos documentos de origem.
-> 5. **Explique cada dúvida ao dono com um exemplo concreto do começo ao fim.** Nesta rodada, explicação abstrata não funcionou; exemplo de ponta a ponta funcionou sempre. Use nomes fictícios.
+> 1. **Confira onde está:** `git branch --show-current` tem de dizer `fase-1/privacidade-e-prazos`, e `git log --oneline main..HEAD` tem de mostrar, do mais novo ao mais antigo, o commit desta passagem de documentos, `bec289e` (A20), `250850a`, `f0175aa` e `73aa8cc` (A17). **A branch NÃO está no GitHub** — existe só nesta máquina. Enviar e abrir o PR é do dono autorizar.
+> 2. **Leia `docs/planos/2026-09-12-fase-1-a23.md`** — o plano do que falta: estado exato, perguntas ao dono, mapa conferido de onde o dado pessoal é gravado e lido (arquivo:linha), desenho proposto, ordem dos commits, como trabalhar e as armadilhas desta fase, com o roteiro de sabotagem.
+> 3. **Antes de codar a parte (a) do `A23`, pergunte ao dono os itens 22 a 26 de `DECISOES.md § H.4`.** A parte (c) — acerto gravado na revisão — pode começar já, e **tem de entrar antes** da (a).
+> 4. **Pergunta sobre tela vai com desenho das opções lado a lado.** Nesta fase o dono não entendeu duas vezes a pergunta da bolinha escrita, com exemplo; entendeu na hora com o desenho. Pergunta sobre regra vai com exemplo concreto do começo ao fim. Sempre linguagem simples e nomes fictícios.
+> 5. **Para ver telas rodando:** `preview_start {name: "sbp-local"}` (ou `npm run dev:local`), e em `/entrar` clique numa conta `@exemplo.test`. Nunca digite senha. Travas em `DECISOES.md § AT-17`.
+> 6. **Plano das 5 fases:** `docs/planos/2026-09-12-fases-de-implementacao.md`. #40 e #41 foram mesclados na `main` em 12/09/2026. O repositório é privado desde 12/09/2026.
 
 ### Fase 1 — o que `A17` entregou *(12/09/2026)*
 
@@ -28,7 +29,7 @@
 - **Arquivo sai antes da marca no banco** (`AT-25`): falha de disco deixa o e-mail pendente e a execução como falha, nunca um órfão.
 - Migração `20260913015834_email_suspeito_retido`.
 
-**Respondidas pelo dono em 12/09/2026 (`A39`):** matrícula quase nunca vem no e-mail (a chave de busca de `A23` vai ser, na maioria, o CPF protegido); aviso de conteúdo removido em linguagem simples; CPF protegido aprovado, com explicação por exemplo antes de implementar; cancelado conta do cancelamento, destacado. Também decidido (`A39(e)`): 3 dias à frente; quadro abre sozinho na primeira vez do dia; bolinha com quem entrou e quem saiu. Ausência cancelada marcada como "não aconteceu". Nenhuma pergunta da fase 1 em aberto neste momento.
+**Respondidas pelo dono em 12/09/2026 (`A39`):** matrícula quase nunca vem no e-mail (a chave de busca de `A23` vai ser, na maioria, o CPF protegido); aviso de conteúdo removido em linguagem simples; CPF protegido aprovado, com explicação por exemplo antes de implementar; cancelado conta do cancelamento, destacado. Também decidido (`A39(e)`): 3 dias à frente; quadro abre sozinho na primeira vez do dia; bolinha com quem entrou e quem saiu. Ausência cancelada marcada como "não aconteceu". **Abertas para o `A23`:** `DECISOES.md § H.4` itens 22 a 26 (título neutro, item manual, busca por CPF, justificativa na trilha, CPF inválido).
 
 Anterior (11/09/2026): **os 36 achados em aberto da auditoria de 08/09/2026** e **a revisão dos PRs #35 e #36**, com as correções. Ver *Esta retomada*, abaixo.
 

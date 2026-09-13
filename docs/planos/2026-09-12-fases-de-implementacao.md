@@ -9,12 +9,8 @@ As decisões estão em `docs/DECISOES.md § A`, de **A17 a A38**. Este arquivo n
 ## Antes de escrever a primeira linha
 
 1. **Leia** `CLAUDE.md`, `docs/ESTADO.md`, este plano, `docs/DECISOES.md § A17–A38` e `§ AT-17`.
-2. **Confira o que já está na `main`.** Na passagem, dois PRs estavam abertos e **não mesclados** — mesclar é do dono:
-   - [#40](https://github.com/fernando123-hue/Sistema-SBP/pull/40) — as 22 decisões e o `gemini-3.5-flash` como padrão (branch `decisoes/rodada-11-09`);
-   - [#41](https://github.com/fernando123-hue/Sistema-SBP/pull/41) — o acesso local sem senha para ver telas (branch `dev/acesso-local-sem-senha`).
-
-   CI verde nos dois. **A fase 1 depende dos dois.** Se ainda estiverem abertos, peça ao dono para mesclá-los antes de começar; não crie a branch da fase em cima de PR aberto sem ele concordar.
-3. **O dono aprovou começar pela fase 1**, na ordem abaixo.
+2. **#40 e #41 foram mesclados na `main` em 12/09/2026** (`44fa73d` e `276aac1`). A versão original deste item dizia que estavam abertos.
+3. **Andamento, conferido em 12/09/2026:** fase 1 na branch `fase-1/privacidade-e-prazos` (só local) — **`A17` e `A20` prontos e commitados; falta `A23`**, com plano próprio em `docs/planos/2026-09-12-fase-1-a23.md`. As outras fases não começaram.
 
 ## Como cada fase é feita
 
