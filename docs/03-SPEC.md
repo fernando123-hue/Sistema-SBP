@@ -252,7 +252,7 @@ Item **sem** liga (`ligaId` nulo) é grupo de tamanho 1 — indivisível por def
 | Port | Contrato | Adapter V1 | Depois |
 |---|---|---|---|
 | `IngestaoPort` | `buscarNovos(): EmailBruto[]` idempotente por `message_id` | `mock` (seed) | `imap` · `graph` · `gmail` |
-| `AiPort` | `interpretar(email): { itens[], confianca, evidencia, modelo, versaoPrompt }` | `mock` determinístico | `gemini` (gemini-3.6-flash, JSON + validação nossa) e `anthropic` (claude-sonnet-5, structured output). A política é comum: `ia-estruturada.ts` |
+| `AiPort` | `interpretar(email): { itens[], confianca, evidencia, modelo, versaoPrompt }` | `mock` determinístico | `gemini` (gemini-3.5-flash, JSON + validação nossa) e `anthropic` (claude-sonnet-5, structured output). A política é comum: `ia-estruturada.ts` |
 | `ArmazenamentoPort` | `guardar(bytes, extensao)` · `ler(chave)` · `remover(chave)` | `disco`, cifrado em AES-256-GCM (`H-D19`) | nuvem |
 | `AssistentePort` | `responder(quem, pergunta): { resposta, verbetesUsados, telaSugerida? }` | `busca` no manual local (sem rede) e `modelo` | — |
 | `ExportPort` | `exportar(periodo, formato)` | *(nenhum — planejado, não construído)* | `rest` para o sistema legado |

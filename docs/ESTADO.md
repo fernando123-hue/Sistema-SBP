@@ -1,6 +1,16 @@
 # Estado do projeto — retomada
 
-Última atualização: **11/09/2026** — **os 36 achados em aberto da auditoria de 08/09/2026**, trabalhados numa branch empilhada sobre a etapa de fechamento e maturação, e depois **a revisão dos PRs #35 e #36 e a correção do que ela achou**. Ver *Esta retomada*, logo abaixo.
+Última atualização: **12/09/2026** — **rodada de dúvidas com o dono: 22 decisões (A17 a A38)** e o **acesso local sem senha** para ver telas. A implementação começa na próxima sessão, pela **fase 1**, seguindo `docs/planos/2026-09-12-fases-de-implementacao.md`.
+
+> ## ▶ Próxima sessão: comece aqui
+>
+> 1. **Leia `docs/planos/2026-09-12-fases-de-implementacao.md`** — ordem das 5 fases, o que cada uma entrega, o que confirmar com o dono. O dono aprovou começar pela **fase 1 (privacidade e prazos)**.
+> 2. **Dois PRs estavam abertos, com CI verde, sem mesclar:** [#40](https://github.com/fernando123-hue/Sistema-SBP/pull/40) (decisões A17–A38 e `gemini-3.5-flash` como padrão) e [#41](https://github.com/fernando123-hue/Sistema-SBP/pull/41) (acesso local sem senha). A fase 1 depende dos dois; se ainda estiverem abertos, peça ao dono para mesclar.
+> 3. **Para ver telas rodando:** `npm run dev:local` (ou `preview_start {name: "sbp-local"}`), e em `/entrar` clique numa conta `@exemplo.test`. Nunca digite senha. Travas em `DECISOES.md § AT-17`.
+> 4. **O repositório voltou a ser privado** em 12/09/2026 — estava público com nomes reais da equipe nos documentos de origem.
+> 5. **Explique cada dúvida ao dono com um exemplo concreto do começo ao fim.** Nesta rodada, explicação abstrata não funcionou; exemplo de ponta a ponta funcionou sempre. Use nomes fictícios.
+
+Anterior (11/09/2026): **os 36 achados em aberto da auditoria de 08/09/2026** e **a revisão dos PRs #35 e #36**, com as correções. Ver *Esta retomada*, abaixo.
 
 > ## ⚠️ Leia estes seis pontos antes de tocar em qualquer coisa
 >
@@ -13,7 +23,7 @@
 
 ### Onde este trabalho parou, em uma frase
 
-Os 36 achados em aberto de 08/09/2026 foram corrigidos, respondidos ou convertidos em pergunta, e os achados da revisão publicada nos PRs #35 e #36 foram corrigidos; os dois PRs estão mesclados na `main`. O próximo passo humano é **entrar no sistema para verificar as telas que ninguém viu rodando** e **responder `DECISOES.md § H.4` itens 15 a 18**. Nada de código está pela metade.
+Os 36 achados em aberto de 08/09/2026 foram corrigidos, respondidos ou convertidos em pergunta, e os achados da revisão publicada nos PRs #35 e #36 foram corrigidos; os dois PRs estão mesclados na `main`. Em 12/09/2026 o dono respondeu a rodada de dúvidas (`§ H.4` itens 5, 6 provisório, 8, 10 a 18 e as perguntas de 07/09 — ver `§ A17–A38`), e o acesso local sem senha passou a permitir ver as telas rodando. **O próximo passo é a fase 1 do plano de implementação.** Nada de código está pela metade.
 
 ## Esta retomada — 10/09/2026
 
@@ -225,11 +235,11 @@ A cota ser por modelo é a saída: modelos diferentes têm orçamentos independe
 
 | Modelo | Casos corretos | Latência |
 |---|---|---|
-| `gemini-3.6-flash` *(padrão do adapter)* | 2 de 12 tentativas — resto `503` | 54–63 s |
-| `gemini-3.5-flash` | 7 de 8 | 5–11 s |
+| `gemini-3.6-flash` *(padrão até 12/09/2026)* | 2 de 12 tentativas — resto `503` | 54–63 s |
+| `gemini-3.5-flash` *(padrão desde 12/09/2026)* | 7 de 8 | 5–11 s |
 | `gemini-3.1-flash-lite` | 4 de 4 | 1–3 s |
 
-**A injeção foi recusada pelos três.** O `modeloPadrao` continua `gemini-3.6-flash` de propósito: trocá-lo muda que modelo processa o conteúdo por omissão, e isso é decisão do dono, não ajuste técnico.
+**A injeção foi recusada pelos três.** O `modeloPadrao` era `gemini-3.6-flash` até o dono decidir, em 12/09/2026, trocá-lo para `gemini-3.5-flash` (`DECISOES.md § A38`) — trocar muda que modelo processa o conteúdo por omissão, e por isso esperou a decisão. A camada gratuita segue só para teste, com dado sintético.
 
 ### As quatro perguntas que só a chefia responde
 
