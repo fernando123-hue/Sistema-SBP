@@ -646,6 +646,8 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 27. **Observação escrita ao concluir um item sai no prazo?** *(dono; levantada em 13/09/2026, fazendo a parte (d) do `A23`)* Ao concluir, a pessoa pode escrever uma observação livre — "Dra. Helena pediu retorno por telefone". Ela é gravada em `Execucao.observacao` (`servicos/fila.ts`, `concluir`), histórico que nenhum prazo alcança, e nenhuma das perguntas 22 a 26 a cobriu. É a mesma classe da justificativa do item 25. (a) Fica para sempre, como hoje. (b) Sai no mesmo prazo do texto do e-mail do item, morando fora de `Execucao` (invariante 11); fica para sempre só que houve observação. **Recomendação:** (b), pela mesma razão do item 25 e de `AT-21`. Perguntada ao dono em 13/09/2026, com o item 22.
 
+28. **Como é um número de matrícula?** *(dono; levantada em 13/09/2026, começando a parte (b) do `A23`)* A matrícula é guardada **sem data de exclusão** (`A23(b)`), e ela chega pela leitura automática do e-mail, que pode pôr qualquer texto no campo — um nome, ou um CPF escrito no lugar da matrícula. Sem saber o formato, o sistema não tem como recusar o que não é matrícula, e um nome ou CPF gravado ali ficaria para sempre. **A pergunta:** a matrícula é só número? Tem quantos dígitos, ou tem letra, ponto, traço? Um exemplo inventado no mesmo formato basta. **Até a resposta:** a parte (b) implementa só o CPF protegido; a matrícula não é gravada.
+
 ---
 
 ## Segundo fornecedor de IA: Gemini — 07/09/2026

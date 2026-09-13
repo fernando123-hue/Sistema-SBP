@@ -307,6 +307,16 @@ model Item {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
+  /// CPF protegido: o código que o servidor calcula a partir do CPF com o
+  /// segredo `BUSCA_SECRET` (`A23(b)`). Guardado SEM data de exclusão, para a
+  /// equipe achar o item digitando o CPF depois que o texto do e-mail saiu.
+  /// O CPF em si nunca é gravado aqui. Nulo quando não havia CPF, ou quando o
+  /// número não conferia (`A40`, resposta 26).
+  ///
+  /// Trocar `BUSCA_SECRET` quebra a busca de todo item cujo conteúdo já saiu:
+  /// não sobra CPF para recalcular. Mesmo cuidado de `ANEXOS_SECRET` (`AT-13`).
+  cpfProtegido String?
+
   /// Quando o item foi cancelado, se foi.
   ///
   /// `atualizadoEm` não serve: ele muda a cada escrita, então não responde
@@ -333,6 +343,7 @@ model Item {
   @@unique([emailId, sequencia])
   @@index([status, categoriaId])
   @@index([categoriaId, status, criadoEm])
+  @@index([cpfProtegido])
 }
 
 // ─────────────────────────────────────────────────────────────
