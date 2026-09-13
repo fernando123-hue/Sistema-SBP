@@ -225,11 +225,11 @@ A cota ser por modelo é a saída: modelos diferentes têm orçamentos independe
 
 | Modelo | Casos corretos | Latência |
 |---|---|---|
-| `gemini-3.6-flash` *(padrão do adapter)* | 2 de 12 tentativas — resto `503` | 54–63 s |
-| `gemini-3.5-flash` | 7 de 8 | 5–11 s |
+| `gemini-3.6-flash` *(padrão até 12/09/2026)* | 2 de 12 tentativas — resto `503` | 54–63 s |
+| `gemini-3.5-flash` *(padrão desde 12/09/2026)* | 7 de 8 | 5–11 s |
 | `gemini-3.1-flash-lite` | 4 de 4 | 1–3 s |
 
-**A injeção foi recusada pelos três.** O `modeloPadrao` continua `gemini-3.6-flash` de propósito: trocá-lo muda que modelo processa o conteúdo por omissão, e isso é decisão do dono, não ajuste técnico.
+**A injeção foi recusada pelos três.** O `modeloPadrao` era `gemini-3.6-flash` até o dono decidir, em 12/09/2026, trocá-lo para `gemini-3.5-flash` (`DECISOES.md § A38`) — trocar muda que modelo processa o conteúdo por omissão, e por isso esperou a decisão. A camada gratuita segue só para teste, com dado sintético.
 
 ### As quatro perguntas que só a chefia responde
 

@@ -106,8 +106,14 @@ export const PERFIL_GEMINI: PerfilDoFornecedor = {
    * *"no longer available to new users, please update to models/gemini-3.6-flash"*.
    * Quando repetir, o erro diz o nome novo — troque aqui, ou fixe `IA_MODELO`
    * sem esperar por uma nova versão do código.
+   *
+   * `3.5-flash`, e não o `3.6-flash` mais novo, por decisão do dono em
+   * 12/09/2026 (`DECISOES.md § A38`), com o medido em 07/09: o 3.6 acertou 2 de
+   * 12 tentativas — as outras 10 foram `503`, serviço sobrecarregado — e levou
+   * perto de um minuto; o 3.5 acertou 7 de 8, em 5 a 11 segundos. Esta camada é
+   * gratuita e serve só a teste com dado sintético.
    */
-  modeloPadrao: 'gemini-3.6-flash',
+  modeloPadrao: 'gemini-3.5-flash',
   /**
    * Credencial recusada é sistema mal configurado, nunca defeito deste e-mail
    * — precisa subir acima do laço de ingestão e parar o lote.
