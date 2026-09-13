@@ -232,7 +232,10 @@ export const MANUAL: readonly VerbeteDoManual[] = [
     texto:
       'Todo mundo vê que a pessoa está fora; só o gestor vê POR QUÊ. O motivo de um afastamento pode revelar condição de saúde, ' +
       'que é dado sensível pela LGPD, então ele não aparece para operador nem para colaborador — nem na tela, nem pela API. ' +
-      'Ao registrar, escreva no campo de observação só o necessário para a operação.',
+      'Ao registrar, escreva no campo de observação só o necessário para a operação. ' +
+      'O motivo também não fica para sempre: 7 dias depois de a pessoa voltar, a observação é apagada e o tipo vira "férias" ou "ausente". ' +
+      'As datas ficam. Ausência sem data de volta não conta até alguém marcar a volta. A limpeza roda sozinha uma vez por dia, ' +
+      'e o prazo pode ser mudado por quem é gestor, na tela Acesso, em "Prazos de retenção" — encurtar pede confirmação, porque apaga sem volta.',
   },
   {
     id: 'painel',

@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import type { AvisoDoGestor } from '../core/aviso-do-gestor'
 import { api, mensagemDoErro } from './api'
+import { AvisoDoDia } from './aviso-do-gestor'
 import { Botao, juntar } from './matrizes'
 
 /**
@@ -87,17 +89,72 @@ export function Assistente({ papel }: { papel: string }) {
   const [trocas, setTrocas] = useState<Troca[]>([])
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  /** Só existe para gestor (`A17`). Montado no servidor, sem IA. */
+  const [aviso, setAviso] = useState<AvisoDoGestor | null>(null)
+  const [erroDoAviso, setErroDoAviso] = useState<string | null>(null)
 
   const campo = useRef<HTMLInputElement>(null)
   const gatilho = useRef<HTMLButtonElement>(null)
   const fimDaConversa = useRef<HTMLDivElement>(null)
+  /** O painel abriu sozinho por causa do aviso, e não por um clique. */
+  const abertoPeloAviso = useRef(false)
 
   // Foco vai para o campo ao abrir e VOLTA para o botão ao fechar. Sem o
   // retorno, quem navega por teclado perde a posição e cai no começo da página.
+  //
+  // Exceto quando o painel abre SOZINHO com o aviso do dia: puxar o foco para
+  // o campo no carregamento da página tiraria a pessoa de onde ela estava, e o
+  // leitor de tela anunciaria um campo que ninguém pediu.
   useEffect(() => {
-    if (aberto) campo.current?.focus()
-    else gatilho.current?.focus()
+    if (aberto) {
+      if (abertoPeloAviso.current) {
+        abertoPeloAviso.current = false
+        return
+      }
+      campo.current?.focus()
+    } else gatilho.current?.focus()
   }, [aberto])
+
+  // `A17`: "aviso ao gestor ao entrar, no painel do assistente". Abre sozinho
+  // UMA vez por dia nesta aba — abrir a cada troca de tela ensinaria a fechar
+  // sem ler. Depois disso, o ponto no botão diz que há aviso.
+  useEffect(() => {
+    if (papel !== 'gestor') return
+    let vigente = true
+
+    api
+      .buscar<AvisoDoGestor>('/assistente/aviso')
+      .then((dados) => {
+        if (!vigente) return
+        setAviso(dados)
+        setErroDoAviso(null)
+        if (dados.vazio) return
+
+        const chave = `sbp:aviso-do-dia:${dados.hoje}`
+        try {
+          // Só a marca de "já mostrado hoje", nunca o conteúdo do aviso.
+          if (window.sessionStorage.getItem(chave) !== null) return
+          window.sessionStorage.setItem(chave, '1')
+        } catch {
+          // Armazenamento bloqueado pelo navegador: o aviso continua no painel e
+          // no ponto do botão; só não abre sozinho.
+          return
+        }
+        abertoPeloAviso.current = true
+        setAberto(true)
+      })
+      .catch((causa: unknown) => {
+        // A ajuda continua funcionando, e a falha aparece dentro do painel — não
+        // some calada.
+        if (vigente) setErroDoAviso(mensagemDoErro(causa))
+      })
+
+    return () => {
+      vigente = false
+    }
+  }, [papel])
+
+  const temAviso = aviso !== null && !aviso.vazio
 
   useEffect(() => {
     if (!aberto) return
@@ -154,6 +211,12 @@ export function Assistente({ papel }: { papel: string }) {
       >
         <span aria-hidden="true">?</span>
         Ajuda
+        {temAviso ? (
+          <>
+            <span aria-hidden="true" className="size-2 rounded-full bg-atencao" />
+            <span className="sr-only">(há aviso do dia)</span>
+          </>
+        ) : null}
       </button>
     )
   }
@@ -186,6 +249,13 @@ export function Assistente({ papel }: { papel: string }) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3" aria-live="polite" aria-busy={carregando}>
+        {temAviso ? <AvisoDoDia aviso={aviso} /> : null}
+        {erroDoAviso ? (
+          <p className="mb-4 rounded-md border border-alerta/40 bg-alerta-claro px-3 py-2 text-xs text-alerta">
+            Não foi possível montar o aviso do dia: {erroDoAviso}
+          </p>
+        ) : null}
+
         {trocas.length === 0 && !carregando ? (
           <div>
             <p className="text-sm text-tinta-suave">Sobre o que você quer saber?</p>

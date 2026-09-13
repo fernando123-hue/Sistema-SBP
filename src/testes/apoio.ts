@@ -24,6 +24,10 @@ export function atorDeTeste(colaboradorId: string, papel: Papel): Ator {
 
 export async function limparTudo(banco: Banco): Promise<void> {
   // Filhos antes dos pais, respeitando as chaves estrangeiras.
+  // As duas primeiras não têm chave nenhuma; um prazo editado ou uma rotina
+  // "já rodada hoje" vazando de um teste mudaria o resultado do seguinte.
+  await banco.prazoDeRetencao.deleteMany()
+  await banco.execucaoDeRotina.deleteMany()
   await banco.execucao.deleteMany()
   await banco.atribuicao.deleteMany()
   await banco.revisao.deleteMany()

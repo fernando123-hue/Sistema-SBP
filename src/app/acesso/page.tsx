@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { CadastroDeColaboradorSchema } from '../../core/esquemas'
-import { hojeIso } from '../../core/util/datas'
+import { hojeIso, paraDataIso } from '../../core/util/datas'
 import { api, mensagemDoErro } from '../../componentes/api'
+import { PrazosDeRetencao } from '../../componentes/prazos-de-retencao'
 import {
   Aviso,
   Botao,
@@ -482,6 +483,8 @@ export default function Acesso() {
         carga da pessoa continua de pé, porque a auditoria precisa dele.
       </p>
 
+      <PrazosDeRetencao aoFalhar={setErro} ocupado={ocupado !== null} />
+
       <Afastamentos
         equipe={equipe ?? []}
         aoMudar={carregar}
@@ -500,6 +503,15 @@ const TIPOS: { valor: string; rotulo: string }[] = [
   { valor: 'outro', rotulo: 'Outro' },
 ]
 
+/**
+ * O rótulo de um tipo GRAVADO. `ausente` não se escolhe no formulário — nasce
+ * só quando o prazo de `A17` apaga o motivo —, mas aparece na lista.
+ */
+const ROTULO_DO_TIPO_GRAVADO: Record<string, string> = {
+  ...Object.fromEntries(TIPOS.map((tipo) => [tipo.valor, tipo.rotulo])),
+  ausente: 'Ausente',
+}
+
 interface Afastamento {
   id: string
   colaboradorId: string
@@ -509,6 +521,7 @@ interface Afastamento {
   fim: string | null
   observacao: string | null
   vigente: boolean
+  motivoExpurgadoEm: string | null
 }
 
 function dia(iso: string): string {
@@ -738,8 +751,7 @@ function Afastamentos({
                   <div className="min-w-0">
                     <span className="text-sm font-medium">{afastamento.nome}</span>
                     <span className="ml-2 text-xs text-tinta-suave">
-                      {TIPOS.find((tipo) => tipo.valor === afastamento.tipo)?.rotulo ??
-                        afastamento.tipo}
+                      {ROTULO_DO_TIPO_GRAVADO[afastamento.tipo] ?? afastamento.tipo}
                       {' · '}
                       {dia(afastamento.inicio)}
                       {afastamento.fim ? ` a ${dia(afastamento.fim)}` : ' — sem data de volta'}
@@ -753,6 +765,17 @@ function Afastamentos({
                     {afastamento.observacao ? (
                       <span className="mt-0.5 block text-xs text-tinta-fraca">
                         {afastamento.observacao}
+                      </span>
+                    ) : null}
+                    {/*
+                      Sem esta linha, "Ausente" sem observação seria ambíguo:
+                      alguém registrou assim, ou o prazo apagou? A gestora
+                      precisa saber que o motivo existiu e saiu por regra.
+                    */}
+                    {afastamento.motivoExpurgadoEm ? (
+                      <span className="mt-0.5 block text-xs text-tinta-fraca">
+                        motivo apagado pelo prazo de retenção em{' '}
+                        {dia(paraDataIso(new Date(afastamento.motivoExpurgadoEm)))}
                       </span>
                     ) : null}
                   </div>

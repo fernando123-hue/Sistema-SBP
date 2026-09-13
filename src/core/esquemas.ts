@@ -115,7 +115,12 @@ export const AcaoAuditavelSchema = z.enum([
   'afastamento_registrado',
   'afastamento_cancelado',
   'afastamento_encerrado',
+  /** Formato anterior a `A17`: só a observação saía. Fica porque a trilha já tem linhas com ele. */
   'afastamento_observacao_expurgada',
+  /** `A17`: observação apagada e tipo reduzido a `ferias` ou `ausente`. */
+  'afastamento_motivo_expurgado',
+  // Retenção
+  'prazo_de_retencao_alterado',
   // Memória do setor
   'nota_registrada',
   'nota_arquivada',
@@ -160,6 +165,9 @@ export const OperacaoSchema = z.enum([
   'registrar afastamento',
   'cancelar afastamento',
   'encerrar afastamento',
+  'ver prazos de retenção',
+  'alterar prazo de retenção',
+  'ver aviso do gestor',
   'registrar nota do setor',
   'arquivar nota do setor',
 ])
@@ -200,6 +208,13 @@ export const SituacaoEventoSchema = z.enum([
   'falha',
   'reprocessavel',
 ])
+
+/** Rotinas que o próprio sistema roda, uma vez por dia. Ver `ExecucaoDeRotina`. */
+export const RotinaSchema = z.enum(['limpeza_diaria'])
+export type Rotina = z.infer<typeof RotinaSchema>
+
+export const SituacaoDaRotinaSchema = z.enum(['em_curso', 'sucesso', 'falha'])
+export type SituacaoDaRotina = z.infer<typeof SituacaoDaRotinaSchema>
 export type SituacaoEvento = z.infer<typeof SituacaoEventoSchema>
 
 // ─── Limites de robustez ─────────────────────────────────────
@@ -394,6 +409,7 @@ export const EscalaEntradaSchema = z.object({
   observacao: z.string().max(500).nullable().default(null),
 })
 
+/** O que o gestor escolhe ao REGISTRAR uma ausência. */
 export const TipoDeAfastamentoSchema = z.enum([
   'ferias',
   'falta',
@@ -402,6 +418,54 @@ export const TipoDeAfastamentoSchema = z.enum([
   'outro',
 ])
 export type TipoDeAfastamento = z.infer<typeof TipoDeAfastamentoSchema>
+
+/**
+ * O tipo como pode estar GRAVADO — o registrável mais `ausente`.
+ *
+ * `ausente` não se escolhe: nasce só da retenção (`A17`). Passado o prazo
+ * depois da volta, atestado, licença, falta e outro são reduzidos a ele, e
+ * férias continua férias. Aceitar `ausente` na entrada deixaria o gestor
+ * registrar uma ausência já sem motivo — e a tela passaria a mostrar como
+ * "motivo apagado pelo prazo" algo que nunca teve motivo nenhum.
+ */
+export const TipoDeAfastamentoGravadoSchema = z.enum([
+  'ferias',
+  'falta',
+  'atestado',
+  'licenca',
+  'outro',
+  'ausente',
+])
+export type TipoDeAfastamentoGravado = z.infer<typeof TipoDeAfastamentoGravadoSchema>
+
+/**
+ * Prazos de retenção que o gestor edita pela tela (`A17`).
+ *
+ * Um valor por regra de retenção que EXISTE no código. A chave de um prazo
+ * que nenhuma rotina aplica não entra aqui: a tela ofereceria um número que
+ * não apaga nada, e prazo que não é cumprido é pior do que prazo ausente.
+ */
+export const ChaveDePrazoSchema = z.enum(['motivo_de_afastamento'])
+export type ChaveDePrazo = z.infer<typeof ChaveDePrazoSchema>
+
+export const PRAZO_MINIMO_EM_DIAS = 1
+/**
+ * Teto contra erro de digitação, não política: `70` virando `7000` guardaria
+ * dado de saúde por duas décadas sem ninguém notar. Dez anos cobre qualquer
+ * prazo razoável. Hipótese em `DECISOES.md § C`.
+ */
+export const PRAZO_MAXIMO_EM_DIAS = 3650
+
+export const AlteracaoDePrazoSchema = z.object({
+  chave: ChaveDePrazoSchema,
+  dias: z.number().int().min(PRAZO_MINIMO_EM_DIAS).max(PRAZO_MAXIMO_EM_DIAS),
+  /**
+   * Encurtar apaga, na limpeza seguinte, o que o prazo antigo ainda guardava —
+   * sem volta. A confirmação é exigida pelo SERVIDOR, não só pela tela: um
+   * pedido feito por fora dela não pode pular a pergunta.
+   */
+  confirmarEncurtamento: z.boolean().default(false),
+})
 
 /**
  * Ausência declarada de um colaborador (`A10`).

@@ -63,7 +63,7 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 | `npm run ia:experimentar` | Compara mock e modelo real em 4 casos. Único caminho que gasta crédito |
 | `npm run db:seed` | Cadastro base sintético |
 | `PERMITIR_LIMPEZA=sim npm run db:limpar` | Apaga dados transacionais, preserva o cadastro. Exige o opt-in explícito: sem ele, recusa — a trava anterior deduzia segurança da ausência de `NODE_ENV` |
-| `npm run db:expurgar` | Redige a observação de afastamentos antigos (dado de saúde). **Irreversível**, não agendado, prazo hipotético — ver `DECISOES.md § AT-11` |
+| `npm run db:expurgar` | Roda agora a limpeza diária que o servidor já roda sozinho: apaga o motivo das ausências cujo prazo venceu (`A17`). **Irreversível**; uma execução por dia — se o servidor já rodou hoje, não faz nada. O prazo é o da tela de acesso, não de variável de ambiente |
 | `npm run anexos:conferir` | Diz quantos anexos ainda estão em texto puro no disco |
 | `npm run anexos:recifrar` | Cifra os que faltam, conferindo cada um pela leitura antes de trocar |
 | `npm run db:migrate` | Cria e aplica migração |
@@ -114,7 +114,7 @@ Toda saída de IA passa por `InterpretacaoSchema` (Zod). Uma resposta que não v
 
 - **Conteúdo externo é dado, nunca instrução.** Corpo de e-mail, assunto e nome de anexo passam por truncar → detectar → delimitar ([`conteudo-nao-confiavel.ts`](src/core/seguranca/conteudo-nao-confiavel.ts)). A defesa real não é a regex: é a arquitetura — a IA não decide quem recebe nem quanto, então uma injeção bem-sucedida no máximo classifica errado, e a revisão pega.
 - **Anexos:** allowlist de extensão, travessia de diretório removida do nome, teto de tamanho e **conferência do tipo real pelos bytes** ([`assinatura-de-arquivo.ts`](src/core/seguranca/assinatura-de-arquivo.ts)) — um executável chamado `laudo.pdf` passa pela allowlist inteiro e só a assinatura o denuncia. O MIME type declarado pelo remetente é ignorado. Arquivo recusado não vai para o disco.
-- **Retenção:** conteúdo do e-mail e bytes de anexo vivem em linhas próprias, expurgáveis sem derrubar item, carga, conservação ou auditoria. Existe **uma** rotina de expurgo (`npm run db:expurgar`), que alcança só a observação de afastamento, não é agendada e roda com um prazo **hipotético** — a decisão de prazo é do dono do negócio, e está em aberto (`docs/DECISOES.md § H.4`, item 12). Para o corpo do e-mail e os anexos, nenhum prazo foi definido e nada apaga nada.
+- **Retenção:** conteúdo do e-mail e bytes de anexo vivem em linhas próprias, expurgáveis sem derrubar item, carga, conservação ou auditoria. A **limpeza diária** roda sozinha dentro do servidor (`src/instrumentation.ts`) e, hoje, alcança o **motivo de afastamento**: 7 dias depois da volta, a observação sai e o tipo vira `férias` ou `ausente` (`docs/DECISOES.md § A17`); o gestor edita o prazo na tela de acesso, com trilha e confirmação antes de encurtar. Conteúdo do e-mail, anexos e campos extraídos pela IA (`A20`, `A23`) **ainda não têm rotina** — enquanto a fase 1 não terminar, nada apaga nada ali.
 - **Idempotência:** `Email.messageId` é único. Reprocessar nunca duplica carga.
 - **Responsável único:** garantido por índice do banco, não por código.
 - **Segredos:** só via ambiente, validados na inicialização. `.env` fora do repositório.

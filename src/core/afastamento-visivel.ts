@@ -18,7 +18,15 @@ import type { Papel } from './esquemas'
  * `atestado` virasse um rótulo próprio e os outros não, a ausência do rótulo
  * já denunciaria o motivo.
  */
-export type RotuloDeAfastamento = 'ferias' | 'indisponivel' | 'atestado' | 'licenca' | 'falta' | 'outro'
+export type RotuloDeAfastamento =
+  | 'ferias'
+  | 'indisponivel'
+  | 'atestado'
+  | 'licenca'
+  | 'falta'
+  | 'outro'
+  /** Motivo já apagado pelo prazo de `A17`. Só o gestor chega a vê-lo com este nome. */
+  | 'ausente'
 
 /**
  * Traduz o tipo real no que este papel pode ver.

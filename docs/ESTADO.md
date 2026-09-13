@@ -1,14 +1,25 @@
 # Estado do projeto — retomada
 
-Última atualização: **12/09/2026** — **rodada de dúvidas com o dono: 22 decisões (A17 a A38)** e o **acesso local sem senha** para ver telas. A implementação começa na próxima sessão, pela **fase 1**, seguindo `docs/planos/2026-09-12-fases-de-implementacao.md`.
+Última atualização: **12/09/2026, noite** — **fase 1 em andamento**, na branch `fase-1/privacidade-e-prazos`. Pronto e provado: **`A17` inteiro** — prazo editável, limpeza diária automática e aviso do dia para a gestora. Falta na fase 1: **`A20`** (conteúdo do e-mail e anexos) e **`A23`** (o que a IA extraiu, chave de busca, acerto gravado na revisão, trilha sem valores pessoais).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> 1. **Leia `docs/planos/2026-09-12-fases-de-implementacao.md`** — ordem das 5 fases, o que cada uma entrega, o que confirmar com o dono. O dono aprovou começar pela **fase 1 (privacidade e prazos)**.
-> 2. **Dois PRs estavam abertos, com CI verde, sem mesclar:** [#40](https://github.com/fernando123-hue/Sistema-SBP/pull/40) (decisões A17–A38 e `gemini-3.5-flash` como padrão) e [#41](https://github.com/fernando123-hue/Sistema-SBP/pull/41) (acesso local sem senha). A fase 1 depende dos dois; se ainda estiverem abertos, peça ao dono para mesclar.
+> 1. **Leia `docs/planos/2026-09-12-fases-de-implementacao.md`** — ordem das 5 fases, o que cada uma entrega, o que confirmar com o dono. A **fase 1 (privacidade e prazos)** está no meio: `A17` feito, `A20` e `A23` a fazer, na mesma branch.
+> 2. **[#40](https://github.com/fernando123-hue/Sistema-SBP/pull/40) e [#41](https://github.com/fernando123-hue/Sistema-SBP/pull/41) foram mesclados na `main` em 12/09/2026** (`44fa73d` e `276aac1`). Uma versão anterior deste arquivo dizia que estavam abertos.
 > 3. **Para ver telas rodando:** `npm run dev:local` (ou `preview_start {name: "sbp-local"}`), e em `/entrar` clique numa conta `@exemplo.test`. Nunca digite senha. Travas em `DECISOES.md § AT-17`.
 > 4. **O repositório voltou a ser privado** em 12/09/2026 — estava público com nomes reais da equipe nos documentos de origem.
 > 5. **Explique cada dúvida ao dono com um exemplo concreto do começo ao fim.** Nesta rodada, explicação abstrata não funcionou; exemplo de ponta a ponta funcionou sempre. Use nomes fictícios.
+
+### Fase 1 — o que `A17` entregou *(12/09/2026)*
+
+- **Prazo editável** (`/acesso`, "Prazos de retenção"): só gestor; de 1 a 3.650 dias; mudança na trilha com antes e depois; **encurtar exige confirmação no servidor**, não só na tela. Código: `core/retencao.ts`, `servicos/retencao.ts`, `app/api/retencao`.
+- **Limpeza diária sozinha** (`src/instrumentation.ts`): tenta a cada 15 minutos; `ExecucaoDeRotina (rotina, data)` único garante uma execução por dia; falha fica registrada e é tentada até 3 vezes. `npm run db:expurgar` roda a mesma limpeza, pela mesma trava — **não aceita mais prazo por variável de ambiente**. Ver `DECISOES.md § AT-18`.
+- **Motivo de afastamento:** 7 dias depois da volta, a observação sai e o tipo vira `ferias` ou `ausente` (novo valor, que só nasce da limpeza). Cancelado conta do cancelamento (`AT-19`, confirmada pelo dono em `A39`, com a ausência cancelada destacada no aviso). Sem data de volta, não corre. A ficha mostra "motivo apagado pelo prazo em…".
+- **A trilha deixou de guardar o motivo** (`AT-21`): o registro de afastamento grava o tipo já reduzido; o expurgo grava o tipo que ficou. **As linhas da trilha anteriores a 12/09/2026 ainda têm o tipo real** — só dado sintético.
+- **Aviso do dia para a gestora** no painel de Ajuda: fora hoje e por quê, quem volta hoje ou amanhã, motivos que saem em até 3 dias (ou atrasados), e limpeza que falhou. Montado no servidor, **sem IA**; abre sozinho uma vez por dia (`AT-22`).
+- **Prova:** cada trava vista falhando contra sabotagem própria — 8 em `A17` (fronteira do dia, trilha do registro, confirmação de encurtamento, uma vez por dia, redução do tipo, cancelado, prazo corrompido no banco, limite de tentativas) e as do aviso. Migração `20260913003033_retencao_do_motivo_e_rotina_diaria`.
+
+**Respondidas pelo dono em 12/09/2026 (`A39`):** matrícula quase nunca vem no e-mail (a chave de busca de `A23` vai ser, na maioria, o CPF protegido); aviso de conteúdo removido em linguagem simples; CPF protegido aprovado, com explicação por exemplo antes de implementar; cancelado conta do cancelamento, destacado. **Aberta:** `AT-22` — 3 dias à frente e abrir sozinho. Visto rodando: o painel aberto sozinho cobre os botões da direita da lista em `/acesso` até ser fechado.
 
 Anterior (11/09/2026): **os 36 achados em aberto da auditoria de 08/09/2026** e **a revisão dos PRs #35 e #36**, com as correções. Ver *Esta retomada*, abaixo.
 

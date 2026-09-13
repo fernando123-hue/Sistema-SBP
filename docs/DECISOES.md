@@ -71,6 +71,8 @@ Nenhuma hipótese vira regra silenciosamente. Este arquivo é a fonte da verdade
 
 | A38 | Fornecedor de IA: independente por construção, Anthropic como proposta, gratuito só para teste *(12/09/2026)* | **Reafirma `A15` e o invariante 2 para o sistema atual e o futuro:** nada pode depender de um modelo ou de uma empresa; trocar de fornecedor continua sendo um arquivo de adapter e um valor em `IA_ADAPTER`. **Proposta do dono à empresa: Anthropic** para o sistema em produção — pode ser aceita ou não, e por isso a independência não é enfeite: se a empresa escolher outro fornecedor, a troca não toca `servicos/`, `app/` nem `core/`. **A camada gratuita do Gemini é para teste e validação**, e continua sendo usada até a empresa rodar o sistema — **só com dado sintético**. **E-mail real só vai para modelo em camada paga**, cujos termos não usem o conteúdo para treinar — a conferir nos termos vigentes do fornecedor escolhido, antes do primeiro dado real (invariante 9). **Medição autorizada:** a bateria de e-mails sintéticos (`npm run ia:experimentar`) pode rodar nos modelos gratuitos, dentro da cota, para produzir a linha de base de `A37`; medição em modelo pago gasta crédito e fica para quando houver decisão sobre ele. **Modelo padrão dos testes: `gemini-3.5-flash`** (decisão do dono, E2), no lugar de `gemini-3.6-flash` — medido em 07/09: 7 de 8 corretos em 5–11 s, contra 2 de 12 (resto `503`) em ~1 min. **Repositório tornado privado pelo dono em 12/09/2026**, depois do alerta de que estava público com nomes reais da equipe nos documentos de origem. |
 
+| A39 | Respostas do dono durante a fase 1 *(12/09/2026)* | **(a) A matrícula quase nunca vem no e-mail.** Ela só existe depois que o associado é cadastrado no sistema da associação; aparece em e-mail só em casos como pedido de correção de uma informação. Consequência para `A23(b)`: a chave de busca que vai valer na maior parte dos itens é o **CPF protegido**; a matrícula é guardada quando vier. O quanto isso basta para a equipe achar um item antigo vai ser refinado pelos feedbacks (`A21`). **(b) O aviso de conteúdo removido (`A20`) usa linguagem simples**, sem termo técnico. **(c) O CPF protegido com segredo próprio do servidor está aprovado**, com o pedido de que o funcionamento seja explicado com exemplo antes da implementação. **(d) Ausência cancelada: o relógio do motivo conta do cancelamento** (confirma `AT-19`), **e a ausência cancelada precisa aparecer destacada como cancelada** onde o motivo dela for mostrado. |
+
 **Impacto em A4 — não é só configuração, é mudança no motor.** Hoje `distribuir()` (`src/core/distribuicao/motor.ts`) recebe uma `quantidade` escalar por categoria e reparte por resto-maior (RN-04); ele não sabe que um lote de ligantes se divide em grupos por `liga_id`. Para cumprir A4, a categoria `LIGANTE`/`E-MAIL LIGA` precisa de uma unidade de entrada nova — grupos (liga, tamanho) em vez de uma contagem plana — com alocação gulosa por maior-grupo-primeiro, mantendo a mesma trava de conservação (`Σ atribuições == quantidade de entrada`) e o mesmo livro-razão de crédito. Isso vai para `docs/03-SPEC.md` (contrato do motor) antes de mexer no código. Ver `ESTADO.md` → *Próximo passo sugerido*.
 
 ### Etapa 6 — fluxo atual e mapeamento (base de A5)
@@ -320,7 +322,7 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **O que a rotina NÃO alcança:** `EmailConteudo`, bytes de anexo, `Item.payload` e `Revisao` — os itens 10 e 11 do `§ H.4`, também sem resposta. O nome do arquivo fala de LGPD; o alcance é um campo.
 
-**Status:** ⛔ **substituída em 11/09/2026 pela decisão `§ A17`** — 7 dias depois da volta, editável pelo gestor, com o tipo reduzido a `férias` ou `ausente`. Até a implementação, os 90 dias desta hipótese continuam no código.
+**Status:** ⛔ **substituída em 11/09/2026 pela decisão `§ A17`** — 7 dias depois da volta, editável pelo gestor, com o tipo reduzido a `férias` ou `ausente`. **Implementada em 12/09/2026** (branch `fase-1/privacidade-e-prazos`): os 90 dias saíram do código, e a rotina passou a rodar sozinha — ver `AT-18` a `AT-21`.
 
 ### AT-12 — Anexo em texto puro é lido como legado *(08/09/2026)*
 
@@ -375,6 +377,46 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 **Motivo:** toda tela além de `/entrar` exige login, e o agente não digita senha — então toda mudança de tela saía "conferida por tipos e build, não vista rodando". O dono pediu que as senhas fossem tiradas temporariamente para o agente entrar e ver o que está sendo feito, **sem deixar falha de segurança**. Tirar a senha foi recusado como forma: é mudança que alguém precisa lembrar de desfazer, e a esquecida é a que chega à produção. No lugar, cinco travas independentes (`src/servidor/acesso-local.ts`): **(1)** desligado por padrão — só `npm run dev:local` liga, e só para aquele processo; **(2)** `ambiente()` recusa subir com a variável ligada em `NODE_ENV=production`; **(3)** o servidor local escuta só em `127.0.0.1` (e o script não repassa argumento nenhum ao Next, para `--hostname 0.0.0.0` não reabrir a porta), a rota recusa endereço ou origem fora de loopback, e a entrada só é aceita quando pedida pela própria tela — `Sec-Fetch-Site: same-origin` e corpo `application/json` —, o que fecha o CSRF por formulário de outro site que a revisão de segurança achou; **(4)** só conta `@exemplo.test`, domínio reservado que nenhuma pessoa real tem; **(5)** o cookie leva a marca `local` assinada, e `perfilAtual` derruba essa sessão no instante em que o acesso é desligado ou a conta deixa de ser sintética. Toda entrada vai para a trilha como `entrada_local_sem_senha`, e uma faixa aparece em todas as telas enquanto a sessão local estiver aberta. Desligada, a rota responde 404, como caminho inexistente.
 
 **Impacto:** a sessão local dispensa a troca de senha provisória — ninguém usou senha, e as contas do seed nascem todas com provisória. Uma sessão aberta **com senha** não ganha nada com o acesso ligado (provado). Cada trava foi vista falhando contra uma sabotagem própria, e a trava de rede foi conferida também com o servidor rodando (origem da rede local: 404; da própria máquina: 200). **Premissa registrada, não provada por teste:** a conferência de `x-forwarded-for` confia no que foi medido em `servidor/http.ts` — sem o cabeçalho vindo do cliente, o Next o preenche com o endereço do socket. Isso é comportamento interno do Next, não contrato; os testes usam `Request` cru. A trava que não depende disso é a do endereço de escuta (`127.0.0.1`), e é por ela que a premissa pesa pouco hoje. Reconferir a cada atualização do Next. **Resíduo conhecido:** `corpoJson` não confere `Content-Type` em nenhuma rota. Nas autenticadas, o cookie `sameSite=lax` não vai em formulário de outro site; a de entrada com senha exige a senha. Fica registrado, sem mudança, por não haver caminho explorável hoje. **Status:** ✅ adotado. Continua proibido ligar a variável no `.env`, usar com banco de dado real ou em servidor publicado.
+
+### AT-18 — A limpeza diária roda dentro do próprio servidor *(12/09/2026)*
+
+**Hipótese:** `A17` diz "a limpeza roda sozinha, uma vez por dia" e não diz com o quê. O servidor tenta a cada 15 minutos (`src/instrumentation.ts`), e a linha `(rotina, data)` única em `ExecucaoDeRotina` garante uma execução por dia, por mais gatilhos que existam. Falhou, fica `falha` com a mensagem e um evento em `EventoProcessamento`, e é tentada de novo — até **3 vezes no dia**. Uma execução `em_curso` há **30 minutos** é dada como de processo que morreu e é retomada. `npm run db:expurgar` roda a mesma limpeza pela mesma trava.
+
+**Motivo:** o sistema roda num servidor só, ligado o dia inteiro, na rede da associação. Um cron do sistema operacional seria mais uma peça para instalar e lembrar em cada máquina — e a esquecida é a que deixa dado de saúde guardado além do prazo sem ninguém saber. O limite de tentativas existe porque uma linha corrompida derrubaria a limpeza a cada 15 minutos e encheria a memória operacional de eventos iguais; o que precisa acontecer é alguém olhar.
+
+**Impacto:** instalação sem servidor ligado o dia todo precisa de `npm run db:expurgar` num agendador externo. Com mais de uma instância do servidor, a trava continua valendo (é no banco). Os números 15, 3 e 30 não são de negócio, e mudam por engenharia. **Status:** ⏳ adotado; reavaliar se a forma de implantação mudar.
+
+### AT-19 — Ausência cancelada: o relógio do motivo conta do cancelamento *(12/09/2026)*
+
+**Hipótese:** `A17` fala de ausência que terminou e de ausência sem data de volta; não fala da cancelada. Aqui ela conta do dia do cancelamento, mesmo com o `fim` registrado no futuro.
+
+**Motivo:** ausência que não aconteceu não tem volta a esperar — férias adiadas para dezembro não podem guardar um atestado registrado por engano até lá. É a mesma escolha que `A20` fez para o item cancelado.
+
+**Impacto:** o motivo de um registro cancelado sai 7 dias depois do cancelamento. **Status:** ✅ **confirmada pelo dono em 12/09/2026 (`A39(d)`)**, com o pedido de destaque: no aviso do dia, a linha de uma ausência cancelada leva a marca "ausência cancelada".
+
+### AT-20 — O prazo editável vai de 1 a 3.650 dias *(12/09/2026)*
+
+**Hipótese:** o gestor escolhe qualquer número inteiro de 1 a 3.650 dias.
+
+**Motivo:** o piso impede prazo zero ou negativo, que poria a data de corte no futuro e apagaria o motivo de quem voltou ontem. O teto é contra erro de digitação, não política: `70` virando `7000` guardaria dado de saúde por duas décadas sem ninguém notar.
+
+**Impacto:** nenhum na operação; o teto só barra digitação absurda. **Status:** ✅ adotado; muda por engenharia se aparecer caso real.
+
+### AT-21 — A trilha nunca guarda o motivo de uma ausência *(12/09/2026)*
+
+**Hipótese:** o registro de afastamento grava na trilha o tipo **já reduzido** (`férias` ou `ausente`), e o expurgo grava o tipo que ficou e se havia observação — nunca o tipo antigo nem o texto. Férias sem observação vencem e são carimbadas **sem** linha na trilha, porque não havia o que apagar.
+
+**Motivo:** a trilha é append-only e nenhuma retenção a alcança. Até aqui, `afastamento_registrado` gravava `tipo: "atestado"` no dia do registro — apagar o motivo da linha do afastamento sete dias depois seria teatro, com a cópia eterna na trilha. É a mesma lógica que `A23(d)` decidiu para título e valores do item.
+
+**Impacto:** o motivo real existe só na linha do afastamento, pelo prazo de `A17`. **Linhas antigas da trilha, de antes de 12/09/2026, ainda têm o tipo real** — hoje só dado sintético, e é por isso que decidir agora é possível. **Status:** ✅ adotado.
+
+### AT-22 — O aviso do dia olha 3 dias à frente e abre sozinho uma vez por dia *(12/09/2026)*
+
+**Hipótese:** `A17` pede um aviso à gestora "ao entrar" com "que motivos expiram nos próximos dias". Aqui, **3 dias** à frente — a gestora que entra na sexta vê o que sai até segunda. O motivo que já devia ter saído e continua guardado aparece como **atrasado**, e a limpeza que falhou aparece no topo. O painel **abre sozinho uma vez por dia por aba**, sem puxar o foco; depois disso, um ponto no botão "Ajuda" diz que há aviso. Aviso vazio não abre nada.
+
+**Motivo:** abrir a cada troca de tela ensinaria a fechar sem ler. Três dias cobrem o fim de semana sem encher a lista. A marca "já mostrado hoje" fica no `sessionStorage` do navegador — só a marca, nunca o conteúdo.
+
+**Impacto:** nenhum dado novo é gravado no servidor. O conteúdo nunca passa pelo modelo de IA (invariante 13). **Visto rodando em 12/09/2026:** o painel aberto sozinho fica no canto inferior direito e cobre os botões da direita da lista em `/acesso` ("Não aconteceu") até ser fechado — o foco não é roubado, e `Esc` fecha. **Status:** ⏳ provisório; pergunta reformulada ao dono com exemplo; ajustar pelos feedbacks da gestora (`A21`).
 
 ---
 

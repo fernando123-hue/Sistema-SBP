@@ -152,7 +152,8 @@ model Escala {
 model Afastamento {
   id            String    @id @default(cuid())
   colaboradorId String
-  /// ferias | falta | atestado | licenca | outro
+  /// ferias | falta | atestado | licenca | outro — e `ausente`, que só nasce da
+  /// retenção (`A17`): passado o prazo, todo tipo que não é férias vira ele.
   tipo          String
   /// ISO date `YYYY-MM-DD`, inclusivo.
   inicio        String
@@ -169,10 +170,19 @@ model Afastamento {
   canceladoEm   DateTime?
   canceladoPor  String?
 
+  /// Quando o motivo saiu pelo prazo de retenção (`A17`): observação apagada e
+  /// tipo reduzido. Mesmo papel de `Email.conteudoExpurgadoEm` — sem ele,
+  /// `observacao` nula não diria se a ausência nunca teve observação ou se ela
+  /// foi apagada, e a rotina diária voltaria a olhar a mesma linha para sempre.
+  motivoExpurgadoEm DateTime?
+
   colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
 
   @@index([colaboradorId, inicio])
   @@index([inicio, fim])
+  /// A rotina diária pergunta "que motivos ainda estão guardados?" — e sem este
+  /// índice a pergunta varre a tabela inteira, que cresce para sempre.
+  @@index([motivoExpurgadoEm])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -619,6 +629,48 @@ model RegraDistribuicao {
   categoria Categoria? @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
 
   @@index([tipo, ativo])
+}
+
+/// Prazo de retenção editado pelo gestor (`A17`).
+///
+/// Linha só existe depois da primeira mudança: sem linha, vale o padrão
+/// decidido, que mora em `core/retencao.ts`. Quem mudou, de quanto para quanto
+/// e quando fica na TRILHA (`prazo_de_retencao_alterado`) — aqui é só o valor
+/// em vigor, e por isso esta tabela pode ser atualizada.
+model PrazoDeRetencao {
+  /// `ChaveDePrazoSchema`.
+  chave       String   @id
+  dias        Int
+  alteradoPor String
+  alteradoEm  DateTime @updatedAt
+}
+
+/// Uma rotina automática, uma vez por dia (`A17`: "a limpeza roda sozinha").
+///
+/// `(rotina, data)` único é o que impede duas execuções no mesmo dia — o
+/// servidor pode tentar de hora em hora, o `npm run` manual pode rodar junto, e
+/// o modo de desenvolvimento recarrega o módulo a cada edição. Só uma ganha.
+///
+/// Não é trilha de auditoria: a linha muda de `em_curso` para `sucesso` ou
+/// `falha`. O que cada execução apagou vai para `LogAuditoria`, linha a linha.
+model ExecucaoDeRotina {
+  id           String    @id @default(cuid())
+  /// `RotinaSchema`.
+  rotina       String
+  /// Dia da operação, `YYYY-MM-DD`, no fuso de Brasília.
+  data         String
+  /// em_curso | sucesso | falha
+  situacao     String
+  tentativas   Int       @default(1)
+  iniciadaEm   DateTime  @default(now())
+  concluidaEm  DateTime?
+  /// JSON com contagens. Nunca nome, tipo de afastamento nem conteúdo.
+  resumo       String?
+  /// Já passada por `mensagemPersistivel`.
+  mensagem     String?
+  correlacaoId String
+
+  @@unique([rotina, data])
 }
 
 /// Fila de exceções da IA — e dataset de melhoria contínua.
