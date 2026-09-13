@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   calcularTaxaDeAcerto,
   compararRevisao,
+  lerDesfecho,
+  medirRevisao,
+  resumirAcerto,
   type DecisaoHumana,
   type ParDeRevisao,
   type SugestaoDaIa,
@@ -65,6 +68,66 @@ describe('o que conta como aceita sem correção', () => {
     expect(compararRevisao(par({}, { titulo: '  Envio de ficha  ' })).desfecho).toBe(
       'aceita_sem_correcao',
     )
+  })
+})
+
+describe('o que se grava na hora da revisão (A23(c))', () => {
+  it('diz QUAIS campos mudaram, nunca o que estava escrito neles', () => {
+    const resultado = compararRevisao(
+      par(
+        { campos: { nome: 'Fulano Sintético', cpf: '111.444.777-35', crm: '12345' } },
+        { campos: { nome: 'Fulano Sintético', cpf: '111.444.777-36', telefone: '(00) 0000-0000' } },
+      ),
+    )
+
+    // cpf mudou; crm a IA inventou e o humano apagou; telefone o humano acrescentou.
+    expect(resultado.camposAlterados).toEqual(['cpf', 'crm', 'telefone'])
+    // É isto que sobrevive ao prazo do conteúdo. Valor aqui seria dado pessoal
+    // sem data de exclusão, pela porta dos fundos.
+    const gravavel = JSON.stringify(resultado)
+    expect(gravavel).not.toContain('111.444.777')
+    expect(gravavel).not.toContain('Fulano')
+    expect(gravavel).not.toContain('0000-0000')
+  })
+
+  it('CPF usado como NOME de campo é gravado como "outro"', () => {
+    // Revisão de segurança de 13/09/2026: a chave de `campos` vem do modelo, e
+    // um e-mail hostil pode fazê-la ser o próprio dado.
+    const resultado = compararRevisao(
+      par(
+        { campos: { nome: 'Fulano Sintético', '111.444.777-35': 'confirmado' } },
+        { campos: { nome: 'Fulano Sintético' } },
+      ),
+    )
+
+    expect(resultado.camposAlterados).toEqual(['outro'])
+    expect(JSON.stringify(resultado)).not.toContain('111.444.777')
+  })
+
+  it('aprovação em massa não alterou campo nenhum', () => {
+    const resultado = compararRevisao(par({}, { categoriaCodigo: null, titulo: null, campos: null }))
+    expect(resultado.camposAlterados).toEqual([])
+  })
+
+  it('espaço em branco não entra na lista de campos alterados', () => {
+    const resultado = compararRevisao(par({}, { campos: { nome: '  Fulano Sintético ' } }))
+    expect(resultado.camposAlterados).toEqual([])
+  })
+
+  it('somar o que foi gravado dá o mesmo número que comparar os valores', () => {
+    const pares = [
+      par(),
+      par({}, { categoriaCodigo: 'LIGANTE' }),
+      par({ confianca: 0.4 }, { campos: { nome: 'Outro Sintético' } }),
+      par({ confianca: 0.2 }, { aprovado: false }),
+    ]
+    expect(resumirAcerto(pares.map(medirRevisao))).toEqual(calcularTaxaDeAcerto(pares))
+  })
+
+  it('rótulo gravado desconhecido não vira desfecho nenhum', () => {
+    expect(lerDesfecho('campos_corrigidos')).toBe('campos_corrigidos')
+    expect(lerDesfecho('quase_certo')).toBeNull()
+    expect(lerDesfecho('')).toBeNull()
   })
 })
 

@@ -125,6 +125,165 @@ describe('leitura do que o fluxo real gravou', () => {
   })
 })
 
+/**
+ * Faz nas revisões resolvidas o que a parte (a) do `A23` vai fazer no prazo:
+ * título e campos saem da sugestão e da decisão, e fica só o que não é dado
+ * pessoal — categoria, confiança, aprovado, quantos itens extras, origem.
+ */
+async function apagarValoresDasRevisoes() {
+  const resolvidas = await banco.revisao.findMany({ where: { resolvidoEm: { not: null } } })
+  for (const revisao of resolvidas) {
+    const sugestao = JSON.parse(revisao.sugestaoIa) as { categoriaCodigo: string; confianca: number }
+    const final = JSON.parse(revisao.valorFinal!) as {
+      categoriaCodigo?: string
+      aprovado: boolean
+      itensExtras?: number
+      origem?: string
+    }
+    await banco.revisao.update({
+      where: { id: revisao.id },
+      data: {
+        sugestaoIa: JSON.stringify({
+          categoriaCodigo: sugestao.categoriaCodigo,
+          confianca: sugestao.confianca,
+        }),
+        valorFinal: JSON.stringify({
+          categoriaCodigo: final.categoriaCodigo,
+          aprovado: final.aprovado,
+          itensExtras: final.itensExtras ?? 0,
+          origem: final.origem,
+        }),
+      },
+    })
+  }
+}
+
+async function primeiraPendente() {
+  const { itens } = await listarPendentes(banco, 1)
+  const alvo = itens[0]!
+  const campos = (JSON.parse(alvo.sugestaoIa) as { campos?: Record<string, string> }).campos ?? {}
+  return { alvo, campos }
+}
+
+describe('acerto gravado na hora da revisão (A23(c))', () => {
+  it('campo corrigido continua contado depois que os valores saem', async () => {
+    const base = await ingerirUmDia()
+    const { alvo, campos } = await primeiraPendente()
+
+    await resolver(
+      banco,
+      {
+        revisaoId: alvo.revisaoId,
+        categoriaCodigo: alvo.categoriaCodigo,
+        titulo: alvo.titulo,
+        campos: { ...campos, cpf: '111.444.777-35' },
+        aprovar: true,
+      },
+      base.operador,
+    )
+    await apagarValoresDasRevisoes()
+
+    const resultado = await medirQualidadeDaIa(banco, null)
+
+    // Sem o rótulo gravado, a comparação veria campos vazios dos dois lados e
+    // contaria ACERTO: um número plausível, falso e sem aviso nenhum.
+    expect(resultado.taxa.porDesfecho.campos_corrigidos).toBe(1)
+    expect(resultado.taxa.aceitasSemCorrecao).toBe(0)
+    expect(resultado.ignoradas).toBe(0)
+  })
+
+  it('título editado continua contado depois que os valores saem', async () => {
+    const base = await ingerirUmDia()
+    const { alvo, campos } = await primeiraPendente()
+
+    await resolver(
+      banco,
+      {
+        revisaoId: alvo.revisaoId,
+        categoriaCodigo: alvo.categoriaCodigo,
+        titulo: `${alvo.titulo} (corrigido)`,
+        campos,
+        aprovar: true,
+      },
+      base.operador,
+    )
+    await apagarValoresDasRevisoes()
+
+    const resultado = await medirQualidadeDaIa(banco, null)
+    expect(resultado.taxa.porDesfecho.titulo_editado).toBe(1)
+    expect(resultado.taxa.aceitasSemCorrecao).toBe(0)
+  })
+
+  it('grava quais campos mudaram, nunca o que estava escrito', async () => {
+    const base = await ingerirUmDia()
+    const { alvo, campos } = await primeiraPendente()
+
+    await resolver(
+      banco,
+      {
+        revisaoId: alvo.revisaoId,
+        categoriaCodigo: alvo.categoriaCodigo,
+        titulo: alvo.titulo,
+        campos: { ...campos, cpf: '111.444.777-35', telefone: '(00) 0000-0000' },
+        aprovar: true,
+      },
+      base.operador,
+    )
+
+    const gravada = await banco.revisao.findUniqueOrThrow({ where: { id: alvo.revisaoId } })
+    expect(gravada.desfecho).toBe('campos_corrigidos')
+    const correcoes = JSON.parse(gravada.correcoes!) as { camposAlterados: string[] }
+    expect(correcoes.camposAlterados).toEqual(expect.arrayContaining(['cpf', 'telefone']))
+    // Esta coluna não tem data de exclusão. Valor aqui seria o CPF guardado
+    // para sempre, que é exatamente o que o `A23` decidiu não guardar.
+    expect(gravada.correcoes).not.toContain('111.444.777-35')
+    expect(gravada.correcoes).not.toContain('0000-0000')
+  })
+
+  it('aprovação em massa grava o acerto de cada revisão', async () => {
+    const base = await ingerirUmDia()
+    const { aprovados } = await aprovarTodosPendentes(banco, base.operador)
+
+    const gravadas = await banco.revisao.findMany({
+      where: { resolvidoEm: { not: null } },
+      select: { desfecho: true },
+    })
+    expect(gravadas).toHaveLength(aprovados)
+    expect(gravadas.every((gravada) => gravada.desfecho === 'aceita_sem_correcao')).toBe(true)
+  })
+
+  it('revisão resolvida antes do rótulo existir ainda é calculada pelos valores', async () => {
+    const base = await ingerirUmDia()
+    const { alvo } = await primeiraPendente()
+    const outra = alvo.categoriaCodigo === 'LIGANTE' ? 'DOC_CADASTRO' : 'LIGANTE'
+
+    await resolver(
+      banco,
+      { revisaoId: alvo.revisaoId, categoriaCodigo: outra, titulo: alvo.titulo, campos: {}, aprovar: true },
+      base.operador,
+    )
+    await banco.revisao.update({
+      where: { id: alvo.revisaoId },
+      data: { desfecho: null, correcoes: null },
+    })
+
+    const resultado = await medirQualidadeDaIa(banco, null)
+    expect(resultado.taxa.porDesfecho.categoria_trocada).toBe(1)
+    expect(resultado.ignoradas).toBe(0)
+  })
+
+  it('rótulo gravado que não se reconhece é contado, nunca engolido', async () => {
+    const base = await ingerirUmDia()
+    await aprovarTodosPendentes(banco, base.operador)
+
+    const alguma = await banco.revisao.findFirst({ where: { resolvidoEm: { not: null } } })
+    await banco.revisao.update({ where: { id: alguma!.id }, data: { desfecho: 'quase_certo' } })
+
+    const resultado = await medirQualidadeDaIa(banco, null)
+    expect(resultado.ignoradas).toBe(1)
+  })
+})
+
 describe('cobertura', () => {
   it('anda junto com a taxa e nunca fica negativa', async () => {
     const base = await ingerirUmDia()
@@ -146,11 +305,12 @@ describe('linha ilegível', () => {
     await aprovarTodosPendentes(banco, base.operador)
 
     // Simula uma linha gravada por uma versão anterior do pipeline, com JSON
-    // que os esquemas de hoje não reconhecem.
+    // que os esquemas de hoje não reconhecem — e, por ser anterior, sem o
+    // acerto gravado na hora (`A23(c)`), que dispensaria ler o JSON.
     const alguma = await banco.revisao.findFirst({ where: { resolvidoEm: { not: null } } })
     await banco.revisao.update({
       where: { id: alguma!.id },
-      data: { valorFinal: '{"isto":"não é um valor final"}' },
+      data: { valorFinal: '{"isto":"não é um valor final"}', desfecho: null, correcoes: null },
     })
 
     const resultado = await medirQualidadeDaIa(banco, null)

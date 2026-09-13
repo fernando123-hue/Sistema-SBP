@@ -2,11 +2,13 @@ import { ErroDeNegocio } from '../core/erros'
 import {
   PayloadDoItemSchema,
   ResolucaoRevisaoSchema,
+  SugestaoIaGravadaSchema,
   desserializar,
   serializar,
 } from '../core/esquemas'
+import { compararRevisao, type DecisaoHumana } from '../core/qualidade-ia'
 import { exigirPapel, type Ator } from '../servidor/ator'
-import { novaCorrelacao } from '../servidor/observabilidade'
+import { novaCorrelacao, registrarLog } from '../servidor/observabilidade'
 import type { ItemEmRevisao } from '../core/tipos'
 import type { Banco, Transacao } from '../servidor/prisma'
 import { auditar } from './auditoria'
@@ -27,6 +29,46 @@ async function exigirColaborador(tx: Transacao, colaboradorId: string): Promise<
       `Colaborador "${colaboradorId}" não existe. A resolução de revisão precisa de um usuário real.`,
     )
   }
+}
+
+/**
+ * O acerto da IA nesta revisão, pronto para gravar (`A23(c)`).
+ *
+ * Gravado na hora porque é a única hora em que dá para calcular: título e
+ * campos, dos dois lados, saem no prazo do conteúdo do e-mail, e comparar vazio
+ * com vazio dá "aceita sem correção". Sem isto, toda correção de campo viraria
+ * acerto no dia do prazo — uma taxa que melhora sozinha, sem ninguém notar.
+ *
+ * Sugestão ilegível grava `null`, e o painel conta a revisão como ignorada, à
+ * vista, em vez de inventar um rótulo. A revisão não é barrada: a decisão da
+ * pessoa sobre o item vale mesmo quando a medida não pode ser feita. O aviso
+ * no log diz QUAL revisão, na hora — o número agregado sozinho não diz.
+ */
+function acertoDaRevisao(
+  revisaoId: string,
+  sugestaoIa: string,
+  decisao: DecisaoHumana,
+): { desfecho: string | null; correcoes: string | null } {
+  let sugestao
+  try {
+    sugestao = SugestaoIaGravadaSchema.parse(JSON.parse(sugestaoIa))
+  } catch {
+    registrarLog('aviso', 'acerto da IA não gravado: a sugestão desta revisão está ilegível', {
+      revisaoId,
+    })
+    return { desfecho: null, correcoes: null }
+  }
+  const { desfecho, correcoes, camposAlterados } = compararRevisao({ sugestao, decisao })
+  return { desfecho, correcoes: serializar({ ...correcoes, camposAlterados }) }
+}
+
+/** Aprovar em massa é aceitar a sugestão inteira sem tocar em nada. */
+const DECISAO_DA_APROVACAO_EM_MASSA: DecisaoHumana = {
+  categoriaCodigo: null,
+  titulo: null,
+  campos: null,
+  aprovado: true,
+  itensExtras: 0,
 }
 
 /**
@@ -167,6 +209,13 @@ export async function resolver(
           aprovado: dados.aprovar,
           itensExtras: dados.itensExtras.length,
         }),
+        ...acertoDaRevisao(revisao.id, revisao.sugestaoIa, {
+          categoriaCodigo: dados.categoriaCodigo,
+          titulo: dados.titulo,
+          campos: dados.campos,
+          aprovado: dados.aprovar,
+          itensExtras: dados.itensExtras.length,
+        }),
         resolvidoPor: ator.colaboradorId,
         resolvidoEm: new Date(),
       },
@@ -287,7 +336,7 @@ export async function aprovarTodosPendentes(
         resolvidoEm: null,
         motivo: { in: ['baixa_confianca', 'campo_ausente'] },
       },
-      select: { id: true, itemId: true },
+      select: { id: true, itemId: true, sugestaoIa: true },
     })
 
     for (const pendente of pendentes) {
@@ -296,6 +345,7 @@ export async function aprovarTodosPendentes(
         where: { id: pendente.id },
         data: {
           valorFinal: serializar({ aprovado: true, origem: 'aprovacao_em_massa' }),
+          ...acertoDaRevisao(pendente.id, pendente.sugestaoIa, DECISAO_DA_APROVACAO_EM_MASSA),
           resolvidoPor: usuario,
           resolvidoEm: new Date(),
         },

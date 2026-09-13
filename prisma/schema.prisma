@@ -717,6 +717,13 @@ model Revisao {
   confianca    Float
   /// JSON — o que o humano decidiu de fato
   valorFinal   String?
+  /// Acerto da IA, gravado na hora da revisão (`A23(c)`): um de `DESFECHOS`,
+  /// em `core/qualidade-ia.ts`. Nulo em revisão aberta e nas resolvidas antes
+  /// desta coluna existir, que o painel ainda calcula pelos valores.
+  desfecho     String?
+  /// JSON — as correções e os NOMES dos campos alterados. Nunca os valores:
+  /// esta coluna sobrevive ao prazo do conteúdo do e-mail.
+  correcoes    String?
   resolvidoPor String?
   resolvidoEm  DateTime?
   criadoEm     DateTime  @default(now())

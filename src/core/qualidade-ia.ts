@@ -1,3 +1,4 @@
+import { nomeDeCampoGravavel } from './nome-de-campo'
 import { arredondar, somar } from './util/numero'
 
 /**
@@ -94,12 +95,18 @@ function mesmoTexto(a: string, b: string): boolean {
 }
 
 /**
- * Houve edição de campo extraído?
+ * Quais campos extraídos a edição mudou — os NOMES, em ordem alfabética.
  *
  * A tela de revisão inicializa os campos editáveis COM o que a IA extraiu e
  * devolve o conjunto inteiro. Então diferença aqui é edição de verdade, não
  * ruído de formulário. A comparação corre a união das chaves — campo que a IA
  * inventou e o humano esvaziou também é correção.
+ *
+ * Nomes, nunca valores, porque isto é gravado na hora da revisão e sobrevive
+ * ao prazo do conteúdo (`A23(c)`): "cpf" diz onde a IA errou; o número do CPF
+ * seria o dado pessoal guardado para sempre pela porta dos fundos. E o nome
+ * passa por `nomeDeCampoGravavel`, porque a chave também vem do modelo e pode
+ * ser o próprio CPF.
  *
  * LIMITE CONHECIDO: `campos: {}` é ambíguo entre "o operador apagou tudo" e
  * "o cliente não mandou o campo" (o esquema de entrada tem `.default({})`).
@@ -108,31 +115,34 @@ function mesmoTexto(a: string, b: string): boolean {
  * Registrado em vez de contornado: distinguir os dois exigiria mudar o
  * esquema de entrada, e hoje não há esse cliente.
  */
-function camposForamCorrigidos(
+function camposAlterados(
   sugeridos: Record<string, string>,
   finais: Record<string, string>,
-): boolean {
+): string[] {
   const chaves = new Set([...Object.keys(sugeridos), ...Object.keys(finais)])
-  for (const chave of chaves) {
-    if (!mesmoTexto(sugeridos[chave] ?? '', finais[chave] ?? '')) return true
-  }
-  return false
+  const alterados = [...chaves]
+    .filter((chave) => !mesmoTexto(sugeridos[chave] ?? '', finais[chave] ?? ''))
+    .map(nomeDeCampoGravavel)
+  return [...new Set(alterados)].sort()
 }
 
 export function compararRevisao(par: ParDeRevisao): {
   desfecho: DesfechoDaRevisao
   correcoes: Correcoes
+  /** Nomes dos campos que o humano mudou. Nunca os valores. */
+  camposAlterados: string[]
 } {
   const { sugestao, decisao } = par
 
+  // `null` = aprovação em massa: a sugestão foi aceita inteira, sem edição.
+  const alterados = decisao.campos === null ? [] : camposAlterados(sugestao.campos, decisao.campos)
+
   const correcoes: Correcoes = {
     recusada: !decisao.aprovado,
-    // `null` = aprovação em massa: a sugestão foi aceita inteira, sem edição.
     categoriaTrocada:
       decisao.categoriaCodigo !== null && decisao.categoriaCodigo !== sugestao.categoriaCodigo,
     tituloEditado: decisao.titulo !== null && !mesmoTexto(decisao.titulo, sugestao.titulo),
-    camposCorrigidos:
-      decisao.campos !== null && camposForamCorrigidos(sugestao.campos, decisao.campos),
+    camposCorrigidos: alterados.length > 0,
     itensAcrescentados: decisao.itensExtras > 0,
   }
 
@@ -151,7 +161,38 @@ export function compararRevisao(par: ParDeRevisao): {
             ? 'campos_corrigidos'
             : 'aceita_sem_correcao'
 
-  return { desfecho, correcoes }
+  return { desfecho, correcoes, camposAlterados: alterados }
+}
+
+/**
+ * Uma revisão reduzida ao que a medida de acerto usa.
+ *
+ * É a forma que sobrevive ao prazo do conteúdo (`A23`): a categoria sugerida e
+ * a confiança ficam na sugestão gravada, e o desfecho é gravado na hora da
+ * revisão. Título e campos, que saem no prazo, não entram aqui.
+ */
+export interface RevisaoMedida {
+  categoriaSugerida: string
+  confianca: number
+  desfecho: DesfechoDaRevisao
+}
+
+export function medirRevisao(par: ParDeRevisao): RevisaoMedida {
+  return {
+    categoriaSugerida: par.sugestao.categoriaCodigo,
+    confianca: par.sugestao.confianca,
+    desfecho: compararRevisao(par).desfecho,
+  }
+}
+
+/**
+ * O desfecho gravado no banco, ou `null` se o texto não for um dos conhecidos.
+ *
+ * Rótulo desconhecido não vira o mais parecido: vira `null`, e quem lê conta a
+ * revisão como ignorada, à vista.
+ */
+export function lerDesfecho(texto: string): DesfechoDaRevisao | null {
+  return DESFECHOS.find((desfecho) => desfecho === texto) ?? null
 }
 
 export interface LinhaDeAcerto {
@@ -196,6 +237,10 @@ function taxa(parte: number, total: number): number | null {
 }
 
 export function calcularTaxaDeAcerto(pares: readonly ParDeRevisao[]): TaxaDeAcerto {
+  return resumirAcerto(pares.map(medirRevisao))
+}
+
+export function resumirAcerto(medidas: readonly RevisaoMedida[]): TaxaDeAcerto {
   const porDesfecho = Object.fromEntries(DESFECHOS.map((desfecho) => [desfecho, 0])) as Record<
     DesfechoDaRevisao,
     number
@@ -206,30 +251,29 @@ export function calcularTaxaDeAcerto(pares: readonly ParDeRevisao[]): TaxaDeAcer
   const confiancaCorrigida: number[] = []
   let aceitasSemCorrecao = 0
 
-  for (const par of pares) {
-    const { desfecho } = compararRevisao(par)
-    porDesfecho[desfecho] += 1
+  for (const medida of medidas) {
+    porDesfecho[medida.desfecho] += 1
 
-    const aceita = desfecho === 'aceita_sem_correcao'
+    const aceita = medida.desfecho === 'aceita_sem_correcao'
     if (aceita) {
       aceitasSemCorrecao += 1
-      confiancaAceita.push(par.sugestao.confianca)
+      confiancaAceita.push(medida.confianca)
     } else {
-      confiancaCorrigida.push(par.sugestao.confianca)
+      confiancaCorrigida.push(medida.confianca)
     }
 
     // Agrupado pela categoria SUGERIDA, não pela final: a pergunta é "onde a IA
     // erra", e é o limiar da categoria sugerida que se ajusta.
-    const linha = porCategoria.get(par.sugestao.categoriaCodigo) ?? { revisadas: 0, aceitas: 0 }
+    const linha = porCategoria.get(medida.categoriaSugerida) ?? { revisadas: 0, aceitas: 0 }
     linha.revisadas += 1
     if (aceita) linha.aceitas += 1
-    porCategoria.set(par.sugestao.categoriaCodigo, linha)
+    porCategoria.set(medida.categoriaSugerida, linha)
   }
 
   return {
-    revisadas: pares.length,
+    revisadas: medidas.length,
     aceitasSemCorrecao,
-    taxaDeAceitacao: taxa(aceitasSemCorrecao, pares.length),
+    taxaDeAceitacao: taxa(aceitasSemCorrecao, medidas.length),
     porDesfecho,
     porCategoriaSugerida: [...porCategoria.entries()]
       .map(([categoriaCodigo, linha]) => ({
