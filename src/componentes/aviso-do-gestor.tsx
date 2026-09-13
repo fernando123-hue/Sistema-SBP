@@ -75,8 +75,10 @@ export function AvisoDoDia({ aviso }: { aviso: AvisoDoGestor }) {
               <li key={`motivo-${linha.nome}-${linha.dia}`}>
                 {linha.nome} ({ROTULO_DO_TIPO[linha.tipo] ?? linha.tipo})
                 {linha.cancelada ? (
+                  // Mesmas palavras do botão que cancela na tela de Acesso: quem
+                  // clicou "Não aconteceu" reconhece aqui o que fez.
                   <span className="ml-1 rounded border border-borda-forte px-1 text-xs font-medium">
-                    ausência cancelada
+                    não aconteceu
                   </span>
                 ) : null}
                 <span className={linha.atrasado ? 'text-alerta' : 'text-tinta-suave'}>
