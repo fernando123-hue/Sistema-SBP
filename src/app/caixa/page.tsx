@@ -17,6 +17,7 @@ import {
   juntar,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
+import { textoDoConteudoRemovido } from '../../core/retencao'
 import { hojeIso } from '../../core/util/datas'
 import type { CategoriaDisponivel, ItemDaCaixa, NaRede } from '../../core/tipos'
 
@@ -459,9 +460,23 @@ export default function Caixa() {
                   conteudo: (item) => (
                     <div className="min-w-0">
                       <p className="truncate font-medium">{item.titulo}</p>
-                      <p className="truncate text-xs text-tinta-fraca">
-                        {item.remetente ?? 'origem manual'}
-                      </p>
+                      {/*
+                        Texto apagado pelo prazo (`A20`) não é "origem manual":
+                        a pessoa precisa saber que o original está no Outlook, e
+                        quando chegou, para achá-lo lá.
+                      */}
+                      {item.conteudoRemovidoEm ? (
+                        <p className="text-xs text-tinta-fraca">
+                          {textoDoConteudoRemovido(
+                            new Date(item.conteudoRemovidoEm),
+                            item.recebidoEm ? new Date(item.recebidoEm) : null,
+                          )}
+                        </p>
+                      ) : (
+                        <p className="truncate text-xs text-tinta-fraca">
+                          {item.remetente ?? 'origem manual'}
+                        </p>
+                      )}
                       {/*
                         A liga aparece na linha porque é ela que governa o
                         rateio de `LIGANTE` e `EMAIL_LIGA` desde o `A4` — e até

@@ -21,6 +21,8 @@
  * visível por um maior.
  */
 
+import type { ArmazenamentoPort } from './ports/armazenamento'
+
 const MINUTOS_ENTRE_TENTATIVAS = 15
 
 export async function agendarLimpezaDiaria(): Promise<void> {
@@ -41,6 +43,7 @@ export async function agendarLimpezaDiaria(): Promise<void> {
       import('./servicos/rotinas'),
       import('./servidor/prisma'),
       import('./servidor/observabilidade'),
+      import('./adapters/fabrica'),
     ])
   } catch (erro) {
     marca.limpezaDiariaAgendada = false
@@ -49,12 +52,25 @@ export async function agendarLimpezaDiaria(): Promise<void> {
     )
     return
   }
-  const [{ rodarLimpezaDiaria }, { obterPrisma }, { mensagemDoErro, registrarLog }] = modulos
+  const [{ rodarLimpezaDiaria }, { obterPrisma }, { mensagemDoErro, registrarLog }, { criarArmazenamentoPort }] =
+    modulos
 
   const tentar = (): void => {
+    // Sem armazenamento, a limpeza segue sem ele: o motivo de afastamento sai, e
+    // e-mail com anexo fica pendente com a execução marcada como falha — nunca
+    // "apagado do banco" com o arquivo ainda no disco.
+    let armazenamento: ArmazenamentoPort | null = null
+    try {
+      armazenamento = criarArmazenamentoPort()
+    } catch (erro) {
+      registrarLog('erro', 'armazenamento de anexos indisponível para a limpeza diária', {
+        erro: mensagemDoErro(erro),
+      })
+    }
+
     // `rodarLimpezaDiaria` já registra a própria falha. Chega aqui só o que
     // impediu até de começar — banco inacessível, ambiente mal configurado.
-    rodarLimpezaDiaria(obterPrisma()).catch((erro: unknown) => {
+    rodarLimpezaDiaria(obterPrisma(), { armazenamento }).catch((erro: unknown) => {
       registrarLog('erro', 'a limpeza diária não conseguiu nem começar', { erro: mensagemDoErro(erro) })
     })
   }

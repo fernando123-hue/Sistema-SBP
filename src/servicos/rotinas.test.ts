@@ -90,6 +90,24 @@ describe('uma vez por dia', () => {
     expect(registro.correlacaoId).toBe(resultado.correlacaoId)
     expect(registro.usuario).toBe('sistema')
   })
+
+  it('também apaga o texto do e-mail vencido (A20), com o prazo que a tela mostra', async () => {
+    const email = await banco.email.create({
+      data: {
+        messageId: '<rotina-conteudo@exemplo.test>',
+        recebidoEm: new Date(`${deslocarDias(DATA_BASE, -10)}T12:00:00-03:00`),
+        conteudo: { create: { remetente: 'sintetico@exemplo.test', assunto: 'Resposta automática', corpo: 'Recebido.' } },
+      },
+    })
+
+    const resultado = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+
+    if (!resultado.executou || resultado.situacao !== 'sucesso') throw new Error('esperava sucesso')
+    expect(resultado.resumo.conteudoDosEmails).toMatchObject({ prazoEmDias: 7, apagados: 1 })
+    const depois = await banco.email.findUniqueOrThrow({ where: { id: email.id }, include: { conteudo: true } })
+    expect(depois.conteudo).toBeNull()
+    expect(depois.conteudoExpurgadoEm).not.toBeNull()
+  })
 })
 
 describe('falha não some', () => {

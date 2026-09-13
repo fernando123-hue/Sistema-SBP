@@ -7,7 +7,9 @@ import {
   registrarEvento,
   registrarLog,
 } from '../servidor/observabilidade'
+import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { Banco } from '../servidor/prisma'
+import { expurgarConteudoDosEmails, type ResultadoDoExpurgoDeConteudo } from './expurgo-conteudo'
 import { expurgarMotivosDeAfastamento, type ResultadoDoExpurgoDeMotivos } from './expurgo-lgpd'
 import { prazoEmVigor } from './retencao'
 
@@ -37,6 +39,7 @@ export const TENTATIVAS_POR_DIA = 3
 
 export interface ResumoDaLimpeza {
   motivosDeAfastamento: ResultadoDoExpurgoDeMotivos & { prazoEmDias: number }
+  conteudoDosEmails: ResultadoDoExpurgoDeConteudo & { prazoEmDias: number }
 }
 
 export type ResultadoDaRotina =
@@ -103,7 +106,16 @@ async function reivindicar(
 
 export async function rodarLimpezaDiaria(
   banco: Banco,
-  opcoes: { hoje?: string; agora?: Date } = {},
+  opcoes: {
+    hoje?: string
+    agora?: Date
+    /**
+     * Onde estão os bytes dos anexos. Sem ele, e-mail vencido COM anexo não é
+     * marcado e a execução falha alto — nunca "apaga do banco" deixando o
+     * arquivo no disco.
+     */
+    armazenamento?: ArmazenamentoPort | null
+  } = {},
 ): Promise<ResultadoDaRotina> {
   const rotina: Rotina = 'limpeza_diaria'
   const hoje = opcoes.hoje ?? hojeIso()
@@ -120,7 +132,21 @@ export async function rodarLimpezaDiaria(
       hoje,
       correlacaoId,
     })
-    const resumo: ResumoDaLimpeza = { motivosDeAfastamento: { ...motivos, prazoEmDias } }
+    // Depois dos motivos, e não junto: se o armazenamento falhar, o motivo de
+    // afastamento — dado de saúde — já saiu, e a execução seguinte só tenta de
+    // novo o que ficou (as duas limpezas são idempotentes).
+    const prazoDoConteudo = await prazoEmVigor(banco, 'conteudo_do_email')
+    const conteudo = await expurgarConteudoDosEmails(banco, {
+      diasDeRetencao: prazoDoConteudo,
+      armazenamento: opcoes.armazenamento ?? null,
+      hoje,
+      correlacaoId,
+    })
+
+    const resumo: ResumoDaLimpeza = {
+      motivosDeAfastamento: { ...motivos, prazoEmDias },
+      conteudoDosEmails: { ...conteudo, prazoEmDias: prazoDoConteudo },
+    }
 
     await banco.execucaoDeRotina.update({
       where: { id: vez.id },

@@ -201,6 +201,18 @@ export const MANUAL: readonly VerbeteDoManual[] = [
       'Ao escolher uma liga, o bloco de notas do setor passa a mostrar o que a equipe anotou sobre aquela liga.',
   },
   {
+    id: 'texto-do-email-apagado',
+    titulo: 'Por que o texto de um e-mail sumiu da Caixa',
+    papeis: TODOS,
+    tela: '/caixa',
+    texto:
+      'O sistema guarda o que chegou e o que virou trabalho, mas não guarda para sempre o texto dos e-mails. ' +
+      'Sete dias depois de o último pedido de um e-mail ser concluído ou cancelado, remetente, assunto, texto e anexos são apagados do sistema; ' +
+      'e-mail que não virou pedido conta do dia em que chegou. Enquanto houver pedido aberto, nada sai. ' +
+      'No lugar do remetente, a Caixa mostra quando o texto foi apagado e o dia e a hora em que o e-mail chegou — com isso dá para achar o original no Outlook, que continua lá. ' +
+      'Quem é gestor pode mudar o prazo na tela Acesso, em "Prazos de retenção".',
+  },
+  {
     id: 'notas-do-setor',
     titulo: 'As notas do setor',
     papeis: TODOS,

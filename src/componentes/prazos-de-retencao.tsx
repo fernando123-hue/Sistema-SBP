@@ -19,6 +19,12 @@ const SOBRE: Readonly<Record<ChaveDePrazo, { titulo: string; explicacao: string;
       'Conta a partir do dia em que a pessoa volta. Passado o prazo, a observação é apagada e o tipo vira "férias" ou "ausente". Ausência sem data de volta não conta, e as datas nunca saem.',
     oQueApaga: 'o motivo das ausências que já passaram do novo prazo',
   },
+  conteudo_do_email: {
+    titulo: 'Texto dos e-mails e anexos',
+    explicacao:
+      'Conta a partir do dia em que o último pedido do e-mail é concluído ou cancelado; e-mail que não virou pedido conta da chegada. Enquanto houver pedido aberto, nada sai. Passado o prazo, remetente, assunto, texto e arquivos anexos são apagados do sistema — o e-mail original continua no Outlook.',
+    oQueApaga: 'o texto e os anexos dos e-mails que já passaram do novo prazo',
+  },
 }
 
 function diaCurto(instante: string): string {

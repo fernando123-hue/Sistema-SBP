@@ -1,10 +1,10 @@
 # Estado do projeto — retomada
 
-Última atualização: **12/09/2026, noite** — **fase 1 em andamento**, na branch `fase-1/privacidade-e-prazos`. Pronto e provado: **`A17` inteiro** — prazo editável, limpeza diária automática e aviso do dia para a gestora. Falta na fase 1: **`A20`** (conteúdo do e-mail e anexos) e **`A23`** (o que a IA extraiu, chave de busca, acerto gravado na revisão, trilha sem valores pessoais).
+Última atualização: **12/09/2026, noite** — **fase 1 em andamento**, na branch `fase-1/privacidade-e-prazos`. Pronto e provado: **`A17` inteiro** — prazo editável, limpeza diária automática e aviso do dia para a gestora — e **`A20`** — texto e anexos dos e-mails apagados 7 dias depois da conclusão do último item, com aviso na Caixa. Falta na fase 1: **`A23`** (o que a IA extraiu, chave de busca, acerto gravado na revisão, trilha sem valores pessoais).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> 1. **Leia `docs/planos/2026-09-12-fases-de-implementacao.md`** — ordem das 5 fases, o que cada uma entrega, o que confirmar com o dono. A **fase 1 (privacidade e prazos)** está no meio: `A17` feito, `A20` e `A23` a fazer, na mesma branch.
+> 1. **Leia `docs/planos/2026-09-12-fases-de-implementacao.md`** — ordem das 5 fases, o que cada uma entrega, o que confirmar com o dono. A **fase 1 (privacidade e prazos)** está no meio: `A17` e `A20` feitos, `A23` a fazer, na mesma branch.
 > 2. **[#40](https://github.com/fernando123-hue/Sistema-SBP/pull/40) e [#41](https://github.com/fernando123-hue/Sistema-SBP/pull/41) foram mesclados na `main` em 12/09/2026** (`44fa73d` e `276aac1`). Uma versão anterior deste arquivo dizia que estavam abertos.
 > 3. **Para ver telas rodando:** `npm run dev:local` (ou `preview_start {name: "sbp-local"}`), e em `/entrar` clique numa conta `@exemplo.test`. Nunca digite senha. Travas em `DECISOES.md § AT-17`.
 > 4. **O repositório voltou a ser privado** em 12/09/2026 — estava público com nomes reais da equipe nos documentos de origem.
@@ -18,6 +18,15 @@
 - **A trilha deixou de guardar o motivo** (`AT-21`): o registro de afastamento grava o tipo já reduzido; o expurgo grava o tipo que ficou. **As linhas da trilha anteriores a 12/09/2026 ainda têm o tipo real** — só dado sintético.
 - **Aviso do dia para a gestora** no painel de Ajuda: fora hoje e por quê, quem volta hoje ou amanhã, motivos que saem em até 3 dias (ou atrasados), e limpeza que falhou. Montado no servidor, **sem IA**. Abre sozinho na primeira vez do dia; depois, a cada 15 minutos a tela confere, e o que entrou ou saiu de uma lista — com nome, inclusive a troca de uma pessoa por outra — acende a bolinha no botão "Ajuda" (`A39(e)`, `AT-22`). O "já vi" fica no servidor (`AvisoVisto`), só com códigos internos. **Mudança feita pela própria gestora não acende a bolinha dela** (`A39(f)`) — senão ficaria acesa quase o tempo todo, porque é ela quem mais registra ausência; para isso, "Voltou hoje" passou a gravar `encerradoPor`. Migrações `20260913012626_aviso_visto_pela_gestora` e `20260913013651_quem_encerrou_o_afastamento`.
 - **Prova:** cada trava vista falhando contra sabotagem própria — 8 em `A17` (fronteira do dia, trilha do registro, confirmação de encurtamento, uma vez por dia, redução do tipo, cancelado, prazo corrompido no banco, limite de tentativas) e as do aviso. Migração `20260913003033_retencao_do_motivo_e_rotina_diaria`.
+
+### Fase 1 — o que `A20` entregou *(12/09/2026)*
+
+- **Texto do e-mail e anexos apagados pelo prazo** (`servicos/expurgo-conteudo.ts`, na limpeza diária): remetente, assunto, corpo e bytes dos anexos saem no dia da conclusão do último item mais o prazo (padrão 7). Cancelado conta do cancelamento; sem item, da chegada; item aberto segura. Ficam a data e hora de chegada, os itens, a carga, a trilha e os metadados do anexo (`AT-23`).
+- **Prazo editável** na mesma tela de `A17` ("Texto dos e-mails e anexos").
+- **Caixa de entrada** mostra, no lugar do remetente: *"O texto deste e-mail já foi apagado do sistema no dia 20/09. Para ver o e-mail completo, procure no Outlook: ele chegou no dia 12/09, às 09:14."* — texto aprovado (`A39(b)`). Fila e Revisão nunca mostram isso: ali todo item está aberto.
+- **E-mail suspeito sem item fica guardado** até a lista de `A34` existir (`AT-24`); `Email.conteudoSuspeito` passou a ser gravado na ingestão.
+- **Arquivo sai antes da marca no banco** (`AT-25`): falha de disco deixa o e-mail pendente e a execução como falha, nunca um órfão.
+- Migração `20260913015834_email_suspeito_retido`.
 
 **Respondidas pelo dono em 12/09/2026 (`A39`):** matrícula quase nunca vem no e-mail (a chave de busca de `A23` vai ser, na maioria, o CPF protegido); aviso de conteúdo removido em linguagem simples; CPF protegido aprovado, com explicação por exemplo antes de implementar; cancelado conta do cancelamento, destacado. Também decidido (`A39(e)`): 3 dias à frente; quadro abre sozinho na primeira vez do dia; bolinha com quem entrou e quem saiu. Ausência cancelada marcada como "não aconteceu". Nenhuma pergunta da fase 1 em aberto neste momento.
 

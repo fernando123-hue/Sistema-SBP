@@ -373,6 +373,7 @@ async function processarUm(
           modeloIa: interpretacao.modelo,
           versaoPrompt: interpretacao.versaoPrompt,
           processadoEm: new Date(),
+          conteudoSuspeito: interpretacao.conteudoSuspeito,
           conteudo: {
             create: {
               remetente: email.remetente,
@@ -393,7 +394,7 @@ async function processarUm(
             })),
           },
         },
-        update: { processadoEm: new Date() },
+        update: { processadoEm: new Date(), conteudoSuspeito: interpretacao.conteudoSuspeito },
       })
 
       const resultado = await criarItens(tx, {

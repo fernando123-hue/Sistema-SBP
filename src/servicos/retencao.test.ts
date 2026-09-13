@@ -42,6 +42,7 @@ describe('o valor em vigor', () => {
   it('sem ninguém mudar, vale o padrão de 7 dias', async () => {
     expect(await listarPrazos(banco, gestor)).toEqual([
       { chave: 'motivo_de_afastamento', dias: 7, padrao: 7, alteradoEm: null, alteradoPorNome: null },
+      { chave: 'conteudo_do_email', dias: 7, padrao: 7, alteradoEm: null, alteradoPorNome: null },
     ])
     expect(await prazoEmVigor(banco, 'motivo_de_afastamento')).toBe(7)
   })

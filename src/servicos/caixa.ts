@@ -39,6 +39,7 @@ export async function listarCaixa(
       email: {
         select: {
           recebidoEm: true,
+          conteudoExpurgadoEm: true,
           // Nulo quando a retenção já expurgou o conteúdo. O item continua
           // inteiro: título, categoria, responsável e carga não dependem disto.
           conteudo: { select: { remetente: true, assunto: true } },
@@ -65,6 +66,7 @@ export async function listarCaixa(
     remetente: item.email?.conteudo?.remetente ?? null,
     assunto: item.email?.conteudo?.assunto ?? null,
     recebidoEm: item.email?.recebidoEm ?? null,
+    conteudoRemovidoEm: item.email?.conteudoExpurgadoEm ?? null,
     irmaos: item.email?._count.itens ?? 1,
     responsavel: item.atribuicoes[0]?.colaborador.nome ?? null,
     ligaId: item.liga?.id ?? null,

@@ -8,12 +8,14 @@
  *
  *   npm run db:expurgar
  *
- * O prazo NÃO vem mais de variável de ambiente. Ele é editado pelo gestor, na
- * tela, com a mudança na trilha (`A17`); uma variável aqui seria uma segunda
- * porta para mudar quanto tempo dado de saúde fica guardado, sem trilha e sem
- * confirmação.
+ * Os prazos NÃO vêm de variável de ambiente. Eles são editados pelo gestor, na
+ * tela, com a mudança na trilha (`A17`, `A20`); uma variável aqui seria uma
+ * segunda porta para mudar quanto tempo dado pessoal fica guardado, sem trilha e
+ * sem confirmação.
  */
 
+import { criarArmazenamentoPort } from '../src/adapters/fabrica'
+import type { ArmazenamentoPort } from '../src/ports/armazenamento'
 import { rodarLimpezaDiaria } from '../src/servicos/rotinas'
 import { obterPrisma } from '../src/servidor/prisma'
 
@@ -25,7 +27,17 @@ const POR_QUE_NAO_RODOU = {
 } as const
 
 async function principal(): Promise<void> {
-  const resultado = await rodarLimpezaDiaria(obterPrisma())
+  let armazenamento: ArmazenamentoPort | null = null
+  try {
+    armazenamento = criarArmazenamentoPort()
+  } catch (erro) {
+    process.stderr.write(
+      `Armazenamento de anexos indisponível (${erro instanceof Error ? erro.message : String(erro)}). ` +
+        'E-mails com anexo ficam pendentes.\n',
+    )
+  }
+
+  const resultado = await rodarLimpezaDiaria(obterPrisma(), { armazenamento })
 
   if (!resultado.executou) {
     process.stdout.write(`Nada feito: ${POR_QUE_NAO_RODOU[resultado.motivo]}\n`)
@@ -42,11 +54,15 @@ async function principal(): Promise<void> {
   }
 
   const motivos = resultado.resumo.motivosDeAfastamento
+  const conteudo = resultado.resumo.conteudoDosEmails
   process.stdout.write(
     `Limpeza diária concluída (ref. ${resultado.correlacaoId.slice(0, 8)}):\n` +
       `  - prazo do motivo de afastamento: ${motivos.prazoEmDias} dias\n` +
       `  - ausências avaliadas: ${motivos.avaliados}\n` +
-      `  - motivos vencidos: ${motivos.vencidos} (com algo a apagar: ${motivos.apagados})\n`,
+      `  - motivos vencidos: ${motivos.vencidos} (com algo a apagar: ${motivos.apagados})\n` +
+      `  - prazo do texto dos e-mails: ${conteudo.prazoEmDias} dias\n` +
+      `  - e-mails avaliados: ${conteudo.avaliados}\n` +
+      `  - e-mails vencidos: ${conteudo.vencidos} (apagados: ${conteudo.apagados}, anexos removidos: ${conteudo.anexosRemovidos})\n`,
   )
 }
 

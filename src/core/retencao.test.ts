@@ -3,9 +3,12 @@ import { describe, expect, it } from 'vitest'
 import { TipoDeAfastamentoGravadoSchema } from './esquemas'
 import {
   PRAZO_PADRAO_EM_DIAS,
+  conteudoVenceu,
+  diaEmQueOConteudoVence,
   diaEmQueOMotivoVence,
   exigirPrazoValido,
   motivoVenceu,
+  textoDoConteudoRemovido,
   tipoDepoisDoPrazo,
 } from './retencao'
 
@@ -91,5 +94,75 @@ describe('prazo inválido é recusado antes de qualquer conta', () => {
 
   it('o padrão decidido em A17 é 7 dias', () => {
     expect(PRAZO_PADRAO_EM_DIAS.motivo_de_afastamento).toBe(7)
+  })
+
+  it('o padrão decidido em A20 é 7 dias', () => {
+    expect(PRAZO_PADRAO_EM_DIAS.conteudo_do_email).toBe(7)
+  })
+})
+
+describe('quando o conteúdo de um e-mail vence (A20)', () => {
+  const concluido = (dia: string) => ({ aberto: false as const, terminouNoDia: dia })
+  const aberto = { aberto: true as const }
+
+  it('último item concluído em 12/09, prazo de 7 dias: sai em 19/09 — na véspera, não', () => {
+    const email = {
+      recebidoNoDia: '2026-09-01',
+      conteudoSuspeito: false,
+      itens: [concluido('2026-09-05'), concluido('2026-09-12')],
+    }
+
+    expect(diaEmQueOConteudoVence(email, 7)).toBe('2026-09-19')
+    expect(conteudoVenceu(email, '2026-09-18', 7)).toBe(false)
+    expect(conteudoVenceu(email, '2026-09-19', 7)).toBe(true)
+  })
+
+  it('um item aberto segura o relógio, mesmo com o irmão concluído há meses', () => {
+    const email = { recebidoNoDia: '2026-06-01', conteudoSuspeito: false, itens: [concluido('2026-06-02'), aberto] }
+
+    expect(diaEmQueOConteudoVence(email, 7)).toBeNull()
+    expect(conteudoVenceu(email, '2030-01-01', 7)).toBe(false)
+  })
+
+  it('e-mail que não virou item conta da chegada', () => {
+    const email = { recebidoNoDia: '2026-09-10', conteudoSuspeito: false, itens: [] }
+
+    expect(diaEmQueOConteudoVence(email, 7)).toBe('2026-09-17')
+  })
+
+  it('e-mail SUSPEITO que não virou item não vence: espera uma pessoa decidir (A34)', () => {
+    const email = { recebidoNoDia: '2026-01-01', conteudoSuspeito: true, itens: [] }
+
+    expect(diaEmQueOConteudoVence(email, 7)).toBeNull()
+  })
+
+  it('e-mail suspeito que virou item segue o relógio dos itens', () => {
+    const email = { recebidoNoDia: '2026-09-01', conteudoSuspeito: true, itens: [concluido('2026-09-10')] }
+
+    expect(diaEmQueOConteudoVence(email, 7)).toBe('2026-09-17')
+  })
+
+  it('recusa prazo inválido', () => {
+    expect(() => diaEmQueOConteudoVence({ recebidoNoDia: '2026-09-01', conteudoSuspeito: false, itens: [] }, 0)).toThrow(
+      /Prazo de retenção inválido/,
+    )
+  })
+})
+
+describe('o aviso onde o texto do e-mail aparecia', () => {
+  it('diz quando saiu e quando o original chegou, com a hora de Brasília', () => {
+    // 13h UTC de 20/09 é 10h em Brasília; 12h14 UTC de 12/09 é 09:14.
+    expect(
+      textoDoConteudoRemovido(new Date('2026-09-20T13:00:00Z'), new Date('2026-09-12T12:14:00Z')),
+    ).toBe(
+      'O texto deste e-mail já foi apagado do sistema no dia 20/09. Para ver o e-mail completo, procure no Outlook: ele chegou no dia 12/09, às 09:14.',
+    )
+  })
+
+  it('chegada às 22h de Brasília continua no mesmo dia, e não no seguinte', () => {
+    // 01h UTC de 13/09 é 22h de 12/09 em Brasília.
+    expect(textoDoConteudoRemovido(new Date('2026-09-20T13:00:00Z'), new Date('2026-09-13T01:00:00Z'))).toContain(
+      'chegou no dia 12/09, às 22:00',
+    )
   })
 })

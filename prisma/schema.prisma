@@ -224,6 +224,12 @@ model Email {
   /// ambiguidade silenciosa é o defeito que este sistema existe para eliminar.
   conteudoExpurgadoEm DateTime?
 
+  /// As defesas contra injeção marcaram o conteúdo. Guardado porque um e-mail
+  /// suspeito que não gerou item nenhum é a forma exata de uma manipulação
+  /// bem-sucedida (`A34`): o conteúdo dele não sai pela retenção de `A20` antes
+  /// de uma pessoa olhar. Antes ficava só no log e no evento.
+  conteudoSuspeito    Boolean  @default(false)
+
   conteudo EmailConteudo?
   anexos   Anexo[]
   itens    Item[]

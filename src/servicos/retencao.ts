@@ -17,6 +17,7 @@ import { auditar } from './auditoria'
 /** Como a confirmação descreve o que encurtar apaga. Uma entrada por prazo que existe. */
 const O_QUE_ENCURTAR_APAGA: Readonly<Record<ChaveDePrazo, string>> = {
   motivo_de_afastamento: 'o motivo das ausências que já passaram do novo prazo',
+  conteudo_do_email: 'o texto e os anexos dos e-mails que já passaram do novo prazo',
 }
 
 /**

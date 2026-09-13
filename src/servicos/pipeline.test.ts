@@ -398,6 +398,12 @@ describe('segurança — conteúdo não confiável', () => {
     expect(item.status).toBe('aguardando_revisao')
     expect(item.confianca).toBeLessThan(0.85)
     expect(await banco.atribuicao.count()).toBe(0)
+
+    // A marca fica GRAVADA no e-mail, não só no log: é ela que impede a
+    // retenção de `A20` de apagar um suspeito sem item antes de alguém olhar.
+    const email = await banco.email.findFirstOrThrow({ where: { messageId: { contains: 'injecao' } } })
+    expect(email.conteudoSuspeito).toBe(true)
+    expect(await banco.email.count({ where: { conteudoSuspeito: false } })).toBeGreaterThan(0)
   })
 
   it('aprovação em massa NÃO libera conteúdo suspeito nem desdobramento', async () => {

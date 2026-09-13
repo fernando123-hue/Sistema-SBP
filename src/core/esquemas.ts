@@ -119,6 +119,8 @@ export const AcaoAuditavelSchema = z.enum([
   'afastamento_observacao_expurgada',
   /** `A17`: observação apagada e tipo reduzido a `ferias` ou `ausente`. */
   'afastamento_motivo_expurgado',
+  /** `A20`: remetente, assunto, corpo e bytes dos anexos saíram pelo prazo. */
+  'conteudo_do_email_expurgado',
   // Retenção
   'prazo_de_retencao_alterado',
   // Memória do setor
@@ -455,7 +457,7 @@ export type TipoDeAfastamentoGravado = z.infer<typeof TipoDeAfastamentoGravadoSc
  * que nenhuma rotina aplica não entra aqui: a tela ofereceria um número que
  * não apaga nada, e prazo que não é cumprido é pior do que prazo ausente.
  */
-export const ChaveDePrazoSchema = z.enum(['motivo_de_afastamento'])
+export const ChaveDePrazoSchema = z.enum(['motivo_de_afastamento', 'conteudo_do_email'])
 export type ChaveDePrazo = z.infer<typeof ChaveDePrazoSchema>
 
 export const PRAZO_MINIMO_EM_DIAS = 1

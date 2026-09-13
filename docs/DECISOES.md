@@ -418,6 +418,28 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **Impacto:** `AvisoVisto` guarda só chaves como `fora:<id do afastamento>` — nenhum nome, nenhum motivo; só as chaves que ainda estão no aviso são aceitas, então a tela não consegue marcar como visto o que não existe. Não vai para a trilha: olhar não altera registro. O conteúdo nunca passa pelo modelo de IA (invariante 13). **Limite conhecido:** a conferência é a cada 15 minutos; uma mudança que entra e sai dentro desse intervalo não é anunciada. **Mudança da própria gestora não acende a bolinha dela** (`A39(f)`): o autor é quem mexeu por último na ausência (`canceladoPor`, senão `encerradoPor` — coluna nova —, senão `registradoPor`). Pessoa desativada no meio do dia não tem autor próprio de ação na ausência: vale quem mexeu por último nela, então a desativação feita por outra gestora numa ausência registrada pela própria gestora não acende — caso raro, aceito. **Visto rodando em 12/09/2026:** o painel aberto sozinho fica no canto inferior direito e cobre os botões da direita da lista em `/acesso` ("Não aconteceu") até ser fechado — o foco não é roubado, e `Esc` fecha. **Status:** os **3 dias foram confirmados pelo dono em 12/09/2026 (`A39`)**. ✅ **Abrir sozinho na primeira vez e a bolinha por novidade, com quem entrou e quem saiu, decididos pelo dono em 12/09/2026 (`A39(e)`).** Os 15 minutos são de engenharia; ajustar pelos feedbacks da gestora (`A21`).
 
+### AT-23 — Como o relógio do conteúdo do e-mail conta (`A20`) *(12/09/2026)*
+
+**Hipótese:** o conteúdo (remetente, assunto, corpo) e os bytes dos anexos saem **no dia da conclusão do último item mais o prazo** — concluído em 12/09, prazo de 7 dias, sai em 19/09. Item cancelado conta do dia do cancelamento; e-mail sem item, do dia da chegada; qualquer item aberto (inclusive devolvido, em revisão ou distribuído) segura o relógio. **Concluído sem registro de conclusão, ou cancelado sem carimbo, conta como aberto** — é linha inconsistente, e na dúvida o conteúdo fica.
+
+**Motivo:** o dono falou em "7 dias depois da conclusão". Diferente do motivo de afastamento, que conta do dia da volta (dia seguinte ao fim), aqui o próprio evento é a conclusão. Apagar a partir de uma data inventada é o erro que não tem volta.
+
+**Impacto:** na Fila e na Revisão o texto nunca some, porque ali todo item está aberto. Só a **Caixa de entrada**, que mostra concluídos e cancelados, passa a exibir o aviso aprovado em `A39(b)` no lugar do remetente. **Status:** ⏳ adotado.
+
+### AT-24 — E-mail suspeito que não gerou item fica guardado até existir quem decida (`A20` × `A34`) *(12/09/2026)*
+
+**Hipótese:** `A20` manda apagar e-mail sem item 7 dias depois da chegada; `A34` manda que o e-mail suspeito sem item vá para uma pessoa decidir e que o relógio só corra depois da decisão. A lista de `A34` é da fase 4 e ainda não existe. Até lá, **e-mail suspeito sem item não entra na limpeza**. Para saber disso depois da ingestão, `Email.conteudoSuspeito` passou a ser gravado — antes a marca ficava só no log e no evento.
+
+**Motivo:** apagar agora seria deixar a manipulação bem-sucedida desaparecer sozinha, que é exatamente o risco que `A34` nomeia.
+
+**Impacto:** esses e-mails acumulam conteúdo até a fase 4. São raros (as defesas precisam marcar E o modelo não devolver item). E-mails anteriores a 12/09/2026 nasceram com a marca falsa — só dado sintético. **Status:** ⏳ até a fase 4; a lista de `A34` passa a ser o gatilho do relógio.
+
+### AT-25 — A limpeza apaga o arquivo do anexo antes de marcar no banco *(12/09/2026)*
+
+**Hipótese:** para cada e-mail vencido, primeiro os bytes saem do armazenamento; só então, numa transação, saem `EmailConteudo`, a chave do anexo e entra o carimbo. Se um arquivo não sai, o e-mail inteiro fica pendente, os outros seguem, e a execução termina como **falha** (aparece no aviso do dia da gestora). Sem armazenamento disponível, e-mail com anexo fica pendente do mesmo jeito.
+
+**Motivo:** na ordem inversa, cada falha de disco deixaria um documento de associado no armazenamento com o banco dizendo que ele não existe mais — um órfão que nenhuma limpeza futura alcança (invariante 11). Nesta ordem, a falha só atrasa, e `remover` é idempotente. **Revisão de segurança de 12/09/2026:** o log de processo da falha por e-mail leva a mensagem crua do disco, que pode conter o caminho do servidor. Mantido de propósito: é o lugar certo da causa técnica (`ports/armazenamento.ts` — "a causa crua fica no log; a tela recebe só o fato"), não é dado pessoal, e o que é GRAVADO (`ExecucaoDeRotina`, `EventoProcessamento`) passa por `mensagemPersistivel` e leva só o nome do erro. **Status:** ✅ adotado.
+
 ---
 
 ## D. Pendências do cliente final
