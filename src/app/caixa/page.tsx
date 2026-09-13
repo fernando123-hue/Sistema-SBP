@@ -104,6 +104,19 @@ export default function Caixa() {
   const [confirmacao, setConfirmacao] = useState<string | null>(null)
 
   /**
+   * Busca por CPF ou matrícula (`A40`, resposta 24).
+   *
+   * `null` = sem busca, a lista normal da Caixa. O número digitado fica só
+   * neste estado e no corpo do POST: nunca vai para o endereço da página.
+   */
+  const [textoDaBusca, setTextoDaBusca] = useState('')
+  const [resultadoDaBusca, setResultadoDaBusca] = useState<NaRede<ItemDaCaixa>[] | null>(null)
+  const [buscando, setBuscando] = useState(false)
+  const [erroDaBusca, setErroDaBusca] = useState<string | null>(null)
+  /** Mesma defesa de `ultimaCarga`: só a busca mais recente escreve na tela. */
+  const ultimaBusca = useRef(0)
+
+  /**
    * Número da carga mais recente. Só ela escreve na tela.
    *
    * Clicar na pastilha A e logo na B dispara duas buscas; se a de A chegasse
@@ -221,6 +234,39 @@ export default function Caixa() {
     }
   }
 
+  async function buscar() {
+    if (textoDaBusca.trim() === '') return
+    ultimaBusca.current += 1
+    const estaBusca = ultimaBusca.current
+    setBuscando(true)
+    setErroDaBusca(null)
+    try {
+      const resposta = await api.enviar<{ itens: NaRede<ItemDaCaixa>[] }>('/itens/busca', {
+        texto: textoDaBusca,
+      })
+      if (estaBusca !== ultimaBusca.current) return
+      setResultadoDaBusca(resposta.itens)
+    } catch (causa) {
+      if (estaBusca !== ultimaBusca.current) return
+      // O resultado da busca ANTERIOR sai. Visto rodando: "Este CPF não confere"
+      // aparecia em cima de "1 item com este CPF", e quem olhava entendia que o
+      // item era daquele CPF errado.
+      setResultadoDaBusca(null)
+      // A frase vem do servidor, já em linguagem simples e sem o número.
+      setErroDaBusca(mensagemDoErro(causa))
+    } finally {
+      if (estaBusca === ultimaBusca.current) setBuscando(false)
+    }
+  }
+
+  function limparBusca() {
+    ultimaBusca.current += 1
+    setTextoDaBusca('')
+    setResultadoDaBusca(null)
+    setErroDaBusca(null)
+    setBuscando(false)
+  }
+
   const quantidade = Number(novo.quantidade)
   const incompleto =
     novo.categoriaCodigo === '' ||
@@ -250,6 +296,47 @@ export default function Caixa() {
           ) : undefined
         }
       />
+
+      {/*
+        No topo, para todos os cargos (`A40`, resposta 24). Enter também busca.
+        `inputMode="numeric"` abre o teclado de números no celular.
+      */}
+      <div className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="busca-por-chave" className="sr-only">
+            Buscar por CPF ou matrícula
+          </label>
+          <input
+            id="busca-por-chave"
+            value={textoDaBusca}
+            onChange={(evento) => setTextoDaBusca(evento.target.value)}
+            onKeyDown={(evento) => {
+              if (evento.key === 'Enter') void buscar()
+            }}
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={40}
+            placeholder="Buscar por CPF ou matrícula"
+            className="min-h-11 min-w-0 flex-1 rounded-md border border-borda-forte bg-papel px-2.5 py-2 text-sm sm:min-h-9"
+          />
+          <Botao onClick={() => void buscar()} desabilitado={buscando || textoDaBusca.trim() === ''}>
+            {buscando ? 'buscando…' : 'Buscar'}
+          </Botao>
+          {resultadoDaBusca !== null || erroDaBusca !== null ? (
+            <Botao variante="secundario" onClick={limparBusca}>
+              Limpar busca
+            </Botao>
+          ) : null}
+        </div>
+        {erroDaBusca ? <Aviso>{erroDaBusca}</Aviso> : null}
+        {resultadoDaBusca !== null && resultadoDaBusca.length > 0 ? (
+          <p className="text-xs text-tinta-suave">
+            {resultadoDaBusca.length === 1
+              ? '1 item com este CPF ou matrícula.'
+              : `${resultadoDaBusca.length} itens com este CPF ou matrícula.`}
+          </p>
+        ) : null}
+      </div>
 
       {dados !== null && dados.itens.length >= TETO_DA_LISTA ? (
         <Aviso tom="atencao">
@@ -384,6 +471,9 @@ export default function Caixa() {
         <Carregando />
       ) : (
         <>
+          {/* Filtros de categoria e liga valem para a lista normal, não para o resultado da busca. */}
+          {resultadoDaBusca === null ? (
+          <>
           <div className="flex flex-wrap gap-1.5">
             <button
               onClick={() => setFiltro(null)}
@@ -441,15 +531,24 @@ export default function Caixa() {
               ) : null}
             </label>
           ) : null}
+          </>
+          ) : null}
 
-          {dados.itens.length === 0 ? (
+          {resultadoDaBusca !== null && resultadoDaBusca.length === 0 ? (
+            // Honesto sobre o limite: só tem chave o item cujo e-mail trazia o
+            // CPF ou a matrícula, e que chegou depois de a busca existir.
+            <Vazio
+              titulo="Nenhum item com este CPF ou matrícula"
+              descricao="A busca só acha itens em que o e-mail trazia o CPF ou a matrícula, e que chegaram depois que a busca passou a existir. Para os outros, procure pela data de chegada."
+            />
+          ) : resultadoDaBusca === null && dados.itens.length === 0 ? (
             <Vazio
               titulo="Nenhum item"
               descricao="Use “Buscar e-mails” na tela de Distribuição para trazer a caixa."
             />
           ) : (
             <ListaResponsiva
-              linhas={dados.itens}
+              linhas={resultadoDaBusca ?? dados.itens}
               chaveDaLinha={(item) => item.itemId}
               tituloDoCartao={(item) => item.titulo}
               colunas={[

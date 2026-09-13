@@ -112,6 +112,23 @@ const AmbienteSchema = z.object({
     )
     .optional(),
   /**
+   * Segredo do CPF protegido (`A23(b)`): o código guardado para achar um item
+   * pelo CPF depois que o texto do e-mail foi apagado.
+   *
+   * OBRIGATÓRIO e separado dos outros dois, pelo ciclo de vida: trocar este
+   * valor quebra a busca de todo item cujo texto já saiu, porque não sobra CPF
+   * para recalcular o código. É o mesmo peso de `ANEXOS_SECRET` (`AT-13`), e
+   * pior que o de `SESSAO_SECRET`, que custa só uma reentrada. Por isso também
+   * NÃO cai em `SESSAO_SECRET` quando vazio: rotacionar a sessão, que é rotina,
+   * não pode apagar a busca por baixo.
+   */
+  BUSCA_SECRET: z
+    .string()
+    .min(
+      16,
+      'BUSCA_SECRET precisa de no mínimo 16 caracteres — gere um com: node -e "console.log(crypto.randomBytes(32).toString(\'base64url\'))"',
+    ),
+  /**
    * Quantos proxies confiáveis ficam na frente da aplicação.
    *
    * `0` (padrão) significa acesso direto — e nesse caso `x-forwarded-for` é

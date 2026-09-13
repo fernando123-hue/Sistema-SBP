@@ -213,6 +213,18 @@ export const MANUAL: readonly VerbeteDoManual[] = [
       'Quem é gestor pode mudar o prazo na tela Acesso, em "Prazos de retenção".',
   },
   {
+    id: 'buscar-por-cpf-ou-matricula',
+    titulo: 'Achar um item antigo pelo CPF ou pela matrícula',
+    papeis: TODOS,
+    tela: '/caixa',
+    texto:
+      'No topo da Caixa há o campo "Buscar por CPF ou matrícula". Digite o CPF, com ou sem pontos, ou a matrícula, só com números, e aperte Buscar. ' +
+      'A busca continua funcionando depois que o texto do e-mail foi apagado: o sistema não guarda o CPF, guarda um código feito a partir dele, ' +
+      'e o mesmo CPF digitado gera o mesmo código. ' +
+      'Ela só acha itens em que o e-mail trazia o CPF ou a matrícula, e que chegaram depois que a busca passou a existir; para os outros, procure pela data de chegada. ' +
+      'Se aparecer "Este CPF não confere", algum número foi digitado errado. O número que você digita não aparece no endereço da página.',
+  },
+  {
     id: 'notas-do-setor',
     titulo: 'As notas do setor',
     papeis: TODOS,

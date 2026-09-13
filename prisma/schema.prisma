@@ -316,6 +316,12 @@ model Item {
   /// Trocar `BUSCA_SECRET` quebra a busca de todo item cujo conteúdo já saiu:
   /// não sobra CPF para recalcular. Mesmo cuidado de `ANEXOS_SECRET` (`AT-13`).
   cpfProtegido String?
+  /// Matrícula do associado no cadastro da associação, como veio — só
+  /// dígitos, de 3 a 10 (`A41`, resposta 28). SEM data de exclusão e sem
+  /// proteção: é um número do cadastro, não um documento pessoal. Por isso
+  /// `normalizarMatricula` recusa o que não parece matrícula (letra, 11
+  /// dígitos ou mais), para um nome ou CPF não ficar guardado aqui.
+  matricula    String?
 
   /// Quando o item foi cancelado, se foi.
   ///
@@ -344,6 +350,7 @@ model Item {
   @@index([status, categoriaId])
   @@index([categoriaId, status, criadoEm])
   @@index([cpfProtegido])
+  @@index([matricula])
 }
 
 // ─────────────────────────────────────────────────────────────

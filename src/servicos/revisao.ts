@@ -8,6 +8,7 @@ import {
 } from '../core/esquemas'
 import { camposAlterados, compararRevisao, type DecisaoHumana } from '../core/qualidade-ia'
 import { exigirPapel, type Ator } from '../servidor/ator'
+import { chaveDeBusca } from '../servidor/cpf-protegido'
 import { novaCorrelacao, registrarLog } from '../servidor/observabilidade'
 import type { ItemEmRevisao } from '../core/tipos'
 import type { Banco, Transacao } from '../servidor/prisma'
@@ -189,6 +190,9 @@ export async function resolver(
         categoriaId: categoria.id,
         titulo: dados.titulo,
         payload: serializar(payloadFinal),
+        // A chave vem dos campos FINAIS: a pessoa pode ter corrigido ou trocado
+        // o CPF, e a chave antiga não pode sobreviver a isso (`A23(b)`).
+        ...chaveDeBusca(payloadFinal.campos),
         // Aprovado por humano entra na próxima rodada. Recusado sai da fila
         // sem sumir do banco — cancelado é estado, não exclusão.
         status: dados.aprovar ? 'aprovado' : 'cancelado',
@@ -285,6 +289,7 @@ export async function resolver(
             // O item extra é o mesmo trabalho da mesma liga: a única resposta
             // correta é a liga do item de origem.
             ligaId: revisao.item.ligaId,
+            ...chaveDeBusca(extra.campos),
             sequencia: proximaSequencia,
             titulo: extra.titulo,
             payload: serializar({

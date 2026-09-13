@@ -8,6 +8,11 @@ export default defineConfig({
     env: {
       DATABASE_URL: 'file:./prisma/teste.db',
       NODE_ENV: 'test',
+      // Valor público de propósito, como o `SESSAO_SECRET` do CI: protege CPF
+      // sintético num banco que nasce e morre com a suíte. Sem ele, quem clona
+      // o repositório e roda os testes sem este segredo no `.env` vê tudo
+      // vermelho por um motivo que não é defeito.
+      BUSCA_SECRET: 'teste-nao-e-segredo-so-para-cpf-sintetico',
     },
     globalSetup: ['./src/testes/preparar-banco.ts'],
     // Um banco SQLite compartilhado: arquivos de teste rodam em série.
