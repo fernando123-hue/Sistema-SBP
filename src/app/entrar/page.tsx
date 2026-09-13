@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-import { api, mensagemDoErro } from '../../componentes/api'
+import { api, ErroDaApi, mensagemDoErro } from '../../componentes/api'
 import { Marca } from '../../componentes/marca'
 import { Aviso, Botao, Cartao } from '../../componentes/matrizes'
 
@@ -12,6 +12,12 @@ interface Entrada {
   nome: string
   papel: string
   precisaTrocarSenha: boolean
+}
+
+interface ContaLocal {
+  nome: string
+  email: string
+  papel: string
 }
 
 /**
@@ -31,6 +37,50 @@ export default function Entrar() {
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [entrando, setEntrando] = useState(false)
+  const [contasLocais, setContasLocais] = useState<ContaLocal[]>([])
+
+  // ACESSO LOCAL SEM SENHA — só aparece quando o servidor diz que existe.
+  //
+  // A tela não decide nada: pergunta à rota, e a rota responde 404 sempre que o
+  // acesso local está desligado, fora de desenvolvimento ou pedido de outra
+  // máquina. O 404 é o caso normal e não vira aviso; qualquer outra falha vira,
+  // porque esconder "a rota quebrou" atrás de "o acesso está desligado" seria
+  // degradar em silêncio.
+  useEffect(() => {
+    let vigente = true
+    api
+      .buscar<ContaLocal[]>('/sessao/local')
+      .then((contas) => {
+        if (vigente) setContasLocais(contas)
+      })
+      .catch((causa: unknown) => {
+        if (!vigente) return
+        if (causa instanceof ErroDaApi && causa.status === 404) return
+        setErro(`Acesso local indisponível: ${mensagemDoErro(causa)}`)
+      })
+    return () => {
+      vigente = false
+    }
+  }, [])
+
+  function destinoDoPapel(papel: string): string {
+    return papel === 'colaborador' ? '/fila' : '/distribuicao'
+  }
+
+  async function entrarLocal(conta: ContaLocal) {
+    setEntrando(true)
+    setErro(null)
+    try {
+      const entrada = await api.enviar<{ nome: string; papel: string }>('/sessao/local', {
+        email: conta.email,
+      })
+      navegador.push(destinoDoPapel(entrada.papel))
+      navegador.refresh()
+    } catch (causa) {
+      setErro(mensagemDoErro(causa))
+      setEntrando(false)
+    }
+  }
 
   async function entrar(evento: React.FormEvent) {
     evento.preventDefault()
@@ -41,11 +91,7 @@ export default function Entrar() {
       // Com senha provisória, nenhuma outra tela responde — o layout devolve a
       // troca de senha de qualquer forma. Ir direto evita um piscar de tela.
       navegador.push(
-        entrada.precisaTrocarSenha
-          ? '/senha'
-          : entrada.papel === 'colaborador'
-            ? '/fila'
-            : '/distribuicao',
+        entrada.precisaTrocarSenha ? '/senha' : destinoDoPapel(entrada.papel),
       )
       navegador.refresh()
     } catch (causa) {
@@ -114,6 +160,34 @@ export default function Entrar() {
         Primeira vez? A senha provisória é entregue pelo gestor, e o sistema pede a troca antes de
         liberar qualquer tela.
       </p>
+
+      {contasLocais.length > 0 ? (
+        <section
+          aria-labelledby="acesso-local-titulo"
+          className="mt-8 rounded-md border-2 border-dashed border-atencao/60 bg-atencao-claro px-4 py-4"
+        >
+          <h2 id="acesso-local-titulo" className="text-sm font-semibold text-atencao">
+            Acesso local sem senha — só desenvolvimento
+          </h2>
+          <p className="mt-1 text-xs text-tinta-suave">
+            Aparece porque o acesso local está ligado neste computador. Só contas sintéticas
+            ({'@exemplo.test'}), e cada entrada fica registrada. Desligue ao terminar.
+          </p>
+          <div className="mt-3 flex flex-col gap-2">
+            {contasLocais.map((conta) => (
+              <Botao
+                key={conta.email}
+                desabilitado={entrando}
+                onClick={() => entrarLocal(conta)}
+                className="justify-between"
+              >
+                <span>{conta.nome}</span>
+                <span className="text-xs text-tinta-fraca">{conta.papel}</span>
+              </Botao>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   )
 }

@@ -30,6 +30,19 @@ export default async function LayoutRaiz({ children }: { children: React.ReactNo
   return (
     <html lang="pt-BR">
       <body className="min-h-dvh">
+        {/*
+          Faixa do acesso local sem senha. Fica no layout, e não numa tela, para
+          aparecer em TODAS enquanto a sessão local estiver aberta: quem olha um
+          print precisa saber que aquela sessão não passou por senha.
+        */}
+        {perfil?.acessoLocal ? (
+          <div
+            role="status"
+            className="border-b border-atencao/40 bg-atencao-claro px-4 py-2 text-center text-sm font-medium text-atencao"
+          >
+            Acesso local sem senha (desenvolvimento) — só contas sintéticas. Desligue ao terminar.
+          </div>
+        ) : null}
         {perfil && !perfil.precisaTrocarSenha ? (
           <Navegacao nome={perfil.nome} papel={perfil.papel} />
         ) : null}
