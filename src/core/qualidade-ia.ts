@@ -115,7 +115,7 @@ function mesmoTexto(a: string, b: string): boolean {
  * Registrado em vez de contornado: distinguir os dois exigiria mudar o
  * esquema de entrada, e hoje não há esse cliente.
  */
-function camposAlterados(
+export function camposAlterados(
   sugeridos: Record<string, string>,
   finais: Record<string, string>,
 ): string[] {

@@ -6,7 +6,7 @@ import {
   desserializar,
   serializar,
 } from '../core/esquemas'
-import { compararRevisao, type DecisaoHumana } from '../core/qualidade-ia'
+import { camposAlterados, compararRevisao, type DecisaoHumana } from '../core/qualidade-ia'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import { novaCorrelacao, registrarLog } from '../servidor/observabilidade'
 import type { ItemEmRevisao } from '../core/tipos'
@@ -156,9 +156,10 @@ export async function resolver(
     })
     if (!categoria) throw new ErroDeNegocio(`Categoria "${dados.categoriaCodigo}" não existe.`)
 
+    // Sem título: o que a IA extraiu pode ter nome de associado, e a trilha
+    // não tem prazo (`A23(d)`).
     const antes = {
       categoriaId: revisao.item.categoriaId,
-      titulo: revisao.item.titulo,
       status: revisao.item.status,
     }
 
@@ -226,7 +227,13 @@ export async function resolver(
       entidadeId: item.id,
       acao: dados.aprovar ? 'revisao_aprovada' : 'revisao_recusada',
       antes,
-      depois: { categoriaId: categoria.id, titulo: item.titulo, status: item.status },
+      // QUAIS campos mudaram e SE o título mudou — nunca o que está escrito.
+      depois: {
+        categoriaId: categoria.id,
+        status: item.status,
+        tituloEditado: dados.titulo.trim() !== revisao.item.titulo.trim(),
+        camposAlterados: camposAlterados(payloadAnterior.campos, payloadFinal.campos),
+      },
       usuario: ator.colaboradorId,
       correlacaoId,
     })
@@ -298,7 +305,7 @@ export async function resolver(
           entidade: 'Item',
           entidadeId: criado.id,
           acao: 'item_criado_por_divisao_de_revisao',
-          depois: { categoriaId: categoria.id, titulo: criado.titulo, origemRevisaoId: dados.revisaoId },
+          depois: { categoriaId: categoria.id, origemRevisaoId: dados.revisaoId },
           usuario: ator.colaboradorId,
           correlacaoId,
         })

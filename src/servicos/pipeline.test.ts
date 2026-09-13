@@ -847,12 +847,14 @@ describe('devolução ao pool (AT-07)', () => {
     // Sem dono: é isso que significa "voltar ao pool".
     expect(await banco.atribuicao.count({ where: { itemId: item.id, ativa: true } })).toBe(0)
 
-    // A atribuição encerrada guarda o motivo e a justificativa.
+    // A atribuição encerrada guarda o motivo; o texto da justificativa mora à
+    // parte, porque sai no prazo e a atribuição não (`A40`, resposta 25).
     const encerrada = await banco.atribuicao.findFirstOrThrow({
       where: { itemId: item.id, ativa: null },
+      include: { justificativas: true },
     })
     expect(encerrada.motivo).toBe('devolucao')
-    expect(encerrada.justificativa).toContain('alçada')
+    expect(encerrada.justificativas.map((linha) => linha.texto).join('\n')).toContain('alçada')
 
     // E o item volta a ser distribuído — o ponto todo da devolução.
     await confirmar(banco, { data: datas[1]!, categorias: [] }, base.operador)

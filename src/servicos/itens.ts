@@ -189,12 +189,14 @@ export async function registrarManual(
         entidade: 'Item',
         entidadeId: item.id,
         acao: 'item_registrado_manualmente',
+        // Sem título nem observação: os dois são digitados, podem ter nome
+        // de associado ("Ligação da Dra. Fulana"), e a trilha não tem prazo
+        // (`A23(d)`, `A40`). Fica que houve observação.
         depois: {
           categoriaCodigo: dados.categoriaCodigo,
-          titulo: dados.titulo,
           status: responsavel ? 'distribuido' : 'aprovado',
           colaboradorId: responsavel?.colaboradorId ?? null,
-          observacao: dados.observacao,
+          temObservacao: Boolean(dados.observacao?.trim()),
           loteDe: dados.quantidade,
         },
         usuario: ator.colaboradorId,

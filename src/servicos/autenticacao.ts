@@ -450,7 +450,12 @@ export async function definirAtivacao(
           ativa: null,
           encerradoEm: new Date(),
           motivo: 'devolucao',
-          justificativa: 'Acesso da pessoa desativado; item devolvido ao grupo.',
+          justificativas: {
+            create: {
+              motivo: 'devolucao',
+              texto: 'Acesso da pessoa desativado; item devolvido ao grupo.',
+            },
+          },
         },
       })
       await tx.item.update({ where: { id: atribuicao.itemId }, data: { status: 'devolvido' } })

@@ -396,7 +396,6 @@ model Atribuicao {
   rodadaId      String?
   /// algoritmo | manual | transferencia | devolucao
   motivo        String
-  justificativa String?
   atribuidoPor  String
   /// `true` quando vigente, `null` quando encerrada.
   /// O índice único abaixo usa a semântica de NULL distinto para garantir,
@@ -408,10 +407,36 @@ model Atribuicao {
   item        Item                @relation(fields: [itemId], references: [id], onDelete: Cascade)
   colaborador Colaborador         @relation(fields: [colaboradorId], references: [id])
   rodada      RodadaDistribuicao? @relation(fields: [rodadaId], references: [id])
+  /// O texto da transferência ou devolução, à parte: ver o modelo abaixo.
+  justificativas JustificativaDeAtribuicao[]
 
   @@unique([itemId, ativa])
   @@index([colaboradorId, ativa])
   @@index([rodadaId])
+}
+
+/// O texto livre de uma transferência ou devolução (`A40`, resposta 25).
+///
+/// Mora fora de `Atribuicao` porque tem prazo e a atribuição não: a equipe
+/// escreve "associada Fulana pediu para falar com a Carla", e isso sai no mesmo
+/// prazo do texto do e-mail do item. Na atribuição e na trilha fica só que
+/// houve justificativa. Invariante 11: nunca juntar as duas coisas na mesma
+/// linha.
+///
+/// Mais de uma por atribuição: quem recebe por transferência e depois devolve
+/// escreve duas justificativas na MESMA atribuição. Com uma só, a da devolução
+/// apagaria a da transferência.
+model JustificativaDeAtribuicao {
+  id           String   @id @default(cuid())
+  atribuicaoId String
+  /// transferencia | devolucao
+  motivo       String
+  texto        String
+  criadoEm     DateTime @default(now())
+
+  atribuicao Atribuicao @relation(fields: [atribuicaoId], references: [id], onDelete: Cascade)
+
+  @@index([atribuicaoId])
 }
 
 /// Substitui o `Realizado` digitado. Evento com carimbo, não número declarado.
