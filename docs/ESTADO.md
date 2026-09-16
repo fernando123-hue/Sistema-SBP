@@ -1,8 +1,59 @@
 # Estado do projeto — retomada
 
-Última atualização: **16/09/2026** — na `main`: **fase 1** (privacidade e prazos), **fase 2** (cada colaborador vê o próprio trabalho), **piso de retenção de 5 dias** e o **primeiro bloco da implantação** — banco em MySQL, provado, e o adaptador da caixa do Microsoft 365, escrito e testado sem credencial. Mesclado pelo [PR #49](https://github.com/fernando123-hue/Sistema-SBP/pull/49).
+Última atualização: **16/09/2026, fim da tarde** — `main` em `c60fbea`, **nenhum PR aberto**, suíte com **82 arquivos e 877 testes** verde contra MySQL, aqui e no CI. Próximo trabalho decidido pelo dono: **rodada de segurança e qualidade** (`DECISOES.md § A49`).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### Retomada de 16/09/2026, fim da tarde — depois de um `/clear`
+>
+> **O dono limpou o contexto de propósito.** Tudo o que importa está neste bloco, em `DECISOES.md` e no código. Se algo aqui contradisser o código, o código vence. Leia *Como o dono prefere trabalhar*, logo abaixo, **antes** de falar com ele.
+>
+> **1. Ligue e confira, nesta ordem** (este computador; outro computador: *Preparar o ambiente*):
+> 1. MySQL — **não é serviço do Windows** e para quando a sessão acaba. Em PowerShell, em segundo plano: `& "C:\Program Files\MySQL\MySQL Server 8.4\bin\mysqld.exe" --datadir=C:\Users\Irineu\mysql-sbp\dados --port=3307 --bind-address=127.0.0.1`. Confira com `netstat -an | findstr 3307`.
+> 2. `git switch main && git pull` → `git log --oneline -1` deve mostrar `c60fbea` ou um commit mais novo (o PR de documentação desta retomada entra por cima dele).
+> 3. `npm ci` — **pare o servidor de visualização antes**, senão o Windows trava arquivos e a instalação falha. O PR #50 trouxe **vitest 5**; `node_modules` antigo não serve.
+> 4. `npx prisma generate` e `npx prisma migrate deploy` (aplica na base `sbp` o que faltar; nunca apaga).
+> 5. `npm run verificar` — tem de fechar com **zero vermelho e zero pulado**. Vermelho antes de mexer em qualquer coisa: rode o arquivo sozinho antes de chamar de regressão (máquina ocupada e data fixa em teste já enganaram).
+>
+> **2. O que entrou em 16/09/2026 à tarde** — tudo mesclado, cada PR revisado por agente, revisão publicada no PR e os três checks lidos um a um:
+> - **#50** — dependências (zod 4.6, `@anthropic-ai/sdk` 0.125, next 16.3.5, **vitest 5**). Substituiu os PRs do dependabot #33, #34, #42 e #43, fechados.
+> - **#51** — a caixa do Microsoft 365 é lida **só pela caixa de entrada** (`§ AT-33`, provisória). Antes, a resposta da própria secretaria (Itens Enviados) voltaria como pedido novo.
+> - **#52** — a busca por CPF ou matrícula é **contada** por pessoa e por dia (`ContagemDeBusca`), sem bloquear ninguém, por 90 dias (`§ A48`). **Nenhuma tela lê a contagem.** Falta o nível 2 de `A44` (bloqueio da busca da conta), que depende dos limites medidos com uso real.
+> - **#53** — **todas as tabelas em `utf8mb4_0900_as_cs`** (`§ AT-34`). O Prisma grava `unicode_ci` em cada `CREATE TABLE`; com isso, "Liga X" e "liga x" viravam uma liga só, e dois e-mails do Graph podiam virar um. **Regra nova: toda migração que cria tabela termina com `ALTER TABLE … CONVERT TO … utf8mb4_0900_as_cs`** — `src/servidor/colacao.test.ts` fica vermelho se esquecer.
+>
+> **3. Esperando gente de fora:**
+> - **TI da associação** — o dono **já enviou** o pedido em 16/09/2026 (confirmar Microsoft 365; permissão `Mail.Read` restrita só à caixa da secretaria; segredo entregue fora do e-mail, com data de validade; se regras do Outlook movem pedidos para subpastas — isso decide o `AT-33`). O texto ficou fora do repositório, com o dono. Quando a resposta chegar: credenciais só no `.env`, nunca em conversa nem em arquivo versionado.
+> - **IA paga: Anthropic** (`§ A49`) — **mas só depois da rodada abaixo.** Antes da chave: termos sem uso do conteúdo para treino (`A38`), adapter conferido contra o SDK 0.125, amostra contra o modelo real.
+> - Ainda abertos com o dono: onde publicar (`A46`, falta a máquina), canal de comentários em toda tela (`A21`), papel `dono` (`A32`), e contar à equipe no primeiro dia que as buscas são contadas e por quê (`A44(i)`).
+>
+> **4. PRÓXIMO TRABALHO — rodada de segurança e qualidade (`§ A49`).** Pedido do dono: *"reforçar a segurança e a qualidade do protótipo"* com o que está ao nosso alcance. **Bem feito antes de rápido.**
+>
+> *Por que agora:* a última auditoria completa (16 dimensões) é de **08/09/2026** e a última revisão de segurança do conjunto é de **15/09/2026**, só sobre a fase 1. **Nunca foram auditados como conjunto:** a fase 2 (#48, quem vê o quê), a implantação (#49: MySQL, adapter do Graph, CI com banco) e #50–#53. Cada PR teve revisão própria, mas defeito de fronteira mora entre os PRs.
+>
+> *Como fazer — em três etapas, uma por conversa se o contexto apertar:*
+> 1. **Auditar, só leitura, sobre a `main` inteira**, e **gravar o resultado antes de corrigir** em `docs/auditoria/AAAA-MM-DD-rodada-de-seguranca-e-qualidade.md` (achado que só existe na conversa se perde no próximo `/clear`). Cada achado: arquivo:linha, severidade, cenário concreto, correção sugerida. Dimensões mínimas:
+>    - **Segurança:** autorização por papel em **cada** rota de `src/app/api` (e o recorte de `A24` em toda leitura de item); sessão, cookie, saída e troca de senha; limites por minuto; injeção de prompt nas três camadas (`conteudo-nao-confiavel`) e na pergunta do assistente; anexos (assinatura, tamanho, cifra, download com trilha); cabeçalhos e CSP (`next.config.ts`, `src/middleware.ts`); segredos e `.env.example`; nada de CPF, e-mail ou texto digitado em log, trilha ou endereço; `ACESSO_LOCAL_SEM_SENHA` recusado em produção; o adapter do Graph só lendo.
+>    - **Privacidade e retenção:** as três limpezas e a contagem de buscas; invariantes 9 a 14.
+>    - **Banco:** consultas sem limite, N+1, índices, transações que garantem a conservação, a colação (`AT-34`), `onDelete` que apagaria histórico.
+>    - **Falhas silenciosas:** `catch` que engole, valor padrão que esconde erro (invariante 7).
+>    - **Testes:** o que não tem teste nenhum; teste que passa sem provar; datas fixas; cobertura (`npm run test:cobertura`, estava em 92,8% das linhas).
+>    - **Tipos e contratos**, **dependências** (`npm audit`; `AT-31`, override do `mariadb`), **telas** (texto simples para a equipe, acessibilidade, celular), **documentos contra o código**.
+> 2. **Corrigir por severidade**, crítico e alto primeiro. **Um PR por tema**, a partir da `main`. Cada correção com **teste visto vermelho** contra o defeito antes; mudança de tela **vista rodando** (`sbp-local`); CI lido check a check.
+> 3. **Revisar e mesclar no fim**, como o dono pediu (ver *Como o dono prefere trabalhar*). Atualizar a tabela da auditoria com o destino de cada achado — nenhum fica sem destino. Decisão de negócio que aparecer vira pergunta ao dono (`§ H.4`), nunca regra inventada.
+>
+> *Sobre usar vários agentes ao mesmo tempo:* uma auditoria em várias dimensões rende mais com agentes em paralelo, mas o ambiente só dispara um *workflow* de vários agentes quando o dono pede com as próprias palavras ("use um workflow"). Sem isso, rode as dimensões uma a uma, com agentes revisores de leitura (`security-reviewer`, `database-reviewer`, `silent-failure-hunter`, `pr-test-analyzer`, `type-design-analyzer`), e **pergunte ao dono** se ele quer a versão em paralelo, dizendo o custo. O limite de uso dele é apertado: resultados curtos, sem despejar saídas longas.
+>
+> **5. Armadilhas desta máquina, já medidas:**
+> - `gh pr checks --watch` sai com 0 mesmo com check vermelho: leia `gh pr view N --json headRefOid,statusCheckRollup` check a check, e confira que o commit do check é o último enviado.
+> - O classificador de permissões **bloqueia mesclar sem revisão**. Publique a revisão no PR (`gh pr comment`) antes do `gh pr merge --squash --delete-branch`.
+> - `npx prisma migrate dev` numa branch mais velha que a base `sbp` pede para **apagar a base**: não aceite; crie a migração à mão (pasta com data e `migration.sql`) e aplique com `migrate deploy`.
+> - No Windows, `migrate diff` acusa diferenças falsas (`AT-32`); vale o CI em Linux.
+> - Captura de tela do painel às vezes vem preta: leia o texto da página (`get_page_text` ou `document.body.innerText`).
+> - Não há Python nesta máquina; scripts de edição, em Node, gravados com a ferramenta de arquivo (heredoc com aspas quebra a shell). Arquivos em CRLF: normalize antes de procurar texto com várias linhas.
+>
+> ---
+>
+> *Histórico das retomadas anteriores, mantido como registro:*
 >
 > **Retomada de 16/09/2026, pensada para continuar em OUTRA máquina.** As anotações que o agente guarda entre conversas ficam só no computador onde ele rodou — **um chat em outra máquina não as enxerga**. O essencial está neste arquivo e em `DECISOES.md`. Se algo aqui contradisser o código, o código vence: confira antes de confiar.
 >
@@ -53,7 +104,7 @@ Estas preferências moravam só nas anotações do agente, que não viajam entre
 - **Pergunta sobre comportamento de tela vai com desenho** das opções lado a lado; texto sozinho não bastou.
 - **Todo texto que a equipe lê:** frase curta, dizendo o que aconteceu e o que fazer.
 - **Hipótese não vira regra em silêncio.** O que o agente assumir vai para `DECISOES.md § C`; o que é decisão dele vira pergunta objetiva, com opções e recomendação.
-- **Só com o ok dele, a cada vez:** mesclar PR, enviar ao GitHub, apagar qualquer dado — inclusive sintético e local.
+- **Mesclar: autorizado, sempre no fim do ciclo** (16/09/2026, palavras dele: *"como estava fazendo durante todo o projeto, sempre revisando, checando e mesclando no final"*). Ou seja: branch → teste vermelho → correção → `npm run verificar` → revisão por agente **publicada no PR** → CI verde check a check → `gh pr merge --squash --delete-branch`. **Continua exigindo o ok dele, a cada vez:** apagar qualquer dado (inclusive sintético e local), trocar segredo, publicar fora do GitHub do projeto, e qualquer decisão de negócio.
 - **Branch e PR sempre**, nunca direto na `main`; commits em português.
 - **Nunca digitar senha.** Telas com login se conferem pelo acesso local sem senha (`sbp-local`, contas `@exemplo.test`).
 - **Prova, não afirmação.** Teste visto **vermelho** contra o defeito antes da correção; mudança de tela **vista rodando**; CI lido **check a check** — `gh pr checks --watch` sai com código 0 quando termina de observar, **mesmo com check vermelho**, e isso já quase virou notícia falsa.
