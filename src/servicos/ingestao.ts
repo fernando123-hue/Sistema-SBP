@@ -15,6 +15,7 @@ import type { ArmazenamentoPort } from '../ports/armazenamento'
 import { InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { ATOR_SISTEMA, exigirPapel, type Ator } from '../servidor/ator'
+import { chaveDeBusca } from '../servidor/cpf-protegido'
 import type { Banco, Transacao } from '../servidor/prisma'
 import {
   mensagemDoErro,
@@ -373,6 +374,7 @@ async function processarUm(
           modeloIa: interpretacao.modelo,
           versaoPrompt: interpretacao.versaoPrompt,
           processadoEm: new Date(),
+          conteudoSuspeito: interpretacao.conteudoSuspeito,
           conteudo: {
             create: {
               remetente: email.remetente,
@@ -393,7 +395,7 @@ async function processarUm(
             })),
           },
         },
-        update: { processadoEm: new Date() },
+        update: { processadoEm: new Date(), conteudoSuspeito: interpretacao.conteudoSuspeito },
       })
 
       const resultado = await criarItens(tx, {
@@ -502,6 +504,10 @@ async function criarItens(
         }),
         confianca: extraido.confianca,
         status: motivo ? 'aguardando_revisao' : 'aprovado',
+        // A chave de busca nasce com o campo: é a única parte do que a IA leu
+        // que fica depois do prazo do texto do e-mail (`A23(b)`). CPF com erro
+        // não gera chave; a revisão pode corrigi-lo e aí ela nasce certa.
+        ...chaveDeBusca(extraido.campos),
         modeloIa: interpretacao.modelo,
         versaoPrompt: interpretacao.versaoPrompt,
       },

@@ -95,6 +95,7 @@ const ROTULO_AUSENCIA: Record<string, string> = {
   licenca: 'licença',
   falta: 'falta',
   outro: 'outro',
+  ausente: 'ausente',
 }
 
 /** `null` vira travessão, nunca `0%` — "ainda não sei" não é "errou tudo". */

@@ -3,10 +3,11 @@ import { ErroDeNegocio } from '../core/erros'
 import {
   AfastamentoEntradaSchema,
   DataIsoSchema,
-  TipoDeAfastamentoSchema,
-  type TipoDeAfastamento,
+  TipoDeAfastamentoGravadoSchema,
+  type TipoDeAfastamentoGravado,
 } from '../core/esquemas'
 import { lerDoBanco } from '../core/lido-do-banco'
+import { tipoDepoisDoPrazo } from '../core/retencao'
 import { hojeIso } from '../core/util/datas'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import { novaCorrelacao } from '../servidor/observabilidade'
@@ -36,12 +37,18 @@ export interface AfastamentoRegistrado {
   id: string
   colaboradorId: string
   nome: string
-  tipo: TipoDeAfastamento
+  tipo: TipoDeAfastamentoGravado
   inicio: string
   fim: string | null
   observacao: string | null
   /** `true` quando o afastamento cobre a data consultada. */
   vigente: boolean
+  /**
+   * Quando o motivo saiu pelo prazo (`A17`). Sem isto a ficha mostraria
+   * "ausente" sem observação, e a gestora não saberia se alguém registrou mal
+   * ou se o sistema apagou.
+   */
+  motivoExpurgadoEm: Date | null
 }
 
 /** Um afastamento cobre a data quando começou e ainda não terminou. */
@@ -120,7 +127,11 @@ export async function registrar(
       acao: 'afastamento_registrado',
       depois: {
         afastamentoId: afastamento.id,
-        tipo: dados.tipo,
+        // O tipo JÁ REDUZIDO, nunca o escolhido. A trilha é append-only e
+        // nenhuma retenção a alcança: gravar "atestado" aqui guardaria para
+        // sempre o motivo que `A17` manda apagar sete dias depois da volta. O
+        // tipo real vive na linha do afastamento, que o expurgo alcança.
+        tipo: tipoDepoisDoPrazo(dados.tipo),
         inicio: dados.inicio,
         fim: dados.fim,
       },
@@ -137,6 +148,7 @@ export async function registrar(
       fim: dados.fim,
       observacao: dados.observacao,
       vigente: cobre(dados.inicio, dados.fim, hojeIso()),
+      motivoExpurgadoEm: null,
     }
   })
 }
@@ -190,7 +202,7 @@ export async function encerrar(
 
     await tx.afastamento.update({
       where: { id: afastamento.id },
-      data: { fim: entrada.fim },
+      data: { fim: entrada.fim, encerradoPor: ator.colaboradorId },
     })
 
     await auditar(tx, {
@@ -309,10 +321,13 @@ export async function listar(
     id: linha.id,
     colaboradorId: linha.colaboradorId,
     nome: linha.colaborador.nome,
-    tipo: lerDoBanco(TipoDeAfastamentoSchema, linha.tipo, 'Afastamento.tipo'),
+    // O gravado, não o registrável: depois do prazo a linha diz `ausente`, e
+    // ler com o esquema de entrada derrubaria a tela da gestora com um 500.
+    tipo: lerDoBanco(TipoDeAfastamentoGravadoSchema, linha.tipo, 'Afastamento.tipo'),
     inicio: linha.inicio,
     fim: linha.fim,
     observacao: linha.observacao,
     vigente: cobre(linha.inicio, linha.fim, data),
+    motivoExpurgadoEm: linha.motivoExpurgadoEm,
   }))
 }

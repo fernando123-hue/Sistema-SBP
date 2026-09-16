@@ -40,6 +40,18 @@ export function paraDataIso(momento: Date): string {
   return FORMATADOR.format(momento)
 }
 
+const FORMATADOR_DE_HORA = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: FUSO_HORARIO,
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+/** `HH:MM` do instante, no fuso da operação — a hora que aparece no Outlook de quem opera. */
+export function horaLocal(momento: Date): string {
+  return FORMATADOR_DE_HORA.format(momento)
+}
+
 export function hojeIso(): string {
   return paraDataIso(new Date())
 }

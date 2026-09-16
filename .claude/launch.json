@@ -11,7 +11,8 @@
       "name": "sbp-local",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:local"],
-      "port": 3000
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }

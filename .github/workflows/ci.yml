@@ -36,6 +36,9 @@ jobs:
       # nasce e morre dentro do job. Pôr um segredo de verdade aqui seria pior —
       # daria a impressão de que existe algo a proteger num ambiente onde não há.
       SESSAO_SECRET: ci-nao-e-segredo-so-para-o-banco-efemero
+      # Mesmo raciocínio para o segredo do CPF protegido (A23(b)): obrigatório
+      # para subir, e aqui só protege CPF sintético de um banco efêmero.
+      BUSCA_SECRET: ci-nao-e-segredo-so-para-cpf-sintetico
 
     steps:
       - uses: actions/checkout@v7

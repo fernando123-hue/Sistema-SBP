@@ -266,6 +266,12 @@ export interface ItemDaCaixa {
   remetente: string | null
   assunto: string | null
   recebidoEm: Date | null
+  /**
+   * Quando o texto e os anexos do e-mail saíram pelo prazo (`A20`). Sem isto,
+   * remetente nulo seria lido como "origem manual" — e a pessoa procuraria um
+   * registro de balcão em vez de ir ao Outlook.
+   */
+  conteudoRemovidoEm: Date | null
   /** Quantos itens o mesmo e-mail gerou. Mostra o desdobramento na tela. */
   irmaos: number
   responsavel: string | null

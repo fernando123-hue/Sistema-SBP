@@ -222,7 +222,9 @@ describe('consulta por entidade', () => {
     expect(lembrancas[0]!.usuario).toBe(base.operadorId)
     // JSON gravado volta como objeto, não como texto: quem investiga não
     // deveria precisar de `JSON.parse` na mão para ler a própria trilha.
-    expect((lembrancas[0]!.depois as { titulo: string }).titulo).toBe('Inadimplente')
+    // A categoria, e não o título: título digitado pode ter nome de associado,
+    // e a trilha não tem prazo (`A23(d)`).
+    expect((lembrancas[0]!.depois as { categoriaCodigo: string }).categoriaCodigo).toBe('INADIMP')
   })
 
   it('JSON ilegível desfalca a linha sem derrubar a consulta', async () => {

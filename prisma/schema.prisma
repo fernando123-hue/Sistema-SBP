@@ -67,6 +67,7 @@ model Colaborador {
   saldosGlobais    SaldoCargaGlobal[]
   revisoesFeitas   Revisao[]
   notasEscritas    Nota[]
+  avisoVisto       AvisoVisto?
 
   @@index([ativo])
 }
@@ -152,7 +153,8 @@ model Escala {
 model Afastamento {
   id            String    @id @default(cuid())
   colaboradorId String
-  /// ferias | falta | atestado | licenca | outro
+  /// ferias | falta | atestado | licenca | outro — e `ausente`, que só nasce da
+  /// retenção (`A17`): passado o prazo, todo tipo que não é férias vira ele.
   tipo          String
   /// ISO date `YYYY-MM-DD`, inclusivo.
   inicio        String
@@ -168,11 +170,25 @@ model Afastamento {
   /// fora do rateio na terça-feira passada.
   canceladoEm   DateTime?
   canceladoPor  String?
+  /// Quem marcou "Voltou hoje" numa ausência sem data de volta. Junto com
+  /// `registradoPor` e `canceladoPor`, diz quem mexeu por último — e o aviso do
+  /// dia não acende a bolinha da gestora por uma mudança que ela mesma fez
+  /// (`A39(e)`).
+  encerradoPor  String?
+
+  /// Quando o motivo saiu pelo prazo de retenção (`A17`): observação apagada e
+  /// tipo reduzido. Mesmo papel de `Email.conteudoExpurgadoEm` — sem ele,
+  /// `observacao` nula não diria se a ausência nunca teve observação ou se ela
+  /// foi apagada, e a rotina diária voltaria a olhar a mesma linha para sempre.
+  motivoExpurgadoEm DateTime?
 
   colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
 
   @@index([colaboradorId, inicio])
   @@index([inicio, fim])
+  /// A rotina diária pergunta "que motivos ainda estão guardados?" — e sem este
+  /// índice a pergunta varre a tabela inteira, que cresce para sempre.
+  @@index([motivoExpurgadoEm])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -207,6 +223,12 @@ model Email {
   /// removido pela retenção" — sem ele, um e-mail sem corpo seria ambíguo, e
   /// ambiguidade silenciosa é o defeito que este sistema existe para eliminar.
   conteudoExpurgadoEm DateTime?
+
+  /// As defesas contra injeção marcaram o conteúdo. Guardado porque um e-mail
+  /// suspeito que não gerou item nenhum é a forma exata de uma manipulação
+  /// bem-sucedida (`A34`): o conteúdo dele não sai pela retenção de `A20` antes
+  /// de uma pessoa olhar. Antes ficava só no log e no evento.
+  conteudoSuspeito    Boolean  @default(false)
 
   conteudo EmailConteudo?
   anexos   Anexo[]
@@ -285,6 +307,29 @@ model Item {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
+  /// CPF protegido: o código que o servidor calcula a partir do CPF com o
+  /// segredo `BUSCA_SECRET` (`A23(b)`). Guardado SEM data de exclusão, para a
+  /// equipe achar o item digitando o CPF depois que o texto do e-mail saiu.
+  /// O CPF em si nunca é gravado aqui. Nulo quando não havia CPF, ou quando o
+  /// número não conferia (`A40`, resposta 26).
+  ///
+  /// Trocar `BUSCA_SECRET` quebra a busca de todo item cujo conteúdo já saiu:
+  /// não sobra CPF para recalcular. Mesmo cuidado de `ANEXOS_SECRET` (`AT-13`).
+  cpfProtegido String?
+  /// Matrícula do associado no cadastro da associação, como veio — só
+  /// dígitos, de 3 a 10 (`A41`, resposta 28). SEM data de exclusão e sem
+  /// proteção: é um número do cadastro, não um documento pessoal. Por isso
+  /// `normalizarMatricula` recusa o que não parece matrícula (letra, 11
+  /// dígitos ou mais), para um nome ou CPF não ficar guardado aqui.
+  matricula    String?
+  /// Quando o título, os campos extraídos, a observação digitada e os valores
+  /// da revisão deste item saíram pelo prazo (`A23(a)`). O título vira neutro
+  /// (categoria · liga · posição, `A41`); ficam a chave de busca, a carga e a
+  /// trilha. Também é o que tira o item da lista da limpeza: sem este carimbo,
+  /// item de e-mail apagado ANTES desta coluna existir ficaria com os dados
+  /// para sempre, porque o carimbo do e-mail já o tirou da limpeza do `A20`.
+  dadosExtraidosExpurgadosEm DateTime?
+
   /// Quando o item foi cancelado, se foi.
   ///
   /// `atualizadoEm` não serve: ele muda a cada escrita, então não responde
@@ -311,6 +356,13 @@ model Item {
   @@unique([emailId, sequencia])
   @@index([status, categoriaId])
   @@index([categoriaId, status, criadoEm])
+  @@index([cpfProtegido])
+  @@index([matricula])
+  /// A limpeza diária pergunta todo dia "quais itens ainda guardam dados?".
+  /// Sem índice, a pergunta varre a tabela de itens inteira, que cresce para
+  /// sempre — mesma razão de `Afastamento.motivoExpurgadoEm`. Revisão de
+  /// segurança de 13/09/2026.
+  @@index([dadosExtraidosExpurgadosEm])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -374,7 +426,6 @@ model Atribuicao {
   rodadaId      String?
   /// algoritmo | manual | transferencia | devolucao
   motivo        String
-  justificativa String?
   atribuidoPor  String
   /// `true` quando vigente, `null` quando encerrada.
   /// O índice único abaixo usa a semântica de NULL distinto para garantir,
@@ -386,10 +437,36 @@ model Atribuicao {
   item        Item                @relation(fields: [itemId], references: [id], onDelete: Cascade)
   colaborador Colaborador         @relation(fields: [colaboradorId], references: [id])
   rodada      RodadaDistribuicao? @relation(fields: [rodadaId], references: [id])
+  /// O texto da transferência ou devolução, à parte: ver o modelo abaixo.
+  justificativas JustificativaDeAtribuicao[]
 
   @@unique([itemId, ativa])
   @@index([colaboradorId, ativa])
   @@index([rodadaId])
+}
+
+/// O texto livre de uma transferência ou devolução (`A40`, resposta 25).
+///
+/// Mora fora de `Atribuicao` porque tem prazo e a atribuição não: a equipe
+/// escreve "associada Fulana pediu para falar com a Carla", e isso sai no mesmo
+/// prazo do texto do e-mail do item. Na atribuição e na trilha fica só que
+/// houve justificativa. Invariante 11: nunca juntar as duas coisas na mesma
+/// linha.
+///
+/// Mais de uma por atribuição: quem recebe por transferência e depois devolve
+/// escreve duas justificativas na MESMA atribuição. Com uma só, a da devolução
+/// apagaria a da transferência.
+model JustificativaDeAtribuicao {
+  id           String   @id @default(cuid())
+  atribuicaoId String
+  /// transferencia | devolucao
+  motivo       String
+  texto        String
+  criadoEm     DateTime @default(now())
+
+  atribuicao Atribuicao @relation(fields: [atribuicaoId], references: [id], onDelete: Cascade)
+
+  @@index([atribuicaoId])
 }
 
 /// Substitui o `Realizado` digitado. Evento com carimbo, não número declarado.
@@ -621,6 +698,68 @@ model RegraDistribuicao {
   @@index([tipo, ativo])
 }
 
+/// Prazo de retenção editado pelo gestor (`A17`).
+///
+/// Linha só existe depois da primeira mudança: sem linha, vale o padrão
+/// decidido, que mora em `core/retencao.ts`. Quem mudou, de quanto para quanto
+/// e quando fica na TRILHA (`prazo_de_retencao_alterado`) — aqui é só o valor
+/// em vigor, e por isso esta tabela pode ser atualizada.
+model PrazoDeRetencao {
+  /// `ChaveDePrazoSchema`.
+  chave       String   @id
+  dias        Int
+  alteradoPor String
+  alteradoEm  DateTime @updatedAt
+}
+
+/// Uma rotina automática, uma vez por dia (`A17`: "a limpeza roda sozinha").
+///
+/// `(rotina, data)` único é o que impede duas execuções no mesmo dia — o
+/// servidor pode tentar de hora em hora, o `npm run` manual pode rodar junto, e
+/// o modo de desenvolvimento recarrega o módulo a cada edição. Só uma ganha.
+///
+/// Não é trilha de auditoria: a linha muda de `em_curso` para `sucesso` ou
+/// `falha`. O que cada execução apagou vai para `LogAuditoria`, linha a linha.
+model ExecucaoDeRotina {
+  id           String    @id @default(cuid())
+  /// `RotinaSchema`.
+  rotina       String
+  /// Dia da operação, `YYYY-MM-DD`, no fuso de Brasília.
+  data         String
+  /// em_curso | sucesso | falha
+  situacao     String
+  tentativas   Int       @default(1)
+  iniciadaEm   DateTime  @default(now())
+  concluidaEm  DateTime?
+  /// JSON com contagens. Nunca nome, tipo de afastamento nem conteúdo.
+  resumo       String?
+  /// Já passada por `mensagemPersistivel`.
+  mensagem     String?
+  correlacaoId String
+
+  @@unique([rotina, data])
+}
+
+/// O que cada gestora já viu do aviso do dia (`A17`, `A39(e)`).
+///
+/// Existe para o aviso dizer o que MUDOU desde a última olhada — inclusive a
+/// troca de uma pessoa por outra no mesmo dia, que uma contagem não enxerga.
+///
+/// Guarda só chaves internas (`fora:<id do afastamento>`), nunca nome nem
+/// motivo: o motivo tem prazo (`A17`), e uma cópia dele aqui escaparia da
+/// limpeza. Uma linha por gestora, reescrita a cada olhada — é estado de tela,
+/// não histórico operacional, e por isso não vai para a trilha.
+model AvisoVisto {
+  colaboradorId String   @id
+  /// Dia da operação, `YYYY-MM-DD`.
+  data          String
+  /// JSON — `ChavesDoAvisoSchema`.
+  chaves        String
+  vistoEm       DateTime @updatedAt
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+}
+
 /// Fila de exceções da IA — e dataset de melhoria contínua.
 model Revisao {
   id           String    @id @default(cuid())
@@ -633,6 +772,13 @@ model Revisao {
   confianca    Float
   /// JSON — o que o humano decidiu de fato
   valorFinal   String?
+  /// Acerto da IA, gravado na hora da revisão (`A23(c)`): um de `DESFECHOS`,
+  /// em `core/qualidade-ia.ts`. Nulo em revisão aberta e nas resolvidas antes
+  /// desta coluna existir, que o painel ainda calcula pelos valores.
+  desfecho     String?
+  /// JSON — as correções e os NOMES dos campos alterados. Nunca os valores:
+  /// esta coluna sobrevive ao prazo do conteúdo do e-mail.
+  correcoes    String?
   resolvidoPor String?
   resolvidoEm  DateTime?
   criadoEm     DateTime  @default(now())

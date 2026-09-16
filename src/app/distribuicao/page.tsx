@@ -32,6 +32,8 @@ const AFASTAMENTO: Record<string, string> = {
   falta: 'ausente',
   licenca: 'de licença',
   outro: 'afastada',
+  // Motivo já apagado pelo prazo (`A17`) — o gestor só vê que a pessoa esteve fora.
+  ausente: 'ausente',
 }
 
 interface Fatia {

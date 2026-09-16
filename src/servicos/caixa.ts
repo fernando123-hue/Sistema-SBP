@@ -1,5 +1,13 @@
+import {
+  BuscaPorChaveSchema,
+  MENSAGEM_BUSCA_NAO_RECONHECIDA,
+  MENSAGEM_CPF_NAO_CONFERE,
+  interpretarBusca,
+} from '../core/busca-por-chave'
+import { ErroDeNegocio } from '../core/erros'
 import { StatusItemSchema } from '../core/esquemas'
 import type { ItemDaCaixa } from '../core/tipos'
+import { protegerCpf } from '../servidor/cpf-protegido'
 import type { Banco } from '../servidor/prisma'
 
 export type { ItemDaCaixa }
@@ -15,6 +23,9 @@ export interface FiltroDaCaixa {
   status?: string | undefined
   categoriaCodigo?: string | undefined
   ligaId?: string | undefined
+  /** Código de `protegerCpf`. Só `buscarPorChave` preenche. */
+  cpfProtegido?: string | undefined
+  matricula?: string | undefined
   limite?: number | undefined
 }
 
@@ -30,6 +41,8 @@ export async function listarCaixa(
       ...(status ? { status } : {}),
       ...(filtro.categoriaCodigo ? { categoria: { codigo: filtro.categoriaCodigo } } : {}),
       ...(filtro.ligaId ? { ligaId: filtro.ligaId } : {}),
+      ...(filtro.cpfProtegido ? { cpfProtegido: filtro.cpfProtegido } : {}),
+      ...(filtro.matricula ? { matricula: filtro.matricula } : {}),
     },
     orderBy: [{ criadoEm: 'desc' }, { sequencia: 'asc' }],
     take: limite,
@@ -39,6 +52,7 @@ export async function listarCaixa(
       email: {
         select: {
           recebidoEm: true,
+          conteudoExpurgadoEm: true,
           // Nulo quando a retenção já expurgou o conteúdo. O item continua
           // inteiro: título, categoria, responsável e carga não dependem disto.
           conteudo: { select: { remetente: true, assunto: true } },
@@ -65,11 +79,41 @@ export async function listarCaixa(
     remetente: item.email?.conteudo?.remetente ?? null,
     assunto: item.email?.conteudo?.assunto ?? null,
     recebidoEm: item.email?.recebidoEm ?? null,
+    conteudoRemovidoEm: item.email?.conteudoExpurgadoEm ?? null,
     irmaos: item.email?._count.itens ?? 1,
     responsavel: item.atribuicoes[0]?.colaborador.nome ?? null,
     ligaId: item.liga?.id ?? null,
     ligaNome: item.liga?.nome ?? null,
   }))
+}
+
+/** Quantos itens a busca devolve. Um CPF com mais que isso é caso de conferência, não de lista. */
+const LIMITE_DA_BUSCA = 200
+
+/**
+ * Busca por CPF ou matrícula (`A23(b)`, `A40` resposta 24).
+ *
+ * É a MESMA leitura da Caixa com um filtro a mais, de propósito: quando a fase 2
+ * limitar o que cada cargo vê na Caixa (`A24`), a busca herda o limite em vez de
+ * virar uma porta lateral para itens de outra pessoa.
+ *
+ * Nunca chama `listarCaixa` sem filtro de chave: um filtro vazio devolveria a
+ * Caixa inteira como se fosse o resultado da busca.
+ */
+export async function buscarPorChave(banco: Banco, entrada: unknown): Promise<ItemDaCaixa[]> {
+  const { texto } = BuscaPorChaveSchema.parse(entrada)
+  const busca = interpretarBusca(texto)
+
+  if (busca.tipo === 'nao_reconhecido') throw new ErroDeNegocio(MENSAGEM_BUSCA_NAO_RECONHECIDA)
+  if (busca.tipo === 'cpf_nao_confere') throw new ErroDeNegocio(MENSAGEM_CPF_NAO_CONFERE)
+
+  if (busca.tipo === 'matricula') {
+    return listarCaixa(banco, { matricula: busca.matricula, limite: LIMITE_DA_BUSCA })
+  }
+
+  const cpfProtegido = protegerCpf(busca.cpf)
+  if (cpfProtegido === null) throw new ErroDeNegocio(MENSAGEM_CPF_NAO_CONFERE)
+  return listarCaixa(banco, { cpfProtegido, limite: LIMITE_DA_BUSCA })
 }
 
 export interface ResumoDaCaixa {

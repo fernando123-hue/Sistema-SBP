@@ -257,7 +257,9 @@ export async function transferir(
         colaboradorId: entrada.paraColaboradorId,
         rodadaId: atual.rodadaId,
         motivo: 'transferencia',
-        justificativa: entrada.justificativa,
+        // O texto mora à parte: sai no prazo, e a atribuição não (`A40`,
+        // resposta 25). A equipe escreve nome de associado aqui.
+        justificativas: { create: { motivo: 'transferencia', texto: entrada.justificativa } },
         atribuidoPor: ator.colaboradorId,
         ativa: true,
       },
@@ -268,7 +270,8 @@ export async function transferir(
       entidadeId: entrada.itemId,
       acao: 'transferencia',
       antes: { colaboradorId: atual.colaboradorId },
-      depois: { colaboradorId: entrada.paraColaboradorId, justificativa: entrada.justificativa },
+      // Que houve justificativa, nunca o texto: a trilha não tem prazo.
+      depois: { colaboradorId: entrada.paraColaboradorId, temJustificativa: true },
       usuario: ator.colaboradorId,
       correlacaoId,
     })
@@ -320,7 +323,9 @@ export async function devolver(
         ativa: null,
         encerradoEm: new Date(),
         motivo: 'devolucao',
-        justificativa: entrada.justificativa,
+        // `create`, não substituição: se esta atribuição nasceu de uma
+        // transferência, a justificativa dela continua ao lado desta.
+        justificativas: { create: { motivo: 'devolucao', texto: entrada.justificativa } },
       },
     })
 
@@ -331,7 +336,7 @@ export async function devolver(
       entidadeId: entrada.itemId,
       acao: 'devolvido',
       antes: { status: atual.item.status, colaboradorId: atual.colaboradorId },
-      depois: { status: 'devolvido', justificativa: entrada.justificativa },
+      depois: { status: 'devolvido', temJustificativa: true },
       usuario: ator.colaboradorId,
       correlacaoId,
     })

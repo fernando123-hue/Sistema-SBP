@@ -240,7 +240,9 @@ export default function Fila() {
                             className="text-xs text-tinta-suave"
                             htmlFor={`porque-${item.itemId}`}
                           >
-                            Por que este item não é seu? Mínimo de 5 letras — fica na trilha.
+                            {/* Não diz mais "fica na trilha": desde o `A23(d)` o texto
+                                mora à parte, e a trilha só guarda que houve motivo. */}
+                            Por que este item não é seu? Escreva pelo menos 5 letras.
                           </label>
                           <textarea
                             id={`porque-${item.itemId}`}

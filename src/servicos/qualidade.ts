@@ -1,5 +1,12 @@
 import { SugestaoIaGravadaSchema, ValorFinalDaRevisaoSchema } from '../core/esquemas'
-import { calcularTaxaDeAcerto, type ParDeRevisao, type TaxaDeAcerto } from '../core/qualidade-ia'
+import {
+  lerDesfecho,
+  medirRevisao,
+  resumirAcerto,
+  type ParDeRevisao,
+  type RevisaoMedida,
+  type TaxaDeAcerto,
+} from '../core/qualidade-ia'
 import { deslocarDias, hojeIso } from '../core/util/datas'
 import { arredondar } from '../core/util/numero'
 import type { Banco } from '../servidor/prisma'
@@ -11,6 +18,11 @@ import type { Banco } from '../servidor/prisma'
  * `Revisao` resolvida desde sempre, e entrega ao núcleo puro. Nenhum dado novo
  * precisou ser coletado: o dataset existe desde que a fila de revisão passou a
  * guardar `sugestaoIa` ao lado de `valorFinal`.
+ *
+ * Desde o `A23(c)`, o desfecho é GRAVADO na hora da revisão, e é ele que vale:
+ * título e campos saem no prazo do conteúdo do e-mail, e recalcular depois
+ * compararia vazio com vazio. O cálculo pelos valores fica só para revisão
+ * resolvida antes de a coluna existir.
  *
  * Só leitura. Como todo o painel, não há rota de escrita — invariante 4.
  *
@@ -119,7 +131,12 @@ export async function medirQualidadeDaIa(
       //
       // `item.modeloIa` entra porque medir MODELO é o oposto disso — é o único
       // eixo pelo qual a comparação entre fornecedores existe.
-      select: { sugestaoIa: true, valorFinal: true, item: { select: { modeloIa: true } } },
+      select: {
+        sugestaoIa: true,
+        valorFinal: true,
+        desfecho: true,
+        item: { select: { modeloIa: true } },
+      },
     }),
     banco.item.count({ where: { modeloIa: { not: null }, ...itemNaJanela } }),
     banco.revisao.count({
@@ -130,36 +147,36 @@ export async function medirQualidadeDaIa(
     }),
   ])
 
-  const pares: ParDeRevisao[] = []
-  const paresPorModelo = new Map<string, ParDeRevisao[]>()
+  const medidas: RevisaoMedida[] = []
+  const medidasPorModelo = new Map<string, RevisaoMedida[]>()
   let ignoradas = 0
 
   for (const registro of resolvidas) {
-    const par = lerPar(registro.sugestaoIa, registro.valorFinal)
-    if (par === null) {
+    const medida = lerMedida(registro.sugestaoIa, registro.valorFinal, registro.desfecho)
+    if (medida === null) {
       ignoradas += 1
       continue
     }
-    pares.push(par)
+    medidas.push(medida)
 
     // A consulta já filtra `modeloIa: { not: null }`, então o `??` é só para o
     // compilador — e o rótulo, se um dia chegar aqui, diz a verdade em vez de
     // fundir a linha sem modelo com a de algum fornecedor.
     const modelo = registro.item.modeloIa ?? '(sem modelo registrado)'
-    const doModelo = paresPorModelo.get(modelo) ?? []
-    doModelo.push(par)
-    paresPorModelo.set(modelo, doModelo)
+    const doModelo = medidasPorModelo.get(modelo) ?? []
+    doModelo.push(medida)
+    medidasPorModelo.set(modelo, doModelo)
   }
 
-  const porModelo = [...paresPorModelo]
-    .map(([modelo, seusPares]) => ({ modelo, taxa: calcularTaxaDeAcerto(seusPares) }))
+  const porModelo = [...medidasPorModelo]
+    .map(([modelo, suasMedidas]) => ({ modelo, taxa: resumirAcerto(suasMedidas) }))
     // Maior amostra primeiro: uma taxa de 100% sobre duas revisões não pode
     // aparecer acima de uma de 91% sobre duzentas.
     .sort((a, b) => b.taxa.revisadas - a.taxa.revisadas || (a.modelo < b.modelo ? -1 : 1))
 
   return {
     desde,
-    taxa: calcularTaxaDeAcerto(pares),
+    taxa: resumirAcerto(medidas),
     porModelo,
     cobertura: {
       itensDeIa,
@@ -177,12 +194,41 @@ export async function medirQualidadeDaIa(
 }
 
 /**
+ * Lê uma revisão resolvida como medida, ou `null` se não der para confiar nela.
+ *
+ * O desfecho gravado na hora vale primeiro. Sem ele — revisão resolvida antes
+ * do `A23(c)` —, o desfecho é calculado pelos valores, enquanto eles existem.
+ */
+function lerMedida(
+  sugestaoIa: string,
+  valorFinal: string | null,
+  desfechoGravado: string | null,
+): RevisaoMedida | null {
+  if (desfechoGravado === null) {
+    const par = lerPar(sugestaoIa, valorFinal)
+    return par === null ? null : medirRevisao(par)
+  }
+
+  const desfecho = lerDesfecho(desfechoGravado)
+  if (desfecho === null) return null
+
+  try {
+    // Depois do prazo, a sugestão guarda só categoria e confiança — que é
+    // exatamente o que a medida precisa dela.
+    const sugestao = SugestaoIaGravadaSchema.parse(JSON.parse(sugestaoIa))
+    return { categoriaSugerida: sugestao.categoriaCodigo, confianca: sugestao.confianca, desfecho }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Lê o par gravado, ou `null` se o JSON não fizer sentido.
  *
  * Devolver um par "vazio" em vez de `null` contaminaria a média com uma
  * revisão que ninguém fez.
  */
-function lerPar(sugestaoIa: string, valorFinal: string | null): ParDeRevisao | null {
+export function lerPar(sugestaoIa: string, valorFinal: string | null): ParDeRevisao | null {
   if (valorFinal === null) return null
 
   try {

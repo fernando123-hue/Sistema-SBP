@@ -1,56 +1,68 @@
 /**
- * Redige a observação de afastamentos encerrados há mais de N dias.
+ * Roda AGORA a limpeza diária — a mesma que o servidor roda sozinho
+ * (`src/instrumentation.ts`).
  *
- * Roda só quando alguém manda: não há agendador. O prazo é hipótese enquanto a
- * chefia não responder o item 12 do `DECISOES.md § H.4` — ver a documentação
- * de `expurgarObservacoesAfastamento`.
+ * Serve para instalação em que o servidor não fica ligado o dia inteiro, e para
+ * conferir. Continua sendo uma execução por dia: se o servidor já rodou hoje,
+ * este comando diz isso e não apaga nada de novo.
  *
  *   npm run db:expurgar
- *   DIAS_RETENCAO_AFAS=180 npm run db:expurgar
+ *
+ * Os prazos NÃO vêm de variável de ambiente. Eles são editados pelo gestor, na
+ * tela, com a mudança na trilha (`A17`, `A20`); uma variável aqui seria uma
+ * segunda porta para mudar quanto tempo dado pessoal fica guardado, sem trilha e
+ * sem confirmação.
  */
 
-import {
-  DIAS_DE_RETENCAO_HIPOTETICOS,
-  expurgarObservacoesAfastamento,
-} from '../src/servicos/expurgo-lgpd'
+import { criarArmazenamentoPort } from '../src/adapters/fabrica'
+import type { ArmazenamentoPort } from '../src/ports/armazenamento'
+import { rodarLimpezaDiaria } from '../src/servicos/rotinas'
 import { obterPrisma } from '../src/servidor/prisma'
 
-/**
- * Lê a retenção do ambiente sem deixar passar valor absurdo.
- *
- * `Number('')` é `0` e `Number('abc')` é `NaN` — os dois entrariam calados numa
- * rotina que redige texto para sempre. Aqui a leitura recusa antes de abrir o
- * banco; a mesma checagem existe de novo dentro do serviço, porque quem chama
- * pode não ser este script.
- */
-function retencaoDoAmbiente(): number {
-  const bruto = process.env.DIAS_RETENCAO_AFAS
-  if (bruto === undefined || bruto.trim() === '') return DIAS_DE_RETENCAO_HIPOTETICOS
-
-  const dias = Number(bruto)
-  if (!Number.isInteger(dias) || dias < 1) {
-    throw new Error(
-      `DIAS_RETENCAO_AFAS="${bruto}" não é um número inteiro de dias maior ou igual a 1.`,
-    )
-  }
-  return dias
-}
+const POR_QUE_NAO_RODOU = {
+  ja_concluida: 'a limpeza de hoje já foi feita.',
+  em_curso: 'outra execução da limpeza de hoje está em andamento.',
+  tentativas_esgotadas:
+    'a limpeza de hoje falhou em todas as tentativas. Veja a mensagem em ExecucaoDeRotina e o evento em EventoProcessamento.',
+} as const
 
 async function principal(): Promise<void> {
-  const banco = obterPrisma()
-  const diasRetencao = retencaoDoAmbiente()
+  let armazenamento: ArmazenamentoPort | null = null
+  try {
+    armazenamento = criarArmazenamentoPort()
+  } catch (erro) {
+    process.stderr.write(
+      `Armazenamento de anexos indisponível (${erro instanceof Error ? erro.message : String(erro)}). ` +
+        'E-mails com anexo ficam pendentes.\n',
+    )
+  }
 
-  process.stdout.write(
-    `Expurgo de observação de afastamento — retenção de ${diasRetencao} dias.\n` +
-      `ATENÇÃO: o prazo é HIPÓTESE (DECISOES.md § C), não decisão da chefia ` +
-      `(§ H.4, item 12). A redação é irreversível.\n`,
-  )
-  const resultado = await expurgarObservacoesAfastamento(banco, diasRetencao)
+  const resultado = await rodarLimpezaDiaria(obterPrisma(), { armazenamento })
 
+  if (!resultado.executou) {
+    process.stdout.write(`Nada feito: ${POR_QUE_NAO_RODOU[resultado.motivo]}\n`)
+    if (resultado.motivo === 'tentativas_esgotadas') process.exitCode = 1
+    return
+  }
+
+  if (resultado.situacao === 'falha') {
+    process.stderr.write(
+      `A limpeza diária FALHOU (ref. ${resultado.correlacaoId.slice(0, 8)}): ${resultado.mensagem}\n`,
+    )
+    process.exitCode = 1
+    return
+  }
+
+  const motivos = resultado.resumo.motivosDeAfastamento
+  const conteudo = resultado.resumo.conteudoDosEmails
   process.stdout.write(
-    `Expurgo concluído:\n` +
-      `  - Data de corte: ${resultado.dataCorte}\n` +
-      `  - Registros expurgados: ${resultado.expurgados}\n`,
+    `Limpeza diária concluída (ref. ${resultado.correlacaoId.slice(0, 8)}):\n` +
+      `  - prazo do motivo de afastamento: ${motivos.prazoEmDias} dias\n` +
+      `  - ausências avaliadas: ${motivos.avaliados}\n` +
+      `  - motivos vencidos: ${motivos.vencidos} (com algo a apagar: ${motivos.apagados})\n` +
+      `  - prazo do texto dos e-mails: ${conteudo.prazoEmDias} dias\n` +
+      `  - e-mails avaliados: ${conteudo.avaliados}\n` +
+      `  - e-mails vencidos: ${conteudo.vencidos} (apagados: ${conteudo.apagados}, anexos removidos: ${conteudo.anexosRemovidos})\n`,
   )
 }
 

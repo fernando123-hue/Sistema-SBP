@@ -2,11 +2,14 @@ import { ErroDeNegocio } from '../core/erros'
 import {
   PayloadDoItemSchema,
   ResolucaoRevisaoSchema,
+  SugestaoIaGravadaSchema,
   desserializar,
   serializar,
 } from '../core/esquemas'
+import { camposAlterados, compararRevisao, type DecisaoHumana } from '../core/qualidade-ia'
 import { exigirPapel, type Ator } from '../servidor/ator'
-import { novaCorrelacao } from '../servidor/observabilidade'
+import { chaveDeBusca } from '../servidor/cpf-protegido'
+import { novaCorrelacao, registrarLog } from '../servidor/observabilidade'
 import type { ItemEmRevisao } from '../core/tipos'
 import type { Banco, Transacao } from '../servidor/prisma'
 import { auditar } from './auditoria'
@@ -27,6 +30,46 @@ async function exigirColaborador(tx: Transacao, colaboradorId: string): Promise<
       `Colaborador "${colaboradorId}" não existe. A resolução de revisão precisa de um usuário real.`,
     )
   }
+}
+
+/**
+ * O acerto da IA nesta revisão, pronto para gravar (`A23(c)`).
+ *
+ * Gravado na hora porque é a única hora em que dá para calcular: título e
+ * campos, dos dois lados, saem no prazo do conteúdo do e-mail, e comparar vazio
+ * com vazio dá "aceita sem correção". Sem isto, toda correção de campo viraria
+ * acerto no dia do prazo — uma taxa que melhora sozinha, sem ninguém notar.
+ *
+ * Sugestão ilegível grava `null`, e o painel conta a revisão como ignorada, à
+ * vista, em vez de inventar um rótulo. A revisão não é barrada: a decisão da
+ * pessoa sobre o item vale mesmo quando a medida não pode ser feita. O aviso
+ * no log diz QUAL revisão, na hora — o número agregado sozinho não diz.
+ */
+export function acertoDaRevisao(
+  revisaoId: string,
+  sugestaoIa: string,
+  decisao: DecisaoHumana,
+): { desfecho: string | null; correcoes: string | null } {
+  let sugestao
+  try {
+    sugestao = SugestaoIaGravadaSchema.parse(JSON.parse(sugestaoIa))
+  } catch {
+    registrarLog('aviso', 'acerto da IA não gravado: a sugestão desta revisão está ilegível', {
+      revisaoId,
+    })
+    return { desfecho: null, correcoes: null }
+  }
+  const { desfecho, correcoes, camposAlterados } = compararRevisao({ sugestao, decisao })
+  return { desfecho, correcoes: serializar({ ...correcoes, camposAlterados }) }
+}
+
+/** Aprovar em massa é aceitar a sugestão inteira sem tocar em nada. */
+const DECISAO_DA_APROVACAO_EM_MASSA: DecisaoHumana = {
+  categoriaCodigo: null,
+  titulo: null,
+  campos: null,
+  aprovado: true,
+  itensExtras: 0,
 }
 
 /**
@@ -114,9 +157,10 @@ export async function resolver(
     })
     if (!categoria) throw new ErroDeNegocio(`Categoria "${dados.categoriaCodigo}" não existe.`)
 
+    // Sem título: o que a IA extraiu pode ter nome de associado, e a trilha
+    // não tem prazo (`A23(d)`).
     const antes = {
       categoriaId: revisao.item.categoriaId,
-      titulo: revisao.item.titulo,
       status: revisao.item.status,
     }
 
@@ -146,6 +190,9 @@ export async function resolver(
         categoriaId: categoria.id,
         titulo: dados.titulo,
         payload: serializar(payloadFinal),
+        // A chave vem dos campos FINAIS: a pessoa pode ter corrigido ou trocado
+        // o CPF, e a chave antiga não pode sobreviver a isso (`A23(b)`).
+        ...chaveDeBusca(payloadFinal.campos),
         // Aprovado por humano entra na próxima rodada. Recusado sai da fila
         // sem sumir do banco — cancelado é estado, não exclusão.
         status: dados.aprovar ? 'aprovado' : 'cancelado',
@@ -167,6 +214,13 @@ export async function resolver(
           aprovado: dados.aprovar,
           itensExtras: dados.itensExtras.length,
         }),
+        ...acertoDaRevisao(revisao.id, revisao.sugestaoIa, {
+          categoriaCodigo: dados.categoriaCodigo,
+          titulo: dados.titulo,
+          campos: dados.campos,
+          aprovado: dados.aprovar,
+          itensExtras: dados.itensExtras.length,
+        }),
         resolvidoPor: ator.colaboradorId,
         resolvidoEm: new Date(),
       },
@@ -177,7 +231,13 @@ export async function resolver(
       entidadeId: item.id,
       acao: dados.aprovar ? 'revisao_aprovada' : 'revisao_recusada',
       antes,
-      depois: { categoriaId: categoria.id, titulo: item.titulo, status: item.status },
+      // QUAIS campos mudaram e SE o título mudou — nunca o que está escrito.
+      depois: {
+        categoriaId: categoria.id,
+        status: item.status,
+        tituloEditado: dados.titulo.trim() !== revisao.item.titulo.trim(),
+        camposAlterados: camposAlterados(payloadAnterior.campos, payloadFinal.campos),
+      },
       usuario: ator.colaboradorId,
       correlacaoId,
     })
@@ -229,6 +289,7 @@ export async function resolver(
             // O item extra é o mesmo trabalho da mesma liga: a única resposta
             // correta é a liga do item de origem.
             ligaId: revisao.item.ligaId,
+            ...chaveDeBusca(extra.campos),
             sequencia: proximaSequencia,
             titulo: extra.titulo,
             payload: serializar({
@@ -249,7 +310,7 @@ export async function resolver(
           entidade: 'Item',
           entidadeId: criado.id,
           acao: 'item_criado_por_divisao_de_revisao',
-          depois: { categoriaId: categoria.id, titulo: criado.titulo, origemRevisaoId: dados.revisaoId },
+          depois: { categoriaId: categoria.id, origemRevisaoId: dados.revisaoId },
           usuario: ator.colaboradorId,
           correlacaoId,
         })
@@ -287,7 +348,7 @@ export async function aprovarTodosPendentes(
         resolvidoEm: null,
         motivo: { in: ['baixa_confianca', 'campo_ausente'] },
       },
-      select: { id: true, itemId: true },
+      select: { id: true, itemId: true, sugestaoIa: true },
     })
 
     for (const pendente of pendentes) {
@@ -296,6 +357,7 @@ export async function aprovarTodosPendentes(
         where: { id: pendente.id },
         data: {
           valorFinal: serializar({ aprovado: true, origem: 'aprovacao_em_massa' }),
+          ...acertoDaRevisao(pendente.id, pendente.sugestaoIa, DECISAO_DA_APROVACAO_EM_MASSA),
           resolvidoPor: usuario,
           resolvidoEm: new Date(),
         },

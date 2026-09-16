@@ -201,6 +201,34 @@ export const MANUAL: readonly VerbeteDoManual[] = [
       'Ao escolher uma liga, o bloco de notas do setor passa a mostrar o que a equipe anotou sobre aquela liga.',
   },
   {
+    id: 'texto-do-email-apagado',
+    titulo: 'Por que o texto de um e-mail sumiu da Caixa',
+    papeis: TODOS,
+    tela: '/caixa',
+    texto:
+      'O sistema guarda o que chegou e o que virou trabalho, mas não guarda para sempre o texto dos e-mails. ' +
+      'Sete dias depois de o último pedido de um e-mail ser concluído ou cancelado, remetente, assunto, texto e anexos são apagados do sistema; ' +
+      'e-mail que não virou pedido conta do dia em que chegou. Enquanto houver pedido aberto, nada sai. ' +
+      'No lugar do remetente, a Caixa mostra quando o texto foi apagado e o dia e a hora em que o e-mail chegou — com isso dá para achar o original no Outlook, que continua lá. ' +
+      'No mesmo dia, o nome do pedido troca para o tipo de trabalho, a liga e a posição no e-mail — por exemplo "Ligante · Liga de Neonatologia · 2" —, ' +
+      'e saem os dados que a leitura automática tirou do e-mail e os motivos escritos ao transferir ou devolver. ' +
+      'Para achar o pedido depois disso, use a busca por CPF ou matrícula, ou a data de chegada. ' +
+      'Pedido registrado à mão segue o mesmo prazo, contado do dia em que ele foi concluído ou cancelado. ' +
+      'Quem é gestor pode mudar o prazo na tela Acesso, em "Prazos de retenção".',
+  },
+  {
+    id: 'buscar-por-cpf-ou-matricula',
+    titulo: 'Achar um item antigo pelo CPF ou pela matrícula',
+    papeis: TODOS,
+    tela: '/caixa',
+    texto:
+      'No topo da Caixa há o campo "Buscar por CPF ou matrícula". Digite o CPF, com ou sem pontos, ou a matrícula, só com números, e aperte Buscar. ' +
+      'A busca continua funcionando depois que o texto do e-mail foi apagado: o sistema não guarda o CPF, guarda um código feito a partir dele, ' +
+      'e o mesmo CPF digitado gera o mesmo código. ' +
+      'Ela só acha itens em que o e-mail trazia o CPF ou a matrícula, e que chegaram depois que a busca passou a existir; para os outros, procure pela data de chegada. ' +
+      'Se aparecer "Este CPF não confere", algum número foi digitado errado. O número que você digita não aparece no endereço da página.',
+  },
+  {
     id: 'notas-do-setor',
     titulo: 'As notas do setor',
     papeis: TODOS,
@@ -232,7 +260,10 @@ export const MANUAL: readonly VerbeteDoManual[] = [
     texto:
       'Todo mundo vê que a pessoa está fora; só o gestor vê POR QUÊ. O motivo de um afastamento pode revelar condição de saúde, ' +
       'que é dado sensível pela LGPD, então ele não aparece para operador nem para colaborador — nem na tela, nem pela API. ' +
-      'Ao registrar, escreva no campo de observação só o necessário para a operação.',
+      'Ao registrar, escreva no campo de observação só o necessário para a operação. ' +
+      'O motivo também não fica para sempre: 7 dias depois de a pessoa voltar, a observação é apagada e o tipo vira "férias" ou "ausente". ' +
+      'As datas ficam. Ausência sem data de volta não conta até alguém marcar a volta. A limpeza roda sozinha uma vez por dia, ' +
+      'e o prazo pode ser mudado por quem é gestor, na tela Acesso, em "Prazos de retenção" — encurtar pede confirmação, porque apaga sem volta.',
   },
   {
     id: 'painel',
