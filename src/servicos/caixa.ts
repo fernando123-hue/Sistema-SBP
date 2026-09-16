@@ -7,6 +7,7 @@ import {
 import { ErroDeNegocio } from '../core/erros'
 import { StatusItemSchema } from '../core/esquemas'
 import type { ItemDaCaixa } from '../core/tipos'
+import type { Ator } from '../servidor/ator'
 import { protegerCpf } from '../servidor/cpf-protegido'
 import type { Banco } from '../servidor/prisma'
 
@@ -18,6 +19,36 @@ export type { ItemDaCaixa }
  * A tela que substitui a coluna de contagem: em vez de "e-mail: 47", a lista
  * dos 47 itens reais, com remetente, assunto e o grau de confiança da IA.
  */
+
+/**
+ * O que cada cargo enxerga da caixa (`A24`).
+ *
+ * Colaborador vê só os itens em que é o RESPONSÁVEL ATIVO. Operador e gestor
+ * veem tudo — são eles que equilibram a carga e precisam do quadro inteiro.
+ *
+ * ═══ POR QUE AQUI, E NÃO NA ROTA ═══
+ *
+ * `A24` diz que a restrição é do servidor, porque esconder na tela deixaria o
+ * dado na resposta HTTP. Dentro do servidor, ela mora no SERVIÇO pelo mesmo
+ * motivo de `minhaFila`: a próxima porta que precisar da caixa — outra rota,
+ * um relatório, um agente — passa por esta função, não pelo arquivo da rota.
+ * Guarda que vive só na rota é guarda que a segunda porta não tem.
+ *
+ * ═══ ITEM SEM DONO TAMBÉM NÃO APARECE ═══
+ *
+ * Item aprovado e ainda não distribuído é trabalho do setor, de ninguém. Para
+ * o colaborador ele não é "o próprio trabalho", e mostrá-lo devolveria pela
+ * janela o que a porta fechou: remetente e assunto de associado que não tem
+ * relação com o que essa pessoa faz hoje.
+ *
+ * Quem ajuda num item (`A18`) ainda NÃO entra aqui: a ajuda é da fase 3, e o
+ * modelo que a sustenta não existe. Quando existir, é este filtro que ganha o
+ * segundo caminho — em um lugar só.
+ */
+function recorteDaCaixa(ator: Ator): { atribuicoes?: { some: { colaboradorId: string; ativa: true } } } {
+  if (ator.papel !== 'colaborador') return {}
+  return { atribuicoes: { some: { colaboradorId: ator.colaboradorId, ativa: true } } }
+}
 
 export interface FiltroDaCaixa {
   status?: string | undefined
@@ -31,13 +62,15 @@ export interface FiltroDaCaixa {
 
 export async function listarCaixa(
   banco: Banco,
-  filtro: FiltroDaCaixa = {},
+  filtro: FiltroDaCaixa,
+  ator: Ator,
 ): Promise<ItemDaCaixa[]> {
   const status = filtro.status ? StatusItemSchema.parse(filtro.status) : undefined
   const limite = Math.min(Math.max(filtro.limite ?? 100, 1), 500)
 
   const itens = await banco.item.findMany({
     where: {
+      ...recorteDaCaixa(ator),
       ...(status ? { status } : {}),
       ...(filtro.categoriaCodigo ? { categoria: { codigo: filtro.categoriaCodigo } } : {}),
       ...(filtro.ligaId ? { ligaId: filtro.ligaId } : {}),
@@ -100,7 +133,11 @@ const LIMITE_DA_BUSCA = 200
  * Nunca chama `listarCaixa` sem filtro de chave: um filtro vazio devolveria a
  * Caixa inteira como se fosse o resultado da busca.
  */
-export async function buscarPorChave(banco: Banco, entrada: unknown): Promise<ItemDaCaixa[]> {
+export async function buscarPorChave(
+  banco: Banco,
+  entrada: unknown,
+  ator: Ator,
+): Promise<ItemDaCaixa[]> {
   const { texto } = BuscaPorChaveSchema.parse(entrada)
   const busca = interpretarBusca(texto)
 
@@ -108,12 +145,12 @@ export async function buscarPorChave(banco: Banco, entrada: unknown): Promise<It
   if (busca.tipo === 'cpf_nao_confere') throw new ErroDeNegocio(MENSAGEM_CPF_NAO_CONFERE)
 
   if (busca.tipo === 'matricula') {
-    return listarCaixa(banco, { matricula: busca.matricula, limite: LIMITE_DA_BUSCA })
+    return listarCaixa(banco, { matricula: busca.matricula, limite: LIMITE_DA_BUSCA }, ator)
   }
 
   const cpfProtegido = protegerCpf(busca.cpf)
   if (cpfProtegido === null) throw new ErroDeNegocio(MENSAGEM_CPF_NAO_CONFERE)
-  return listarCaixa(banco, { cpfProtegido, limite: LIMITE_DA_BUSCA })
+  return listarCaixa(banco, { cpfProtegido, limite: LIMITE_DA_BUSCA }, ator)
 }
 
 export interface ResumoDaCaixa {
@@ -122,10 +159,19 @@ export interface ResumoDaCaixa {
   porCategoria: { codigo: string; rotulo: string; grupo: string; total: number }[]
 }
 
-export async function resumirCaixa(banco: Banco): Promise<ResumoDaCaixa> {
+/**
+ * O resumo conta o MESMO universo que a listagem mostra (`A24`).
+ *
+ * Sem o recorte aqui, o cabeçalho da Caixa diria "47 itens" sobre uma lista de
+ * três — um número que não fecha com a tela logo abaixo dele, que é a doença
+ * que este sistema existe para curar.
+ */
+export async function resumirCaixa(banco: Banco, ator: Ator): Promise<ResumoDaCaixa> {
+  const recorte = recorteDaCaixa(ator)
+
   const [porStatus, porCategoria, categorias] = await Promise.all([
-    banco.item.groupBy({ by: ['status'], _count: { _all: true } }),
-    banco.item.groupBy({ by: ['categoriaId'], _count: { _all: true } }),
+    banco.item.groupBy({ by: ['status'], where: recorte, _count: { _all: true } }),
+    banco.item.groupBy({ by: ['categoriaId'], where: recorte, _count: { _all: true } }),
     banco.categoria.findMany({ select: { id: true, codigo: true, rotulo: true, grupo: true } }),
   ])
 

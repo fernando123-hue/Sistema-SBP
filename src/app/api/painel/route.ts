@@ -21,14 +21,17 @@ import { exigirAtor } from '../../../servidor/sessao'
  */
 export async function GET(requisicao: Request): Promise<Response> {
   return rota(async () => {
-    await exigirAtor()
+    // `A24`: o colaborador recebe só os próprios números; operador e gestor, os
+    // de todos. O recorte é do serviço — filtrar na tela deixaria os números da
+    // equipe inteira dentro da resposta.
+    const ator = await exigirAtor()
     const banco = obterPrisma()
 
     const periodo = interpretarPeriodo(new URL(requisicao.url).searchParams)
 
     const [categorias, pessoas, conservacao] = await Promise.all([
       porCategoria(banco, periodo),
-      porPessoa(banco),
+      porPessoa(banco, ator),
       conferirConservacao(banco),
     ])
 

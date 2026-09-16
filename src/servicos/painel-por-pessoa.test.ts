@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { obterPrisma } from '../servidor/prisma'
-import { limparTudo } from '../testes/apoio'
+import { atorDeTeste, limparTudo } from '../testes/apoio'
 import { porPessoa } from './painel'
 
 /**
@@ -35,7 +35,10 @@ describe('porPessoa', () => {
       ],
     })
 
-    const linha = (await porPessoa(banco)).find((l) => l.colaboradorId === pessoa.id)
+    // Como operadora: é ela que vê a equipe inteira (`A24`). O recorte do
+    // colaborador tem teste próprio em `quem-ve-o-que.test.ts`.
+    const auditoria = atorDeTeste('operadora-de-teste', 'operador')
+    const linha = (await porPessoa(banco, auditoria)).find((l) => l.colaboradorId === pessoa.id)
     expect(linha?.creditoGlobal).toBe(3)
   })
 })

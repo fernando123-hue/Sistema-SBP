@@ -479,9 +479,15 @@ export default function PainelPagina() {
       {qualidade ? <QualidadeDaIa medida={qualidade} /> : null}
 
       <section>
+        {/*
+          A segunda frase descreve o recorte de `A24` sem a tela precisar saber
+          o papel de quem está lendo: ela é verdadeira nos dois casos, e uma
+          chamada a mais só para escolher entre dois textos seria custo sem
+          ganho. Quem vê uma linha só entende por quê; quem vê a equipe também.
+        */}
         <CabecalhoDeSecao
           titulo="Por pessoa"
-          descricao="Crédito próximo de zero significa carga equilibrada. É o livro-razão que a planilha não tem."
+          descricao="Cada pessoa vê os próprios números; quem coordena vê os de todos. Crédito próximo de zero significa carga equilibrada — é o livro-razão que a planilha não tem."
         />
         <ListaResponsiva
           linhas={dados.pessoas.filter((pessoa) => pessoa.atribuidos > 0)}

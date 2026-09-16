@@ -492,6 +492,16 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **Status:** ⏳ nada disso foi implementado. **Impacto se ignorado:** a migração parece funcionar, e os defeitos aparecem como texto truncado, liga duplicada tratada como a mesma, ou dois responsáveis ativos no mesmo item — todos silenciosos, que é a classe de erro que este sistema existe para eliminar.
 
+### AT-29 — O que o recorte de `A24` alcança, e o que ele deliberadamente não alcança *(16/09/2026)*
+
+**Hipótese:** implementando `A24` na fase 2, três escolhas não estavam decididas pelo dono e foram feitas pela engenharia.
+
+1. **Item sem responsável não aparece para o colaborador.** `A24` diz "vê só os itens que são dele"; item aprovado e ainda não distribuído não é de ninguém. Mostrá-lo devolveria remetente e assunto de associado a quem o recorte acabou de fechar. **Reversível:** passar a mostrar depois é uma linha; o contrário, depois de a equipe se acostumar, é mudança de expectativa.
+2. **A tabela por categoria e a conferência de conservação continuam abertas a todos.** Não há pessoa nenhuma nesses números — é o volume do setor. Esconder de quem trabalha nele não protegeria ninguém e tiraria da equipe a noção de quanto entrou no dia.
+3. **O recorte mora no serviço, não na rota.** `A24` exige que a restrição seja do servidor; dentro do servidor, ela fica onde a próxima porta também passa. É o mesmo desenho de `minhaFila`.
+
+**Impacto:** nenhum na operação de operador e gestor. Para o colaborador, a Caixa e a busca passam a responder só o que é dele, e a tela diz isso em uma frase. **Status:** ✅ adotado; muda por decisão do dono, não por acidente — e o ponto 1 é o candidato natural a mudar quando a equipe usar de verdade (`A21`).
+
 ---
 
 ## D. Pendências do cliente final

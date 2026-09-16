@@ -551,7 +551,7 @@ describe('retenção — conteúdo separado do histórico operacional', () => {
 
     // E a operação continua legível: a caixa perde remetente e assunto, nunca
     // o item.
-    const caixa = await listarCaixa(banco, { limite: 5 })
+    const caixa = await listarCaixa(banco, { limite: 5 }, base.operador)
     expect(caixa.length).toBeGreaterThan(0)
     expect(caixa[0]!.titulo.length).toBeGreaterThan(0)
     expect(caixa[0]!.remetente).toBeNull()

@@ -15,6 +15,16 @@
 > 5. **Perguntas ao dono:** sobre tela, com desenho das opções lado a lado; sobre regra, com exemplo concreto do começo ao fim. Sempre linguagem simples e nomes fictícios, e todo texto que a equipe lê em frase curta, sem termo técnico.
 > 6. **Para ver telas rodando:** `preview_start {name: "sbp-local"}` (aceita outra porta se a 3000 estiver ocupada) e, em `/entrar`, clique numa conta `@exemplo.test`. Nunca digite senha. Travas em `DECISOES.md § AT-17`. **`BUSCA_SECRET` é obrigatório**: numa máquina nova, gere um (ver `.env.example`); numa instalação em uso, nunca troque (`§ AT-26`).
 
+### Fase 2 — o que `A24` entregou *(16/09/2026)*
+
+- **Caixa de entrada:** o colaborador vê só os itens em que é o **responsável ativo**. Operador e gestor continuam vendo tudo. Item aprovado e ainda **sem dono também não aparece** para o colaborador: é trabalho do setor, e mostrá-lo devolveria pela janela o remetente e o assunto que o recorte fechou.
+- **O resumo conta o mesmo universo que a lista.** Sem isso, o cabeçalho diria "25" sobre uma lista de 16 — número que não fecha com a tela logo abaixo dele.
+- **Busca por CPF ou matrícula herda o recorte** (`A40`, resposta 24, já previa): a busca é a mesma leitura da Caixa, então ela não vira porta lateral para o item de um colega.
+- **Painel:** o colaborador vê só a própria linha em "Por pessoa". A tabela **por categoria** e a conferência de conservação continuam abertas a todos — ali não há pessoa nenhuma, só o volume do setor (`§ AT-29`).
+- **Onde a regra mora:** no **serviço** (`servicos/caixa.ts`, `servicos/painel.ts`), não no arquivo da rota — a próxima porta que precisar da Caixa passa pelo serviço. Guarda que vive só na rota é guarda que a segunda porta não tem.
+- **Prova:** `src/servicos/quem-ve-o-que.test.ts` e o caso novo em `src/app/api/itens/busca/busca.test.ts`, os dois **vistos vermelhos** contra o código antigo antes da mudança — quatro falhas no serviço e uma na rota. Suíte inteira verde depois: 850 testes, 79 arquivos. **Visto rodando** em 16/09/2026 com o banco de desenvolvimento (25 itens: 16 do Caio, 5 da Dora, 1 da Fabiana): como Caio, a Caixa mostra "todas · 16"; como Bianca, que não tem item, "todas · 0" com a frase explicando; como gestora, os 25.
+- **Falta da fase 2:** o papel `dono` (`A32`), que só faz sentido quando existirem os feedbacks e o relatório que ele lê (fase 5). E "quem ajuda num item" (`A18`) entra no mesmo filtro, na fase 3.
+
 ### Fase 1 — o que `A17` entregou *(12/09/2026)*
 
 - **Prazo editável** (`/acesso`, "Prazos de retenção"): só gestor; de 5 a 3.650 dias (o piso virou 5 em 15/09/2026, `§ A45`); mudança na trilha com antes e depois; **encurtar exige confirmação no servidor**, não só na tela. Código: `core/retencao.ts`, `servicos/retencao.ts`, `app/api/retencao`.

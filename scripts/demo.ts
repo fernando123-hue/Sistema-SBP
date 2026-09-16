@@ -189,7 +189,9 @@ async function principal(): Promise<void> {
   // desta coluna e o razao GLOBAL, que soma as categorias e serve de desempate
   // secundario (decisao A2) -- passar de 1 aqui e esperado, nao violacao.
   linha('\npessoa                        atribuidos  concluidos  pendentes  cred.global')
-  for (const pessoa of await porPessoa(banco)) {
+  // Como operadora: `A24` recorta esta lista para quem é colaborador, e a demo
+  // mostra o quadro da equipe inteira — que é o ponto do painel.
+  for (const pessoa of await porPessoa(banco, operador)) {
     if (pessoa.atribuidos === 0) continue
     linha(
       `${pessoa.nome.padEnd(29)} ${String(pessoa.atribuidos).padStart(10)} ` +
