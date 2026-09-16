@@ -9,11 +9,27 @@
 > **O que fazer agora** *(reescrito em 14/09/2026 — a versão anterior destes itens ainda mandava fazer o `A23`, que está pronto)*:
 >
 > 1. **Confira onde está:** `git branch --show-current` → `main`; `git status -sb` e `git log --oneline -3`. A fase 1 está na `main` desde 15/09/2026, pelo PR #44, por squash (`2c4acdb`), com os três checks verdes. A branch `fase-1/privacidade-e-prazos` foi apagada na mesclagem. **Nenhuma pessoa revisou o código até aqui — só agentes.**
-> 2. **Banco de dados: MySQL** (decisão do dono em 15/09/2026, `§ A42`). O protótipo continua em SQLite, e a troca **não** foi feita: o que ela exige, item a item, está em `§ AT-28`. O mais caro não é o `provider` — é que as 14 migrações existentes foram geradas para SQLite e não servem.
+> 2. **Banco de dados: MySQL — trocado e provado em 16/09/2026** (`§ A42`, `§ AT-28`, `§ AT-30`). A suíte inteira roda contra o MySQL, aqui e no CI: 80 arquivos, 860 testes. **Nada roda sem um MySQL de pé** — o README diz como preparar, e a base precisa da colação `utf8mb4_0900_as_cs`, senão duas grafias da mesma liga viram uma só. As 14 migrações de SQLite estão em `prisma/migrations-sqlite-arquivado/`, como registro; a que vale é a inicial do MySQL.
 > 3. **Revisão de segurança da fase 1 — feita em 15/09/2026**, por agente e só de leitura, sobre o diff inteiro: `docs/auditoria/2026-09-15-revisao-de-seguranca-fase-1.md`. **Nenhum achado crítico ou alto.** O achado médio (busca por CPF sem teto diário) foi respondido no mesmo dia pelo dono — ver `§ A44`, a implementar na implantação. **Continua aberto:** se o prazo mínimo de retenção fica em 1 dia. **Nenhuma pessoa revisou o código até aqui — só agentes**, e por decisão do dono (`§ A43`) a primeira leitura humana acontece quando o protótipo inteiro estiver pronto para rodar.
 > 4. **Próximo trabalho, a decidir com o dono:** a fase 2 (`A24`, `A32`) do plano das 5 fases, **ou** a implantação — conexão real com o Outlook (hoje só existe `src/adapters/ingestao-mock.ts`), **MySQL** (`§ A42`), publicação e IA paga. Existe uma apresentação de custos para a chefia, fora do repositório, que estima as duas.
 > 5. **Perguntas ao dono:** sobre tela, com desenho das opções lado a lado; sobre regra, com exemplo concreto do começo ao fim. Sempre linguagem simples e nomes fictícios, e todo texto que a equipe lê em frase curta, sem termo técnico.
 > 6. **Para ver telas rodando:** `preview_start {name: "sbp-local"}` (aceita outra porta se a 3000 estiver ocupada) e, em `/entrar`, clique numa conta `@exemplo.test`. Nunca digite senha. Travas em `DECISOES.md § AT-17`. **`BUSCA_SECRET` é obrigatório**: numa máquina nova, gere um (ver `.env.example`); numa instalação em uso, nunca troque (`§ AT-26`).
+
+### Implantação — o que entrou em 16/09/2026
+
+**O banco passou a ser MySQL, de verdade** (`A42`). Instalado nesta máquina, bases criadas com colação sensível a maiúsculas e acentos, provider e conexão trocados, tipos de coluna ajustados, migração inicial gerada e aplicada. **A suíte inteira roda nele** — decisão tomada ao contrário do que o `AT-28` previa, e o motivo está escrito lá: os defeitos que apareceram eram justamente os que o banco antigo escondia. Custo assumido: suíte mais lenta e MySQL como requisito para rodar qualquer coisa.
+
+**Três defeitos encontrados no caminho, e nenhum deles era do MySQL** — os três já existiam (`AT-30`):
+
+1. O teto de 25 MB do anexo derrubava o **e-mail inteiro** na validação: um exame grande fazia o pedido do associado sumir. O teto voltou para onde já havia regra — o anexo é recusado com motivo e o item vai para revisão, então alguém fica sabendo.
+2. Valor padrão em coluna de texto, que o SQLite aceita e o MySQL proíbe. Saiu; quem cria item informa o payload.
+3. A única consulta crua do sistema citava identificadores com aspas duplas — string no MySQL, não nome de coluna. O comentário dela **afirmava** portabilidade tendo conferido dois bancos; o terceiro a rejeitou.
+
+**O adapter da caixa do Microsoft 365 está escrito e testado sem credencial** (`A47`): `src/adapters/ingestao-graph.ts`, com a fronteira `ClienteDoGraph` para provar formato, paginação, anexo e credencial recusada sem rede. Só leitura, sempre — `A5` continua valendo. **Falta o TI da associação** confirmar que a caixa é Microsoft 365 e criar um registro de aplicativo com permissão de leitura **só daquela caixa**.
+
+**O CI ganhou banco próprio**: serviço MySQL no job, bases criadas com a colação da implantação e base sombra para a conferência de schema contra migrações. Sem isso o PR nasceria vermelho por falta de infraestrutura, não por defeito.
+
+**O que ainda falta para a equipe usar:** as credenciais do Outlook, onde publicar (`A46` diz servidor da associação, com terreno pronto para nuvem), a IA paga e o canal de feedback (`A21`).
 
 ### Fase 2 — o que `A24` entregou *(16/09/2026)*
 

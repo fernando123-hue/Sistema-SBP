@@ -70,6 +70,7 @@ async function criarItens(categoriaId: string, quando: string, quantos: number):
         categoriaId,
         titulo: `Documento ${quando} ${i}`,
         status: 'aprovado',
+        payload: '{}',
         criadoEm: new Date(`${quando}T09:00:00.000Z`),
       },
     })

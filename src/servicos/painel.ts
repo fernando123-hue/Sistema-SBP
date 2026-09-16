@@ -411,20 +411,34 @@ export async function conferirConservacao(
   // da migração para PostgreSQL. Achado 1 da auditoria de 08/09/2026.
   //
   // Agora a resposta normal tem ZERO linhas. `$queryRaw` com template, então
-  // `desde` vai como parâmetro, nunca concatenado; identificadores entre aspas
-  // valem igual em SQLite e PostgreSQL. O `LEFT JOIN` mantém a rodada cujas
-  // atribuições sumiram todas — é justamente a que mais precisa aparecer.
+  // `desde` vai como parâmetro, nunca concatenado. O `LEFT JOIN` mantém a
+  // rodada cujas atribuições sumiram todas — é justamente a que mais precisa
+  // aparecer.
+  //
+  // ═══ CRASE, NÃO ASPAS — E A LIÇÃO CUSTOU UMA MIGRAÇÃO ═══
+  //
+  // Este comentário dizia, até 16/09/2026, que "identificadores entre aspas
+  // valem igual em SQLite e PostgreSQL". Valiam — e era por isso que a frase
+  // enganava: ela declarava portabilidade tendo conferido DOIS bancos, num
+  // projeto que ainda ia escolher o terceiro. O MySQL (`A42`) usa aspas duplas
+  // para STRING, não para identificador, e recusou a consulta inteira com erro
+  // 1064. Foi a única consulta crua do sistema, e por isso o único lugar onde
+  // a troca de banco podia quebrar em silêncio de sintaxe.
+  //
+  // Se um dia o banco mudar de novo, é ESTA consulta que precisa ser reescrita,
+  // e é o único lugar: todo o resto passa pelo Prisma, que cita identificador
+  // conforme o provider.
   const linhas = await banco.$queryRaw<
     { rodadaId: string; entrada: number | bigint; gravado: number | bigint }[]
   >`
-    SELECT r."id" AS "rodadaId",
-           r."quantidadeEntrada" AS "entrada",
-           COUNT(DISTINCT a."itemId") AS "gravado"
-      FROM "RodadaDistribuicao" r
-      LEFT JOIN "Atribuicao" a ON a."rodadaId" = r."id"
-     WHERE r."data" >= ${desde}
-     GROUP BY r."id", r."quantidadeEntrada"
-    HAVING COUNT(DISTINCT a."itemId") <> r."quantidadeEntrada"
+    SELECT r.\`id\` AS \`rodadaId\`,
+           r.\`quantidadeEntrada\` AS \`entrada\`,
+           COUNT(DISTINCT a.\`itemId\`) AS \`gravado\`
+      FROM \`RodadaDistribuicao\` r
+      LEFT JOIN \`Atribuicao\` a ON a.\`rodadaId\` = r.\`id\`
+     WHERE r.\`data\` >= ${desde}
+     GROUP BY r.\`id\`, r.\`quantidadeEntrada\`
+    HAVING COUNT(DISTINCT a.\`itemId\`) <> r.\`quantidadeEntrada\`
   `
 
   return {

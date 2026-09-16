@@ -95,6 +95,7 @@ async function criarItensIntercalados(
           categoriaId,
           titulo: `Ligante ${i} da liga ${liga.id.slice(-4)}`,
           status: 'aprovado',
+          payload: '{}',
           ligaId: liga.id,
           criadoEm: new Date(instante),
         },

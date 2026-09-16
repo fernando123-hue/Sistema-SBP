@@ -129,6 +129,25 @@ const AmbienteSchema = z.object({
       'BUSCA_SECRET precisa de no mínimo 16 caracteres — gere um com: node -e "console.log(crypto.randomBytes(32).toString(\'base64url\'))"',
     ),
   /**
+   * Credenciais da caixa do Microsoft 365 (`A47`), usadas só quando
+   * `INGESTAO_ADAPTER="graph"`.
+   *
+   * Opcionais AQUI e obrigatórias no adapter, de propósito: quem roda com
+   * `mock` — todo o desenvolvimento e toda a suíte — não precisa de credencial
+   * nenhuma, e exigir as quatro na partida impediria o sistema de subir na
+   * máquina de quem só quer ver as telas. O adapter falha alto e nominal na
+   * primeira sincronização, dizendo qual variável falta e de onde ela vem.
+   *
+   * `GRAPH_CAIXA` é UMA caixa, a da secretaria. A permissão pedida ao TI é de
+   * leitura apenas, e restrita a ela — uma credencial que alcança a
+   * organização inteira transforma um defeito de código num vazamento de
+   * escala completamente diferente.
+   */
+  GRAPH_TENANT_ID: z.string().optional(),
+  GRAPH_CLIENT_ID: z.string().optional(),
+  GRAPH_CLIENT_SECRET: z.string().optional(),
+  GRAPH_CAIXA: z.string().optional(),
+  /**
    * Quantos proxies confiáveis ficam na frente da aplicação.
    *
    * `0` (padrão) significa acesso direto — e nesse caso `x-forwarded-for` é

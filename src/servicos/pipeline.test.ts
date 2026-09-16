@@ -973,6 +973,7 @@ describe('item de origem manual, sem e-mail', () => {
         titulo: 'Pedido registrado por telefone',
         status: 'aprovado',
         confianca: 1,
+        payload: '{}',
       },
     })
 
@@ -995,6 +996,7 @@ describe('categoria fora do rateio', () => {
         titulo: 'Associado inadimplente',
         status: 'aprovado',
         confianca: 1,
+        payload: '{}',
       },
     })
 

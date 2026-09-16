@@ -20,8 +20,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    # O banco é MySQL (`A42`), e a suíte roda NELE — testar em banco diferente
+    # do de produção esconde a classe de erro que só aparece com dado real
+    # (`AT-30`). O serviço nasce e morre com o job.
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+
     env:
-      DATABASE_URL: file:./prisma/ci.db
+      DATABASE_URL: mysql://root@127.0.0.1:3306/sbp_teste
+      # Base sombra do Prisma. Em MySQL, `migrate diff --from-migrations`
+      # precisa de um banco onde aplicar as migrações para comparar — em SQLite
+      # ele usava um arquivo temporário e ninguém precisava saber disso.
+      SHADOW_DATABASE_URL: mysql://root@127.0.0.1:3306/sbp_sombra
       NODE_ENV: test
       # ═══ POR QUE ISTO NÃO É SEGREDO, E POR QUE PRECISA ESTAR AQUI ═══
       #
@@ -54,10 +74,21 @@ jobs:
       - name: Gerar cliente Prisma
         run: npx prisma generate
 
+      # A COLAÇÃO NÃO É DETALHE, e por isso a base é criada à mão em vez de por
+      # `MYSQL_DATABASE`: com o padrão do MySQL 8, que ignora maiúsculas e
+      # acentos, duas grafias da mesma liga colidem no índice único de `Liga` e
+      # viram a mesma linha — o contrário do que `AT-10` garante, sem erro que
+      # denuncie. O CI precisa reproduzir a base da implantação, não uma parecida.
+      - name: Criar as bases de teste com a colação da implantação
+        run: |
+          mysql -h 127.0.0.1 -P 3306 -u root -e "
+            CREATE DATABASE sbp_teste CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs;
+            CREATE DATABASE sbp_sombra CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs;"
+
       # Pega o caso clássico: alguém edita o schema e esquece de gerar a
       # migração. `--exit-code` devolve 2 quando há diferença, quebrando o build.
       - name: Verificar que o schema e as migrações estão em sincronia
-        run: npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --exit-code
+        run: npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --shadow-database-url "$SHADOW_DATABASE_URL" --exit-code
 
       - name: Typecheck
         run: npm run typecheck

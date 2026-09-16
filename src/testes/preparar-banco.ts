@@ -1,39 +1,88 @@
 import { execSync } from 'node:child_process'
-import { existsSync, rmSync } from 'node:fs'
-import path from 'node:path'
 
 /**
  * `globalSetup` do Vitest.
  *
- * Cria um banco de teste do zero antes da suíte. Nunca toca no `dev.db`:
- * `DATABASE_URL` de teste vem de `vitest.config.ts` e aponta para outro arquivo.
+ * Prepara o banco de teste do zero antes da suíte. Nunca toca na base de
+ * desenvolvimento: a `DATABASE_URL` de teste vem de `vitest.config.ts` e aponta
+ * para uma base própria.
+ *
+ * ═══ POR QUE A SUÍTE RODA EM MySQL, E NÃO NUM ARQUIVO ═══
+ *
+ * Até 16/09/2026 isto criava um arquivo SQLite descartável, e era mais rápido.
+ * O `AT-28` deixou a pergunta em aberto — "onde os testes rodam?" — e a
+ * migração para MySQL (`A42`) a respondeu do pior jeito possível para quem
+ * quisesse manter os dois: **testar em banco diferente do de produção esconde
+ * exatamente a classe de erro que só aparece com dado real.** Dois defeitos
+ * desta mesma semana provam isso (`AT-30`): o teto do anexo, que derrubava o
+ * e-mail inteiro, e o valor padrão em coluna de texto, que o SQLite aceita e o
+ * MySQL proíbe. Nenhum dos dois era alcançável pela suíte antiga.
+ *
+ * O custo é real e foi aceito de olhos abertos: a suíte fica mais lenta e
+ * **exige um MySQL de pé** na máquina de quem roda. Em troca, o que fica verde
+ * aqui é verde no banco que a associação vai usar.
+ *
+ * ═══ `migrate reset`, NÃO apagar arquivo ═══
+ *
+ * Com arquivo bastava removê-lo. Numa base, o equivalente é derrubar o schema e
+ * reaplicar as migrações — o que garante que a suíte exercita **as migrações de
+ * verdade**, as mesmas que vão rodar na implantação, e não um schema
+ * empurrado direto. Migração que não aplica passa a ser vermelho aqui, e não
+ * surpresa no dia de publicar.
  */
 
-const CAMINHO_RELATIVO = './prisma/teste.db'
+/**
+ * A base de teste da máquina de desenvolvimento.
+ *
+ * O padrão vive AQUI e em `vitest.config.ts`, e não em um só lugar, porque o
+ * `globalSetup` roda **antes** de o `env` da configuração ser aplicado ao
+ * processo — descoberto na primeira execução, com a variável chegando vazia.
+ * No CI o ambiente do job tem precedência e este valor não é usado.
+ */
+const PADRAO_LOCAL = 'mysql://root@127.0.0.1:3307/sbp_teste'
 
 export async function setup(): Promise<void> {
-  const arquivo = path.resolve('prisma/teste.db')
-  for (const sufixo of ['', '-journal', '-wal', '-shm']) {
-    const alvo = `${arquivo}${sufixo}`
-    if (existsSync(alvo)) rmSync(alvo)
+  const url = process.env['DATABASE_URL'] ?? PADRAO_LOCAL
+
+  if (!url.startsWith('mysql://')) {
+    throw new Error(
+      `A suíte precisa de uma DATABASE_URL de MySQL (decisão A42). Recebi: ${url}`,
+    )
   }
 
-  // `pipe`, não `ignore`: a falha já subia, mas sem a única coisa que o Prisma
-  // tinha a dizer — o CI ficava vermelho com `Command failed` e nada mais, e
-  // descobrir que era uma migração quebrada exigia reproduzir na máquina.
   try {
-    execSync('npx prisma migrate deploy', {
+    // `--force` pula a confirmação interativa, e é a ÚNICA bandeira que serve
+    // aqui: o `migrate reset` do Prisma 7 aceita só `--help`, `--config`,
+    // `--schema` e `--force`. Um `--skip-generate` — que existe em outros
+    // comandos — derruba o setup inteiro com erro de uso, e a suíte nem começa.
+    execSync('npx prisma migrate reset --force', {
       stdio: 'pipe',
       encoding: 'utf8',
-      env: { ...process.env, DATABASE_URL: `file:${CAMINHO_RELATIVO}` },
+      env: {
+        ...process.env,
+        DATABASE_URL: url,
+        // O Prisma exige consentimento explícito para uma ação destrutiva
+        // quando detecta que quem chama pode ser um agente. Aqui a base é a de
+        // TESTE, declarada em `vitest.config.ts`, criada para nascer e morrer
+        // com a suíte — nenhum dado de desenvolvimento, e muito menos real,
+        // está ao alcance deste comando.
+        PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION:
+          'base de teste descartavel, declarada em vitest.config.ts',
+      },
     })
   } catch (erro) {
+    // `pipe`, não `ignore`: a falha já subia, mas sem a única coisa que o
+    // Prisma tinha a dizer — o CI ficava vermelho com `Command failed` e nada
+    // mais, e descobrir que era uma migração quebrada exigia reproduzir na
+    // máquina.
     const saida = (campo: 'stdout' | 'stderr') =>
       erro !== null && typeof erro === 'object' && campo in erro
         ? String((erro as Record<typeof campo, unknown>)[campo] ?? '')
         : ''
+
     throw new Error(
-      `Não foi possível preparar o banco de teste: \`prisma migrate deploy\` falhou.\n` +
+      'Não foi possível preparar o banco de teste. Confira se o MySQL está de pé e se a base ' +
+        'de teste existe com a colação certa (ver README).\n' +
         `${saida('stderr')}${saida('stdout')}`.trim(),
       { cause: erro },
     )

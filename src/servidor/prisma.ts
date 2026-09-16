@@ -1,4 +1,4 @@
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
+import { PrismaMariaDb } from '@prisma/adapter-mariadb'
 
 import { PrismaClient } from '../generated/prisma/client'
 import { ambiente } from './ambiente'
@@ -6,15 +6,22 @@ import { ambiente } from './ambiente'
 /**
  * Cliente Prisma.
  *
- * Para migrar para PostgreSQL: trocar `provider` em `schema.prisma` e o adapter
- * abaixo por `@prisma/adapter-pg`. Nenhum model, serviço ou query muda.
+ * O banco é **MySQL** (`A42`), e `PrismaMariaDb` é o adapter do Prisma para a
+ * família MySQL/MariaDB. Trocar de banco continua sendo duas linhas — o
+ * `provider` no schema e o adapter aqui —, e nenhum model, serviço ou consulta
+ * muda: é a mesma fronteira que permitiu acrescentar o segundo fornecedor de IA
+ * sem tocar em `servicos/`.
+ *
+ * A URL inteira vem do ambiente. Nada de host, porta ou senha escrito aqui:
+ * é o que deixa a mesma imagem rodar na máquina de desenvolvimento, no servidor
+ * da associação e, um dia, na nuvem (`A46`).
  */
 
 let instancia: PrismaClient | undefined
 
 export function obterPrisma(): PrismaClient {
   if (!instancia) {
-    const adapter = new PrismaBetterSqlite3({ url: ambiente().DATABASE_URL })
+    const adapter = new PrismaMariaDb(ambiente().DATABASE_URL)
     instancia = new PrismaClient({ adapter })
   }
   return instancia

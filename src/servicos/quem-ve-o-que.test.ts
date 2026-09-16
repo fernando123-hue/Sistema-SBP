@@ -55,6 +55,7 @@ beforeEach(async () => {
         titulo,
         status: dono ? 'distribuido' : 'aprovado',
         confianca: 1,
+        payload: '{}',
         cpfProtegido: protegerCpf(CPF_DO_ASSOCIADO),
       },
       select: { id: true },

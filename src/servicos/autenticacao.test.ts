@@ -474,7 +474,7 @@ describe('ativar e desativar acesso', () => {
     })
 
     const item = await banco.item.create({
-      data: { categoriaId: categoria.id, titulo: 'Na fila de quem saiu', status: 'distribuido' },
+      data: { categoriaId: categoria.id, titulo: 'Na fila de quem saiu', status: 'distribuido', payload: '{}' },
     })
     await banco.atribuicao.create({
       data: {
