@@ -52,3 +52,9 @@ Fica escrito porque é exatamente a classe de divergência silenciosa que este s
 2. O piso de 1 dia para os prazos de retenção fica?
 
 Continua valendo, e é maior que os dois: **nenhuma pessoa revisou este código.**
+
+## Respostas do dono, no mesmo dia
+
+- **O achado MÉDIO está respondido:** ver `DECISOES.md § A44`. O dono recusou alertar por volume de buscas, para a medida de segurança não virar pressão sobre a equipe, e o desenho passou a ser o padrão de varredura (muitas buscas sem resultado) bloqueando só a busca daquela conta, com aviso à gestora e liberação por um clique. A implementar na implantação, com os limites vindos de medição, não de chute.
+- **O achado BAIXO continua aberto:** o piso de 1 dia para os prazos de retenção não foi decidido.
+- **Revisão humana:** por decisão do dono (`§ A43`), acontece quando o protótipo inteiro estiver pronto para rodar, não a cada fase.
