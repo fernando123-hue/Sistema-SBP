@@ -563,6 +563,20 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **Status:** 🟡 provisória — confirmar com o TI da associação junto com a credencial.
 
+### AT-34 — A colação é garantida pela migração, não só pela criação da base *(16/09/2026)*
+
+**O defeito:** o README e o CI criam a base com `utf8mb4_0900_as_cs`, mas o Prisma escreve `COLLATE utf8mb4_unicode_ci` em **cada** `CREATE TABLE`, e a colação da tabela vence a da base. Medido no MySQL desta máquina: todas as tabelas de `sbp`, `sbp_teste` e `sbp_sombra` estavam em `unicode_ci`. Consequências: **"Liga de Neonatologia" e "liga de neonatologia" colidiam** no índice único de `Liga` (o contrário de `AT-10`), e `Email.messageId`, que diferencia maiúsculas (os identificadores do Graph são assim), podia tratar dois e-mails diferentes como o mesmo — e o segundo seria descartado como duplicado. Nenhum teste percebia.
+
+**A correção:** a migração `20260916170000_colacao_sensivel_a_maiusculas_e_acentos` converte todas as tabelas (e o padrão da base) para `utf8mb4_0900_as_cs`, com a checagem de chave estrangeira desligada só durante a conversão — as colunas ligadas precisam da mesma colação dos dois lados. As 27 chaves continuam no banco. Converter só afrouxa unicidade, então nenhuma linha existente pode violar índice por causa disto. `_prisma_migrations` fica como o Prisma a cria: é dele, e nada do domínio mora lá.
+
+**O que continua valendo:** login e cadastro já gravavam e buscavam e-mail em minúsculas; nenhum e-mail com maiúscula existia na base de desenvolvimento.
+
+**A regra para o futuro:** toda migração que cria tabela precisa terminar com `ALTER TABLE … CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs`. `src/servidor/colacao.test.ts` confere **todas** as colunas de texto e fica vermelho se alguma escapar — foi assim que `ContagemDeBusca`, criada no mesmo dia, entrou na conversão.
+
+**Prova:** o teste novo, visto vermelho nos três casos antes da migração (duas grafias viravam uma liga; uma busca em maiúsculas achava a grafia minúscula; 150 colunas fora da colação).
+
+**Status:** ✅ corrigido.
+
 ---
 
 ## D. Pendências do cliente final
