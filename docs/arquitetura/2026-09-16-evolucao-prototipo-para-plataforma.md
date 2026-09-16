@@ -102,7 +102,7 @@ FILA DE CADA PESSOA → conclusão / transferência / devolução
 
 O Router do roteiro entraria **só** no nó INTERPRETAÇÃO. Nenhum outro nó usa IA, e nenhum deveria passar a usar para decidir.
 
-## 7. Perguntas ao dono (vão para `DECISOES.md § H.4`)
+## 7. Perguntas ao dono — respondidas em 16/09/2026 (`DECISOES.md § A51` a `A54`)
 
 1. **IA local:** "priorizar local" vale a partir de quando? Recomendação: só quando houver máquina e o modelo local passar no mesmo gabarito; até lá, Anthropic no protótipo (`A49`).
 2. **CPF antes do envio externo:** trocar o CPF por um marcador antes de mandar o e-mail ao modelo? Recomendação: sim, **depois** de medir no gabarito que o acerto não cai.
