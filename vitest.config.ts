@@ -3,7 +3,9 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     globals: true,
-    include: ['src/**/*.test.ts'],
+    // `scripts/` também: o portão do processo (`scripts/processo`) é código que decide
+    // o que um PR precisa provar, e precisa de prova ele mesmo.
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
     // Base de teste separada da de desenvolvimento. Nenhum teste toca dado de
     // desenvolvimento — e a suíte roda no MESMO banco da implantação (`A42`),
     // porque testar em banco diferente esconde a classe de erro que só aparece

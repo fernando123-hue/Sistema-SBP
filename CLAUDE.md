@@ -58,6 +58,8 @@ npm run verificar    # typecheck + testes
 Mudou schema? `npx prisma migrate dev` e confira que o CI valida a sincronia.
 Mudou algo observável na tela? Suba `npm run dev` e verifique de verdade.
 
+**Compilar não é estar correto, e quem escreveu não aprova sozinho.** O fluxo, os quatro níveis de risco e a evidência que cada um exige estão em **`docs/PROCESSO.md`**. O nível sai dos arquivos alterados (`scripts/processo/nivel-de-risco.ts`), não da opinião de quem escreveu; o job *Processo* do CI falha se o PR não trouxer a evidência. A partir do nível 2, revisão por agente **diferente do autor**, publicada no PR e linkada no corpo; no nível 3, também revisão de segurança.
+
 ## Convenções
 
 - **Código e comentários em português.** Nomes de domínio em português é decisão consciente — o vocabulário do código é o vocabulário da operação.

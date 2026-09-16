@@ -1,0 +1,48 @@
+name: Processo
+
+# Confere se o PR traz a evidência que o nível de risco dele exige
+# (docs/PROCESSO.md). Workflow separado do CI de propósito: ele também roda
+# quando o CORPO do PR é editado, e no mesmo grupo de concorrência do CI essa
+# edição cancelaria a suíte de testes que estivesse rodando.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: processo-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  nivel:
+    name: Nível de risco e evidência
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # PR do Dependabot não tem quem preencha a evidência; ele só mexe em
+    # manifesto de dependência e esses PRs são substituídos por um PR próprio
+    # (ver PR #50), que passa por aqui normalmente.
+    if: github.actor != 'dependabot[bot]'
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Conferir evidência
+        # Tudo que vem do PR entra por variável de ambiente, nunca por
+        # `${{ }}` dentro do `run:` — o corpo do PR é texto de quem abriu o PR.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CORPO_DO_PR: ${{ github.event.pull_request.body }}
+        run: npx tsx scripts/processo/conferir-pr.ts
