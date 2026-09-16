@@ -29,6 +29,13 @@
 
 **O CI ganhou banco próprio**: serviço MySQL no job, bases criadas com a colação da implantação e base sombra para a conferência de schema contra migrações. Sem isso o PR nasceria vermelho por falta de infraestrutura, não por defeito.
 
+**Visto rodando sobre o MySQL em 16/09/2026**, e não só em teste: com o sistema no ar e a base semeada, a ingestão gravou **13 e-mails e 30 itens** numa transação — 8 aprovados e 22 para revisão humana —, sem falha, sem duplicado, e com a **conservação sem divergência**. É a prova que a suíte não dá: o caminho de escrita inteiro, com o JSON dos campos extraídos entrando nas colunas de texto longo.
+
+**Duas coisas que o CI pegou e a máquina não pegava** (`AT-31`, `AT-32`):
+
+- **Falha ALTA no driver do banco.** O adapter oficial do Prisma fixa `mariadb@3.4.5`, e essa faixa **entrega a senha do banco em texto claro** a quem estiver no meio do caminho, mesmo com TLS pedido — sem correção publicada para a faixa exigida. Forçada a série 3.5 por `overrides`: a auditoria passou de duas vulnerabilidades para **zero**, e a suíte inteira provou que a conexão continua de pé. Quando o adapter atualizar, remover o override e conferir a auditoria.
+- **A conferência de schema contra migrações mente no Windows.** Ela acusa 26 tabelas removidas e dezenas de chaves estrangeiras perdidas; as 27 chaves existem todas, conferidas direto no banco. É `lower_case_table_names=1` do MySQL no Windows. **O resultado que vale é o do CI**, em Linux.
+
 **O que ainda falta para a equipe usar:** as credenciais do Outlook, onde publicar (`A46` diz servidor da associação, com terreno pronto para nuvem), a IA paga e o canal de feedback (`A21`).
 
 ### Fase 2 — o que `A24` entregou *(16/09/2026)*
