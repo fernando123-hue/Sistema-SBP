@@ -550,6 +550,18 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **Status:** ✅ registrado como limite conhecido, não como dívida. Quem rodar a conferência em Windows e vir esse relatório: confira as chaves estrangeiras no banco antes de acreditar nele.
 
+### AT-33 — A caixa do Microsoft 365 é lida só pela pasta de entrada *(16/09/2026)*
+
+**O defeito:** o adapter do Graph (`A47`) listava `/users/{caixa}/messages`, que devolve **todas as pastas**. A resposta que a secretaria manda a um associado fica em Itens Enviados e voltaria na leitura seguinte como pedido novo — virando tarefa com responsável. Rascunho e lixeira, igual. Nenhum teste pegava isso porque a fronteira `ClienteDoGraph` era provada só com dublê; o caminho real nunca tinha sido conferido.
+
+**Hipótese:** pedido de associado está na **caixa de entrada**. A lista passou a ser `/users/{caixa}/mailFolders/inbox/messages`. Os anexos continuam por `/messages/{id}`, que vale em qualquer pasta — se o e-mail for movido entre a lista e o pedido do anexo, o caminho pela Inbox daria 404 e derrubaria a sincronização inteira.
+
+**Impacto se estiver errada:** se regras do Outlook movem pedidos para subpastas **antes** de a leitura acontecer, esses pedidos não entram no sistema — e em silêncio. A pergunta foi incluída no pedido ao TI. Se a resposta for sim, as subpastas entram **por nome, uma a uma**, nunca a caixa inteira.
+
+**Prova:** `src/adapters/ingestao-graph.test.ts`, com `fetch` falso, visto vermelho contra o caminho antigo.
+
+**Status:** 🟡 provisória — confirmar com o TI da associação junto com a credencial.
+
 ---
 
 ## D. Pendências do cliente final
