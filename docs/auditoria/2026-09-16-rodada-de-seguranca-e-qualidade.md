@@ -23,6 +23,17 @@ Sobre a `main` em `5503ecd`, nesta máquina, contra MySQL 8.4 na porta 3307.
 | `npm audit` | **0 vulnerabilidades** (nenhuma baixa, média, alta ou crítica). Overrides em vigor: `deepmerge-ts`, `mysql2`, `mariadb` (`AT-31`) |
 | `npm run test:cobertura` | linhas **95,63%**, instruções 93,9%, ramos 85,07%, funções 95,98% (era 92,8% das linhas) |
 
+### Bateria sintética contra o Gemini gratuito (`A38`) — 16/09/2026, 17h46 UTC
+
+`npm run ia:experimentar`, os mesmos quatro casos sintéticos, dois modelos.
+
+| Modelo | Respondeu | Resto |
+|---|---|---|
+| `gemini-3.5-flash` | 0 de 4 | `503` (Google sem capacidade) |
+| `gemini-3.1-flash-lite` | 1 de 4 (campo faltando: categoria certa, os três ausentes listados, 21 s) | `503` |
+
+**O sistema se comportou como deve:** cada falha foi registrada e o e-mail iria para a revisão humana — nada foi perdido nem inventado. **O que a medição diz:** a camada gratuita é instável demais para servir de linha de base (`A37`) neste horário; a injeção não chegou a ser testada. Repetir em outro horário. Não é achado de código.
+
 ### Arquivos com cobertura baixa (instruções abaixo de 75%)
 
 Não são achados ainda — são **onde a auditoria de testes deve olhar primeiro**.
