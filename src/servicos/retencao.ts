@@ -18,6 +18,7 @@ import { auditar } from './auditoria'
 const O_QUE_ENCURTAR_APAGA: Readonly<Record<ChaveDePrazo, string>> = {
   motivo_de_afastamento: 'o motivo das ausências que já passaram do novo prazo',
   conteudo_do_email: 'o texto e os anexos dos e-mails que já passaram do novo prazo',
+  contagem_de_buscas: 'a contagem de buscas dos dias que já passaram do novo prazo',
 }
 
 /**

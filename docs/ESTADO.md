@@ -23,6 +23,13 @@
 >
 > **5. Antes de conversar com o dono:** leia *Como o dono prefere trabalhar*, logo abaixo deste bloco.
 >
+> **Continuação de 16/09/2026, à tarde — três PRs abertos, nenhum mesclado:**
+> - **#50** — as quatro atualizações do dependabot numa só (inclui **vitest 5**); os PRs #33, #34, #42 e #43 foram fechados com o ok do dono.
+> - **#51** — a caixa do Microsoft 365 passa a ser lida **só pela caixa de entrada** (`§ AT-33`). Antes, a resposta da própria secretaria voltaria como pedido novo.
+> - **Este (medição da busca)** — `A44(h)` começou: a busca por CPF é **contada** por pessoa e por dia, sem bloquear ninguém, por 90 dias (`§ A48`).
+> - **Pedido ao TI escrito** e entregue ao dono, fora do repositório: confirmar Microsoft 365, permissão `Mail.Read` restrita só à caixa da secretaria, segredo entregue fora do e-mail, e se regras do Outlook movem pedidos para subpastas.
+> - **Defeito encontrado e ainda NÃO corrigido:** as migrações do Prisma fixam `utf8mb4_unicode_ci` em **cada tabela**, o que vence a colação `utf8mb4_0900_as_cs` da base. Medido no MySQL desta máquina: todas as tabelas de `sbp`, `sbp_teste` e `sbp_sombra` estão em `unicode_ci`. A garantia do README — duas grafias da mesma liga não viram uma — **não vale hoje em nenhum ambiente, nem no CI**, e nenhum teste percebe. Próximo trabalho: teste que prove o defeito contra o MySQL, depois migração que converta as tabelas.
+>
 > ---
 >
 > *Histórico da retomada anterior, mantido como registro:*

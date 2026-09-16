@@ -45,6 +45,7 @@ export async function limparTudo(banco: Banco): Promise<void> {
   // Antes de `colaborador`: `Nota.autorId` é `Restrict`, então uma nota viva
   // impediria a limpeza do autor e derrubaria o teste seguinte, não este.
   await banco.nota.deleteMany()
+  await banco.contagemDeBusca.deleteMany()
   await banco.habilitacao.deleteMany()
   await banco.colaborador.deleteMany()
   await banco.regraDistribuicao.deleteMany()

@@ -10,6 +10,7 @@ import type { ItemDaCaixa } from '../core/tipos'
 import type { Ator } from '../servidor/ator'
 import { protegerCpf } from '../servidor/cpf-protegido'
 import type { Banco } from '../servidor/prisma'
+import { contarBusca } from './contagem-de-buscas'
 
 export type { ItemDaCaixa }
 
@@ -137,6 +138,7 @@ export async function buscarPorChave(
   banco: Banco,
   entrada: unknown,
   ator: Ator,
+  opcoes: { hoje?: string } = {},
 ): Promise<ItemDaCaixa[]> {
   const { texto } = BuscaPorChaveSchema.parse(entrada)
   const busca = interpretarBusca(texto)
@@ -144,13 +146,22 @@ export async function buscarPorChave(
   if (busca.tipo === 'nao_reconhecido') throw new ErroDeNegocio(MENSAGEM_BUSCA_NAO_RECONHECIDA)
   if (busca.tipo === 'cpf_nao_confere') throw new ErroDeNegocio(MENSAGEM_CPF_NAO_CONFERE)
 
+  let filtro: FiltroDaCaixa
   if (busca.tipo === 'matricula') {
-    return listarCaixa(banco, { matricula: busca.matricula, limite: LIMITE_DA_BUSCA }, ator)
+    filtro = { matricula: busca.matricula, limite: LIMITE_DA_BUSCA }
+  } else {
+    const cpfProtegido = protegerCpf(busca.cpf)
+    if (cpfProtegido === null) throw new ErroDeNegocio(MENSAGEM_CPF_NAO_CONFERE)
+    filtro = { cpfProtegido, limite: LIMITE_DA_BUSCA }
   }
 
-  const cpfProtegido = protegerCpf(busca.cpf)
-  if (cpfProtegido === null) throw new ErroDeNegocio(MENSAGEM_CPF_NAO_CONFERE)
-  return listarCaixa(banco, { cpfProtegido, limite: LIMITE_DA_BUSCA }, ator)
+  const itens = await listarCaixa(banco, filtro, ator)
+
+  // Contada aqui, no serviço, e só depois de procurar (`A44(h)`): texto
+  // recusado não é busca. "Nada encontrado" é o que ESTA pessoa viu — com o
+  // recorte de `A24`, é também o que uma varredura feita por esta conta veria.
+  await contarBusca(banco, ator.colaboradorId, itens.length > 0, opcoes.hoje)
+  return itens
 }
 
 export interface ResumoDaCaixa {
