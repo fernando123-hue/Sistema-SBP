@@ -91,6 +91,7 @@ model Colaborador {
   revisoesFeitas   Revisao[]
   notasEscritas    Nota[]
   avisoVisto       AvisoVisto?
+  contagensDeBusca ContagemDeBusca[]
 
   @@index([ativo])
 }
@@ -898,4 +899,28 @@ model EventoProcessamento {
 
   @@index([correlacaoId])
   @@index([situacao, etapa])
+}
+
+/// Quantas buscas por CPF ou matrícula cada pessoa fez no dia, e quantas não
+/// encontraram nada (`A44(h)`, `A48`).
+///
+/// É a medição que antecede qualquer limite: a proteção contra varredura usa a
+/// proporção de buscas sem resultado, e esse número só se calibra olhando o uso
+/// real. Nenhuma tela lê esta tabela (`A44(g)`): sem placar, não há meta
+/// invisível para administrar. É observabilidade de segurança, nunca avaliação
+/// de ninguém (invariante 10).
+///
+/// Nunca guarda o que foi digitado. Tem prazo (`contagem_de_buscas`, 90 dias
+/// por padrão): a limpeza diária apaga o dia que o completa.
+model ContagemDeBusca {
+  colaboradorId String
+  /// Dia da operação, `YYYY-MM-DD`, no fuso de Brasília.
+  dia           String
+  buscas        Int    @default(0)
+  semResultado  Int    @default(0)
+
+  colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Restrict)
+
+  @@id([colaboradorId, dia])
+  @@index([dia])
 }

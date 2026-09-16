@@ -26,6 +26,8 @@ export const PRAZO_PADRAO_EM_DIAS: Readonly<Record<ChaveDePrazo, number>> = {
   motivo_de_afastamento: 7,
   /** `A20`: 7 dias depois da conclusão do último item do e-mail. */
   conteudo_do_email: 7,
+  /** `A48`: 90 dias dão para medir, calibrar os limites de `A44` e investigar um caso. */
+  contagem_de_buscas: 90,
 }
 
 /** Um prazo como a tela do gestor o vê. */

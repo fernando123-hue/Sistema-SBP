@@ -9,6 +9,7 @@ import {
 } from '../servidor/observabilidade'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { Banco } from '../servidor/prisma'
+import { expurgarContagemDeBuscas, type ResultadoDoExpurgoDaContagem } from './contagem-de-buscas'
 import { expurgarConteudoDosEmails, type ResultadoDoExpurgoDeConteudo } from './expurgo-conteudo'
 import { expurgarDadosDosItens, type ResultadoDoExpurgoDosDadosDoItem } from './expurgo-dados-do-item'
 import { expurgarMotivosDeAfastamento, type ResultadoDoExpurgoDeMotivos } from './expurgo-lgpd'
@@ -42,6 +43,7 @@ export interface ResumoDaLimpeza {
   motivosDeAfastamento: ResultadoDoExpurgoDeMotivos & { prazoEmDias: number }
   conteudoDosEmails: ResultadoDoExpurgoDeConteudo & { prazoEmDias: number }
   dadosDosItens: ResultadoDoExpurgoDosDadosDoItem & { prazoEmDias: number }
+  contagemDeBuscas: ResultadoDoExpurgoDaContagem & { prazoEmDias: number }
 }
 
 export type ResultadoDaRotina =
@@ -153,10 +155,15 @@ export async function rodarLimpezaDiaria(
       correlacaoId,
     })
 
+    // Por último e à parte: não depende de nenhuma das anteriores (`A48`).
+    const prazoDaContagem = await prazoEmVigor(banco, 'contagem_de_buscas')
+    const contagem = await expurgarContagemDeBuscas(banco, { diasDeRetencao: prazoDaContagem, hoje })
+
     const resumo: ResumoDaLimpeza = {
       motivosDeAfastamento: { ...motivos, prazoEmDias },
       conteudoDosEmails: { ...conteudo, prazoEmDias: prazoDoConteudo },
       dadosDosItens: { ...dadosDosItens, prazoEmDias: prazoDoConteudo },
+      contagemDeBuscas: { ...contagem, prazoEmDias: prazoDaContagem },
     }
 
     await banco.execucaoDeRotina.update({

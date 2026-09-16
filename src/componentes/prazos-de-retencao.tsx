@@ -25,6 +25,12 @@ const SOBRE: Readonly<Record<ChaveDePrazo, { titulo: string; explicacao: string;
       'Conta a partir do dia em que o último pedido do e-mail é concluído ou cancelado; e-mail que não virou pedido conta da chegada. Enquanto houver pedido aberto, nada sai. Passado o prazo, remetente, assunto, texto e arquivos anexos são apagados do sistema — o e-mail original continua no Outlook.',
     oQueApaga: 'o texto e os anexos dos e-mails que já passaram do novo prazo',
   },
+  contagem_de_buscas: {
+    titulo: 'Contagem de buscas por CPF',
+    explicacao:
+      'O sistema conta, por pessoa e por dia, quantas buscas por CPF ou matrícula foram feitas e quantas não acharam nada. Serve para proteger as contas contra quem tenta descobrir CPFs, nunca para medir o trabalho. Ninguém vê esses números na tela. Passado o prazo, a contagem do dia é apagada.',
+    oQueApaga: 'a contagem de buscas dos dias que já passaram do novo prazo',
+  },
 }
 
 function diaCurto(instante: string): string {

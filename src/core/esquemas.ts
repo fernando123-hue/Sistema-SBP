@@ -474,7 +474,7 @@ export type TipoDeAfastamentoGravado = z.infer<typeof TipoDeAfastamentoGravadoSc
  * que nenhuma rotina aplica não entra aqui: a tela ofereceria um número que
  * não apaga nada, e prazo que não é cumprido é pior do que prazo ausente.
  */
-export const ChaveDePrazoSchema = z.enum(['motivo_de_afastamento', 'conteudo_do_email'])
+export const ChaveDePrazoSchema = z.enum(['motivo_de_afastamento', 'conteudo_do_email', 'contagem_de_buscas'])
 export type ChaveDePrazo = z.infer<typeof ChaveDePrazoSchema>
 
 /**
