@@ -34,11 +34,12 @@ describe('quando o motivo de um afastamento vence', () => {
     expect(diaEmQueOMotivoVence(falta, 7)).toBe('2026-09-09')
   })
 
-  it('prazo de 1 dia: o motivo sai no dia seguinte à volta, não no dia da volta', () => {
+  it('no prazo mais curto que o sistema aceita (5 dias), o motivo sai no quinto dia depois da volta', () => {
     const atestado = { fim: '2026-09-10', canceladoNoDia: null }
 
-    expect(motivoVenceu(atestado, '2026-09-11', 1)).toBe(false)
-    expect(motivoVenceu(atestado, '2026-09-12', 1)).toBe(true)
+    // Volta em 11/09; com 5 dias, vence em 16/09 — na véspera, ainda não.
+    expect(motivoVenceu(atestado, '2026-09-15', 5)).toBe(false)
+    expect(motivoVenceu(atestado, '2026-09-16', 5)).toBe(true)
   })
 
   it('sem data de volta, o relógio não corre — por mais antiga que seja a saída', () => {
@@ -81,14 +82,16 @@ describe('o que sobra do tipo', () => {
 })
 
 describe('prazo inválido é recusado antes de qualquer conta', () => {
-  it.each([0, -30, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 3651])('recusa %s', (dias) => {
+  // 1 e 4 são o piso de `A45`: abaixo de 5 dias, um feriado prolongado consome o
+  // prazo inteiro e o dado sai sem um único dia útil em que alguém pudesse ver.
+  it.each([0, 1, 4, -30, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 3651])('recusa %s', (dias) => {
     expect(() => exigirPrazoValido(dias)).toThrow(/Prazo de retenção inválido/)
     expect(() => diaEmQueOMotivoVence({ fim: '2026-09-10', canceladoNoDia: null }, dias)).toThrow(
       /Prazo de retenção inválido/,
     )
   })
 
-  it.each([1, 7, 3650])('aceita %s', (dias) => {
+  it.each([5, 7, 3650])('aceita %s', (dias) => {
     expect(() => exigirPrazoValido(dias)).not.toThrow()
   })
 
