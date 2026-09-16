@@ -26,6 +26,7 @@ Nenhum *scanner* dedicado (gitleaks, trufflehog, detect-secrets) está instalado
 |---|---|---|---|
 | `mysql://usuario:senha@…` e `postgresql://usuario:senha@…` | `.env.example` e documentos, em várias versões | **BAIXO — placeholder** | usuário e senha são as palavras literais "usuario" e "senha" |
 | `SESSAO_SECRET` e `BUSCA_SECRET` com valor | `.github/workflows/ci.yml` | **BAIXO — valor de teste** | valores começam com `ci-nao…` e existem só para a suíte rodar no CI; não protegem nada real. O próprio arquivo explica |
+| `BUSCA_SECRET` com valor | `vitest.config.ts` | **BAIXO — valor de teste** | começa com `teste-nao…`; protege CPF sintético de uma base que a suíte cria e apaga. O comentário ao lado diz que é público de propósito |
 | `DATABASE_URL: mysql://root@127.0.0.1…` | `.github/workflows/ci.yml` | **BAIXO — configuração** | banco descartável do CI, sem senha, só dentro da máquina do GitHub |
 | `.env.example` | versionado desde o primeiro commit | **BAIXO — esperado** | todo segredo está vazio (`""`); é o modelo de configuração |
 | e-mails `@exemplo.test`, `@teste.local`, `pessoa@associacao.org(.br)`, `fulano@x.com` | testes, telas, comentários | **BAIXO — sintético** | nomes genéricos; o de `associacao.org.br` é usado justamente para provar que conta **não** sintética é recusada no acesso local |
