@@ -64,6 +64,7 @@ describe('listagem', () => {
           titulo: `Ligante sintético ${indice + 1}`,
           status: 'aprovado',
           confianca: 1,
+          payload: '{}',
         },
       })
     }
@@ -99,13 +100,13 @@ describe('a caixa filtra por liga', () => {
     const beta = await ligaDeTeste('Liga Beta Sintética')
 
     await banco.item.create({
-      data: { categoriaId: categoria.id, ligaId: alfa.id, titulo: 'Da alfa', status: 'aprovado', confianca: 1 },
+      data: { categoriaId: categoria.id, ligaId: alfa.id, titulo: 'Da alfa', status: 'aprovado', confianca: 1, payload: '{}' },
     })
     await banco.item.create({
-      data: { categoriaId: categoria.id, ligaId: beta.id, titulo: 'Da beta', status: 'aprovado', confianca: 1 },
+      data: { categoriaId: categoria.id, ligaId: beta.id, titulo: 'Da beta', status: 'aprovado', confianca: 1, payload: '{}' },
     })
     await banco.item.create({
-      data: { categoriaId: categoria.id, titulo: 'Sem liga', status: 'aprovado', confianca: 1 },
+      data: { categoriaId: categoria.id, titulo: 'Sem liga', status: 'aprovado', confianca: 1, payload: '{}' },
     })
 
     // Como operadora: o recorte por pessoa de `A24` tem teste próprio em

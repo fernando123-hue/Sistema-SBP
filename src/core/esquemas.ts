@@ -307,7 +307,22 @@ export const AnexoSchema = z.object({
   nome: z.string().min(1).max(255),
   /** O que o REMETENTE alegou. Registrado para auditoria, nunca usado para decidir. */
   tipoDeclarado: z.string().max(200).default('application/octet-stream'),
-  tamanho: z.number().int().nonnegative().max(TAMANHO_MAXIMO_ANEXO_BYTES),
+  /**
+   * O tamanho declarado, SEM teto aqui — e a ausência do teto é a regra.
+   *
+   * O `.max(TAMANHO_MAXIMO_ANEXO_BYTES)` viveu nesta linha e derrubava o
+   * e-mail INTEIRO quando um anexo passava do limite: o `parse` falhava, a
+   * mensagem não virava item, e o pedido do associado sumia por causa de um
+   * arquivo grande. Com o adapter simulado isso nunca apareceu — os anexos
+   * sintéticos têm dezenas de bytes —, e só ficou visível ao escrever o adapter
+   * da caixa real (`A47`), onde um exame de 30 MB é rotina.
+   *
+   * O teto continua existindo, e num lugar melhor: `validarAnexo` recusa o
+   * anexo com motivo legível ("anexo excede N bytes"), a ingestão conta a
+   * recusa, e o item vai para revisão humana. Ou seja — o arquivo não entra, e
+   * **uma pessoa fica sabendo**, em vez de o trabalho desaparecer calado.
+   */
+  tamanho: z.number().int().nonnegative(),
   hash: z.string().max(128).nullable().default(null),
   /**
    * Bytes do arquivo, quando o adapter de ingestão os entrega.

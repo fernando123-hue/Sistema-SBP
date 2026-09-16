@@ -10,6 +10,7 @@ import { AssistenteComModelo } from './assistente-modelo'
 import { clienteAnthropic, IaAnthropic, PERFIL_ANTHROPIC } from './ia-anthropic'
 import { clienteGemini, IaGemini, PERFIL_GEMINI } from './ia-gemini'
 import { IaMock } from './ia-mock'
+import { clienteDoGraph, IngestaoGraph } from './ingestao-graph'
 import { IngestaoMock, type OpcoesIngestaoMock } from './ingestao-mock'
 
 /**
@@ -100,11 +101,21 @@ export function criarArmazenamentoPort(): ArmazenamentoPort {
   return new ArmazenamentoEmDisco()
 }
 
+/**
+ * De onde os e-mails vêm.
+ *
+ * As opções são do MOCK e o `graph` as ignora: o adapter real não inventa
+ * datas nem semente, ele lê a caixa. Manter um parâmetro só evita mexer na
+ * rota de ingestão para acrescentar um fornecedor — que é a mesma promessa que
+ * `criarAiPort` cumpre desde o segundo modelo de IA.
+ */
 export function criarIngestaoPort(opcoes: OpcoesIngestaoMock): IngestaoPort {
   const nome = ambiente().INGESTAO_ADAPTER
   switch (nome) {
     case 'mock':
       return new IngestaoMock(opcoes)
+    case 'graph':
+      return new IngestaoGraph(clienteDoGraph())
     default:
       throw new AdapterIndisponivelError('ingestão', nome)
   }

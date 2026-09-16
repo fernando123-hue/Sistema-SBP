@@ -70,7 +70,7 @@ async function semear() {
 
   for (let i = 0; i < 4; i += 1) {
     await banco.item.create({
-      data: { categoriaId: categoria.id, titulo: `Documento ${i}`, status: 'aprovado' },
+      data: { categoriaId: categoria.id, titulo: `Documento ${i}`, status: 'aprovado', payload: '{}' },
     })
   }
 

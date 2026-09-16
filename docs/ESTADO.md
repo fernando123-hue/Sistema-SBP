@@ -1,19 +1,80 @@
 # Estado do projeto — retomada
 
-Última atualização: **15/09/2026** — **a fase 1 inteira está na `main`**, mesclada pelo [PR #44](https://github.com/fernando123-hue/Sistema-SBP/pull/44) por squash (commit `2c4acdb`), com os três checks do CI verdes. Pronto e provado: **`A17` inteiro** — prazo editável, limpeza diária automática e aviso do dia para a gestora — e **`A20`** — texto e anexos dos e-mails apagados 7 dias depois da conclusão do último item, com aviso na Caixa. **O `A23` foi feito em 13/09/2026** — partes (c), (d), (b) e (a), ver o bloco "Atualização de 13/09/2026" logo abaixo. **Todo o código da fase 1 está feito e mesclado.**
+Última atualização: **16/09/2026** — na `main`: **fase 1** (privacidade e prazos), **fase 2** (cada colaborador vê o próprio trabalho), **piso de retenção de 5 dias** e o **primeiro bloco da implantação** — banco em MySQL, provado, e o adaptador da caixa do Microsoft 365, escrito e testado sem credencial. Mesclado pelo [PR #49](https://github.com/fernando123-hue/Sistema-SBP/pull/49).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> **Retomada de 16/09/2026, pensada para continuar em OUTRA máquina.** As anotações que o agente guarda entre conversas ficam só no computador onde ele rodou — **um chat em outra máquina não as enxerga**. O essencial está neste arquivo e em `DECISOES.md`. Se algo aqui contradisser o código, o código vence: confira antes de confiar.
+>
+> **1. Onde está.** `git switch main && git pull`. Na `main`: fase 1 (PR #44), piso de retenção (PR #47), fase 2 — `A24` (PR #48) — e o primeiro bloco da implantação (PR #49). **Nenhum PR aberto.** **Nenhuma pessoa revisou o código — só agentes**; por decisão do dono (`§ A43`), a leitura humana acontece quando o protótipo inteiro estiver pronto para rodar.
+>
+> **2. Qual computador você está usando — é isso que decide o primeiro passo.**
+> - **Este mesmo computador, acessado remotamente:** o ambiente está pronto — MySQL instalado, bases criadas, `.env` preenchido —, mas **o MySQL não é serviço do Windows e fica parado** depois de reiniciar ou de a sessão acabar. Ligue antes de qualquer coisa: *Continuando em outra máquina → Caso A*.
+> - **Outro computador, com clone novo:** nada do ambiente vem junto — nem banco, nem `.env`, nem segredos. Siga *Preparar o ambiente*, do começo ao fim.
+>
+> **3. O banco é MySQL, e nada roda sem ele ligado** (`§ A42`, `§ AT-28`, `§ AT-30`). A suíte inteira roda contra ele — 80 arquivos, 860 testes, verde aqui e no CI. A base precisa da colação `utf8mb4_0900_as_cs`. Três armadilhas já medidas: o driver só é seguro com o `override` do `package.json` (`§ AT-31`); **no Windows**, a conferência de schema contra migrações acusa diferença que não existe (`§ AT-32`); e o Prisma 7 recusa várias opções de linha de comando que versões antigas aceitavam — confira `--help` antes de usar uma.
+>
+> **4. Próximo trabalho — depende do dono, não de código.**
+> - **Caixa de e-mail real:** perguntar ao TI da associação se é Microsoft 365 e pedir um registro de aplicativo com leitura **apenas** da caixa da secretaria (`§ A47`). O adaptador (`src/adapters/ingestao-graph.ts`) está pronto e testado; falta a credencial.
+> - **Onde publicar:** `§ A46` — servidor da associação, com terreno pronto para nuvem. Falta a máquina concreta e alguém do TI para prepará-la.
+> - **IA paga:** qual fornecedor, com termos que não usem o conteúdo para treino (`§ A38`).
+> - **Canal de comentários em toda tela** (`§ A21`) e a proteção da busca por CPF (`§ A44`) — os dois precisam de uso real para calibrar.
+> - **Ainda da fase 2:** o papel `dono` (`§ A32`), que só faz sentido quando existirem os comentários e o relatório que ele lê.
+>
+> **5. Antes de conversar com o dono:** leia *Como o dono prefere trabalhar*, logo abaixo deste bloco.
+>
+> ---
+>
+> *Histórico da retomada anterior, mantido como registro:*
 >
 > **Atualização de 13/09/2026 — o `A23` começou.** O dono respondeu os itens 23 a 26 de `§ H.4` (registrados em `§ A40`); **o 22 (formato do título neutro) e o novo 27 (observação escrita ao concluir) estão abertos**. A **parte (c)** — acerto da IA gravado na hora da revisão — está feita: colunas `Revisao.desfecho` e `Revisao.correcoes`, migração `20260913050204_acerto_da_ia_gravado_na_revisao`, seis travas vistas vermelhas contra sabotagem. A revisão de segurança por agente achou que o **nome** de um campo extraído vem do modelo e pode ser o próprio CPF; corrigido com a lista fechada de `core/nome-de-campo.ts`, que a parte (a) também tem de usar (ver o plano). A **parte (d)** também: a trilha não grava mais título, valor extraído, observação do registro manual nem texto de justificativa; a justificativa mora em `JustificativaDeAtribuicao` (migração `20260913052716_justificativa_fora_da_atribuicao`, com a cópia dos textos antigos provada em banco em memória). **A parte (b) está feita:** CPF protegido (`BUSCA_SECRET`, obrigatório) e matrícula (só dígitos, 3 a 10) gravados na ingestão e na revisão; busca por `POST /api/itens/busca` para todos os cargos; campo "Buscar por CPF ou matrícula" no topo da Caixa, **visto rodando** como colaboradora (achou pelo CPF, recusou CPF errado, explicou quando não achou nada; o número não aparece em endereço nem no registro do servidor). Os limites aceitos estão em `§ AT-26`. **`BUSCA_SECRET` foi acrescentado ao `.env` desta máquina** com autorização do dono — numa instalação nova, gerar um (ver `.env.example`). O dono respondeu tudo o que estava aberto para o `A23` (`§ A41`: 22 aprovado; 27, a observação ao concluir **fica**; 28, matrícula só números). **A parte (a) está feita, e com ela o `A23` fechou:** título (vira neutro), campos extraídos, observação digitada no registro, valores da revisão e justificativas de transferência e devolução saem no prazo, na limpeza diária logo depois do texto do e-mail (`§ AT-27`); item registrado à mão conta da própria conclusão (`A40`, resposta 23); a revisão sem acerto gravado ganha o acerto antes; ficam a chave de busca e a observação escrita ao concluir (`A41`, resposta 27). Vista no `dev.db`: "Verificação A20 — item concluído" virou "E-mail Cadastro" na Caixa. **Fechando a fase 1:** em 13/09/2026 o dono aprovou os textos da busca e autorizou enviar a branch ao GitHub e abrir o PR. Próximo: acompanhar o CI do PR (`BUSCA_SECRET` já está no `ci.yml`) e mesclar quando o dono decidir. A tela da Fila deixou de dizer que a justificativa "fica na trilha" (visto rodando). `sbp-local` agora aceita outra porta (`autoPort`), porque a 3000 pode estar ocupada por outro projeto.
 >
 > **O que fazer agora** *(reescrito em 14/09/2026 — a versão anterior destes itens ainda mandava fazer o `A23`, que está pronto)*:
 >
 > 1. **Confira onde está:** `git branch --show-current` → `main`; `git status -sb` e `git log --oneline -3`. A fase 1 está na `main` desde 15/09/2026, pelo PR #44, por squash (`2c4acdb`), com os três checks verdes. A branch `fase-1/privacidade-e-prazos` foi apagada na mesclagem. **Nenhuma pessoa revisou o código até aqui — só agentes.**
-> 2. **Banco de dados: MySQL** (decisão do dono em 15/09/2026, `§ A42`). O protótipo continua em SQLite, e a troca **não** foi feita: o que ela exige, item a item, está em `§ AT-28`. O mais caro não é o `provider` — é que as 14 migrações existentes foram geradas para SQLite e não servem.
+> 2. **Banco de dados: MySQL — trocado e provado em 16/09/2026** (`§ A42`, `§ AT-28`, `§ AT-30`). A suíte inteira roda contra o MySQL, aqui e no CI: 80 arquivos, 860 testes. **Nada roda sem um MySQL de pé** — o README diz como preparar, e a base precisa da colação `utf8mb4_0900_as_cs`, senão duas grafias da mesma liga viram uma só. As 24 migrações de SQLite estão em `prisma/migrations-sqlite-arquivado/`, como registro; a que vale é a inicial do MySQL.
 > 3. **Revisão de segurança da fase 1 — feita em 15/09/2026**, por agente e só de leitura, sobre o diff inteiro: `docs/auditoria/2026-09-15-revisao-de-seguranca-fase-1.md`. **Nenhum achado crítico ou alto.** O achado médio (busca por CPF sem teto diário) foi respondido no mesmo dia pelo dono — ver `§ A44`, a implementar na implantação. **Continua aberto:** se o prazo mínimo de retenção fica em 1 dia. **Nenhuma pessoa revisou o código até aqui — só agentes**, e por decisão do dono (`§ A43`) a primeira leitura humana acontece quando o protótipo inteiro estiver pronto para rodar.
 > 4. **Próximo trabalho, a decidir com o dono:** a fase 2 (`A24`, `A32`) do plano das 5 fases, **ou** a implantação — conexão real com o Outlook (hoje só existe `src/adapters/ingestao-mock.ts`), **MySQL** (`§ A42`), publicação e IA paga. Existe uma apresentação de custos para a chefia, fora do repositório, que estima as duas.
 > 5. **Perguntas ao dono:** sobre tela, com desenho das opções lado a lado; sobre regra, com exemplo concreto do começo ao fim. Sempre linguagem simples e nomes fictícios, e todo texto que a equipe lê em frase curta, sem termo técnico.
 > 6. **Para ver telas rodando:** `preview_start {name: "sbp-local"}` (aceita outra porta se a 3000 estiver ocupada) e, em `/entrar`, clique numa conta `@exemplo.test`. Nunca digite senha. Travas em `DECISOES.md § AT-17`. **`BUSCA_SECRET` é obrigatório**: numa máquina nova, gere um (ver `.env.example`); numa instalação em uso, nunca troque (`§ AT-26`).
+
+### Como o dono prefere trabalhar
+
+Estas preferências moravam só nas anotações do agente, que não viajam entre computadores. Nenhuma delas é segredo; todas mudaram o resultado quando foram ignoradas.
+
+- **Linguagem simples com ele.** Frase curta, sem termo técnico, e **exemplo concreto do começo ao fim** — explicação abstrata não funcionou. Nomes fictícios nos exemplos.
+- **Pergunta sobre comportamento de tela vai com desenho** das opções lado a lado; texto sozinho não bastou.
+- **Todo texto que a equipe lê:** frase curta, dizendo o que aconteceu e o que fazer.
+- **Hipótese não vira regra em silêncio.** O que o agente assumir vai para `DECISOES.md § C`; o que é decisão dele vira pergunta objetiva, com opções e recomendação.
+- **Só com o ok dele, a cada vez:** mesclar PR, enviar ao GitHub, apagar qualquer dado — inclusive sintético e local.
+- **Branch e PR sempre**, nunca direto na `main`; commits em português.
+- **Nunca digitar senha.** Telas com login se conferem pelo acesso local sem senha (`sbp-local`, contas `@exemplo.test`).
+- **Prova, não afirmação.** Teste visto **vermelho** contra o defeito antes da correção; mudança de tela **vista rodando**; CI lido **check a check** — `gh pr checks --watch` sai com código 0 quando termina de observar, **mesmo com check vermelho**, e isso já quase virou notícia falsa.
+- **Bem feito antes de rápido.** Palavras dele.
+- **Dados sempre sintéticos.** Nenhum nome, CPF ou e-mail real no repositório.
+
+### Implantação — o que entrou em 16/09/2026
+
+**O banco passou a ser MySQL, de verdade** (`A42`). Instalado nesta máquina, bases criadas com colação sensível a maiúsculas e acentos, provider e conexão trocados, tipos de coluna ajustados, migração inicial gerada e aplicada. **A suíte inteira roda nele** — decisão tomada ao contrário do que o `AT-28` previa, e o motivo está escrito lá: os defeitos que apareceram eram justamente os que o banco antigo escondia. Custo assumido: suíte mais lenta e MySQL como requisito para rodar qualquer coisa.
+
+**Três defeitos encontrados no caminho, e nenhum deles era do MySQL** — os três já existiam (`AT-30`):
+
+1. O teto de 25 MB do anexo derrubava o **e-mail inteiro** na validação: um exame grande fazia o pedido do associado sumir. O teto voltou para onde já havia regra — o anexo é recusado com motivo e o item vai para revisão, então alguém fica sabendo.
+2. Valor padrão em coluna de texto, que o SQLite aceita e o MySQL proíbe. Saiu; quem cria item informa o payload.
+3. A única consulta crua do sistema citava identificadores com aspas duplas — string no MySQL, não nome de coluna. O comentário dela **afirmava** portabilidade tendo conferido dois bancos; o terceiro a rejeitou.
+
+**O adapter da caixa do Microsoft 365 está escrito e testado sem credencial** (`A47`): `src/adapters/ingestao-graph.ts`, com a fronteira `ClienteDoGraph` para provar formato, paginação, anexo e credencial recusada sem rede. Só leitura, sempre — `A5` continua valendo. **Falta o TI da associação** confirmar que a caixa é Microsoft 365 e criar um registro de aplicativo com permissão de leitura **só daquela caixa**.
+
+**O CI ganhou banco próprio**: serviço MySQL no job, bases criadas com a colação da implantação e base sombra para a conferência de schema contra migrações. Sem isso o PR nasceria vermelho por falta de infraestrutura, não por defeito.
+
+**Visto rodando sobre o MySQL em 16/09/2026**, e não só em teste: com o sistema no ar e a base semeada, a ingestão gravou **13 e-mails e 30 itens** numa transação — 8 aprovados e 22 para revisão humana —, sem falha, sem duplicado, e com a **conservação sem divergência**. É a prova que a suíte não dá: o caminho de escrita inteiro, com o JSON dos campos extraídos entrando nas colunas de texto longo.
+
+**Duas coisas que o CI pegou e a máquina não pegava** (`AT-31`, `AT-32`):
+
+- **Falha ALTA no driver do banco.** O adapter oficial do Prisma fixa `mariadb@3.4.5`, e essa faixa **entrega a senha do banco em texto claro** a quem estiver no meio do caminho, mesmo com TLS pedido — sem correção publicada para a faixa exigida. Forçada a série 3.5 por `overrides`: a auditoria passou de duas vulnerabilidades para **zero**, e a suíte inteira provou que a conexão continua de pé. Quando o adapter atualizar, remover o override e conferir a auditoria.
+- **A conferência de schema contra migrações mente no Windows.** Ela acusa 26 tabelas removidas e dezenas de chaves estrangeiras perdidas; as 27 chaves existem todas, conferidas direto no banco. É `lower_case_table_names=1` do MySQL no Windows. **O resultado que vale é o do CI**, em Linux.
+
+**O que ainda falta para a equipe usar:** as credenciais do Outlook, onde publicar (`A46` diz servidor da associação, com terreno pronto para nuvem), a IA paga e o canal de feedback (`A21`).
 
 ### Fase 2 — o que `A24` entregou *(16/09/2026)*
 
@@ -289,24 +350,30 @@ Estão em `DECISOES.md § H.4`, itens 10 a 13, com opções e recomendação for
 
 ## Continuando em outra máquina
 
-**Atenção: a `main` NÃO está em dia.** O trabalho de 07 e 08/09/2026 vive na branch `maturacao/fechamento-de-etapa` ([PR #35](https://github.com/fernando123-hue/Sistema-SBP/pull/35)), aberto; o de 10/09/2026, em `maturacao/achados-em-aberto`, que nasceu dela e a contém inteira. Clonar e ficar na `main` entrega o sistema sem as correções de segurança, sem o assistente, sem a marca e sem os achados fechados.
+**A `main` está em dia** — sem branch escondida nem PR aberto, conferido em 16/09/2026. *(Esta seção dizia, até essa data, para fazer checkout de `maturacao/achados-em-aberto` — branch mesclada e apagada havia dias. Quem seguisse o texto ao pé da letra cairia num erro.)*
 
-```bash
-git checkout maturacao/achados-em-aberto
+> **A lição fica.** Três vezes este arquivo descreveu branches que não eram as de verdade: o #12 por dois dias, as decisões A4–A12 por cinco, e esta seção por quase uma semana. Antes de escrever aqui que "tudo está na `main`", confira `gh pr list` e `git branch -r`, não a memória da sessão.
+
+### Caso A — este mesmo computador, acessado remotamente
+
+O ambiente inteiro já existe aqui. Falta só ligar o banco, que **não** é serviço do Windows:
+
+```powershell
+$bin = "C:\Program Files\MySQL\MySQL Server 8.4\bin"
+Start-Process "$bin\mysqld.exe" -ArgumentList "--datadir=$env:USERPROFILE\mysql-sbp\dados","--port=3307","--bind-address=127.0.0.1" -WindowStyle Hidden
+& "$bin\mysql.exe" -u root -h 127.0.0.1 -P 3307 -e "show databases;"
 ```
 
-Se essa branch não existir no GitHub, ela ainda não foi empurrada — o trabalho mais recente é o da `maturacao/fechamento-de-etapa`.
+Bases desta máquina: **`sbp`** (desenvolvimento, semeada, com e-mails e itens sintéticos), **`sbp_teste`** (a suíte recria a cada execução), **`sbp_sombra`** (conferência de schema) e **`sbp_dev`** — abandonada numa migração que falhou em 16/09/2026, **deixada intacta** porque apagar dado depende do dono. Root sem senha, só em `127.0.0.1`.
 
-O [PR #12](https://github.com/fernando123-hue/Sistema-SBP/pull/12) foi mesclado em 31/08/2026, e com ele o aviso que esta seção carregava antes deixou de ter função.
+### Caso B — outro computador, clone novo
 
 ```bash
 git clone https://github.com/fernando123-hue/Sistema-SBP.git
 cd Sistema-SBP
 ```
 
-Não há branch para trocar, nem etapa escondida.
-
-> **A lição fica, mesmo com o aviso removido.** Duas vezes trabalho terminado ficou fora da `main` enquanto este arquivo dizia o contrário: o #12 por dois dias, e as decisões A4–A12 por cinco — essas últimas ninguém tinha notado. Antes de escrever aqui que "tudo está na `main`", confira a lista de branches do repositório, não a memória da sessão.
+E siga *Preparar o ambiente*. **Nada do banco do outro computador vem junto**: a máquina nova começa com a base vazia, e isso é o esperado — é tudo sintético. Pelo mesmo motivo, `SESSAO_SECRET` e `BUSCA_SECRET` podem ser gerados novos ali; o cuidado de nunca trocar `BUSCA_SECRET` vale para instalação **em uso**, com dado que precisa continuar achável.
 
 Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aberto e qual é o próximo passo.
 
@@ -315,7 +382,8 @@ Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aber
 | O quê | Por que não está no git | Como recriar |
 |---|---|---|
 | `.env` | Contém segredos | `cp .env.example .env` e preencher |
-| `dev.db` | Banco local, dado de trabalho | `npx prisma migrate deploy` + `npm run db:seed` |
+| O MySQL e as bases | É servidor, não arquivo; e o dado é de trabalho | *Preparar o ambiente*, passos 1 a 5 |
+| `dev.db` | Banco SQLite **antigo**, de antes de 16/09/2026 | Não precisa: o sistema não usa mais SQLite |
 | `src/generated/` | Gerado pelo Prisma a partir do schema | `npx prisma generate` |
 | `node_modules/` | Dependências | `npm install` |
 | `armazenamento/` | Anexos; são documentos, não código | Criado sozinho no primeiro anexo |
@@ -326,32 +394,62 @@ Este arquivo é o ponto de entrada: ele diz o que está pronto, o que ficou aber
 
 ## Preparar o ambiente
 
-Testado num ambiente limpo da `main` em 31/08/2026, já com o PR #12 mesclado: `npm install`, `.env`, `migrate deploy`, `generate` e `npm run verificar` levam de zero a **271 testes verdes**, sem nenhuma etapa extra. O caminho abaixo é exatamente o que foi executado.
+Caminho completo para um computador novo, **reescrito em 16/09/2026** para o MySQL e conferido nesta máquina (Windows, MySQL 8.4.9). Em Linux os comandos são os mesmos, menos o caminho do executável — e lá a conferência de schema funciona de verdade (`AT-32`).
+
+**1. Pré-requisitos:** Node 22+ e MySQL 8.4. No Windows:
+
+```powershell
+winget install --id Oracle.MySQL --source winget
+```
+
+Sem `--source winget`, o instalador pode parar consultando a loja da Microsoft. Ele põe os programas no disco e **não** cria banco nem serviço.
+
+**2. Ligar o MySQL** (Windows, sem serviço registrado):
+
+```powershell
+$bin = "C:\Program Files\MySQL\MySQL Server 8.4\bin"
+& "$bin\mysqld.exe" --initialize-insecure --datadir="$env:USERPROFILE\mysql-sbp\dados"   # só na primeira vez
+Start-Process "$bin\mysqld.exe" -ArgumentList "--datadir=$env:USERPROFILE\mysql-sbp\dados","--port=3307","--bind-address=127.0.0.1" -WindowStyle Hidden
+```
+
+`--initialize-insecure` deixa o root **sem senha** — aceitável só para banco local, em `127.0.0.1`, com dado sintético. Numa instalação de verdade, usuário próprio e senha.
+
+**3. Criar as bases, com a colação certa:**
+
+```bash
+mysql -u root -h 127.0.0.1 -P 3307 -e "
+  CREATE DATABASE sbp       CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs;
+  CREATE DATABASE sbp_teste CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs;"
+```
+
+A colação não é detalhe: com a padrão do MySQL 8, duas grafias da mesma liga viram uma só, sem erro que denuncie (`AT-10`, `AT-28`).
+
+**4. Código e configuração:**
 
 ```bash
 npm install
 cp .env.example .env
 ```
 
-Edite o `.env`. Dois campos precisam de atenção:
+No `.env`:
 
-- **`SESSAO_SECRET`** — obrigatório, mínimo 16 caracteres. Gere com:
-  ```bash
-  node -e "console.log(crypto.randomUUID())"
-  ```
-- **`ANTHROPIC_API_KEY`** — só se for usar o modelo real. Com `IA_ADAPTER="mock"` (o padrão) o sistema roda inteiro sem ela.
+- **`DATABASE_URL`** — `mysql://root@127.0.0.1:3307/sbp`.
+- **`SESSAO_SECRET`** e **`BUSCA_SECRET`** — obrigatórios; o sistema recusa subir sem eles. Os comandos para gerar estão no próprio `.env.example`.
+- Com `IA_ADAPTER="mock"` e `INGESTAO_ADAPTER="mock"` — os padrões —, nenhuma chave de IA nem credencial de e-mail é necessária.
 
-Os outros vêm prontos do `.env.example`. `PROXIES_CONFIAVEIS="0"` é o correto para rede local; só muda ao publicar atrás de nginx ou balanceador — e aí confira o resultado em `/api/diagnostico/origem`, que existe justamente para isso.
+`PROXIES_CONFIAVEIS="0"` é o correto para rede local; só muda ao publicar atrás de nginx ou balanceador — e aí confira o resultado em `/api/diagnostico/origem`, que existe justamente para isso.
 
-Depois:
+**5. Banco, cliente e dados:**
 
 ```bash
-npx prisma migrate deploy   # cria o banco e aplica as migrações (14 em 10/09/2026)
-npx prisma generate         # gera o cliente Prisma em src/generated/
-npm run db:seed             # cadastro sintético + senhas provisórias
-npm run verificar           # typecheck + a suíte inteira
-npm run dev                 # http://localhost:3000
+npx prisma migrate deploy   # aplica a migração inicial do MySQL
+npx prisma generate         # gera o cliente em src/generated/ — sem ele, o sistema ainda fala com o banco antigo
+npm run db:seed             # cadastro sintético + senhas provisórias (pode levar alguns minutos)
+npm run verificar           # typecheck + a suíte inteira, na base sbp_teste
+npm run dev                 # http://localhost:3000 — ou `npm run dev:local`, com acesso sem senha
 ```
+
+**A suíte procura a base de teste em `mysql://root@127.0.0.1:3307/sbp_teste`.** Com o MySQL em outra porta ou com senha, rode `DATABASE_URL="mysql://usuario:senha@host:porta/sbp_teste" npm run verificar` — a URL do ambiente tem precedência, e é assim que o CI faz.
 
 **O `db:seed` imprime uma senha provisória por pessoa, uma única vez.** Elas não ficam gravadas em lugar nenhum — copie as do terminal. Rodar o seed de novo não mexe em quem já trocou a senha.
 
@@ -370,7 +468,7 @@ Ao rodar `npm run dev`, o Next.js **escreve sozinho um bloco dentro do `CLAUDE.m
 | Camada | Estado |
 |---|---|
 | Motor de distribuição | Função pura, determinística, versionada. Conservação garantida por transação |
-| Modelo de dados | 22 modelos, constraints reais, 14 migrações *(contados em 10/09/2026: `^model ` no schema e `prisma migrate status`)* |
+| Modelo de dados | 26 modelos, constraints reais, em MySQL. Uma migração em vigor — a inicial do MySQL — e 24 de SQLite arquivadas *(contados em 16/09/2026: `grep -c "^model "` no schema e os diretórios de migração)* |
 | Retenção | Conteúdo do e-mail e bytes de anexo em linhas próprias, expurgáveis sem tocar no histórico operacional |
 | Ingestão | Idempotente por `message-id`, IA atrás de port, tipo real do anexo conferido pelos bytes |
 | Armazenamento | Arquivos fora do banco, atrás de port. Disco local hoje, nuvem trocando o adapter |
@@ -1021,7 +1119,7 @@ src/
 | `npm run ia:experimentar` | Compara mock e modelo real. **Único** comando que gasta crédito |
 | `npm run db:seed` | Cadastro base sintético + senhas provisórias |
 | `PERMITIR_LIMPEZA=sim npm run db:limpar` | Apaga dados transacionais, preserva o cadastro. Exige o opt-in explícito: sem ele, recusa — a trava anterior deduzia segurança da ausência de `NODE_ENV` |
-| `npm run db:expurgar` | Redige a observação de afastamentos antigos (dado de saúde). **Irreversível**, não agendado, prazo hipotético — ver `DECISOES.md § AT-11` |
+| `npm run db:expurgar` | Roda agora a limpeza diária que o servidor já roda sozinho: motivo de afastamento, texto e anexos dos e-mails e dados extraídos dos itens, cada um no seu prazo (`A17`, `A20`, `A23`). **Irreversível**; uma execução por dia |
 | `npm run anexos:conferir` | Diz quantos anexos ainda estão em texto puro no disco |
 | `npm run anexos:recifrar` | Cifra os que faltam, conferindo cada um pela leitura antes de trocar |
 | `npm run db:studio` | Inspeciona o banco |
@@ -1041,7 +1139,13 @@ Dados são 100% sintéticos. Nenhum nome, CPF ou e-mail real entra no repositór
 - **Login recusado com a senha certa:** confira se a conta não está desativada ou travada por tentativas. A mensagem é genérica de propósito — ela não revela qual dos casos é. Use a tela `/acesso` como gestor.
 - **`Cannot find module ... src/generated/prisma`:** o cliente do Prisma não é versionado. Rode `npx prisma generate`.
 - **O `CLAUDE.md` aparece modificado sem você ter mexido:** é o `next dev` escrevendo um bloco sozinho a cada execução. Esperado até a decisão de aceitar ou desligar.
-- **Clonou e falta código (sem `src/servicos/memoria.ts`, sem registro manual, 6 migrações em vez de 7):** era o sintoma de o PR #12 estar aberto, e ele foi mesclado em 31/08/2026. Se você vê isso hoje, seu clone é anterior a essa data: `git pull origin main`. A `main` atual tem 8 migrações e 278 testes.
-- **`migration ... was modified after it was applied` ao rodar `prisma migrate deploy`:** acontece se você aplicou as migrações num commit intermediário da antiga branch do PR #12 e depois pulou para outro — só alcançável em clone antigo, já que o #12 foi mesclado. A migração `20260828185851_identidade_de_dominio_na_memoria` foi **editada depois de aplicada**, em 28/08/2026, para colapsar duas migrações numa só — ela criava dois índices que saíram na mesma tarde, e duas migrações onde uma bastava seria ruído permanente no histórico. Como ela nunca saiu da branch nem tocou banco de produção, editar era seguro; o preço é este aviso. **Conserto:** apague o banco local e reconstrua — `rm -f dev.db && npx prisma migrate deploy && npm run db:seed`. O banco de teste se recria sozinho a cada suíte. Clonando a `main` de hoje, nada disso acontece.
-
-- **Testes lentos ou estourando tempo:** a simulação de 30 dias roda contra SQLite de verdade. `testTimeout` está em 90s para dar margem em máquina mais lenta; o arquivo pesado leva ~50s.
+- **`Não foi possível preparar o banco de teste` ou `ECONNREFUSED`:** o MySQL está desligado. Ligue-o (*Continuando em outra máquina*) e rode de novo.
+- **`The Driver Adapter ... is not compatible with the provider sqlite`:** o cliente gerado é de antes da troca de banco. `npx prisma generate`.
+- **`P1013 ... shadowDatabaseUrl must not be an empty string`:** alguém deixou a base sombra como texto vazio em `prisma.config.ts`. Ela tem de **sumir** quando não há valor — ver o comentário ali.
+- **No Windows, `prisma migrate diff` acusa 26 tabelas removidas e chaves estrangeiras perdidas:** não é defeito (`DECISOES.md § AT-32`). Confira as chaves direto no banco; o resultado que vale é o do CI.
+- **`npm audit` acusando `mariadb`:** o `override` do `package.json` saiu, e o driver voltou para a faixa que entrega a senha do banco em texto claro (`§ AT-31`). Recoloque-o.
+- **`BLOB, TEXT ... can't have a default value` numa migração:** coluna `@db.Text` com `@default` — o MySQL proíbe (`§ AT-30`).
+- **`You have an error in your SQL syntax ... near '"id"'`:** consulta crua com aspas duplas; no MySQL, identificador vai entre crases (`§ AT-30`).
+- **`prisma migrate reset` pede consentimento explícito:** a ferramenta se recusa a apagar banco quando quem pede pode ser um agente. Na suíte o preparador declara que a base é descartável; **fora dela, pergunte ao dono** — ou siga numa base nova, sem apagar nada.
+- **`unknown or unexpected option`:** o Prisma 7 removeu várias opções que versões antigas aceitavam (`--skip-seed`, `--skip-generate`, `--shadow-database-url`). Confira `--help`.
+- **Testes lentos ou estourando tempo:** a suíte roda contra o MySQL de verdade, e isso custa mais que o SQLite de antes — uns seis a oito minutos nesta máquina. `testTimeout` está em 90s para dar margem.

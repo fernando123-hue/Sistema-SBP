@@ -1,10 +1,27 @@
 // Modelo de dados — Sistema de Distribuição de Demandas
 //
-// Provider: SQLite no protótipo, trocável para PostgreSQL alterando apenas a
-// linha `provider` abaixo. Por isso NÃO usamos `enum` nem `Json` nativos:
-// campos de domínio fechado são `String` validados por Zod em `src/core/esquemas.ts`,
-// e payloads estruturados são `String` com JSON serializado. Zod é a fonte da
-// verdade dos valores permitidos nos dois bancos — nada muda na migração.
+// Provider: MySQL (`A42`, decisão do dono em 15/09/2026). Era SQLite no
+// protótipo, e a troca aconteceu ANTES de existir dado real de propósito —
+// migrar um banco vazio é configuração; migrar um banco em uso é operação de
+// risco.
+//
+// NÃO usamos `enum` nem `Json` nativos: campos de domínio fechado são `String`
+// validados por Zod em `src/core/esquemas.ts`, e payloads estruturados são
+// `String` com JSON serializado. Zod é a fonte da verdade dos valores
+// permitidos em qualquer banco — e é isso que fez esta migração custar o que
+// custou, em vez de reescrever o domínio.
+//
+// DUAS COISAS QUE SÓ EXISTEM POR CAUSA DO MySQL, e que o `AT-28` previu:
+//
+//   1. `@db.Text` em todo campo que guarda texto sem teto curto. Em MySQL,
+//      `String` vira `VARCHAR(191)`, e corpo de e-mail, payload de item e os
+//      snapshots de rodada estouram isso — o insert falharia em produção com
+//      dado real, não aqui.
+//   2. A COLAÇÃO do banco precisa ser sensível a maiúsculas e acentos
+//      (`utf8mb4_0900_as_cs`). Com a padrão do MySQL 8, "Liga de Neonatologia"
+//      e "liga de neonatologia" viram a MESMA linha no índice único de `Liga`,
+//      e a identidade de liga do `AT-10` deixa de valer sem ninguém notar.
+//      Isso é criação de banco, não schema — está no README e no `.env.example`.
 
 generator client {
   provider = "prisma-client"
@@ -12,10 +29,12 @@ generator client {
 }
 
 // A URL vive em `prisma.config.ts` (exigência do Prisma 7) e o client recebe
-// um driver adapter. Trocar para PostgreSQL = mudar `provider` aqui e o adapter
-// em `src/servidor/prisma.ts`. Nenhum model muda.
+// um driver adapter — `PrismaMariaDb`, que é o adapter do Prisma para MySQL e
+// MariaDB. Trocar de banco continua sendo mudar `provider` aqui e o adapter em
+// `src/servidor/prisma.ts`; nenhum model muda, e nenhum serviço sabe qual banco
+// está atendendo.
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -24,8 +43,11 @@ datasource db {
 
 model Colaborador {
   id           String    @id @default(cuid())
-  nome         String
-  email        String    @unique
+  nome         String    @db.VarChar(200)
+  /// 320 é o tamanho máximo de um endereço de e-mail, e o padrão do MySQL
+  /// (191) cortaria os mais longos — numa coluna que é ÚNICA e serve de
+  /// identidade de entrada. Cabe no índice com folga.
+  email        String    @unique @db.VarChar(320)
   /// operador | colaborador | gestor — validado por PapelSchema
   papel        String    @default("colaborador")
   ativo        Boolean   @default(true)
@@ -33,7 +55,8 @@ model Colaborador {
   dataSaida    DateTime?
 
   /// Formato versionado — ver `src/servidor/credenciais.ts`. Nulo = sem acesso ainda.
-  senhaHash          String?
+  /// O hash do scrypt com sal e parâmetros passa folgadamente dos 191 do padrão.
+  senhaHash          String?   @db.VarChar(255)
   senhaDefinidaEm    DateTime?
   /// Senha provisória entregue pelo gestor: obriga a troca antes de usar o sistema.
   precisaTrocarSenha Boolean   @default(false)
@@ -126,7 +149,7 @@ model Escala {
   colaboradorId      String
   disponivel         Boolean @default(true)
   capacidadeRelativa Float   @default(1)
-  observacao         String?
+  observacao         String? @db.Text
 
   colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
 
@@ -161,7 +184,7 @@ model Afastamento {
   /// ISO date `YYYY-MM-DD`, inclusivo. NULO = ausência em aberto (sem data de
   /// volta definida). Falta de um dia tem `fim` igual a `inicio`.
   fim           String?
-  observacao    String?
+  observacao    String?   @db.Text
 
   registradoPor String
   registradoEm  DateTime  @default(now())
@@ -245,9 +268,13 @@ model Email {
 /// que ela é uma linha separada.
 model EmailConteudo {
   emailId   String @id
-  remetente String
-  assunto   String
-  corpo     String
+  remetente String @db.VarChar(320)
+  assunto   String @db.Text
+  /// `LongText`, não `Text`: o corpo vai até 200 mil caracteres
+  /// (`TAMANHO_MAXIMO_CORPO`), e `TEXT` no MySQL para em 64 KB. Com `Text`, um
+  /// e-mail longo — lista de ligantes, histórico colado — falharia na gravação
+  /// só em produção, com dado real, e nunca aqui.
+  corpo     String @db.LongText
 
   email Email @relation(fields: [emailId], references: [id], onDelete: Cascade)
 }
@@ -265,14 +292,16 @@ model Anexo {
   id            String @id @default(cuid())
   emailId       String
   /// Já normalizado: sem caminho, sem caractere de controle. Ver `validarAnexo`.
-  nomeSeguro    String
+  /// 255 é o teto do próprio `validarAnexo`; o padrão do MySQL (191) cortaria
+  /// nome de arquivo real.
+  nomeSeguro    String @db.VarChar(255)
   /// O que o REMETENTE alegou. Nunca é usado para decidir nada.
-  tipoDeclarado String
+  tipoDeclarado String @db.VarChar(200)
   tamanho       Int
   /// Conteúdo do arquivo, para deduplicar e provar integridade.
   hash          String?
   aceito        Boolean @default(false)
-  motivo        String?
+  motivo        String? @db.Text
 
   /// Endereço no armazenamento. Nulo = bytes nunca guardados, ou já expurgados.
   chaveArmazenamento String?
@@ -294,9 +323,19 @@ model Item {
   categoriaId String
   /// Posição dentro do desdobramento do e-mail (1 e-mail pode gerar N itens).
   sequencia   Int     @default(1)
-  titulo      String
+  titulo      String  @db.VarChar(300)
   /// JSON validado por Zod. Campos extraídos pela IA.
-  payload     String  @default("{}")
+  ///
+  /// `LongText`: são vários campos de até 2.000 caracteres cada, e o teto de
+  /// 64 KB do `Text` é alcançável por um e-mail que a IA leu inteiro.
+  ///
+  /// SEM `@default("{}")`, e não por escolha: **o MySQL proíbe valor padrão em
+  /// coluna de texto longo** (erro 1101). O padrão existia por conveniência de
+  /// quem cria item direto no banco — em teste, sobretudo. Agora quem cria
+  /// informa, o que é mais honesto: um item sem payload nasceria dizendo que a
+  /// IA não extraiu nada, e isso passa a ser uma afirmação escrita por alguém,
+  /// nunca um efeito colateral do schema.
+  payload     String  @db.LongText
   confianca   Float   @default(0)
   /// novo | aguardando_revisao | aprovado | distribuido | em_andamento | concluido | devolvido | cancelado
   status      String  @default("novo")
@@ -401,11 +440,13 @@ model RodadaDistribuicao {
   cotaJusta         Float  @default(0)
 
   /// JSON — tudo que é preciso para reproduzir a decisão passo a passo.
-  elegiveis      String
-  ordemDesempate String
-  alocacao       String
-  creditoAntes   String
-  creditoDepois  String
+  /// Crescem com o tamanho da equipe, não com o volume de e-mails: `Text`
+  /// comporta centenas de pessoas por rodada.
+  elegiveis      String @db.Text
+  ordemDesempate String @db.Text
+  alocacao       String @db.Text
+  creditoAntes   String @db.Text
+  creditoDepois  String @db.Text
 
   executadoEm  DateTime @default(now())
   executadoPor String
@@ -461,7 +502,7 @@ model JustificativaDeAtribuicao {
   atribuicaoId String
   /// transferencia | devolucao
   motivo       String
-  texto        String
+  texto        String   @db.Text
   criadoEm     DateTime @default(now())
 
   atribuicao Atribuicao @relation(fields: [atribuicaoId], references: [id], onDelete: Cascade)
@@ -478,7 +519,7 @@ model Execucao {
   concluidoEm   DateTime?
   /// concluido | devolvido | cancelado
   resultado     String?
-  observacao    String?
+  observacao    String?   @db.Text
 
   item        Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
   colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
@@ -554,8 +595,16 @@ model SaldoCargaGlobal {
 
 model Liga {
   id          String   @id @default(cuid())
-  nome        String
-  instituicao String?
+  /// `VarChar`, e NÃO `Text`: os dois campos abaixo formam o índice único que
+  /// sustenta a identidade de liga (`AT-10`), e o MySQL não indexa coluna de
+  /// texto longo sem prefixo. 200 é o teto do próprio domínio.
+  ///
+  /// A outra metade desta regra não mora no schema: a COLAÇÃO do banco precisa
+  /// ser sensível a maiúsculas e acentos. Com a padrão do MySQL 8, "Liga de
+  /// Neonatologia" e "liga de neonatologia" colidiriam neste índice e virariam
+  /// a mesma liga — o oposto do que `AT-10` garante. Ver `README` e `AT-28`.
+  nome        String   @db.VarChar(200)
+  instituicao String?  @db.VarChar(200)
   uf          String?
   status      String   @default("ativa")
   criadoEm    DateTime @default(now())
@@ -620,7 +669,7 @@ model Ligante {
 model Nota {
   id     String @id @default(cuid())
   /// O aprendizado, como a pessoa escreveria falando. Limite em `NotaEntradaSchema`.
-  texto  String
+  texto  String @db.Text
 
   /// Vínculos OPCIONAIS, e é por eles que a nota encontra o trabalho em vez de
   /// esperar alguém procurá-la. Nota sem nenhum dos dois é do setor inteiro.
@@ -641,7 +690,7 @@ model Nota {
   /// história operacional.
   arquivadaEm  DateTime?
   arquivadaPor String?
-  motivoArquivo String?
+  motivoArquivo String? @db.Text
 
   /// Invariante 14: toda linha de memória nasce sabendo de que domínio é.
   /// Ver `DominioSchema` e a nota em `LogAuditoria.dominio`.
@@ -687,7 +736,7 @@ model RegraDistribuicao {
   /// peso | limiar_indivisivel | limiar_confianca | criterio_desempate
   tipo           String
   /// JSON
-  parametros     String
+  parametros     String    @db.Text
   vigenciaInicio DateTime  @default(now())
   vigenciaFim    DateTime?
   ativo          Boolean   @default(true)
@@ -732,9 +781,9 @@ model ExecucaoDeRotina {
   iniciadaEm   DateTime  @default(now())
   concluidaEm  DateTime?
   /// JSON com contagens. Nunca nome, tipo de afastamento nem conteúdo.
-  resumo       String?
+  resumo       String?   @db.Text
   /// Já passada por `mensagemPersistivel`.
-  mensagem     String?
+  mensagem     String?   @db.Text
   correlacaoId String
 
   @@unique([rotina, data])
@@ -754,7 +803,7 @@ model AvisoVisto {
   /// Dia da operação, `YYYY-MM-DD`.
   data          String
   /// JSON — `ChavesDoAvisoSchema`.
-  chaves        String
+  chaves        String   @db.Text
   vistoEm       DateTime @updatedAt
 
   colaborador Colaborador @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
@@ -768,17 +817,17 @@ model Revisao {
   motivo       String
   campoIncerto String?
   /// JSON
-  sugestaoIa   String
+  sugestaoIa   String    @db.Text
   confianca    Float
   /// JSON — o que o humano decidiu de fato
-  valorFinal   String?
+  valorFinal   String?   @db.Text
   /// Acerto da IA, gravado na hora da revisão (`A23(c)`): um de `DESFECHOS`,
   /// em `core/qualidade-ia.ts`. Nulo em revisão aberta e nas resolvidas antes
   /// desta coluna existir, que o painel ainda calcula pelos valores.
   desfecho     String?
   /// JSON — as correções e os NOMES dos campos alterados. Nunca os valores:
   /// esta coluna sobrevive ao prazo do conteúdo do e-mail.
-  correcoes    String?
+  correcoes    String?   @db.Text
   resolvidoPor String?
   resolvidoEm  DateTime?
   criadoEm     DateTime  @default(now())
@@ -815,9 +864,9 @@ model LogAuditoria {
   entidadeId   String
   acao         String
   /// JSON
-  antes        String?
+  antes        String?  @db.Text
   /// JSON
-  depois       String?
+  depois       String?  @db.Text
   usuario      String
   correlacaoId String?
   timestamp    DateTime @default(now())
@@ -841,9 +890,9 @@ model EventoProcessamento {
   /// iniciado | sucesso | falha | reprocessavel
   situacao     String
   referencia   String?
-  mensagem     String?
+  mensagem     String?   @db.Text
   /// JSON
-  detalhe      String?
+  detalhe      String?   @db.Text
   duracaoMs    Int?
   criadoEm     DateTime  @default(now())
 

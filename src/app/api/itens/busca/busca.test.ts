@@ -69,6 +69,7 @@ async function itemComCpf(dono?: { id: string; atribuidoPor: string }) {
       titulo: 'Documento sintético',
       status: dono ? 'distribuido' : 'concluido',
       confianca: 1,
+      payload: '{}',
       cpfProtegido: protegerCpf(CPF),
     },
     select: { id: true },

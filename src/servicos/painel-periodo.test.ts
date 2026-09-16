@@ -32,6 +32,7 @@ async function itemEm(categoriaCodigo: string, criadoEm: string, status = 'aprov
       categoriaId: categoria.id,
       titulo: `item de ${criadoEm}`,
       status,
+      payload: '{}',
       criadoEm: new Date(`${criadoEm}T12:00:00.000Z`),
     },
   })
@@ -231,6 +232,7 @@ describe('a fronteira do período', () => {
         categoriaId: categoria.id,
         titulo: 'concluído na virada',
         status: 'concluido',
+        payload: '{}',
         criadoEm: new Date('2026-05-20T12:00:00.000Z'),
       },
     })
@@ -265,6 +267,7 @@ describe('a fronteira do período', () => {
         categoriaId: categoria.id,
         titulo: 'criado na virada',
         status: 'aprovado',
+        payload: '{}',
         criadoEm: inicioDoDia('2026-06-01'),
       },
     })

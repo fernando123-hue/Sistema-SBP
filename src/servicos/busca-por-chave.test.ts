@@ -31,7 +31,7 @@ async function preparar() {
 
   const criar = (titulo: string, dados: { cpfProtegido?: string | null; matricula?: string | null }) =>
     banco.item.create({
-      data: { categoriaId: categoria.id, titulo, status: 'aprovado', confianca: 1, ...dados },
+      data: { categoriaId: categoria.id, titulo, status: 'aprovado', confianca: 1, payload: '{}', ...dados },
       select: { id: true },
     })
 

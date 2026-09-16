@@ -25,5 +25,27 @@ export default defineConfig({
     // este arquivo, o que derrubaria também `prisma generate`, que não precisa
     // de banco nenhum.
     url: process.env['DATABASE_URL'] ?? '',
+    /**
+     * Base SOMBRA — exigida para comparar o diretório de migrações com o
+     * schema (`prisma migrate diff --from-migrations`), que é o passo do CI que
+     * pega o caso clássico: alguém edita o schema e esquece de gerar a
+     * migração.
+     *
+     * Em SQLite o Prisma usava um arquivo temporário e ninguém precisava saber
+     * que isso existia. Em MySQL (`A42`) ele precisa de um banco de verdade
+     * onde aplicar as migrações e jogar fora — e a configuração é AQUI, não na
+     * linha de comando: `migrate diff` não aceita `--shadow-database-url`.
+     *
+     * ═══ A CHAVE SOME QUANDO NÃO HÁ VALOR, E ISSO NÃO É ESTILO ═══
+     *
+     * A primeira versão punha `?? ''`. O Prisma recusa string vazia com `P1013`
+     * — e a recusa vale para QUALQUER comando, não só o `diff`: o preparador da
+     * suíte parou de conseguir tocar o banco, e a suíte inteira deixou de rodar
+     * numa máquina que não define a variável. Ausente é diferente de vazio, e
+     * aqui a diferença derruba tudo.
+     */
+    ...(process.env['SHADOW_DATABASE_URL']
+      ? { shadowDatabaseUrl: process.env['SHADOW_DATABASE_URL'] }
+      : {}),
   },
 })

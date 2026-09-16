@@ -16,7 +16,7 @@ Não é uma planilha melhor. É a troca da unidade de trabalho: sai a **contagem
 
 ## Começando
 
-Requisitos: **Node 22+** e npm. Nenhum banco externo — o protótipo usa SQLite.
+Requisitos: **Node 22+**, npm e **MySQL 8** (decisão `A42`).
 
 ```bash
 npm install
@@ -26,11 +26,17 @@ cp .env.example .env
 # Gere um e escreva no .env:
 node -e "console.log(crypto.randomUUID())"
 
+# A BASE PRECISA DA COLAÇÃO CERTA — ver o aviso logo abaixo.
+mysql -u root -e "CREATE DATABASE sbp CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs;"
+# Escreva a URL no .env: mysql://usuario:senha@127.0.0.1:3306/sbp
+
 npx prisma migrate deploy
 npx prisma generate
 npm run db:seed
 npm run dev
 ```
+
+> **A colação não é detalhe.** Com o padrão do MySQL 8 (`utf8mb4_0900_ai_ci`), que ignora maiúsculas e acentos, *"Liga de Neonatologia"* e *"liga de neonatologia"* colidem no índice único de `Liga` e viram a **mesma** liga — o contrário do que o sistema garante (`AT-10`), e sem erro nenhum que denuncie. Criar a base pelo padrão é o jeito errado que funciona até o dia em que as duas grafias aparecerem.
 
 O `db:seed` imprime **uma senha provisória por pessoa, uma única vez** — copie-as do terminal, elas não ficam gravadas em lugar nenhum.
 

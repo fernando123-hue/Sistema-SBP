@@ -52,6 +52,7 @@ async function semearLigantes(
         titulo: `${nomeDaLiga ?? 'sem liga'} ${i + 1}`,
         status: 'aprovado',
         confianca: 1,
+        payload: '{}',
         criadoEm,
       },
     })

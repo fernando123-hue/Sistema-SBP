@@ -105,6 +105,7 @@ async function emailDeTeste(opcoes: {
         categoriaId: categoria.id,
         sequencia: posicao + 1,
         titulo: 'Item sintético',
+        payload: '{}',
         status: item.status,
         canceladoEm: item.canceladoHa === undefined ? null : meioDia(-item.canceladoHa),
       },
