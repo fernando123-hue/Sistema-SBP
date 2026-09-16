@@ -37,6 +37,8 @@ npm run dev
 ```
 
 > **A colação não é detalhe.** Com o padrão do MySQL 8 (`utf8mb4_0900_ai_ci`), que ignora maiúsculas e acentos, *"Liga de Neonatologia"* e *"liga de neonatologia"* colidem no índice único de `Liga` e viram a **mesma** liga — o contrário do que o sistema garante (`AT-10`), e sem erro nenhum que denuncie. Criar a base pelo padrão é o jeito errado que funciona até o dia em que as duas grafias aparecerem.
+>
+> **Criar a base certa não basta.** O Prisma grava `utf8mb4_unicode_ci` em cada tabela que cria, e isso vence a colação da base. As migrações convertem as tabelas depois de criá-las (`AT-34`). **Migração nova que cria tabela precisa fazer o mesmo** — `src/servidor/colacao.test.ts` fica vermelho se esquecer.
 
 O `db:seed` imprime **uma senha provisória por pessoa, uma única vez** — copie-as do terminal, elas não ficam gravadas em lugar nenhum.
 

@@ -21,7 +21,11 @@
 //      (`utf8mb4_0900_as_cs`). Com a padrão do MySQL 8, "Liga de Neonatologia"
 //      e "liga de neonatologia" viram a MESMA linha no índice único de `Liga`,
 //      e a identidade de liga do `AT-10` deixa de valer sem ninguém notar.
-//      Isso é criação de banco, não schema — está no README e no `.env.example`.
+//      Criar a base com essa colação NÃO basta: o Prisma escreve
+//      `COLLATE utf8mb4_unicode_ci` em cada `CREATE TABLE`, e a colação da
+//      tabela vence a da base. Toda migração que cria tabela precisa terminar
+//      com `ALTER TABLE ... CONVERT TO ... utf8mb4_0900_as_cs` (`AT-34`), e
+//      `src/servidor/colacao.test.ts` falha se alguma escapar.
 
 generator client {
   provider = "prisma-client"
