@@ -296,8 +296,13 @@ export function clienteDoGraph(): ClienteDoGraph {
       const filtro = desde ? `&$filter=receivedDateTime ge ${desde.toISOString()}` : ''
       const campos = 'id,internetMessageId,subject,receivedDateTime,hasAttachments,from,body'
 
+      // Só a caixa de entrada. `/users/{caixa}/messages` devolve todas as
+      // pastas, e a resposta da própria secretaria (Itens Enviados), o rascunho
+      // e a lixeira voltariam como pedido novo, cada um virando tarefa. Se o TI
+      // disser que regras do Outlook movem pedidos para subpastas, elas entram
+      // aqui por nome, uma a uma — nunca a caixa inteira.
       let caminho =
-        `/users/${encodeURIComponent(config.caixa)}/messages` +
+        `/users/${encodeURIComponent(config.caixa)}/mailFolders/inbox/messages` +
         `?$select=${campos}&$orderby=receivedDateTime asc&$top=50${filtro}`
 
       const mensagens: MensagemDoGraph[] = []

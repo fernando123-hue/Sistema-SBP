@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { TAMANHO_MAXIMO_ANEXO_BYTES } from '../core/esquemas'
+import { limparCacheDeAmbiente } from '../servidor/ambiente'
 import {
+  clienteDoGraph,
   IngestaoGraph,
   IngestaoIndisponivelError,
+  limparTokenDoGraph,
   type AnexoDoGraph,
   type ClienteDoGraph,
   type MensagemDoGraph,
@@ -137,5 +140,46 @@ describe('a caixa do Microsoft 365 vira e-mail do sistema', () => {
     await expect(new IngestaoGraph(clienteFalso(muitas)).buscarNovos()).rejects.toBeInstanceOf(
       IngestaoIndisponivelError,
     )
+  })
+})
+
+describe('a conversa com a API lê só a caixa de entrada', () => {
+  // `/users/{caixa}/messages` devolve TODAS as pastas: a resposta que a
+  // secretaria mandou (Itens Enviados), o rascunho e a lixeira voltariam como
+  // pedido novo, e cada um viraria tarefa com responsável. Só a caixa de
+  // entrada é pedido de associado.
+  const pedidos: string[] = []
+
+  beforeEach(() => {
+    pedidos.length = 0
+    vi.stubEnv('GRAPH_TENANT_ID', 'tenant-sintetico')
+    vi.stubEnv('GRAPH_CLIENT_ID', 'cliente-sintetico')
+    vi.stubEnv('GRAPH_CLIENT_SECRET', 'segredo-sintetico')
+    vi.stubEnv('GRAPH_CAIXA', 'secretaria@exemplo.test')
+    limparCacheDeAmbiente()
+    limparTokenDoGraph()
+    vi.stubGlobal('fetch', async (url: string) => {
+      pedidos.push(url)
+      const corpo = url.includes('/oauth2/') ? { access_token: 'token-sintetico', expires_in: 3600 } : { value: [] }
+      return new Response(JSON.stringify(corpo), { status: 200 })
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+    limparCacheDeAmbiente()
+    limparTokenDoGraph()
+  })
+
+  // Anexos continuam por `/messages/{id}`, que vale em qualquer pasta: se a
+  // secretaria mover o e-mail entre a lista e o pedido do anexo, o caminho pela
+  // Inbox responderia 404 e derrubaria a sincronização inteira.
+  it('mensagens vêm da pasta Inbox, nunca da caixa inteira', async () => {
+    await clienteDoGraph().listarMensagens(undefined)
+
+    const mensagens = pedidos.filter((url) => url.includes('graph.microsoft.com'))
+    expect(mensagens).toHaveLength(1)
+    expect(mensagens[0]).toContain('/users/secretaria%40exemplo.test/mailFolders/inbox/messages?')
   })
 })
