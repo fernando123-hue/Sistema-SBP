@@ -474,6 +474,21 @@ export default function Caixa() {
           {/* Filtros de categoria e liga valem para a lista normal, não para o resultado da busca. */}
           {resultadoDaBusca === null ? (
           <>
+          {/*
+            A frase existe por causa do recorte de `A24`.
+
+            Sem ela, a colaboradora abre a Caixa, lê "todas · 3" onde ontem
+            lia "todas · 47", e a conclusão natural é que o sistema perdeu
+            pedidos. O número mudou porque a pergunta mudou, e a tela precisa
+            dizer isso — em frase curta, sem termo técnico.
+          */}
+          {papel === 'colaborador' ? (
+            <p className="text-xs text-tinta-suave">
+              Aqui estão os pedidos que estão com você. Os pedidos dos colegas ficam com quem
+              coordena o setor.
+            </p>
+          ) : null}
+
           <div className="flex flex-wrap gap-1.5">
             <button
               onClick={() => setFiltro(null)}

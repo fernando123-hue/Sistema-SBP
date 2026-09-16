@@ -54,18 +54,39 @@ beforeEach(async () => {
   await limparTudo(banco)
 })
 
-async function itemComCpf() {
+/**
+ * Cria um item com o CPF de busca, opcionalmente na mesa de alguém.
+ *
+ * O responsável passou a importar na fase 2: a busca usa a mesma leitura da
+ * Caixa, então ela herda o recorte de `A24` — e `A40`, resposta 24, já dizia
+ * que seria assim ("a busca dele passa a achar só esses").
+ */
+async function itemComCpf(dono?: { id: string; atribuidoPor: string }) {
   const categoria = await banco.categoria.findUniqueOrThrow({ where: { codigo: 'DOC_CADASTRO' } })
-  return banco.item.create({
+  const item = await banco.item.create({
     data: {
       categoriaId: categoria.id,
       titulo: 'Documento sintético',
-      status: 'concluido',
+      status: dono ? 'distribuido' : 'concluido',
       confianca: 1,
       cpfProtegido: protegerCpf(CPF),
     },
     select: { id: true },
   })
+
+  if (dono) {
+    await banco.atribuicao.create({
+      data: {
+        itemId: item.id,
+        colaboradorId: dono.id,
+        motivo: 'algoritmo',
+        atribuidoPor: dono.atribuidoPor,
+        ativa: true,
+      },
+    })
+  }
+
+  return item
 }
 
 describe('POST /api/itens/busca', () => {
@@ -77,16 +98,46 @@ describe('POST /api/itens/busca', () => {
     expect(resposta.status).toBe(401)
   })
 
-  it('qualquer cargo busca — o colaborador também acha pelo CPF', async () => {
+  it('qualquer cargo busca — o colaborador acha pelo CPF o que está com ele', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
-    const item = await itemComCpf()
-    await entrarComo(base.colaboradores[0]!.id, 'colaborador')
+    const pessoa = base.colaboradores[0]!
+    const item = await itemComCpf({ id: pessoa.id, atribuidoPor: base.operadorId })
+    await entrarComo(pessoa.id, 'colaborador')
     const { POST } = await import('./route')
 
     const resposta = await POST(pedido({ texto: CPF }))
     expect(resposta.status).toBe(200)
     const corpo = (await resposta.json()) as { dados: { itens: { itemId: string }[] } }
     expect(corpo.dados.itens.map((linha) => linha.itemId)).toEqual([item.id])
+  })
+
+  it('a busca NÃO é porta lateral: o colaborador não acha o item da colega', async () => {
+    // O recorte de `A24` é testado no serviço (`quem-ve-o-que.test.ts`); aqui
+    // ele é testado na fronteira HTTP, que é por onde um atacante entraria.
+    // Item da colega e item sem dono, os dois com o MESMO CPF.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const colega = base.colaboradores[1]!
+    const doColega = await itemComCpf({ id: colega.id, atribuidoPor: base.operadorId })
+    const semDono = await itemComCpf()
+
+    await entrarComo(base.colaboradores[0]!.id, 'colaborador')
+    const { POST } = await import('./route')
+
+    const resposta = await POST(pedido({ texto: CPF }))
+    expect(resposta.status).toBe(200)
+    const corpo = (await resposta.json()) as { dados: { itens: { itemId: string }[] } }
+    expect(corpo.dados.itens).toEqual([])
+
+    // A mesma busca, feita por quem coordena, acha os dois — é ela que precisa
+    // do quadro inteiro para responder ao associado.
+    await entrarComo(base.operador.colaboradorId, 'operador')
+    const doOperador = await POST(pedido({ texto: CPF }))
+    const corpoDoOperador = (await doOperador.json()) as {
+      dados: { itens: { itemId: string }[] }
+    }
+    expect(new Set(corpoDoOperador.dados.itens.map((linha) => linha.itemId))).toEqual(
+      new Set([doColega.id, semDono.id]),
+    )
   })
 
   it('não existe busca pelo endereço da página', async () => {

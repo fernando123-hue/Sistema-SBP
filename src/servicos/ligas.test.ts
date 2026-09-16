@@ -93,7 +93,7 @@ describe('listagem', () => {
 
 describe('a caixa filtra por liga', () => {
   it('devolve só os itens daquela liga, e traz o nome para a tela mostrar', async () => {
-    await semearBase(banco, { totalDeDias: 1 })
+    const base = await semearBase(banco, { totalDeDias: 1 })
     const categoria = await banco.categoria.findFirstOrThrow({ where: { codigo: 'LIGANTE' } })
     const alfa = await ligaDeTeste('Liga Alfa Sintética')
     const beta = await ligaDeTeste('Liga Beta Sintética')
@@ -108,14 +108,16 @@ describe('a caixa filtra por liga', () => {
       data: { categoriaId: categoria.id, titulo: 'Sem liga', status: 'aprovado', confianca: 1 },
     })
 
-    const soAlfa = await listarCaixa(banco, { ligaId: alfa.id })
+    // Como operadora: o recorte por pessoa de `A24` tem teste próprio em
+    // `quem-ve-o-que.test.ts`; aqui o que se mede é o filtro por liga.
+    const soAlfa = await listarCaixa(banco, { ligaId: alfa.id }, base.operador)
 
     expect(soAlfa.map((item) => item.titulo)).toEqual(['Da alfa'])
     expect(soAlfa[0]!.ligaNome).toBe('Liga Alfa Sintética')
 
     // Sem filtro, os três — inclusive o que não tem liga, que continua sendo
     // trabalho real e não pode sumir da caixa por não pertencer a ninguém.
-    const todos = await listarCaixa(banco)
+    const todos = await listarCaixa(banco, {}, base.operador)
     expect(todos).toHaveLength(3)
     expect(todos.find((item) => item.titulo === 'Sem liga')?.ligaNome).toBeNull()
   })

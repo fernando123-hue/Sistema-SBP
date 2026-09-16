@@ -368,7 +368,7 @@ describe('caixa de entrada', () => {
       base.operador,
     )
 
-    const [linha] = await listarCaixa(banco)
+    const [linha] = await listarCaixa(banco, {}, base.operador)
 
     // `confianca: 1` é o que o banco guarda, mas a tela não pode ler isso como
     // "a IA acertou com 100% de certeza" — modelo nenhum olhou para este item.

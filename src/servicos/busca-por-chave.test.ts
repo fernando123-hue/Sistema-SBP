@@ -10,8 +10,10 @@ import { buscarPorChave } from './caixa'
  * A busca por CPF ou matrícula, no serviço (`A23(b)`, `A40` resposta 24).
  *
  * É o que deixa a equipe achar um item antigo depois que o texto do e-mail
- * saiu. Usa a mesma leitura da Caixa, com um filtro a mais — assim, quando a
- * fase 2 limitar a Caixa de cada cargo (`A24`), a busca herda o limite.
+ * saiu. Usa a mesma leitura da Caixa, com um filtro a mais — e desde a fase 2 a
+ * busca HERDA o recorte de `A24`: quem procura só acha o que já podia ver na
+ * Caixa. Os casos abaixo rodam como operadora, que vê tudo; o recorte do
+ * colaborador tem teste próprio em `quem-ve-o-que.test.ts`.
  */
 
 const banco = obterPrisma()
@@ -43,43 +45,43 @@ async function preparar() {
 
 describe('busca por CPF ou matrícula', () => {
   it('acha pelo CPF digitado de qualquer jeito, e só os itens daquele CPF', async () => {
-    const { doA, outroDoA } = await preparar()
+    const { base, doA, outroDoA } = await preparar()
 
-    const comPontos = await buscarPorChave(banco, { texto: CPF_A })
+    const comPontos = await buscarPorChave(banco, { texto: CPF_A }, base.operador)
     expect(new Set(comPontos.map((item) => item.itemId))).toEqual(new Set([doA.id, outroDoA.id]))
 
-    const semPontos = await buscarPorChave(banco, { texto: '11144477735' })
+    const semPontos = await buscarPorChave(banco, { texto: '11144477735' }, base.operador)
     expect(semPontos).toHaveLength(2)
   })
 
   it('acha pela matrícula', async () => {
-    const { doB } = await preparar()
+    const { base, doB } = await preparar()
 
-    const achados = await buscarPorChave(banco, { texto: '12.345' })
+    const achados = await buscarPorChave(banco, { texto: '12.345' }, base.operador)
     expect(achados.map((item) => item.itemId)).toEqual([doB.id])
   })
 
   it('nada encontrado é lista vazia, não erro', async () => {
-    await preparar()
-    expect(await buscarPorChave(banco, { texto: '9876' })).toEqual([])
+    const { base } = await preparar()
+    expect(await buscarPorChave(banco, { texto: '9876' }, base.operador)).toEqual([])
   })
 
   it('CPF que não confere: frase clara, sem procurar e sem repetir o número', async () => {
-    await preparar()
-    await expect(buscarPorChave(banco, { texto: '111.444.777-36' })).rejects.toThrow(
+    const { base } = await preparar()
+    await expect(buscarPorChave(banco, { texto: '111.444.777-36' }, base.operador)).rejects.toThrow(
       MENSAGEM_CPF_NAO_CONFERE,
     )
   })
 
   it('texto que não é CPF nem matrícula: frase clara', async () => {
-    await preparar()
-    await expect(buscarPorChave(banco, { texto: 'Helena Prado' })).rejects.toThrow(
+    const { base } = await preparar()
+    await expect(buscarPorChave(banco, { texto: 'Helena Prado' }, base.operador)).rejects.toThrow(
       MENSAGEM_BUSCA_NAO_RECONHECIDA,
     )
   })
 
   it('texto comprido demais é recusado antes de qualquer consulta', async () => {
-    await preparar()
-    await expect(buscarPorChave(banco, { texto: '1'.repeat(200) })).rejects.toThrow()
+    const { base } = await preparar()
+    await expect(buscarPorChave(banco, { texto: '1'.repeat(200) }, base.operador)).rejects.toThrow()
   })
 })

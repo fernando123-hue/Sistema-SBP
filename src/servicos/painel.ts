@@ -1,4 +1,5 @@
 import type { LinhaPainel, LinhaPorPessoa } from '../core/tipos'
+import type { Ator } from '../servidor/ator'
 import {
   deslocarDias,
   diasEntre,
@@ -281,9 +282,24 @@ export async function conferirPendencia(
   })
 }
 
-export async function porPessoa(banco: Banco): Promise<LinhaPorPessoa[]> {
+/**
+ * Os números de cada pessoa (`A24`).
+ *
+ * Colaborador vê só a PRÓPRIA linha; operador e gestor veem a equipe, porque
+ * são eles que equilibram a carga e precisam comparar. A restrição é do
+ * servidor: esconder linhas na tela deixaria os números de todo mundo dentro
+ * da resposta HTTP, que qualquer pessoa autenticada consegue ler.
+ *
+ * A tabela POR CATEGORIA (`porCategoria`) continua aberta a todos de propósito:
+ * ali não há pessoa nenhuma, só o volume do setor — esconder de quem trabalha
+ * nele não protegeria ninguém.
+ */
+export async function porPessoa(banco: Banco, ator: Ator): Promise<LinhaPorPessoa[]> {
   const colaboradores = await banco.colaborador.findMany({
-    where: { ativo: true },
+    where: {
+      ativo: true,
+      ...(ator.papel === 'colaborador' ? { id: ator.colaboradorId } : {}),
+    },
     orderBy: { nome: 'asc' },
   })
 

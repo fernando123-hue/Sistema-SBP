@@ -31,7 +31,9 @@ export async function POST(requisicao: Request): Promise<Response> {
     const recusa = limitar(`busca:${ator.colaboradorId}`, BUSCAS_POR_MINUTO, 60)
     if (recusa) return recusa
 
-    const itens = await buscarPorChave(obterPrisma(), await corpoJson(requisicao))
+    // O ator vai junto: a busca é a mesma leitura da Caixa, então ela herda o
+    // recorte de `A24` em vez de virar porta lateral para o item de um colega.
+    const itens = await buscarPorChave(obterPrisma(), await corpoJson(requisicao), ator)
     return responder({ itens })
   })
 }
