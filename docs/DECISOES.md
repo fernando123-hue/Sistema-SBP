@@ -520,7 +520,35 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **Também registrado, sobre o processo:** ao tentar refazer o banco, a ferramenta do Prisma recusou apagar a base sem consentimento explícito do dono, e a saída adotada **não destruiu nada** — a base travada ficou de lado, intacta, e o trabalho seguiu numa base nova. Apagar dado, mesmo sintético e local, continua sendo ato que precisa de autorização.
 
-**Status:** ✅ os dois corrigidos e provados. **Impacto se ignorados:** o primeiro faria pedidos de associado desaparecerem em silêncio no dia da implantação; o segundo impediria o sistema de subir, o que é o erro barato dos dois.
+**Status:** ✅ os três corrigidos e provados. **Impacto se ignorados:** o primeiro faria pedidos de associado desaparecerem em silêncio no dia da implantação; o segundo impediria o sistema de subir, o que é o erro barato dos três; o terceiro quebraria o painel inteiro na primeira vez que alguém o abrisse.
+
+### AT-31 — O driver do MySQL tinha falha alta sem correção publicada *(16/09/2026)*
+
+**O achado, e ele não é ruído de auditoria.** O adapter oficial do Prisma para MySQL (`@prisma/adapter-mariadb@7.10.0`) fixa o pacote `mariadb` na versão **3.4.5**, e a faixa `3.4.0–3.4.5` tem três avisos de segurança publicados, um deles **ALTO**: o conector **entrega a senha do banco em texto claro** a quem estiver no meio do caminho, **mesmo com TLS pedido** (GHSA-cqhc-2h57-wpxf). Os outros dois: transmissão em texto claro de informação sensível (GHSA-42r5-vhpq-m858) e possível injeção de SQL no escape de parâmetro `Buffer` sob os charsets `big5`, `gbk`, `sjis`, `cp932` e `gb18030` (GHSA-g5xc-5w98-jfvm). A auditoria do CI pegou, e o `npm` diz "no fix available" **para a faixa que o adapter exige**.
+
+**Por que isto importa aqui, e não é teoria:** é o driver por onde passa toda a conversa com o banco que vai guardar dado de associado. E a senha do banco, uma vez vazada, não é um incidente de sessão — é acesso ao conjunto inteiro.
+
+**Decisão:** forçar `mariadb@^3.5.4` por `overrides` no `package.json`. A série 3.5 está fora da faixa afetada. Forçar a versão em vez de esperar o adapter é o que fecha o buraco hoje; a suíte inteira contra MySQL é o que prova que a troca não quebrou a conexão — sem essa prova, seria trocar uma vulnerabilidade por um defeito.
+
+**O charset da injeção não nos alcança:** o sistema usa `utf8mb4` em todas as bases (`AT-28`), e nenhum dos charsets afetados aparece. Fica registrado porque, se um dia alguém mudar o charset para "resolver acento", estará reabrindo isto.
+
+**O que fazer quando o adapter atualizar:** remover o `override` e conferir que o `npm audit --audit-level=high` continua limpo. Enquanto o override existir, ele é a única coisa entre o sistema e uma senha de banco trafegando em claro.
+
+**Status:** ✅ adotado e provado. **Reavaliar** a cada atualização do Prisma.
+
+### AT-32 — No Windows, a conferência de schema contra migrações acusa diferença que não existe *(16/09/2026)*
+
+**O que acontece:** nesta máquina, `npx prisma migrate diff --from-migrations … --to-schema …` devolve código 2 (há diferença) e um relatório assustador: **26 tabelas "removidas" e 26 "adicionadas"**, com dezenas de chaves estrangeiras aparecendo como perdidas — inclusive as de `SaldoCarga`, `SaldoCargaGlobal` e `Nota`, que são justamente as travas `Restrict` que protegem o livro-razão e a memória do setor.
+
+**Não há defeito nenhum.** Conferido direto no banco: as **27 chaves estrangeiras existem todas**, com os nomes e destinos certos. O que o relatório mostra é o mesmo conjunto de tabelas **com caixa diferente** — `Colaborador` no schema, `colaborador` no disco.
+
+**A causa é de plataforma:** o MySQL do Windows roda com `lower_case_table_names = 1` (medido: `lower_case_file_system = ON`), então ele guarda e compara nome de tabela em minúsculas. O Prisma compara o schema, que declara `Colaborador`, com o banco, que responde `colaborador`, e conclui que uma foi removida e a outra criada.
+
+**Consequência prática, e é ela que importa:** esta conferência **não é confiável em Windows**, e o servidor da associação provavelmente será Linux, onde o padrão preserva a caixa. **O resultado que vale é o do CI**, que roda em Linux — é lá que o passo existe para pegar o caso real: alguém edita o schema e esquece de gerar a migração.
+
+**O que NÃO fazer:** "consertar" isso renomeando modelos para minúsculas, ou pondo `@@map` em todos. Seria deformar o domínio inteiro por causa de uma configuração de sistema de arquivos — e o vocabulário do código é o vocabulário da operação.
+
+**Status:** ✅ registrado como limite conhecido, não como dívida. Quem rodar a conferência em Windows e vir esse relatório: confira as chaves estrangeiras no banco antes de acreditar nele.
 
 ---
 

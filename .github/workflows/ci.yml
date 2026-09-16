@@ -88,7 +88,11 @@ jobs:
       # Pega o caso clássico: alguém edita o schema e esquece de gerar a
       # migração. `--exit-code` devolve 2 quando há diferença, quebrando o build.
       - name: Verificar que o schema e as migrações estão em sincronia
-        run: npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --shadow-database-url "$SHADOW_DATABASE_URL" --exit-code
+        # A base sombra é declarada em `prisma.config.ts`, que lê
+        # `SHADOW_DATABASE_URL` do ambiente — `migrate diff` NÃO aceita
+        # `--shadow-database-url`, e tentar passar por aqui derruba o passo com
+        # erro de uso.
+        run: npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --exit-code
 
       - name: Typecheck
         run: npm run typecheck
