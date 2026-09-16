@@ -571,7 +571,7 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **O que continua valendo:** login e cadastro já gravavam e buscavam e-mail em minúsculas; nenhum e-mail com maiúscula existia na base de desenvolvimento.
 
-**A regra para o futuro:** toda migração que cria tabela precisa terminar com `ALTER TABLE … CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs`. `src/servidor/colacao.test.ts` confere **todas** as colunas de texto e fica vermelho se alguma escapar — foi assim que `ContagemDeBusca`, criada no mesmo dia, entrou na conversão.
+**A regra para o futuro:** toda migração que cria tabela precisa terminar com `ALTER TABLE … CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs`. `src/servidor/colacao.test.ts` confere **todas** as colunas de texto e fica vermelho se alguma escapar — foi assim que `ContagemDeBusca`, criada no mesmo dia, entrou na conversão. **Cuidado quando houver dado real:** `CONVERT TO` reconstrói a tabela inteira e a trava durante a cópia. Numa tabela nova, vazia, isso é instantâneo; converter de novo uma tabela grande já em produção (`LogAuditoria`, `EventoProcessamento`) precisa de janela de manutenção. O jeito certo é converter **na mesma migração que cria a tabela**, enquanto ela está vazia.
 
 **Prova:** o teste novo, visto vermelho nos três casos antes da migração (duas grafias viravam uma liga; uma busca em maiúsculas achava a grafia minúscula; 150 colunas fora da colação).
 
