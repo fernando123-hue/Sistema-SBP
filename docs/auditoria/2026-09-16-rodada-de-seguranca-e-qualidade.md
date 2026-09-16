@@ -49,7 +49,7 @@ Não são achados ainda — são **onde a auditoria de testes deve olhar primeir
 
 ## 2. Achados da auditoria por agentes
 
-*Ainda não rodou.* Dimensões mínimas: ver `ESTADO.md`, item 4 do bloco do topo.
+*Ainda não rodou.* Método: `roteiro-da-auditoria-de-seguranca.md` (entregue pelo dono em 16/09/2026) e as dimensões do `ESTADO.md`, item 4. Cada achado segue o formato da seção 21 do roteiro.
 
 ## 3. Destino de cada achado
 
