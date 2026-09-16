@@ -15,6 +15,14 @@ coverage/
 .env.*
 !.env.example
 
+# Chaves e certificados. Nenhum existe hoje; o Graph aceita certificado no
+# lugar de segredo (A47) e um MySQL com TLS usa chave própria. Ver
+# docs/auditoria/2026-09-16-segredos-e-dados-sensiveis.md.
+*.pem
+*.key
+*.p12
+*.pfx
+
 # Banco local (SQLite). Dados sintéticos, mas fora do repositório.
 *.db
 *.db-journal
