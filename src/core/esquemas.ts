@@ -462,7 +462,23 @@ export type TipoDeAfastamentoGravado = z.infer<typeof TipoDeAfastamentoGravadoSc
 export const ChaveDePrazoSchema = z.enum(['motivo_de_afastamento', 'conteudo_do_email'])
 export type ChaveDePrazo = z.infer<typeof ChaveDePrazoSchema>
 
-export const PRAZO_MINIMO_EM_DIAS = 1
+/**
+ * O prazo mais curto que o gestor pode escolher (`A45`).
+ *
+ * Era `1`, e a revisão de segurança de 15/09/2026 registrou isso como achado:
+ * o sistema aplicava corretamente um prazo de um dia, e ninguém tinha decidido
+ * que um dia era aceitável para dado de saúde.
+ *
+ * CINCO, e o número não é gosto. O expurgo é irreversível e roda UMA vez por
+ * dia. Com menos de cinco, um feriado prolongado consome o prazo inteiro: o
+ * relógio começa numa sexta, e sábado, domingo e a segunda de feriado já são
+ * três dias — o dado sairia antes de existir **um único dia útil** em que
+ * alguém pudesse perceber, conferir ou reclamar. Cinco garante esse dia.
+ *
+ * Continua abaixo do padrão de 7 (`PRAZO_PADRAO_EM_DIAS`), então apertar o
+ * prazo — que é o movimento a favor da privacidade — segue possível.
+ */
+export const PRAZO_MINIMO_EM_DIAS = 5
 /**
  * Teto contra erro de digitação, não política: `70` virando `7000` guardaria
  * dado de saúde por duas décadas sem ninguém notar. Dez anos cobre qualquer

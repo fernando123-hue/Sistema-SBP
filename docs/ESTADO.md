@@ -17,7 +17,7 @@
 
 ### Fase 1 — o que `A17` entregou *(12/09/2026)*
 
-- **Prazo editável** (`/acesso`, "Prazos de retenção"): só gestor; de 1 a 3.650 dias; mudança na trilha com antes e depois; **encurtar exige confirmação no servidor**, não só na tela. Código: `core/retencao.ts`, `servicos/retencao.ts`, `app/api/retencao`.
+- **Prazo editável** (`/acesso`, "Prazos de retenção"): só gestor; de 5 a 3.650 dias (o piso virou 5 em 15/09/2026, `§ A45`); mudança na trilha com antes e depois; **encurtar exige confirmação no servidor**, não só na tela. Código: `core/retencao.ts`, `servicos/retencao.ts`, `app/api/retencao`.
 - **Limpeza diária sozinha** (`src/instrumentation.ts`): tenta a cada 15 minutos; `ExecucaoDeRotina (rotina, data)` único garante uma execução por dia; falha fica registrada e é tentada até 3 vezes. `npm run db:expurgar` roda a mesma limpeza, pela mesma trava — **não aceita mais prazo por variável de ambiente**. Ver `DECISOES.md § AT-18`.
 - **Motivo de afastamento:** 7 dias depois da volta, a observação sai e o tipo vira `ferias` ou `ausente` (novo valor, que só nasce da limpeza). Cancelado conta do cancelamento (`AT-19`, confirmada pelo dono em `A39`, com a ausência cancelada destacada no aviso). Sem data de volta, não corre. A ficha mostra "motivo apagado pelo prazo em…".
 - **A trilha deixou de guardar o motivo** (`AT-21`): o registro de afastamento grava o tipo já reduzido; o expurgo grava o tipo que ficou. **As linhas da trilha anteriores a 12/09/2026 ainda têm o tipo real** — só dado sintético.

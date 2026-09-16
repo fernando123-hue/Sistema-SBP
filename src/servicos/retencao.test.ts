@@ -78,17 +78,17 @@ describe('mudar o prazo', () => {
 
   it('encurtar SEM confirmação é recusado pelo servidor, e nada é gravado', async () => {
     await expect(
-      alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias: 3 }, gestor),
-    ).rejects.toThrow(/Encurtar de 7 para 3 dias apaga/)
+      alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias: 5 }, gestor),
+    ).rejects.toThrow(/Encurtar de 7 para 5 dias apaga/)
 
     expect(await prazoEmVigor(banco, 'motivo_de_afastamento')).toBe(7)
     expect(await banco.logAuditoria.count({ where: { acao: 'prazo_de_retencao_alterado' } })).toBe(0)
   })
 
   it('encurtar COM confirmação grava', async () => {
-    await alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias: 3, confirmarEncurtamento: true }, gestor)
+    await alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias: 5, confirmarEncurtamento: true }, gestor)
 
-    expect(await prazoEmVigor(banco, 'motivo_de_afastamento')).toBe(3)
+    expect(await prazoEmVigor(banco, 'motivo_de_afastamento')).toBe(5)
   })
 
   it('encurtar compara com o valor EM VIGOR, não com o padrão', async () => {
@@ -108,7 +108,8 @@ describe('mudar o prazo', () => {
     expect(await banco.logAuditoria.count({ where: { acao: 'prazo_de_retencao_alterado' } })).toBe(0)
   })
 
-  it.each([0, -1, 7.5, 3651])('recusa %s dias na entrada', async (dias) => {
+  // 1 e 4 caem pelo piso de `A45`: o prazo mais curto que o sistema aceita é 5.
+  it.each([0, 1, 4, -1, 7.5, 3651])('recusa %s dias na entrada', async (dias) => {
     await expect(
       alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias, confirmarEncurtamento: true }, gestor),
     ).rejects.toThrow()

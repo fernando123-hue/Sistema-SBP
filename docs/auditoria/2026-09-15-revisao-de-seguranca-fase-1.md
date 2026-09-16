@@ -20,7 +20,7 @@ Revisão por agente, **somente leitura**, sobre o diff inteiro da fase 1 (`A17`,
 
 **Saídas, se o dono quiser reduzir:** teto diário cumulativo por pessoa; ou registrar na trilha (sem o número digitado) picos de busca por pessoa, para alguém olhar — detecção, não bloqueio automático, porque bloquear a equipe no meio do expediente é pior que o risco.
 
-### BAIXO — o prazo de retenção pode ser posto em 1 dia
+### BAIXO — o prazo de retenção pode ser posto em 1 dia *(corrigido no mesmo dia — ver `DECISOES.md § A45`: o piso passou a ser 5 dias)*
 
 `PRAZO_MINIMO_EM_DIAS = 1` (`src/core/esquemas.ts:465`; teto de 3.650). O sistema aplica corretamente o que for configurado, com trilha e confirmação no servidor antes de encurtar. **Conferido à mão.**
 
@@ -56,5 +56,5 @@ Continua valendo, e é maior que os dois: **nenhuma pessoa revisou este código.
 ## Respostas do dono, no mesmo dia
 
 - **O achado MÉDIO está respondido:** ver `DECISOES.md § A44`. O dono recusou alertar por volume de buscas, para a medida de segurança não virar pressão sobre a equipe, e o desenho passou a ser o padrão de varredura (muitas buscas sem resultado) bloqueando só a busca daquela conta, com aviso à gestora e liberação por um clique. A implementar na implantação, com os limites vindos de medição, não de chute.
-- **O achado BAIXO continua aberto:** o piso de 1 dia para os prazos de retenção não foi decidido.
+- **O achado BAIXO está corrigido:** o dono pediu um prazo cirúrgico, e o piso passou de 1 para **5 dias** (`DECISOES.md § A45`) — o menor número que sobrevive a um feriado prolongado, garantindo pelo menos um dia útil antes de o dado sair. Os testes que recusam 1 e 4 dias foram vistos vermelhos contra o piso antigo antes da mudança.
 - **Revisão humana:** por decisão do dono (`§ A43`), acontece quando o protótipo inteiro estiver pronto para rodar, não a cada fase.
