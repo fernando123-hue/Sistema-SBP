@@ -10,7 +10,7 @@ As decisões estão em `docs/DECISOES.md § A`, de **A17 a A38**. Este arquivo n
 
 1. **Leia** `CLAUDE.md`, `docs/ESTADO.md`, este plano, `docs/DECISOES.md § A17–A38` e `§ AT-17`.
 2. **#40 e #41 foram mesclados na `main` em 12/09/2026** (`44fa73d` e `276aac1`). A versão original deste item dizia que estavam abertos.
-3. **Andamento, conferido em 14/09/2026:** **fase 1 inteira feita** (`A17`, `A20`, `A23`) na branch `fase-1/privacidade-e-prazos`, com **PR #44 aberto, CI verde, esperando o dono mesclar**. O plano do `A23` (`docs/planos/2026-09-12-fase-1-a23.md`) registra o que foi feito em cada parte e os desvios. As outras fases não começaram.
+3. **Andamento, conferido em 15/09/2026:** **fase 1 inteira feita e mesclada na `main`** (`A17`, `A20`, `A23`), pelo PR #44, por squash, commit `2c4acdb`, com o CI verde. O plano do `A23` (`docs/planos/2026-09-12-fase-1-a23.md`) registra o que foi feito em cada parte e os desvios. As outras fases não começaram.
 
 ## Como cada fase é feita
 

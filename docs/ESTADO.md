@@ -1,6 +1,6 @@
 # Estado do projeto — retomada
 
-Última atualização: **12/09/2026, fim da sessão** — **fase 1 em andamento**, na branch `fase-1/privacidade-e-prazos`. Pronto e provado: **`A17` inteiro** — prazo editável, limpeza diária automática e aviso do dia para a gestora — e **`A20`** — texto e anexos dos e-mails apagados 7 dias depois da conclusão do último item, com aviso na Caixa. **O `A23` foi feito em 13/09/2026** — partes (c), (d), (b) e (a), ver o bloco "Atualização de 13/09/2026" logo abaixo. **Todo o código da fase 1 está feito**; falta o PR, que o dono autoriza.
+Última atualização: **15/09/2026** — **a fase 1 inteira está na `main`**, mesclada pelo [PR #44](https://github.com/fernando123-hue/Sistema-SBP/pull/44) por squash (commit `2c4acdb`), com os três checks do CI verdes. Pronto e provado: **`A17` inteiro** — prazo editável, limpeza diária automática e aviso do dia para a gestora — e **`A20`** — texto e anexos dos e-mails apagados 7 dias depois da conclusão do último item, com aviso na Caixa. **O `A23` foi feito em 13/09/2026** — partes (c), (d), (b) e (a), ver o bloco "Atualização de 13/09/2026" logo abaixo. **Todo o código da fase 1 está feito e mesclado.**
 
 > ## ▶ Próxima sessão: comece aqui
 >
@@ -8,10 +8,10 @@
 >
 > **O que fazer agora** *(reescrito em 14/09/2026 — a versão anterior destes itens ainda mandava fazer o `A23`, que está pronto)*:
 >
-> 1. **Confira onde está:** `git branch --show-current` → `fase-1/privacidade-e-prazos`; `git status -sb` e `gh pr view 44`. **PR #44** aberto em 13/09/2026, com CI verde e sem conflito. O GitHub tem até `aabdeb0`; o commit que reescreveu estes itens, de 14/09/2026, pode estar só local até o dono autorizar o envio.
-> 2. **Esperando o dono:** mesclar o #44 (por squash, como #35 e #36?) e decidir se uma pessoa revisa o código antes — até aqui, só revisões por agente. **Não mesclar nem enviar sem resposta.**
-> 3. **Depois de mesclar:** reescrever este bloco na `main`, apontando para o próximo passo, e atualizar o "Andamento" em `docs/planos/2026-09-12-fases-de-implementacao.md`.
-> 4. **Próximo trabalho, a decidir com o dono:** a fase 2 (`A24`, `A32`) do plano das 5 fases, **ou** a implantação — conexão real com o Outlook (hoje só existe `src/adapters/ingestao-mock.ts`), PostgreSQL, publicação e IA paga. Existe uma apresentação de custos para a chefia, fora do repositório, que estima as duas.
+> 1. **Confira onde está:** `git branch --show-current` → `main`; `git status -sb` e `git log --oneline -3`. A fase 1 está na `main` desde 15/09/2026, pelo PR #44, por squash (`2c4acdb`), com os três checks verdes. A branch `fase-1/privacidade-e-prazos` foi apagada na mesclagem. **Nenhuma pessoa revisou o código até aqui — só agentes.**
+> 2. **Banco de dados: MySQL** (decisão do dono em 15/09/2026, `§ A42`). O protótipo continua em SQLite, e a troca **não** foi feita: o que ela exige, item a item, está em `§ AT-28`. O mais caro não é o `provider` — é que as 14 migrações existentes foram geradas para SQLite e não servem.
+> 3. **Revisão de segurança da fase 1 — feita em 15/09/2026**, por agente e só de leitura, sobre o diff inteiro: `docs/auditoria/2026-09-15-revisao-de-seguranca-fase-1.md`. **Nenhum achado crítico ou alto.** Restam duas perguntas ao dono, as duas de política: teto diário para a busca por CPF (hoje só há 20 por minuto por pessoa) e se o prazo mínimo de retenção continua em 1 dia. **Nenhuma pessoa revisou o código até aqui — só agentes**, e isso continua sendo trabalho em aberto antes de dado real entrar.
+> 4. **Próximo trabalho, a decidir com o dono:** a fase 2 (`A24`, `A32`) do plano das 5 fases, **ou** a implantação — conexão real com o Outlook (hoje só existe `src/adapters/ingestao-mock.ts`), **MySQL** (`§ A42`), publicação e IA paga. Existe uma apresentação de custos para a chefia, fora do repositório, que estima as duas.
 > 5. **Perguntas ao dono:** sobre tela, com desenho das opções lado a lado; sobre regra, com exemplo concreto do começo ao fim. Sempre linguagem simples e nomes fictícios, e todo texto que a equipe lê em frase curta, sem termo técnico.
 > 6. **Para ver telas rodando:** `preview_start {name: "sbp-local"}` (aceita outra porta se a 3000 estiver ocupada) e, em `/entrar`, clique numa conta `@exemplo.test`. Nunca digite senha. Travas em `DECISOES.md § AT-17`. **`BUSCA_SECRET` é obrigatório**: numa máquina nova, gere um (ver `.env.example`); numa instalação em uso, nunca troque (`§ AT-26`).
 
