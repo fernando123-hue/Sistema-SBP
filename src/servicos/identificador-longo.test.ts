@@ -131,3 +131,31 @@ describe('o corte da referência não parte um caractere ao meio', () => {
     expect(evento.referencia).toBe(`${'x'.repeat(190)}😀`)
   })
 })
+
+describe('dois identificadores longos com o mesmo começo continuam distinguíveis', () => {
+  it('o evento guarda o resumo do identificador inteiro quando corta', async () => {
+    // Revisão de segurança do PR #60: sem isso, N mensagens forjadas com o mesmo
+    // prefixo pareceriam uma falha só na trilha.
+    const comum = 'x'.repeat(TAMANHO_MAXIMO_REFERENCIA)
+    for (const final of ['-a', '-b']) {
+      await registrarEvento(banco, {
+        correlacaoId: 'prefixo-comum',
+        etapa: 'ingestao',
+        situacao: 'falha',
+        referencia: comum + final,
+      })
+    }
+
+    const eventos = await banco.eventoProcessamento.findMany({ where: { correlacaoId: 'prefixo-comum' } })
+    const resumos = eventos.map((evento) => JSON.parse(evento.detalhe!).referenciaSha256 as string)
+    expect(eventos.map((evento) => evento.referencia)).toEqual([comum, comum])
+    expect(new Set(resumos).size).toBe(2)
+    expect(resumos.every((resumo) => /^[0-9a-f]{64}$/.test(resumo))).toBe(true)
+  })
+
+  it('referência que cabe não ganha resumo', async () => {
+    await registrarEvento(banco, { correlacaoId: 'curta', etapa: 'ingestao', situacao: 'falha', referencia: '<a@b>' })
+    const evento = await banco.eventoProcessamento.findFirstOrThrow({ where: { correlacaoId: 'curta' } })
+    expect(evento.detalhe).toBeNull()
+  })
+})

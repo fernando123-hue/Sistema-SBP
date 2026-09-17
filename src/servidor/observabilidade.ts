@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import { ErroDominio } from '../core/erros'
 import { DOMINIO_ATUAL, serializar, type SituacaoEvento } from '../core/esquemas'
@@ -98,24 +98,54 @@ export interface EventoEntrada {
  */
 export const TAMANHO_MAXIMO_REFERENCIA = 191
 
+/**
+ * A referência que cabe na coluna, e o que mais o evento precisa guardar.
+ *
+ * Corte por CARACTERE (`Array.from`), como o MySQL conta: `slice` conta
+ * unidades UTF-16 e partia um emoji ao meio, gravando `�` no lugar. Quando
+ * corta, o evento guarda o SHA-256 da referência inteira em `detalhe`: sem
+ * isso, várias mensagens forjadas com o mesmo começo pareceriam uma falha só
+ * na trilha (revisão de segurança do PR #60).
+ */
+function referenciaQueCabe(referencia: string | null | undefined): {
+  referencia: string | null
+  resumo?: string
+} {
+  if (referencia === undefined || referencia === null) return { referencia: null }
+  const caracteres = Array.from(referencia)
+  if (caracteres.length <= TAMANHO_MAXIMO_REFERENCIA) return { referencia }
+  return {
+    referencia: caracteres.slice(0, TAMANHO_MAXIMO_REFERENCIA).join(''),
+    resumo: createHash('sha256').update(referencia).digest('hex'),
+  }
+}
+
 export async function registrarEvento(banco: Transacao, evento: EventoEntrada): Promise<void> {
+  const { referencia, resumo } = referenciaQueCabe(evento.referencia)
+  const detalhe =
+    resumo === undefined
+      ? evento.detalhe
+      : {
+          ...(evento.detalhe !== null && typeof evento.detalhe === 'object' && !Array.isArray(evento.detalhe)
+            ? (evento.detalhe as Record<string, unknown>)
+            : evento.detalhe === undefined
+              ? {}
+              : { valor: evento.detalhe }),
+          referenciaSha256: resumo,
+        }
+
   await banco.eventoProcessamento.create({
     data: {
       dominio: DOMINIO_ATUAL,
       correlacaoId: evento.correlacaoId,
       etapa: evento.etapa,
       situacao: evento.situacao,
-      // Corte por CARACTERE (`Array.from`), como o MySQL conta: `slice` conta
-      // unidades UTF-16 e partia um emoji ao meio, gravando `�` no lugar.
-      referencia:
-        evento.referencia === undefined || evento.referencia === null
-          ? null
-          : Array.from(evento.referencia).slice(0, TAMANHO_MAXIMO_REFERENCIA).join(''),
+      referencia,
       mensagem: evento.mensagem ?? null,
       // `detalhe` também passa por redação. Hoje só recebe contagens agregadas,
       // mas o campo é gravado no banco sem TTL: um chamador futuro que passasse
       // o payload de um item deixaria CPF e corpo de e-mail em texto puro.
-      detalhe: evento.detalhe === undefined ? null : serializar(redigir(evento.detalhe)),
+      detalhe: detalhe === undefined ? null : serializar(redigir(detalhe)),
       duracaoMs: evento.duracaoMs ?? null,
     },
   })
