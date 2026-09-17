@@ -41,10 +41,14 @@ describe('N-37: o mapa tem teto de verdade', () => {
   })
 
   it('as que saem são as mais antigas; a mais recente continua contando', () => {
-    for (let indice = 0; indice < TETO_DE_CHAVES; indice += 1) verificarLimite(`antiga:${indice}`, 5, 600)
+    for (let indice = 0; indice < TETO_DE_CHAVES; indice += 1) verificarLimite(`antiga:${indice}`, 1, 600)
     verificarLimite('recente', 1, 600)
     for (let indice = 0; indice < 10; indice += 1) verificarLimite(`nova:${indice}`, 5, 600)
 
+    // Máximo 1: se `antiga:0` ainda estivesse no mapa, a segunda chamada seria
+    // recusada. Liberada, prova que a mais antiga foi despejada — sem isto, o
+    // teste passaria com um `abrirEspaco` que não remove nada.
+    expect(verificarLimite('antiga:0', 1, 600).permitido).toBe(true)
     expect(verificarLimite('recente', 1, 600).permitido).toBe(false)
   })
 })

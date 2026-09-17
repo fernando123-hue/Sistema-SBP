@@ -59,7 +59,11 @@ export function verificarLimite(
   return { permitido: true, restante: maximo - janela.contagem, reiniciaEmSegundos }
 }
 
-/** Evita crescimento sem limite do mapa em processo longo. */
+/**
+ * Tira as janelas vencidas. Sozinha, NÃO segura o tamanho do mapa: com chaves
+ * ativas sempre novas ele crescia sem fim (N-37). Quem garante o teto é
+ * `abrirEspaco`.
+ */
 export function limparJanelasExpiradas(): void {
   const agora = Date.now()
   for (const [chave, janela] of janelas) {
