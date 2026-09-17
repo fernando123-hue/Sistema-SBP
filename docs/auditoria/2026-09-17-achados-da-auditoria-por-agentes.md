@@ -17,7 +17,7 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 | Confirmados | 0 | 4 | 10 | 10 | 3 |
 | Sem verificação | 0 | 1 | 18 | 18 | 4 |
 
-**Atualização de 17/09/2026, manhã:** N-01 verificado lendo o código — confirmado e corrigido (PR #57); C-01, C-02 e C-03 corrigidos (a contagem acima é a do fim da auditoria).
+**Atualização de 17/09/2026, manhã:** N-01 verificado lendo o código — confirmado e corrigido (PR #57); C-01 a C-04 corrigidos (a contagem acima é a do fim da auditoria).
 
 **Nenhum crítico.** Destino de cada achado: coluna "Destino" (vazia = pendente). Nenhum fica sem destino ao fim da rodada.
 
@@ -28,7 +28,7 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 | C-01 | ALTO | `src/adapters/ia-anthropic.ts:88` | Com a Anthropic, `campos` sai sempre vazio: nome, CPF e CRM nunca são extraídos | **Corrigido** (17/09): `campos` viaja do modelo como lista de pares `{chave, valor}` e vira o mapa em `ia-estruturada.ts`; prompts `anthropic-1.1.0` e `gemini-1.1.0`. Falta a amostra contra o modelo real (passo de `A49`) |
 | C-02 | ALTO | `src/adapters/ingestao-graph.ts:115` | Um único e-mail externo grande demais trava toda a ingestão, e a trava não sai sozinha | **Corrigido** (17/09) com o C-03: mensagem fora do esquema é recusada pelo nome, sem derrubar as outras (`AT-35`) |
 | C-03 | ALTO | `src/adapters/ingestao-graph.ts:98` | Um único e-mail de fora (ou o 201º e-mail da caixa) derruba a ingestão real para sempre | **Corrigido** (17/09): janela de 7 dias a partir de `GRAPH_LER_DESDE`, o já processado sai antes do teto, o excedente fica para a próxima leitura (`AT-35`) |
-| C-04 | ALTO | `src/core/esquemas.ts:339` | messageId aceito até 500 caracteres, mas a coluna tem 191: um e-mail volta a pagar IA em toda sincronização | |
+| C-04 | ALTO | `src/core/esquemas.ts:339` | messageId aceito até 500 caracteres, mas a coluna tem 191: um e-mail volta a pagar IA em toda sincronização | **Corrigido** (17/09): `messageId` limitado a 191 (o tamanho da coluna, conferido por teste contra o banco); a `referencia` do evento é cortada em 191, para gravar a falha nunca derrubar a sincronização |
 | C-05 | MÉDIO | `src/adapters/fabrica.ts:52` | Nada no código impede e-mail real, com CPF, de ir a fornecedor externo sem máscara (A52) ou à camada gratuita do Gemini (A38) | |
 | C-06 | MÉDIO | `src/adapters/ia-estruturada.ts:150` | Não há disjuntor, teto diário nem registro de custo, e 'conta sem crédito' não é detectada como diz o contrato | |
 | C-07 | MÉDIO | `src/adapters/ingestao-graph.ts:329` | E-mail encaminhado como anexo e anexo-link do OneDrive somem sem registro | |

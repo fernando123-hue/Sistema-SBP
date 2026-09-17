@@ -218,6 +218,20 @@ describe('uma mensagem ruim, ou uma caixa cheia, não trava a leitura', () => {
     expect(JSON.stringify(avisos)).not.toContain('xxxxxxxxxx')
   })
 
+  it('identificador maior que a coluna (C-04): recusada pelo nome, sem chamar ninguém depois', async () => {
+    const longo = `<${'x'.repeat(300)}@exemplo.test>`
+    const cliente = clienteFalso([
+      mensagem({ id: 'longo', internetMessageId: longo }),
+      mensagem({ id: 'ok', internetMessageId: '<ok@exemplo.test>' }),
+    ])
+    const { avisos, avisar } = coletor()
+
+    const emails = await new IngestaoGraph(cliente, { lerDesde: LER_DESDE }).buscarNovos({ avisar })
+
+    expect(emails.map((e) => e.messageId)).toEqual(['<ok@exemplo.test>'])
+    expect(avisos).toEqual([expect.objectContaining({ tipo: 'recusado', messageId: longo })])
+  })
+
   it('mais de 50 anexos: recusada pelo nome, sem derrubar as outras', async () => {
     const umAnexo: AnexoDoGraph = { name: 'a.pdf', contentType: 'application/pdf', size: 3, contentBytes: 'YWJj' }
     const cliente: ClienteDoGraph = {
