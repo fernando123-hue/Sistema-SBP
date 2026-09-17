@@ -376,6 +376,9 @@ describe('uma mensagem ruim, ou uma caixa cheia, não trava a leitura', () => {
 describe('a fábrica exige o dia de início da leitura (AT-35)', () => {
   beforeEach(() => {
     vi.stubEnv('INGESTAO_ADAPTER', 'graph')
+    // Caixa real exige a IA contratada (N-17).
+    vi.stubEnv('IA_ADAPTER', 'anthropic')
+    vi.stubEnv('ANTHROPIC_API_KEY', 'chave-sintetica')
     vi.stubEnv('GRAPH_TENANT_ID', 'tenant-sintetico')
     vi.stubEnv('GRAPH_CLIENT_ID', 'cliente-sintetico')
     vi.stubEnv('GRAPH_CLIENT_SECRET', 'segredo-sintetico')

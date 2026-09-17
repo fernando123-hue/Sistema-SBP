@@ -21,6 +21,7 @@ import { lerCookie, montarCookie } from './sessao'
 const ORIGINAL = {
   acesso: process.env['ACESSO_LOCAL_SEM_SENHA'],
   nodeEnv: process.env['NODE_ENV'],
+  busca: process.env['BUSCA_SECRET'],
 }
 
 function configurar(acesso: string | undefined, nodeEnv: 'development' | 'test' | 'production'): void {
@@ -39,6 +40,8 @@ afterEach(() => {
   if (ORIGINAL.acesso === undefined) delete process.env['ACESSO_LOCAL_SEM_SENHA']
   else process.env['ACESSO_LOCAL_SEM_SENHA'] = ORIGINAL.acesso
   Object.assign(process.env, { NODE_ENV: ORIGINAL.nodeEnv })
+  if (ORIGINAL.busca === undefined) delete process.env['BUSCA_SECRET']
+  else process.env['BUSCA_SECRET'] = ORIGINAL.busca
   limparCacheDeAmbiente()
 })
 
@@ -62,6 +65,9 @@ describe('ligar e desligar', () => {
   })
 
   it('desligado em produção, sobe normalmente e continua desligado', () => {
+    // Produção recusa os segredos públicos da suíte (N-18).
+    process.env['SESSAO_SECRET'] = 'q8Zr2vN6pW1xT4kL9mB3cF7hJ0sD5gYa'
+    process.env['BUSCA_SECRET'] = 'k3Lm9Pq2Rs7Tv1Wx5Yz8Ab4Cd6Ef0Gh'
     configurar('0', 'production')
     expect(() => ambiente()).not.toThrow()
     expect(acessoLocalHabilitado()).toBe(false)
