@@ -18,6 +18,7 @@ import {
   precisaRehash,
   sortearSenhaProvisoria,
 } from '../servidor/credenciais'
+import { transacaoComNovaTentativa } from '../servidor/conflito'
 import { novaCorrelacao } from '../servidor/observabilidade'
 import type { Banco } from '../servidor/prisma'
 import { auditar } from './auditoria'
@@ -391,7 +392,29 @@ export async function definirAtivacao(
   // Devolver ao pool na MESMA transação é a saída que não depende de uma tela
   // que não existe: o item volta a não ter dono, a próxima rodada o recolhe com
   // o crédito atualizado, e a trilha registra por quê.
-  const devolvidos = await banco.$transaction(async (tx) => {
+  const devolvidos = await transacaoComNovaTentativa(banco, async (tx) => {
+    // OS ITENS ABERTOS DA PESSOA SÃO LIDOS E TRAVADOS PRIMEIRO, antes de
+    // qualquer outra leitura ou escrita (revisão do PR que corrigiu o C-10).
+    //
+    // - Primeiro: `concluir` segura o item e precisa ler a linha da pessoa para
+    //   gravar a execução; se esta transação atualizasse a pessoa antes, as duas
+    //   se esperariam — impasse.
+    // - Leitura TRAVADA (`FOR UPDATE`), não `findMany`: no REPEATABLE READ a
+    //   leitura comum usa a fotografia do começo da transação, e o item que
+    //   outra pessoa acabou de concluir ainda aparecia aberto — era devolvido ao
+    //   grupo com a execução já gravada. A leitura travada espera e devolve o
+    //   estado de agora.
+    const abertos = dados.ativo
+      ? []
+      : await tx.$queryRaw<{ id: string; itemId: string }[]>`
+          SELECT a.id, a.itemId FROM \`Atribuicao\` a
+          JOIN \`Item\` i ON i.id = a.itemId
+          WHERE a.colaboradorId = ${colaborador.id}
+            AND a.ativa = 1
+            AND i.status IN ('distribuido', 'em_andamento')
+          ORDER BY i.id
+          FOR UPDATE`
+
     // NUNCA deixar a associação sem gestor ativo — conferido DENTRO da
     // transação que desativa.
     //
@@ -433,15 +456,6 @@ export async function definirAtivacao(
     })
 
     if (dados.ativo) return 0
-
-    const abertos = await tx.atribuicao.findMany({
-      where: {
-        colaboradorId: colaborador.id,
-        ativa: true,
-        item: { status: { in: ['distribuido', 'em_andamento'] } },
-      },
-      select: { id: true, itemId: true },
-    })
 
     for (const atribuicao of abertos) {
       await tx.atribuicao.update({

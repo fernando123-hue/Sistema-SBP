@@ -8,6 +8,7 @@ import {
 } from '../core/esquemas'
 import { camposAlterados, compararRevisao, type DecisaoHumana } from '../core/qualidade-ia'
 import { exigirPapel, type Ator } from '../servidor/ator'
+import { transacaoComNovaTentativa } from '../servidor/conflito'
 import { chaveDeBusca } from '../servidor/cpf-protegido'
 import { novaCorrelacao, registrarLog } from '../servidor/observabilidade'
 import type { ItemEmRevisao } from '../core/tipos'
@@ -140,7 +141,14 @@ export async function resolver(
   const dados = ResolucaoRevisaoSchema.parse(entrada)
   const correlacaoId = novaCorrelacao()
 
-  return banco.$transaction(async (tx) => {
+  // Impasse com outra transação é repetido (`servidor/conflito.ts`).
+  return transacaoComNovaTentativa(banco, async (tx) => {
+    // TRAVA A REVISÃO ANTES DE LER (achado C-22). A conferência de
+    // `resolvidoEm` era uma leitura sem trava: duas pessoas passavam por ela ao
+    // mesmo tempo, a segunda sobrescrevia item, desfecho e autor da primeira, e
+    // a trilha ficava com "aprovada" e "recusada" para o mesmo item. Travada, a
+    // segunda espera e lê a revisão já resolvida.
+    await tx.$queryRaw`SELECT id FROM \`Revisao\` WHERE id = ${dados.revisaoId} FOR UPDATE`
     const revisao = await tx.revisao.findUnique({
       where: { id: dados.revisaoId },
       include: { item: true },
@@ -153,9 +161,15 @@ export async function resolver(
 
     const categoria = await tx.categoria.findUnique({
       where: { codigo: dados.categoriaCodigo },
-      select: { id: true },
+      select: { id: true, ativa: true },
     })
     if (!categoria) throw new ErroDeNegocio(`Categoria "${dados.categoriaCodigo}" não existe.`)
+    // Categoria desativada não entra em rodada nem no painel (achado C-23): o
+    // item aprovado ali sumiria da operação sem erro. Mesma recusa do registro
+    // manual (`conferirDestino`).
+    if (!categoria.ativa) {
+      throw new ErroDeNegocio(`A categoria "${dados.categoriaCodigo}" está desativada. Escolha outra.`)
+    }
 
     // Sem título: o que a IA extraiu pode ter nome de associado, e a trilha
     // não tem prazo (`A23(d)`).

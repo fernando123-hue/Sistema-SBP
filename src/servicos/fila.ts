@@ -1,7 +1,8 @@
 import { ErroDeNegocio } from '../core/erros'
 import { ehOProprio, exigirPapel, type Ator } from '../servidor/ator'
+import { transacaoComNovaTentativa } from '../servidor/conflito'
 import { novaCorrelacao } from '../servidor/observabilidade'
-import type { Banco } from '../servidor/prisma'
+import type { Banco, Transacao } from '../servidor/prisma'
 import { auditar } from './auditoria'
 
 /**
@@ -118,6 +119,20 @@ export async function minhaFila(
  * auditoria à mercê de quem chamasse. Agora não há como declarar ter concluído
  * o trabalho de outra pessoa.
  */
+/**
+ * Trava a linha do item até o fim da transação (achado C-10).
+ *
+ * `concluir`, `devolver` e `transferir` liam atribuição e status sem trava e
+ * decidiam em cima da leitura. No InnoDB (REPEATABLE READ), duas transações
+ * simultâneas passavam na mesma conferência — execução de A com a atribuição
+ * dizendo que o dono é B, item devolvido com trabalho já feito. Travando o
+ * item PRIMEIRO, a segunda espera a primeira terminar, e as leituras que vêm
+ * depois já enxergam o que ela gravou.
+ */
+async function travarItem(tx: Transacao, itemId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM \`Item\` WHERE id = ${itemId} FOR UPDATE`
+}
+
 export async function concluir(
   banco: Banco,
   entrada: { itemId: string; observacao?: string },
@@ -125,7 +140,9 @@ export async function concluir(
 ): Promise<void> {
   const correlacaoId = novaCorrelacao()
 
-  await banco.$transaction(async (tx) => {
+  // Impasse com outra transação é repetido (`servidor/conflito.ts`).
+  await transacaoComNovaTentativa(banco, async (tx) => {
+    await travarItem(tx, entrada.itemId)
     const atribuicao = await tx.atribuicao.findFirst({
       where: { itemId: entrada.itemId, ativa: true },
       include: { item: true },
@@ -186,7 +203,9 @@ export async function transferir(
 
   const correlacaoId = novaCorrelacao()
 
-  await banco.$transaction(async (tx) => {
+  // Impasse com outra transação é repetido (`servidor/conflito.ts`).
+  await transacaoComNovaTentativa(banco, async (tx) => {
+    await travarItem(tx, entrada.itemId)
     const atual = await tx.atribuicao.findFirst({
       where: { itemId: entrada.itemId, ativa: true },
       include: { item: { select: { status: true } } },
@@ -300,7 +319,9 @@ export async function devolver(
 
   const correlacaoId = novaCorrelacao()
 
-  await banco.$transaction(async (tx) => {
+  // Impasse com outra transação é repetido (`servidor/conflito.ts`).
+  await transacaoComNovaTentativa(banco, async (tx) => {
+    await travarItem(tx, entrada.itemId)
     const atual = await tx.atribuicao.findFirst({
       where: { itemId: entrada.itemId, ativa: true },
       include: { item: { select: { status: true } } },
