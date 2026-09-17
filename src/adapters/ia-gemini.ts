@@ -94,7 +94,7 @@ export const PERFIL_GEMINI: PerfilDoFornecedor = {
   // diferentes em modelos diferentes: sem ele, a medida de acerto somaria duas
   // populações distintas sob um rótulo só, e a comparação entre fornecedores —
   // que é a razão de existir um segundo — ficaria impossível sobre o histórico.
-  versaoPrompt: 'gemini-1.0.0',
+  versaoPrompt: 'gemini-1.1.0',
   /**
    * Modelo padrão: o `flash` da camada gratuita.
    *

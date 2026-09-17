@@ -41,7 +41,7 @@ const RESPOSTA_VALIDA = {
       categoriaCodigo: 'FICHA_CADASTRO',
       titulo: 'Envio de ficha',
       confianca: 0.9,
-      campos: { nome: 'Fulano Sintético' },
+      campos: [{ chave: 'nome', valor: 'Fulano Sintético' }],
       camposAusentes: ['cpf'],
       ligaMencionada: null,
       observacao: null,

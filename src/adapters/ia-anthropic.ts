@@ -52,7 +52,7 @@ const TEMPO_LIMITE_MS = 120_000
  */
 export const PERFIL_ANTHROPIC: PerfilDoFornecedor = {
   nome: 'anthropic',
-  versaoPrompt: 'anthropic-1.0.0',
+  versaoPrompt: 'anthropic-1.1.0',
   modeloPadrao: 'claude-sonnet-5',
   ehCredencialRecusada: (erro) =>
     erro instanceof Anthropic.AuthenticationError ||
