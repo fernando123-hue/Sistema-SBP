@@ -20,7 +20,7 @@ Um Cérebro que não depende de modelo, um Harness que governa toda a inteligên
 
 Correções já assumidas: o Cérebro **propõe**, não controla o fluxo; evolução é avaliação com promoção humana, nunca mudança automática.
 
-**A lacuna que destrava quase tudo:** um conjunto de avaliação com gabarito e nota automática. Sem ele não dá para comparar modelos, justificar um modelo local nem promover um prompt.
+**A lacuna que destrava quase tudo:** um conjunto de avaliação com gabarito e nota automática. Sem ele não dá para comparar modelos, justificar um modelo local nem promover um prompt. **Existe desde 17/09/2026** (`npm run ia:avaliar`, `DECISOES.md § AT-36`); falta a equipe conferir as respostas esperadas (`§ H.4` item 31).
 
 ## Dado e equipe
 
