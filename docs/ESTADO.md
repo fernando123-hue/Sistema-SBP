@@ -1,14 +1,26 @@
 # Estado do projeto — retomada
 
-Última atualização: **17/09/2026, fim da tarde, antes de um `/clear`** — `main` em `43e305b` (PR #69). **PR #70 aberto** (N-37), falta revisar e mesclar. Suíte: **93 arquivos, 1051 testes** verde na branch do #70. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
+Última atualização: **17/09/2026, noite** — `main` em `81bf174` (PR #70 mesclado) mais este PR de documentos. Nenhum PR de código aberto. Suíte: **93 arquivos, 1052 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### 17/09/2026, noite — direção consolidada e IA local
+>
+> - **`docs/DIRECAO.md`** (novo): o rumo em uma página. Informação nova do dono é comparada com ela antes de virar trabalho.
+> - **`A56`**: Odysseus é ferramenta, nunca o cérebro. O SBP fala com qualquer servidor de modelo compatível com OpenAI. Máquina da IA local garantida, **8 GB de RAM**; o dono avisa quando chegar.
+> - **Plano autorizado pelo dono, nesta ordem:**
+>   1. ~~Fechar o PR #70~~ — **mesclado** (N-37; a revisão de segurança achou despejo cruzado entre rotas, corrigido no mesmo PR com um mapa por compartimento; resíduo baixo na auditoria).
+>   2. Este PR de documentos.
+>   3. **Gabarito de avaliação** com nota automática (dados sintéticos, qualquer fornecedor).
+>   4. **`ia-local.ts`**, testado contra servidor falso, com `IA_PARA_DADO_REAL.local = false`.
+>   5. Com a máquina em mãos: medir o hardware, testar 2 ou 3 modelos pequenos pelo gabarito, e o dono decide.
+> - A fila de segurança abaixo (C-06, C-11…) continua valendo depois disso.
 >
 > ### Retomada de 17/09/2026, fim da tarde — depois de um `/clear`
 >
 > **O dono pediu: logo depois do `/clear`, um RELATÓRIO** do que foi feito nesta rodada. Monte-o a partir deste bloco e do bloco da manhã logo abaixo (PRs #56 a #70), da tabela de `docs/auditoria/2026-09-17-achados-da-auditoria-por-agentes.md` (coluna Destino) e das perguntas abertas. Texto claro e curto, sem termo técnico sem explicação (ver *Como o dono prefere trabalhar*). Ofereça publicar como página se ele quiser compartilhar.
 >
-> **1. Primeiro passo técnico: fechar o PR #70** (`fix/n37-teto-do-limitador`, N-37 — o mapa do limitador de taxa ganhou teto real; C-14 registrado como adiado para a publicação). Código, teste e documentos estão prontos e a suíte está verde. **Faltam as duas revisões por agente** (a técnica foi interrompida pelo limite de uso): rodar `code-reviewer` e depois `security-reviewer`, uma de cada vez, publicar cada uma com `gh pr comment`, **usar o link que o comando imprime** no corpo (seções *Revisão técnica* e *Revisão de segurança*, hoje "(pendente)"), ler os checks um a um e mesclar. O job *Processo* está vermelho só por isso.
+> **1. ~~Primeiro passo técnico: fechar o PR #70~~ — FEITO na noite de 17/09.** (`fix/n37-teto-do-limitador`, N-37 — o mapa do limitador de taxa ganhou teto real; C-14 registrado como adiado para a publicação). Código, teste e documentos estão prontos e a suíte está verde. **Faltam as duas revisões por agente** (a técnica foi interrompida pelo limite de uso): rodar `code-reviewer` e depois `security-reviewer`, uma de cada vez, publicar cada uma com `gh pr comment`, **usar o link que o comando imprime** no corpo (seções *Revisão técnica* e *Revisão de segurança*, hoje "(pendente)"), ler os checks um a um e mesclar. O job *Processo* está vermelho só por isso.
 >
 > **2. Ligar o ambiente:** passo 1 da retomada da madrugada (abaixo). **O MySQL desta máquina ficou ligado desde 16/09 sem `--mysqlx=OFF`** (porta 33060 aberta em todas as interfaces, M-01) — o classificador recusou que o agente o desligasse; é o dono quem desliga e sobe de novo. O servidor de visualização foi parado.
 >
