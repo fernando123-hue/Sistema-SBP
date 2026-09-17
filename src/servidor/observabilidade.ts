@@ -88,6 +88,16 @@ export interface EventoEntrada {
   duracaoMs?: number | null
 }
 
+/**
+ * O tamanho de `EventoProcessamento.referencia` (VARCHAR(191)).
+ *
+ * A referência costuma ser um `messageId`, que vem de fora e pode ser maior
+ * que a coluna (achado C-04). Gravar a falha não pode falhar: o erro do banco
+ * subia e derrubava a sincronização inteira. O começo do identificador basta
+ * para uma pessoa achar a mensagem.
+ */
+export const TAMANHO_MAXIMO_REFERENCIA = 191
+
 export async function registrarEvento(banco: Transacao, evento: EventoEntrada): Promise<void> {
   await banco.eventoProcessamento.create({
     data: {
@@ -95,7 +105,7 @@ export async function registrarEvento(banco: Transacao, evento: EventoEntrada): 
       correlacaoId: evento.correlacaoId,
       etapa: evento.etapa,
       situacao: evento.situacao,
-      referencia: evento.referencia ?? null,
+      referencia: evento.referencia?.slice(0, TAMANHO_MAXIMO_REFERENCIA) ?? null,
       mensagem: evento.mensagem ?? null,
       // `detalhe` também passa por redação. Hoje só recebe contagens agregadas,
       // mas o campo é gravado no banco sem TTL: um chamador futuro que passasse

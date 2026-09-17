@@ -303,6 +303,16 @@ export const TAMANHO_MAXIMO_ASSUNTO = 1000
 export const TAMANHO_MAXIMO_NOME_ANEXO = 255
 export const TAMANHO_MAXIMO_TIPO_DECLARADO = 200
 export const MAXIMO_ANEXOS_POR_EMAIL = 50
+
+/**
+ * O tamanho de `Email.messageId` no banco (VARCHAR(191), o padrão do Prisma
+ * para texto único no MySQL). Achado C-04: o esquema aceitava 500, e um
+ * identificador entre 192 e 500 — escolhido por quem manda o e-mail — passava
+ * pela validação, pagava a IA e só falhava ao gravar; sem gravar, voltava na
+ * leitura seguinte e pagava de novo, para sempre. O teste
+ * `servicos/identificador-longo.test.ts` confere este número contra a coluna.
+ */
+export const TAMANHO_MAXIMO_MESSAGE_ID = 191
 export const TAMANHO_MAXIMO_ANEXO_BYTES = 25 * 1024 * 1024
 
 // ─── E-mail bruto (entrada da ingestão) ──────────────────────
@@ -340,7 +350,7 @@ export const AnexoSchema = z.object({
 
 export const EmailBrutoSchema = z.object({
   /** Chave de idempotência. Reprocessar o mesmo e-mail nunca duplica trabalho. */
-  messageId: z.string().min(1).max(500),
+  messageId: z.string().min(1).max(TAMANHO_MAXIMO_MESSAGE_ID),
   remetente: z.string().min(1).max(320),
   assunto: z.string().max(TAMANHO_MAXIMO_ASSUNTO).default(''),
   corpo: z.string().max(TAMANHO_MAXIMO_CORPO).default(''),
