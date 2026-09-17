@@ -1,4 +1,5 @@
 import { ErroOperacional } from '../core/erros'
+import { inicioDoDia } from '../core/util/datas'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { AssistentePort } from '../ports/assistente'
 import type { AiPort } from '../ports/ia'
@@ -10,7 +11,7 @@ import { AssistenteComModelo } from './assistente-modelo'
 import { clienteAnthropic, IaAnthropic, PERFIL_ANTHROPIC } from './ia-anthropic'
 import { clienteGemini, IaGemini, PERFIL_GEMINI } from './ia-gemini'
 import { IaMock } from './ia-mock'
-import { clienteDoGraph, IngestaoGraph } from './ingestao-graph'
+import { clienteDoGraph, IngestaoGraph, IngestaoIndisponivelError } from './ingestao-graph'
 import { IngestaoMock, type OpcoesIngestaoMock } from './ingestao-mock'
 
 /**
@@ -114,8 +115,17 @@ export function criarIngestaoPort(opcoes: OpcoesIngestaoMock): IngestaoPort {
   switch (nome) {
     case 'mock':
       return new IngestaoMock(opcoes)
-    case 'graph':
-      return new IngestaoGraph(clienteDoGraph())
+    case 'graph': {
+      const lerDesde = ambiente().GRAPH_LER_DESDE
+      // Falha alta e nominal, como as credenciais: sem a data, a primeira
+      // leitura pegaria tudo o que a planilha já tratou (`AT-35`).
+      if (!lerDesde) {
+        throw new IngestaoIndisponivelError(
+          'INGESTAO_ADAPTER="graph" exige GRAPH_LER_DESDE (AAAA-MM-DD): o dia a partir do qual a caixa é lida.',
+        )
+      }
+      return new IngestaoGraph(clienteDoGraph(), { lerDesde: inicioDoDia(lerDesde) })
+    }
     default:
       throw new AdapterIndisponivelError('ingestão', nome)
   }

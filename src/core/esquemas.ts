@@ -299,14 +299,18 @@ export const CamposExtraidosSchema = z
 export const LIMITE_ITENS_POR_REGISTRO_MANUAL = 50
 
 export const TAMANHO_MAXIMO_CORPO = 200_000
+export const TAMANHO_MAXIMO_ASSUNTO = 1000
+export const TAMANHO_MAXIMO_NOME_ANEXO = 255
+export const TAMANHO_MAXIMO_TIPO_DECLARADO = 200
+export const MAXIMO_ANEXOS_POR_EMAIL = 50
 export const TAMANHO_MAXIMO_ANEXO_BYTES = 25 * 1024 * 1024
 
 // ─── E-mail bruto (entrada da ingestão) ──────────────────────
 
 export const AnexoSchema = z.object({
-  nome: z.string().min(1).max(255),
+  nome: z.string().min(1).max(TAMANHO_MAXIMO_NOME_ANEXO),
   /** O que o REMETENTE alegou. Registrado para auditoria, nunca usado para decidir. */
-  tipoDeclarado: z.string().max(200).default('application/octet-stream'),
+  tipoDeclarado: z.string().max(TAMANHO_MAXIMO_TIPO_DECLARADO).default('application/octet-stream'),
   /**
    * O tamanho declarado, SEM teto aqui — e a ausência do teto é a regra.
    *
@@ -338,9 +342,9 @@ export const EmailBrutoSchema = z.object({
   /** Chave de idempotência. Reprocessar o mesmo e-mail nunca duplica trabalho. */
   messageId: z.string().min(1).max(500),
   remetente: z.string().min(1).max(320),
-  assunto: z.string().max(1000).default(''),
+  assunto: z.string().max(TAMANHO_MAXIMO_ASSUNTO).default(''),
   corpo: z.string().max(TAMANHO_MAXIMO_CORPO).default(''),
-  anexos: z.array(AnexoSchema).max(50).default([]),
+  anexos: z.array(AnexoSchema).max(MAXIMO_ANEXOS_POR_EMAIL).default([]),
   recebidoEm: z.coerce.date(),
   origem: z.enum(['mock', 'imap', 'graph', 'gmail', 'manual']).default('mock'),
 })

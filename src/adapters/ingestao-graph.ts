@@ -1,10 +1,14 @@
 import {
   EmailBrutoSchema,
   TAMANHO_MAXIMO_ANEXO_BYTES,
+  TAMANHO_MAXIMO_ASSUNTO,
+  TAMANHO_MAXIMO_NOME_ANEXO,
+  TAMANHO_MAXIMO_TIPO_DECLARADO,
   type EmailBruto,
 } from '../core/esquemas'
 import { ErroOperacional } from '../core/erros'
-import type { IngestaoPort } from '../ports/ingestao'
+import { resumoDeValidacao } from '../core/seguranca/resumo-de-validacao'
+import type { IngestaoPort, PedidoDeBusca } from '../ports/ingestao'
 import { ambiente } from '../servidor/ambiente'
 import { registrarLog } from '../servidor/observabilidade'
 
@@ -80,55 +84,122 @@ export class IngestaoIndisponivelError extends ErroOperacional {
 }
 
 /**
- * Quantas mensagens uma sincronização traz, no máximo.
+ * Quantas mensagens NOVAS uma sincronização lê, no máximo.
  *
- * Teto, não paginação: a primeira sincronização de uma caixa com anos de
- * histórico traria dezenas de milhares de mensagens, e **cada uma custa uma
- * chamada paga ao modelo**. O limite falha alto quando é atingido, em vez de
- * cortar calado — quem estiver implantando precisa decidir de que data começar,
- * e não descobrir depois que metade do histórico virou item.
+ * Cada uma custa uma chamada paga ao modelo e o download dos anexos. Até o
+ * achado C-03 o teto derrubava a leitura inteira — e, como a caixa só cresce
+ * (`A5`) e a leitura não tinha janela, derrubava para sempre. Agora ele conta
+ * só o que ainda não virou trabalho, lê as mais antigas e deixa o resto para a
+ * próxima sincronização, **dizendo quantas ficaram** (`adiados`).
  */
 const TETO_POR_SINCRONIZACAO = 200
+
+export interface OpcoesDoGraph {
+  /**
+   * A data a partir da qual o sistema lê esta caixa (`GRAPH_LER_DESDE`).
+   *
+   * É a data da implantação, escolhida por quem implanta: o que chegou antes
+   * foi tratado pela planilha, e lê-lo de novo criaria trabalho em dobro.
+   * Obrigatória na fábrica; opcional aqui só para os testes do formato.
+   */
+  lerDesde?: Date
+}
 
 export class IngestaoGraph implements IngestaoPort {
   readonly nome = 'graph'
 
-  constructor(private readonly cliente: ClienteDoGraph) {}
+  constructor(
+    private readonly cliente: ClienteDoGraph,
+    private readonly opcoes: OpcoesDoGraph = {},
+  ) {}
 
-  async buscarNovos(desde?: Date): Promise<EmailBruto[]> {
-    const mensagens = await this.cliente.listarMensagens(desde)
+  async buscarNovos(pedido: PedidoDeBusca = {}): Promise<EmailBruto[]> {
+    const mensagens = await this.cliente.listarMensagens(this.desdeEfetivo(pedido.desde))
 
-    if (mensagens.length > TETO_POR_SINCRONIZACAO) {
-      throw new IngestaoIndisponivelError(
-        `a caixa devolveu ${mensagens.length} mensagens, acima do teto de ${TETO_POR_SINCRONIZACAO} ` +
-          `por sincronização. Escolha a data a partir da qual o sistema deve ler, em vez de ` +
-          `processar o histórico inteiro — cada mensagem custa uma chamada ao modelo.`,
-      )
+    const conhecidos = pedido.jaProcessados
+      ? await pedido.jaProcessados(mensagens.map(chaveDaMensagem))
+      : new Set<string>()
+    const novas = mensagens.filter((mensagem) => !conhecidos.has(chaveDaMensagem(mensagem)))
+
+    // A listagem vem da mais antiga para a mais nova: as que ficam para depois
+    // são as mais recentes, e a ordem de chegada se mantém.
+    const agora = novas.slice(0, TETO_POR_SINCRONIZACAO)
+    const adiados = novas.length - agora.length
+    if (adiados > 0) {
+      registrarLog('aviso', 'mais mensagens novas que o teto: o resto fica para a próxima leitura', {
+        adapter: this.nome,
+        adiados,
+        teto: TETO_POR_SINCRONIZACAO,
+      })
+      pedido.avisar?.({ tipo: 'adiados', quantidade: adiados })
     }
 
     const emails: EmailBruto[] = []
 
-    for (const mensagem of mensagens) {
-      const anexos = mensagem.hasAttachments ? await this.anexosDe(mensagem) : []
+    for (const mensagem of agora) {
+      // Anexo que não baixa (mensagem movida ou apagada entre a lista e o
+      // pedido, rede) recusa ESTA mensagem, nunca o lote — a mesma classe do
+      // C-02, na busca de anexo (revisão do PR). Fora da trilha vai só o nome
+      // do erro: a resposta da API não é conteúdo nosso para guardar.
+      let anexos: EmailBruto['anexos']
+      try {
+        anexos = mensagem.hasAttachments ? await this.anexosDe(mensagem) : []
+      } catch (erro) {
+        this.recusar(pedido, mensagem, `anexos indisponíveis (${erro instanceof Error ? erro.name : 'erro'})`)
+        continue
+      }
 
-      emails.push(
-        EmailBrutoSchema.parse({
-          // `internetMessageId` é o identificador que atravessa servidores e
-          // sobrevive a uma mensagem movida de pasta; `id` é do Graph e muda
-          // nesse caso. Usar o `id` faria o mesmo e-mail voltar a ser trabalho
-          // novo só porque alguém o arrastou na caixa.
-          messageId: mensagem.internetMessageId ?? mensagem.id,
-          remetente: mensagem.from?.emailAddress?.address ?? 'desconhecido@invalido',
-          assunto: mensagem.subject ?? '',
-          corpo: mensagem.body?.content ?? '',
-          anexos,
-          recebidoEm: mensagem.receivedDateTime,
-          origem: 'graph',
-        } satisfies Record<string, unknown>),
-      )
+      // `safeParse` POR MENSAGEM (achado C-02): antes, um `parse` aqui — fora
+      // do `try` por e-mail da ingestão — fazia uma única mensagem de fora
+      // derrubar a leitura inteira. O que não cabe no esquema vira aviso com o
+      // identificador, e as outras seguem.
+      const lido = EmailBrutoSchema.safeParse({
+        messageId: chaveDaMensagem(mensagem),
+        // `||`, não `??`: remetente vazio também não é endereço.
+        remetente: mensagem.from?.emailAddress?.address || 'desconhecido@invalido',
+        // Assunto é metadado: cortar não muda o pedido, e recusar o e-mail por
+        // um assunto longo faria o pedido sumir por um detalhe.
+        assunto: (mensagem.subject ?? '').slice(0, TAMANHO_MAXIMO_ASSUNTO),
+        // O corpo NÃO é cortado aqui. Um corpo acima do teto é recusado pelo
+        // nome e uma pessoa o trata na caixa — cortar mandaria ao modelo, e à
+        // retenção, um pedido pela metade sem ninguém saber.
+        corpo: mensagem.body?.content ?? '',
+        anexos,
+        recebidoEm: mensagem.receivedDateTime,
+        origem: 'graph',
+      } satisfies Record<string, unknown>)
+
+      if (lido.success) {
+        emails.push(lido.data)
+        continue
+      }
+
+      this.recusar(pedido, mensagem, resumoDeValidacao(lido.error))
     }
 
     return emails
+  }
+
+  private recusar(pedido: PedidoDeBusca, mensagem: MensagemDoGraph, motivo: string): void {
+    registrarLog('erro', 'mensagem da caixa não pôde ser lida: recusada, as outras seguem', {
+      adapter: this.nome,
+      messageId: chaveDaMensagem(mensagem),
+      motivo,
+    })
+    pedido.avisar?.({
+      tipo: 'recusado',
+      messageId: chaveDaMensagem(mensagem),
+      recebidoEm: mensagem.receivedDateTime || null,
+      motivo,
+    })
+  }
+
+  /** A mais recente entre a janela pedida e a data de início da implantação. */
+  private desdeEfetivo(pedido: Date | undefined): Date | undefined {
+    const { lerDesde } = this.opcoes
+    if (!pedido) return lerDesde
+    if (!lerDesde) return pedido
+    return pedido > lerDesde ? pedido : lerDesde
   }
 
   /**
@@ -161,8 +232,8 @@ export class IngestaoGraph implements IngestaoPort {
       return {
         // O nome vem do remetente e é normalizado depois, na ingestão — aqui
         // ele é dado, não caminho.
-        nome: anexo.name ?? 'anexo-sem-nome',
-        tipoDeclarado: anexo.contentType ?? 'application/octet-stream',
+        nome: nomeQueCabe(anexo.name || 'anexo-sem-nome'),
+        tipoDeclarado: (anexo.contentType || 'application/octet-stream').slice(0, TAMANHO_MAXIMO_TIPO_DECLARADO),
         tamanho: anexo.size,
         hash: null,
         ...(cabe ? { conteudo: Uint8Array.from(Buffer.from(anexo.contentBytes!, 'base64')) } : {}),
@@ -171,10 +242,40 @@ export class IngestaoGraph implements IngestaoPort {
   }
 }
 
+/**
+ * `internetMessageId` é o identificador que atravessa servidores e sobrevive a
+ * uma mensagem movida de pasta; `id` é do Graph e muda nesse caso. Usar o `id`
+ * faria o mesmo e-mail voltar a ser trabalho novo só porque alguém o arrastou
+ * na caixa.
+ */
+function chaveDaMensagem(mensagem: MensagemDoGraph): string {
+  return mensagem.internetMessageId ?? mensagem.id
+}
+
+/**
+ * Nome de anexo longo demais é cortado no MEIO, guardando a extensão: é ela que
+ * a ingestão usa, com a assinatura do arquivo, para decidir se aceita.
+ */
+function nomeQueCabe(nome: string): string {
+  if (nome.length <= TAMANHO_MAXIMO_NOME_ANEXO) return nome
+  const ponto = nome.lastIndexOf('.')
+  const extensao = ponto > 0 && nome.length - ponto <= 16 ? nome.slice(ponto) : ''
+  return nome.slice(0, TAMANHO_MAXIMO_NOME_ANEXO - extensao.length) + extensao
+}
+
 // ─── A conversa com a API, que é a única parte específica da Microsoft ───────
 
 const ESCOPO = 'https://graph.microsoft.com/.default'
 const RAIZ = 'https://graph.microsoft.com/v1.0'
+/**
+ * Quantas mensagens a listagem de uma janela aceita, no máximo.
+ *
+ * Não é o teto de trabalho (esse é `TETO_POR_SINCRONIZACAO`, sobre as novas):
+ * é a trava contra uma janela absurda — data de início errada, caixa
+ * inundada — que encheria a memória com corpos de e-mail. Falha alta.
+ */
+const LIMITE_DA_LISTAGEM = 5_000
+
 /** Tempo limite por chamada. Uma caixa que não responde não pode pendurar a ingestão. */
 const TEMPO_LIMITE_MS = 60_000
 
@@ -307,16 +408,23 @@ export function clienteDoGraph(): ClienteDoGraph {
 
       const mensagens: MensagemDoGraph[] = []
 
-      // Segue a paginação até o fim. O teto de `TETO_POR_SINCRONIZACAO` é
-      // conferido por quem chama, com erro explícito — aqui, parar calado na
-      // primeira página seria perder trabalho sem sinal nenhum.
+      // Segue a paginação ATÉ O FIM da janela. Parava ao passar de 200, quando
+      // o teto derrubava a leitura; com a janela (`AT-35`), as primeiras
+      // páginas são quase todas de mensagens já processadas, e parar ali
+      // devolveria só as velhas — as novas sumiriam sem aviso (revisão do PR).
+      // O teto de 200 vale para as NOVAS, e é conferido por quem chama.
       while (true) {
         const pagina = await pedir(caminho)
         mensagens.push(...((pagina['value'] as MensagemDoGraph[] | undefined) ?? []))
 
         const proxima = pagina['@odata.nextLink']
         if (typeof proxima !== 'string') return mensagens
-        if (mensagens.length > TETO_POR_SINCRONIZACAO) return mensagens
+        if (mensagens.length > LIMITE_DA_LISTAGEM) {
+          throw new IngestaoIndisponivelError(
+            `mais de ${LIMITE_DA_LISTAGEM} mensagens na janela de leitura. Isso não é uma semana normal ` +
+              `da secretaria: confira GRAPH_LER_DESDE e a caixa antes de sincronizar de novo.`,
+          )
+        }
 
         caminho = proxima.replace(RAIZ, '')
       }

@@ -30,13 +30,13 @@
 > 2. ~~**N-01**~~ **FEITO (17/09/2026, manhã):** confirmado lendo o código e corrigido — `src/testes/preparar-banco.ts` (`conferirBaseDeTeste`) recusa, antes do `migrate reset`, qualquer base cujo nome não termine em `_teste`. Um `DATABASE_URL` da base `sbp` esquecido no shell agora derruba a suíte com mensagem clara, sem apagar nada.
 > 3. **Os 4 altos confirmados**, um PR por tema (nível 3):
 >    - **C-01** `src/adapters/ia-anthropic.ts:88` — com a Anthropic, `campos` sai sempre vazio (nome, CPF, CRM nunca extraídos). **CORRIGIDO (17/09/2026, manhã):** `campos` passou a viajar do modelo como lista de pares `{chave, valor}` (a saída estruturada da Anthropic fecha todo objeto e reduzia o mapa a `{}`); prompts `anthropic-1.1.0` e `gemini-1.1.0`. **Ainda falta, antes da chave paga:** a amostra contra o modelo real (`A49`) e a rotina do Gemini (`A50`) mostrar `campos` preenchido com o formato novo.
->    - **C-02 e C-03** `src/adapters/ingestao-graph.ts:98,115` — um e-mail externo grande demais, ou o 201º e-mail da caixa, trava a ingestão real para sempre.
+>    - ~~**C-02 e C-03**~~ **CORRIGIDOS (17/09/2026, manhã):** a caixa é lida numa janela de 7 dias a partir de `GRAPH_LER_DESDE` (novo, obrigatório com `graph` — o dia da implantação); mensagem fora do esquema vira falha com o identificador, sem derrubar as outras; o já processado sai antes do teto de 200 (`AT-35`).
 >    - **C-04** `src/core/esquemas.ts:339` — `messageId` aceito até 500 caracteres, coluna com 191: o e-mail volta a pagar IA a cada sincronização.
 > 4. **Verificar os 40 restantes sem verificação (N-02…)**, um por vez, lendo o código (sem workflow) — cada um vira confirmado (com destino) ou refutado (com motivo) na tabela.
 > 5. **Médios, baixos e informativos confirmados**, agrupados por tema, e `A54` (registro de uso, teto diário, disjuntor da IA — há achados confirmados sobre isso).
 > 6. Preencher a coluna **Destino** de todos os achados; nenhum fica sem destino. Decisão de negócio vira pergunta ao dono (`§ H.4`).
 >
-> **4. Esperando gente de fora:** TI da associação (Microsoft 365, `Mail.Read` só da caixa, subpastas — `AT-33`); Anthropic só depois da rodada e de C-01; onde publicar (`A46`); canal de feedback (`A21`); papel `dono` (`A32` + `§ H.4` item 29); contar à equipe que as buscas são contadas (`A44(i)`).
+> **4. Esperando gente de fora:** TI da associação (Microsoft 365, `Mail.Read` só da caixa, subpastas — `AT-33`; e, no dia de ligar, o `GRAPH_LER_DESDE` — `AT-35`); Anthropic só depois da rodada e de C-01; onde publicar (`A46`); canal de feedback (`A21`); papel `dono` (`A32` + `§ H.4` item 29); contar à equipe que as buscas são contadas (`A44(i)`).
 >
 > **5. Armadilhas desta máquina, novas:**
 > - **Git Bash converte argumentos que começam com `/`** em caminho do Windows (`/x` vira `C:/Program Files/Git/x`). Use `MSYS_NO_PATHCONV=1` antes do comando.

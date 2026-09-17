@@ -13,7 +13,7 @@ import { validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
 import type { ResumoIngestao } from '../core/tipos'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import { InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
-import type { IngestaoPort } from '../ports/ingestao'
+import type { AvisoDaBusca, IngestaoPort } from '../ports/ingestao'
 import { ATOR_SISTEMA, exigirPapel, type Ator } from '../servidor/ator'
 import { chaveDeBusca } from '../servidor/cpf-protegido'
 import type { Banco, Transacao } from '../servidor/prisma'
@@ -51,6 +51,78 @@ export interface DependenciasIngestao {
   armazenamento?: ArmazenamentoPort | undefined
 }
 
+/**
+ * Quantos dias para trás cada sincronização relê (achado C-03, `AT-35`).
+ *
+ * Antes não havia janela: a caixa inteira era lida a cada vez, e como ela só
+ * cresce (`A5`), a leitura acabava derrubada pelo teto. A janela não é um
+ * cursor "desde o último e-mail" de propósito: um e-mail que FALHOU não é
+ * gravado (a transação aborta), e um cursor passaria por cima dele — o
+ * `reprocessavel` deixaria de ser verdade sem ninguém ver. Com a janela, a
+ * falha é tentada de novo por uma semana; depois disso fica só o evento, para
+ * uma pessoa tratar na caixa. O que já virou trabalho é descartado pelo
+ * adapter antes do teto, via `jaProcessados`.
+ */
+export const JANELA_DE_RELEITURA_DIAS = 7
+
+/** `IN` com milhares de valores pesa no MySQL; a janela cabe folgada em lotes. */
+const LOTE_DE_CONSULTA = 500
+
+function consultaDeProcessados(banco: Banco) {
+  return async (messageIds: string[]): Promise<ReadonlySet<string>> => {
+    const achados: string[] = []
+    for (let inicio = 0; inicio < messageIds.length; inicio += LOTE_DE_CONSULTA) {
+      const linhas = await banco.email.findMany({
+        where: {
+          messageId: { in: messageIds.slice(inicio, inicio + LOTE_DE_CONSULTA) },
+          processadoEm: { not: null },
+        },
+        select: { messageId: true },
+      })
+      achados.push(...linhas.map((linha) => linha.messageId))
+    }
+    return new Set(achados)
+  }
+}
+
+/**
+ * O que o adapter avisou vira memória operacional.
+ *
+ * Recusa é FALHA com o identificador e a data de chegada — o bastante para uma
+ * pessoa achar a mensagem na caixa, sem copiar conteúdo nenhum para a trilha,
+ * que não tem retenção (invariante 11). Adiamento é `reprocessavel`: nada se
+ * perdeu, a próxima leitura continua.
+ */
+async function registrarAvisos(
+  banco: Banco,
+  correlacaoId: string,
+  avisos: readonly AvisoDaBusca[],
+): Promise<number> {
+  let recusados = 0
+  for (const aviso of avisos) {
+    if (aviso.tipo === 'recusado') {
+      recusados += 1
+      await registrarEvento(banco, {
+        correlacaoId,
+        etapa: 'ingestao',
+        situacao: 'falha',
+        referencia: aviso.messageId,
+        mensagem:
+          `mensagem da caixa recebida em ${aviso.recebidoEm ?? 'data desconhecida'} não pôde ser lida ` +
+          `(${aviso.motivo}) — trate-a direto na caixa`,
+      })
+    } else {
+      await registrarEvento(banco, {
+        correlacaoId,
+        etapa: 'ingestao',
+        situacao: 'reprocessavel',
+        mensagem: `${aviso.quantidade} mensagens novas ficaram para a próxima sincronização (teto por leitura)`,
+      })
+    }
+  }
+  return recusados
+}
+
 export async function sincronizar(
   deps: DependenciasIngestao,
   ator: Ator = ATOR_SISTEMA,
@@ -73,8 +145,14 @@ export async function sincronizar(
     anexosRejeitados: 0,
   }
 
-  const brutos = await deps.ingestao.buscarNovos()
+  const avisos: AvisoDaBusca[] = []
+  const brutos = await deps.ingestao.buscarNovos({
+    desde: new Date(Date.now() - JANELA_DE_RELEITURA_DIAS * 24 * 60 * 60 * 1000),
+    jaProcessados: consultaDeProcessados(deps.banco),
+    avisar: (aviso) => avisos.push(aviso),
+  })
   resumo.recebidos = brutos.length
+  resumo.falhas += await registrarAvisos(deps.banco, correlacaoId, avisos)
 
   await registrarEvento(deps.banco, {
     correlacaoId,

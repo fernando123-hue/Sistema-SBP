@@ -586,6 +586,22 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 ---
 
+### AT-35 — A caixa do Microsoft 365 é lida numa janela de 7 dias, a partir do dia da implantação *(17/09/2026)*
+
+**O defeito (achados C-02 e C-03 da auditoria de 17/09):** o adapter do Graph lia a caixa de entrada **inteira** a cada sincronização e validava cada mensagem com `parse` fora do `try` por e-mail. Uma mensagem fora do esquema (corpo acima de 200 mil caracteres, mais de 50 anexos) derrubava a leitura inteira; acima de 200 mensagens, também. Como a caixa só cresce (`A5` proíbe mover ou apagar), as duas travas eram **para sempre**: nenhum pedido novo entraria até alguém mexer no Outlook.
+
+**O que ficou:**
+- **Janela de releitura de 7 dias** (`JANELA_DE_RELEITURA_DIAS`, em `servicos/ingestao.ts`). Não é um cursor "desde o último e-mail": e-mail que falha não é gravado, e um cursor passaria por cima dele. Com a janela, a falha é tentada de novo por uma semana; depois fica só o evento `reprocessavel`, para uma pessoa tratar na caixa.
+- **`GRAPH_LER_DESDE` obrigatório** com `graph`: o dia da implantação. A leitura começa no mais recente entre ele e a janela. Sem ele, a primeira leitura pegaria a semana que a planilha já tratou — trabalho em dobro, pago.
+- **O que já virou trabalho sai antes do teto** (`jaProcessados`), e antes de baixar anexo. O teto de 200 passa a contar só mensagens novas; as mais antigas vêm agora, o resto na próxima, com evento `reprocessavel` dizendo quantas.
+- **Mensagem fora do esquema é recusada pelo nome**, sem derrubar as outras: evento `falha` com o identificador, a data de chegada e o defeito (sem conteúdo), e o contador de falhas da sincronização sobe. **Corpo acima do teto é recusado, não cortado**: cortar mandaria ao modelo e à retenção um pedido pela metade sem ninguém saber. Assunto, nome e tipo de anexo são metadado: são cortados (o nome guarda a extensão); remetente vazio vira `desconhecido@invalido`.
+
+**Hipóteses:** 7 dias bastam para uma falha passageira (IA fora, rede) se resolver; o dia da implantação é conhecido e único; a listagem de uma semana (só metadado e corpo, sem anexo) é leve o bastante para cada sincronização. **Impacto se estiverem erradas:** falha que dura mais de 7 dias sai da nova tentativa automática (continua visível como evento); uma semana muito movimentada deixa a listagem pesada — aí a janela diminui ou a leitura passa a usar o `deltaLink` do Graph. Uma mensagem recusada gera um evento a cada sincronização enquanto estiver na janela.
+
+**Prova:** `src/adapters/ingestao-graph.test.ts` e `src/servicos/ingestao-leitura-da-caixa.test.ts`, vistos vermelhos contra o código anterior.
+
+**Status:** 🟡 provisória — conferir a janela e a data com uso real, junto com a credencial do TI.
+
 ## D. Pendências do cliente final
 
 Oito questões que só a equipe da secretaria responde. Nenhuma bloqueia a construção — todas têm default configurável.

@@ -148,6 +148,16 @@ const AmbienteSchema = z.object({
   GRAPH_CLIENT_SECRET: z.string().optional(),
   GRAPH_CAIXA: z.string().optional(),
   /**
+   * O dia a partir do qual a caixa é lida (`AAAA-MM-DD`), obrigatório com
+   * `graph` (`AT-35`). É o dia da implantação: o que chegou antes foi tratado
+   * pela planilha, e lê-lo de novo criaria trabalho em dobro — pago.
+   */
+  GRAPH_LER_DESDE: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'GRAPH_LER_DESDE precisa ser uma data AAAA-MM-DD')
+    .optional()
+    .or(z.literal('').transform(() => undefined)),
+  /**
    * Quantos proxies confiáveis ficam na frente da aplicação.
    *
    * `0` (padrão) significa acesso direto — e nesse caso `x-forwarded-for` é
