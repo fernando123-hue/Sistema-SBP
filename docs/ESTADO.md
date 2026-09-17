@@ -1,8 +1,30 @@
 # Estado do projeto — retomada
 
-Última atualização: **17/09/2026, tarde** — `main` em `35dc5d2` (PR #67). Suíte: **91 arquivos, 1032 testes** verde, local e no CI. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
+Última atualização: **17/09/2026, fim da tarde, antes de um `/clear`** — `main` em `43e305b` (PR #69). **PR #70 aberto** (N-37), falta revisar e mesclar. Suíte: **93 arquivos, 1051 testes** verde na branch do #70. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### Retomada de 17/09/2026, fim da tarde — depois de um `/clear`
+>
+> **O dono pediu: logo depois do `/clear`, um RELATÓRIO** do que foi feito nesta rodada. Monte-o a partir deste bloco e do bloco da manhã logo abaixo (PRs #56 a #70), da tabela de `docs/auditoria/2026-09-17-achados-da-auditoria-por-agentes.md` (coluna Destino) e das perguntas abertas. Texto claro e curto, sem termo técnico sem explicação (ver *Como o dono prefere trabalhar*). Ofereça publicar como página se ele quiser compartilhar.
+>
+> **1. Primeiro passo técnico: fechar o PR #70** (`fix/n37-teto-do-limitador`, N-37 — o mapa do limitador de taxa ganhou teto real; C-14 registrado como adiado para a publicação). Código, teste e documentos estão prontos e a suíte está verde. **Faltam as duas revisões por agente** (a técnica foi interrompida pelo limite de uso): rodar `code-reviewer` e depois `security-reviewer`, uma de cada vez, publicar cada uma com `gh pr comment`, **usar o link que o comando imprime** no corpo (seções *Revisão técnica* e *Revisão de segurança*, hoje "(pendente)"), ler os checks um a um e mesclar. O job *Processo* está vermelho só por isso.
+>
+> **2. Ligar o ambiente:** passo 1 da retomada da madrugada (abaixo). **O MySQL desta máquina ficou ligado desde 16/09 sem `--mysqlx=OFF`** (porta 33060 aberta em todas as interfaces, M-01) — o classificador recusou que o agente o desligasse; é o dono quem desliga e sobe de novo. O servidor de visualização foi parado.
+>
+> **3. Feito à tarde (além da manhã):** #65 (C-12), #66 (C-10, C-22, C-23, N-10), #67 (C-09, C-08 em parte, N-07), #68 (documentos), #69 (C-13, C-17: pedido de outra origem recusado no middleware), #70 aberto (N-37). Todos com teste visto vermelho, duas revisões publicadas e CI lido check a check (menos o #70).
+>
+> **4. Fila depois do #70:**
+> - médios confirmados abertos: **C-06 = `A54`** (disjuntor, teto diário e registro de custo da IA), **C-11/N-13** (e-mail que a IA nunca estrutura é pago de novo a cada leitura — a janela de 7 dias só limita), **C-05** (máscara de CPF de `A52`, medir antes), **C-14** (adiado para `A46`);
+> - baixos e informativos confirmados: C-15, C-16, C-18, C-19, C-20, C-21, C-24 a C-27;
+> - `N-` ainda sem verificação: todos menos N-01, N-02, N-07, N-10, N-14, N-17, N-18, N-27 e N-37;
+> - defesa extra adiada: exigir `Content-Type: application/json` em `corpoJson` (os testes de rota precisam ser ajustados antes).
+>
+> **5. Perguntas abertas ao dono:** `DECISOES.md § H.4` itens **29** (o que a conta do dono faz) e **30** (pedir a senha do gestor de novo em ações sensíveis — do C-08). Mais: restringir a chave do Google no console; TI da associação (Microsoft 365, `Mail.Read` só da caixa, subpastas; e o `GRAPH_LER_DESDE` no dia de ligar — `AT-35`); `A46`, `A21`, `A32`, `A44(i)`.
+>
+> **6. Lições desta sessão (também na memória do agente):** nunca rodar dois `vitest` ao mesmo tempo; revisor por agente não roda testes durante a suíte e grava temporários só na pasta da sessão; link de revisão só depois de listar os comentários; em `String.replace` do JavaScript, `$'` no texto de troca é padrão especial; impasse do MySQL numa consulta crua chega como `P2010` (código 1213), não `P2034`; a colação `utf8mb4_0900_as_cs` é `NO PAD`.
+>
+> ---
 >
 > ### Situação em 17/09/2026, manhã — o dono deu autonomia total e foi descansar
 >
