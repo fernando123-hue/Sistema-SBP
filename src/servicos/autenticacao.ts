@@ -299,19 +299,21 @@ export async function definirSenhaProvisoria(
   const dados = DefinicaoDeSenhaSchema.parse(entrada)
   const correlacaoId = novaCorrelacao()
 
-  // A PRÓPRIA senha só se troca por `trocarSenha`, que exige a senha atual
-  // (achado C-08). Por aqui, uma sessão de gestor roubada ou esquecida aberta
-  // trocava a senha do dono sem saber a atual e o trancava para fora.
-  if (dados.colaboradorId === ator.colaboradorId) {
-    throw new ErroDeNegocio('A própria senha se troca na tela "Trocar senha", informando a senha atual.')
-  }
-
   const colaborador = await banco.colaborador.findUnique({
     where: { id: dados.colaboradorId },
     select: { id: true, ativo: true, senhaHash: true },
   })
   if (!colaborador) throw new ErroDeNegocio(`Colaborador "${dados.colaboradorId}" não existe.`)
   if (!colaborador.ativo) throw new ErroDeNegocio('Colaborador desativado não recebe senha.')
+
+  // A PRÓPRIA senha só se troca por `trocarSenha`, que exige a senha atual
+  // (achado C-08). Por aqui, uma sessão de gestor roubada ou esquecida aberta
+  // trocava a senha do dono sem saber a atual e o trancava para fora.
+  // Compara o id GRAVADO, não o enviado: a colação hoje é NO PAD, mas a
+  // conferência não deve depender de como o banco compara texto.
+  if (colaborador.id === ator.colaboradorId) {
+    throw new ErroDeNegocio('A própria senha se troca na tela "Trocar senha", informando a senha atual.')
+  }
 
   const senhaProvisoria = senhaFixa ?? sortearSenhaProvisoria()
 

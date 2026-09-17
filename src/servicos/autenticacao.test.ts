@@ -297,6 +297,12 @@ describe('entrada com senha', () => {
     await expect(
       definirSenhaProvisoria(banco, { colaboradorId: base.gestorId }, base.gestor),
     ).rejects.toThrow(/própria senha/)
+    // Guarda (revisão de segurança do PR #67): o id com espaço no fim também é
+    // recusado. Hoje a colação é NO PAD e ele nem acha a linha; a conferência
+    // pelo id gravado não depende disso.
+    await expect(
+      definirSenhaProvisoria(banco, { colaboradorId: `${base.gestorId} ` }, base.gestor),
+    ).rejects.toThrow()
 
     const depois = await banco.colaborador.findUniqueOrThrow({ where: { id: base.gestorId } })
     expect(depois.senhaHash).toBe(antes.senhaHash)
