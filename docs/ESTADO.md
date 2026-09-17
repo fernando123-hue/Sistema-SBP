@@ -1,6 +1,6 @@
 # Estado do projeto — retomada
 
-Última atualização: **17/09/2026, noite** — `main` em `15882e3` (gabarito mesclado) mais o PR do adapter local (`feat/ia-local`). Suíte: **96 arquivos, 1111 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
+Última atualização: **17/09/2026, noite** — `main` em `15882e3` (gabarito mesclado) mais o PR do adapter local (`feat/ia-local`). Suíte: **96 arquivos, 1117 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
 
 > ## ▶ Próxima sessão: comece aqui
 >
