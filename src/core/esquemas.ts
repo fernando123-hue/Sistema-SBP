@@ -346,6 +346,14 @@ export const AnexoSchema = z.object({
    * que o arquivo não foi armazenado; nunca finge que guardou.
    */
   conteudo: z.instanceof(Uint8Array).optional(),
+  /**
+   * A origem já sabe que isto não é um arquivo que o sistema possa guardar —
+   * e-mail encaminhado como anexo, link para arquivo na nuvem (achado N-02).
+   * Com motivo, o anexo é recusado como qualquer outro: fica o metadado, o item
+   * vai para revisão e uma pessoa abre o original no Outlook. Sem este campo,
+   * um link chamado `contrato.docx` passaria como anexo aceito sem bytes.
+   */
+  recusa: z.string().min(1).max(300).optional(),
 })
 
 export const EmailBrutoSchema = z.object({

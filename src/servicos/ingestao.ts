@@ -409,7 +409,14 @@ async function processarUm(
 
   const anexosAvaliados = await Promise.all(
     email.anexos.map(async (anexo) => {
-      const veredicto = validarAnexo(anexo.nome, anexo.tamanho, TAMANHO_MAXIMO_ANEXO_BYTES)
+      // O tamanho que vale é o dos BYTES, quando eles vieram (achado N-27): o
+      // declarado é da origem, e um adapter futuro (IMAP) o recebe de quem
+      // mandou. Decidir pelo declarado guardaria bytes maiores que o teto.
+      const tamanho = anexo.conteudo ? anexo.conteudo.byteLength : anexo.tamanho
+      const avaliado = validarAnexo(anexo.nome, tamanho, TAMANHO_MAXIMO_ANEXO_BYTES)
+      const veredicto = anexo.recusa
+        ? { aceito: false, motivo: anexo.recusa, nomeSeguro: avaliado.nomeSeguro }
+        : avaliado
 
       // A allowlist de extensão só olha o NOME, que quem escreveu foi o
       // remetente. Com os bytes em mãos, o tipo real é conferido — é o que
@@ -419,6 +426,7 @@ async function processarUm(
         if (assinatura.situacao === 'divergente') {
           return {
             ...anexo,
+            tamanho,
             veredicto: { aceito: false, motivo: assinatura.motivo, nomeSeguro: veredicto.nomeSeguro },
             chaveArmazenamento: null,
           }
@@ -436,7 +444,7 @@ async function processarUm(
         )
       }
 
-      return { ...anexo, veredicto, chaveArmazenamento }
+      return { ...anexo, tamanho, veredicto, chaveArmazenamento }
     }),
   )
   const anexosRejeitados = anexosAvaliados.filter((anexo) => !anexo.veredicto.aceito).length

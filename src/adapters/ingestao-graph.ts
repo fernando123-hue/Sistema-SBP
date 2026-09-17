@@ -69,8 +69,40 @@ export interface AnexoDoGraph {
   name: string | null
   contentType: string | null
   size: number
-  /** Base64, como o Graph devolve. Ausente em anexo que não é arquivo. */
+  /**
+   * Base64, como o Graph devolve. Nulo em anexo que não é arquivo e em arquivo
+   * acima do teto, que não é baixado (achado N-27).
+   */
   contentBytes: string | null
+  /**
+   * O `@odata.type` do Graph: `#microsoft.graph.fileAttachment`,
+   * `itemAttachment` (e-mail encaminhado como anexo) ou
+   * `referenceAttachment` (link para arquivo na nuvem). Ausente = arquivo.
+   */
+  tipoNoGraph?: string
+}
+
+const ANEXO_ARQUIVO = '#microsoft.graph.fileAttachment'
+
+/**
+ * Tipo que nem a listagem nem o pedido do anexo informaram. Não se presume
+ * arquivo: o anexo é recusado e uma pessoa abre o original (falha fechada).
+ */
+const TIPO_DESCONHECIDO = '#desconhecido'
+
+/**
+ * Quantos anexos de uma mensagem são baixados ao mesmo tempo.
+ *
+ * Um por vez deixava a leitura lenta (revisão do PR); todos juntos, com até 50
+ * anexos de até 25 MB, poderiam somar mais de um gigabyte na memória.
+ */
+const DOWNLOADS_SIMULTANEOS = 4
+
+/** O que dizer de um anexo que não é arquivo — curto, e mandando abrir o original. */
+function recusaPorTipo(tipoNoGraph: string): string {
+  if (tipoNoGraph.endsWith('itemAttachment')) return 'e-mail anexado dentro do e-mail, não é arquivo — abra no Outlook'
+  if (tipoNoGraph.endsWith('referenceAttachment')) return 'link para arquivo na nuvem, não é arquivo — abra no Outlook'
+  return 'anexo que o sistema não sabe ler — abra no Outlook'
 }
 
 export class IngestaoIndisponivelError extends ErroOperacional {
@@ -240,9 +272,21 @@ export class IngestaoGraph implements IngestaoPort {
     const doGraph = await this.cliente.listarAnexos(mensagem.id)
 
     return doGraph.map((anexo) => {
+      // Não é arquivo (N-02): entra com o motivo, sem bytes, para ser recusado
+      // na ingestão e mandar o item à revisão — nunca sumir da lista.
+      if (anexo.tipoNoGraph !== undefined && anexo.tipoNoGraph !== ANEXO_ARQUIVO) {
+        return {
+          nome: nomeQueCabe(anexo.name || 'anexo-sem-nome'),
+          tipoDeclarado: anexo.tipoNoGraph.slice(0, TAMANHO_MAXIMO_TIPO_DECLARADO),
+          tamanho: anexo.size,
+          hash: null,
+          recusa: recusaPorTipo(anexo.tipoNoGraph),
+        }
+      }
+
       const cabe = anexo.contentBytes !== null && anexo.size <= TAMANHO_MAXIMO_ANEXO_BYTES
 
-      if (!cabe && anexo.contentBytes !== null) {
+      if (anexo.size > TAMANHO_MAXIMO_ANEXO_BYTES) {
         registrarLog('aviso', 'anexo grande demais: metadado guardado, bytes não', {
           adapter: this.nome,
           tamanho: anexo.size,
@@ -452,12 +496,44 @@ export function clienteDoGraph(): ClienteDoGraph {
     },
 
     async listarAnexos(mensagemId) {
-      const pagina = await pedir(
-        `/users/${encodeURIComponent(config.caixa)}/messages/${encodeURIComponent(mensagemId)}/attachments`,
-      )
-      return ((pagina['value'] as AnexoDoGraph[] | undefined) ?? []).filter(
-        (anexo) => anexo.contentBytes !== undefined,
-      )
+      const base = `/users/${encodeURIComponent(config.caixa)}/messages/${encodeURIComponent(mensagemId)}/attachments`
+
+      // Lista SEM os bytes (N-27): antes a listagem trazia `contentBytes` de
+      // todos, inclusive dos acima do teto, que seriam descartados. Todo anexo
+      // volta (N-02) — o que não é arquivo também, com o seu tipo.
+      const pagina = await pedir(`${base}?$select=id,name,contentType,size`)
+      const listados = (pagina['value'] as Record<string, unknown>[] | undefined) ?? []
+
+      const umAnexo = async (listado: Record<string, unknown>): Promise<AnexoDoGraph> => {
+        const tipoListado = typeof listado['@odata.type'] === 'string' ? listado['@odata.type'] : undefined
+        const size = typeof listado['size'] === 'number' ? listado['size'] : 0
+
+        // Pede o anexo inteiro quando ele cabe e é — ou pode ser — arquivo. Sem
+        // tipo na listagem, é o pedido completo que diz o que ele é.
+        const completo =
+          size <= TAMANHO_MAXIMO_ANEXO_BYTES && (tipoListado === undefined || tipoListado === ANEXO_ARQUIVO)
+            ? await pedir(`${base}/${encodeURIComponent(String(listado['id']))}`)
+            : undefined
+        const tipoNoGraph =
+          tipoListado ?? (typeof completo?.['@odata.type'] === 'string' ? completo['@odata.type'] : TIPO_DESCONHECIDO)
+
+        return {
+          name: typeof listado['name'] === 'string' ? listado['name'] : null,
+          contentType: typeof listado['contentType'] === 'string' ? listado['contentType'] : null,
+          size,
+          contentBytes:
+            tipoNoGraph === ANEXO_ARQUIVO && typeof completo?.['contentBytes'] === 'string'
+              ? completo['contentBytes']
+              : null,
+          tipoNoGraph,
+        }
+      }
+
+      const anexos: AnexoDoGraph[] = []
+      for (let inicio = 0; inicio < listados.length; inicio += DOWNLOADS_SIMULTANEOS) {
+        anexos.push(...(await Promise.all(listados.slice(inicio, inicio + DOWNLOADS_SIMULTANEOS).map(umAnexo))))
+      }
+      return anexos
     },
   }
 }
