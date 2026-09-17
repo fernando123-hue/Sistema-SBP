@@ -37,18 +37,29 @@ describe('N-37: o mapa tem teto de verdade', () => {
     for (let indice = 0; indice < TETO_DE_CHAVES * 3; indice += 1) {
       verificarLimite(`inundacao:${indice}`, 5, 600)
     }
-    expect(chavesNoLimitador()).toBeLessThanOrEqual(TETO_DE_CHAVES)
+    expect(chavesNoLimitador('inundacao')).toBeLessThanOrEqual(TETO_DE_CHAVES)
+  })
+
+  it('inundar um compartimento não despeja a chave de outro (revisão de segurança do #70)', () => {
+    // O limite de custo da IA nasce primeiro — num mapa único, seria o mais antigo.
+    expect(verificarLimite('ingestao:ana', 1, 600).permitido).toBe(true)
+    for (let indice = 0; indice < TETO_DE_CHAVES * 2; indice += 1) {
+      verificarLimite(`distribuir:ana:2026-01-${indice}`, 10, 600)
+    }
+
+    expect(chavesNoLimitador('distribuir')).toBeLessThanOrEqual(TETO_DE_CHAVES)
+    expect(verificarLimite('ingestao:ana', 1, 600).permitido).toBe(false)
   })
 
   it('as que saem são as mais antigas; a mais recente continua contando', () => {
-    for (let indice = 0; indice < TETO_DE_CHAVES; indice += 1) verificarLimite(`antiga:${indice}`, 1, 600)
-    verificarLimite('recente', 1, 600)
-    for (let indice = 0; indice < 10; indice += 1) verificarLimite(`nova:${indice}`, 5, 600)
+    for (let indice = 0; indice < TETO_DE_CHAVES; indice += 1) verificarLimite(`ordem:antiga:${indice}`, 1, 600)
+    verificarLimite('ordem:recente', 1, 600)
+    for (let indice = 0; indice < 10; indice += 1) verificarLimite(`ordem:nova:${indice}`, 5, 600)
 
-    // Máximo 1: se `antiga:0` ainda estivesse no mapa, a segunda chamada seria
+    // Máximo 1: se `ordem:antiga:0` ainda estivesse no mapa, a segunda chamada seria
     // recusada. Liberada, prova que a mais antiga foi despejada — sem isto, o
     // teste passaria com um `abrirEspaco` que não remove nada.
-    expect(verificarLimite('antiga:0', 1, 600).permitido).toBe(true)
-    expect(verificarLimite('recente', 1, 600).permitido).toBe(false)
+    expect(verificarLimite('ordem:antiga:0', 1, 600).permitido).toBe(true)
+    expect(verificarLimite('ordem:recente', 1, 600).permitido).toBe(false)
   })
 })

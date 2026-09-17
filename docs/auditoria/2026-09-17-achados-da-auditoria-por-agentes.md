@@ -1140,6 +1140,10 @@ Três ressalvas reduzem o cenário, e por isso a severidade fica em INFORMATIVO:
 - **Teste de regressão:** Inserir 1001 chaves distintas com janela longa e esperar `size <= TETO_DE_CHAVES`, expondo o tamanho só para teste.
 - **Evidência do auditor:** limite-de-taxa.ts:46 `if (janelas.size >= TETO_DE_CHAVES) limparJanelasExpiradas()` seguido de `janelas.set(...)` incondicional
 
+**Na correção (PR #70), a revisão de segurança achou um efeito colateral, corrigido no mesmo PR:** com um mapa só, abrir espaço despejava a chave mais antiga de QUALQUER rota. Um colaborador logado inundava `distribuir:<id>:<data>` (a data vem do corpo) e expulsava `ingestao:<id>` — zerando o próprio limite de custo da IA — ou o balde de `sessao`. Agora há um mapa por compartimento (o trecho antes do primeiro `:`, sempre escrito no código), cada um com o seu teto; teste com as duas sabotagens vistas vermelhas.
+
+**Resíduo aceito (BAIXO):** dentro de `distribuir`, um colaborador ainda pode despejar o contador de outro. O efeito é só o outro recomeçar a contar cliques repetidos; e a chave já aceita qualquer data do corpo, então o limite por data nunca foi barreira contra quem quer contorná-lo. Não vale mapa por pessoa agora. O bloqueio por tentativas de senha mora no banco e não é alcançado por nada disto.
+
 ### N-38 — O token de aplicativo `.default` alcança toda caixa que a permissão permitir, e o código não tem como limitar
 
 **INFORMATIVO** · credencial do Graph / menor privilégio · `src/adapters/ingestao-graph.ts:176` · dimensão `ingestao-anexos`
