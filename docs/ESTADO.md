@@ -1,6 +1,6 @@
 # Estado do projeto — retomada
 
-Última atualização: **17/09/2026, manhã** — `main` em `d165359` (PR #63). Suíte: **89 arquivos, 1004 testes** verde, local e no CI. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
+Última atualização: **17/09/2026, tarde** — `main` em `35dc5d2` (PR #67). Suíte: **91 arquivos, 1032 testes** verde, local e no CI. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
 
 > ## ▶ Próxima sessão: comece aqui
 >
@@ -16,7 +16,11 @@
 > - **#62 — N-02/N-27**: anexo do Graph que não é arquivo vira recusa; grande não é baixado; teto de 50 anexos e de 100 MB por mensagem antes do download.
 > - **#63 — N-17/N-18**: caixa real só sobe com IA permitida para dado real (hoje só `anthropic`); produção recusa segredo público ou previsível. `.gitleaksignore` criado (uma exceção, com motivo).
 >
-> **Fila agora:** (a) continuar a verificação dos `N-` restantes — já verificados: N-01, N-02, N-14, N-17, N-18, N-27; (b) médios confirmados ainda abertos, a começar por **C-12** (sinal de produção só por `NODE_ENV` — a trava do N-18 herda essa fraqueza); (c) `A54`.
+> - **#65 — C-12**: acesso sem senha, `unsafe-eval` e cookie sem `Secure` só com `NODE_ENV=development`; a variável é recusada fora de desenvolvimento e quando escrita num `.env*`.
+> - **#66 — C-10, C-22, C-23, N-10**: concluir/devolver/transferir/resolver/desligar travam a linha antes de ler; impasse repetido (`servidor/conflito.ts` — o impasse em consulta crua chega como `P2010`).
+> - **#67 — C-09, C-08 (parte), N-07**: tentativa de senha reservada antes do hash; gestor não redefine a própria senha; último gestor travado. **Pergunta nova ao dono: `DECISOES.md § H.4` item 30.**
+>
+> **Fila agora:** (a) médios confirmados abertos: **C-13/C-17** (rotas sem conferência de origem; CSRF de login), **C-14** (limite por origem escolhido pelo cliente), **C-06 = `A54`** (disjuntor, teto diário, custo da IA), **C-11/N-13** (e-mail que a IA nunca estrutura é pago de novo a cada leitura), **C-05** (máscara de CPF, `A52`, medir antes); (b) baixos confirmados C-15…C-21, C-24; (c) verificar os `N-` restantes — já verificados: N-01, N-02, N-07, N-10, N-14, N-17, N-18, N-27.
 >
 > **Pendências para o dono:** o MySQL desta máquina está ligado **sem** `--mysqlx=OFF` (porta 33060 aberta em todas as interfaces, M-01): o classificador recusou que o agente o desligasse. Desligue e suba de novo como no passo 1 abaixo.
 >
