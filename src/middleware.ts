@@ -31,7 +31,11 @@ import { NextResponse, type NextRequest } from 'next/server'
  * motivo que não é o dela. Em produção a diretriz sai, e o build não usa `eval`.
  */
 export function middleware(requisicao: NextRequest): NextResponse {
-  const emDesenvolvimento = process.env.NODE_ENV !== 'production'
+  // Sinal positivo (achado C-12): `unsafe-eval` só no servidor de desenvolvimento.
+  // Com PONTO de propósito, ao contrário de `sessao.ts`: aqui o Next troca o
+  // valor no build, e um `next build` fica `'production'` mesmo com NODE_ENV
+  // herdado errado no `next start`.
+  const emDesenvolvimento = process.env.NODE_ENV === 'development'
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
 
   const politica = [
