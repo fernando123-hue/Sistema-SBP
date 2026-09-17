@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 
 import { InterpretadorEstruturado } from './ia-estruturada'
-import type { ClienteDeModelo, PerfilDoFornecedor } from './fornecedor'
+import { lerRespostaJson, type ClienteDeModelo, type PerfilDoFornecedor } from './fornecedor'
 import { ambiente } from '../servidor/ambiente'
 
 /**
@@ -52,15 +52,22 @@ const TEMPO_LIMITE_MS = 120_000
  */
 export const PERFIL_ANTHROPIC: PerfilDoFornecedor = {
   nome: 'anthropic',
-  versaoPrompt: 'anthropic-1.0.0',
+  versaoPrompt: 'anthropic-1.1.0',
   modeloPadrao: 'claude-sonnet-5',
   ehCredencialRecusada: (erro) =>
     erro instanceof Anthropic.AuthenticationError ||
     erro instanceof Anthropic.PermissionDeniedError,
 }
 
-export function clienteAnthropic(): ClienteDeModelo {
-  const chave = ambiente().ANTHROPIC_API_KEY
+/**
+ * `chave` e `fetch` só existem para o teste exercitar o SDK de verdade sem
+ * rede (`forma-na-saida-estruturada.test.ts`). Em produção nada é passado, e a
+ * chave vem de `ambiente()`.
+ */
+export function clienteAnthropic(
+  opcoes: { chave?: string; fetch?: typeof fetch } = {},
+): ClienteDeModelo {
+  const chave = opcoes.chave ?? ambiente().ANTHROPIC_API_KEY
   // `ambiente()` já recusa `IA_ADAPTER=anthropic` sem chave; esta é a segunda
   // tranca, para o caso de alguém construir o adapter direto.
   if (!chave) throw new Error('ANTHROPIC_API_KEY ausente: o adapter Anthropic não pode subir.')
@@ -72,11 +79,23 @@ export function clienteAnthropic(): ClienteDeModelo {
   // valia aqui e era falsa no Gemini — e ninguém tinha como saber lendo o
   // código. Declarar em cada adapter o que ele de fato faz é o que torna a
   // afirmação do núcleo verificável nos dois.
-  const cliente = new Anthropic({ apiKey: chave, maxRetries: 2, timeout: TEMPO_LIMITE_MS })
+  const cliente = new Anthropic({
+    apiKey: chave,
+    maxRetries: 2,
+    timeout: TEMPO_LIMITE_MS,
+    ...(opcoes.fetch ? { fetch: opcoes.fetch } : {}),
+  })
 
   return {
     async gerar({ instrucoes, conteudo, modelo, esquema }) {
-      const resposta = await cliente.messages.parse({
+      // `create`, não `parse`: o `parse` do SDK valida a resposta por conta
+      // própria e lança `AnthropicError`, que `especieDoErro` lê como
+      // transporte — a nova tentativa por erro de forma nunca acontecia, e a
+      // causa crua (com trecho do que o modelo escreveu) ia para o log
+      // (revisão do PR #58). A forma continua indo no pedido, para a
+      // decodificação restrita; quem LÊ e valida a resposta é o nosso código,
+      // igual ao Gemini.
+      const resposta = await cliente.messages.create({
         model: modelo,
         max_tokens: MAXIMO_DE_TOKENS,
         system: instrucoes,
@@ -85,7 +104,7 @@ export function clienteAnthropic(): ClienteDeModelo {
           // O esquema vem de quem chama, não fixo aqui: é o que permite este
           // mesmo cliente atender a interpretação de e-mail e o assistente sem
           // uma segunda cópia da chamada ao SDK.
-          format: zodOutputFormat(esquema),
+          format: { type: 'json_schema', schema: zodOutputFormat(esquema).schema },
           effort: ESFORCO,
         },
       })
@@ -100,7 +119,15 @@ export function clienteAnthropic(): ClienteDeModelo {
         throw new Error('o modelo recusou a requisição por política de segurança')
       }
 
-      return { objeto: resposta.parsed_output, modeloUsado: resposta.model }
+      const texto = resposta.content
+        .flatMap((bloco) => (bloco.type === 'text' ? [bloco.text] : []))
+        .join('')
+      if (!texto) {
+        // Sem texto é a pior resposta: parece sucesso e não tem conteúdo.
+        throw new Error('o modelo devolveu resposta vazia')
+      }
+
+      return { objeto: lerRespostaJson(texto), modeloUsado: resposta.model }
     },
   }
 }

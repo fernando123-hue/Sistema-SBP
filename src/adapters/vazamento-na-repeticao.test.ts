@@ -141,7 +141,7 @@ describe('interpretação de e-mail — a repetição não devolve texto de fora
           categoriaCodigo: 'FICHA_CADASTRO',
           titulo: 'Atualização',
           confianca: 0.9,
-          campos: { [chaveHostil]: 'valor' },
+          campos: [{ chave: chaveHostil, valor: 'valor' }],
           camposAusentes: [],
           ligaMencionada: null,
           observacao: null,
