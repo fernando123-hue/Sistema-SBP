@@ -1,6 +1,6 @@
 # Estado do projeto — retomada
 
-Última atualização: **17/09/2026, noite** — `main` em `81bf174` (PR #70 mesclado) mais este PR de documentos. Nenhum PR de código aberto. Suíte: **93 arquivos, 1052 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
+Última atualização: **17/09/2026, noite** — `main` em `2a43687` mais o PR do gabarito da IA (`feat/gabarito-avaliacao-ia`). Suíte: **95 arquivos, 1082 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
 
 > ## ▶ Próxima sessão: comece aqui
 >
@@ -10,8 +10,8 @@
 > - **`A56`**: Odysseus é ferramenta, nunca o cérebro. O SBP fala com qualquer servidor de modelo compatível com OpenAI. Máquina da IA local garantida, **8 GB de RAM**; o dono avisa quando chegar.
 > - **Plano autorizado pelo dono, nesta ordem:**
 >   1. ~~Fechar o PR #70~~ — **mesclado** (N-37; a revisão de segurança achou despejo cruzado entre rotas, corrigido no mesmo PR com um mapa por compartimento; resíduo baixo na auditoria).
->   2. Este PR de documentos.
->   3. **Gabarito de avaliação** com nota automática (dados sintéticos, qualquer fornecedor).
+>   2. ~~Este PR de documentos~~ — **mesclado** (#72).
+>   3. ~~**Gabarito de avaliação**~~ — **feito** (`DECISOES.md § AT-36`): 17 e-mails sintéticos com resposta esperada, nota automática em cinco dimensões, `npm run ia:avaliar` (qualquer fornecedor; `-- --json` para guardar). Linha de base do mock: **0,92**. Primeira rodada do Gemini: 7 de 17 casos com 503 (sobrecarga dele) — nota geral 0,58, só as respondidas 0,98. **Pendências:** a equipe conferir as respostas (`§ H.4` item 31); a rotina `A50` passar a usar `ia:avaliar` (configuração da máquina do dono).
 >   4. **`ia-local.ts`**, testado contra servidor falso, com `IA_PARA_DADO_REAL.local = false`.
 >   5. Com a máquina em mãos: medir o hardware, testar 2 ou 3 modelos pequenos pelo gabarito, e o dono decide.
 > - A fila de segurança abaixo (C-06, C-11…) continua valendo depois disso.
