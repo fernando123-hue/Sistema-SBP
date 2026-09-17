@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { limparCacheDeAmbiente } from '../../../../servidor/ambiente'
 import { obterPrisma } from '../../../../servidor/prisma'
@@ -37,8 +37,17 @@ const URL_DA_REDE = 'http://192.168.0.10:3000/api/sessao/local'
 
 function ligarAcessoLocal(ligado: boolean): void {
   process.env['ACESSO_LOCAL_SEM_SENHA'] = ligado ? '1' : '0'
+  // O acesso sem senha só existe no servidor de desenvolvimento (achado C-12).
+  Object.assign(process.env, { NODE_ENV: 'development' })
   limparCacheDeAmbiente()
 }
+
+const NODE_ENV_ORIGINAL = process.env['NODE_ENV']
+
+afterEach(() => {
+  Object.assign(process.env, { NODE_ENV: NODE_ENV_ORIGINAL })
+  limparCacheDeAmbiente()
+})
 
 /** Pedido como a tela do sistema faz: mesma origem, corpo JSON. */
 function pedirEntrada(email: string, url = URL_LOCAL, origem?: string): Request {

@@ -1,5 +1,7 @@
 import { ambiente } from './ambiente'
 
+export { acessoLocalEmArquivoEnv } from './ambiente'
+
 /**
  * Acesso local sem senha — só para conferir telas em desenvolvimento.
  *
@@ -18,8 +20,11 @@ import { ambiente } from './ambiente'
  *
  * 1. **Desligada por padrão.** Só `ACESSO_LOCAL_SEM_SENHA=1` liga, e o caminho
  *    normal é `npm run dev:local`, que liga só para aquele processo.
- * 2. **Nunca em produção.** `ambiente()` recusa subir com a variável ligada e
- *    `NODE_ENV=production`, e esta função confere de novo.
+ * 2. **Só em desenvolvimento.** `ambiente()` recusa subir com a variável ligada
+ *    e `NODE_ENV` diferente de `development` — sinal positivo, não "diferente
+ *    de production" (achado C-12) —, e também quando ela está escrita num
+ *    arquivo `.env*` da pasta do processo (`acessoLocalEmArquivoEnv`): só o
+ *    `dev:local` liga. Esta função confere o `NODE_ENV` de novo.
  * 3. **Só pela própria máquina, e só pela própria tela.** O `dev:local` escuta
  *    apenas em `127.0.0.1`; a rota recusa pedido cujo endereço ou origem não seja
  *    de loopback, e recusa a entrada que não venha da tela do sistema (CSRF —
@@ -40,9 +45,11 @@ export const DOMINIO_SINTETICO = '@exemplo.test'
 
 export function acessoLocalHabilitado(): boolean {
   const configuracao = ambiente()
-  // `ambiente()` já recusa produção com a variável ligada; conferir aqui de
-  // novo custa uma comparação e protege contra quem um dia afrouxar aquela.
-  return configuracao.ACESSO_LOCAL_SEM_SENHA && configuracao.NODE_ENV !== 'production'
+  // `ambiente()` já recusa a variável fora de desenvolvimento; conferir aqui
+  // de novo custa uma comparação e protege contra quem um dia afrouxar aquela.
+  // Sinal POSITIVO (achado C-12): "não é production" deixava passar um
+  // servidor publicado com NODE_ENV herdado.
+  return configuracao.ACESSO_LOCAL_SEM_SENHA && configuracao.NODE_ENV === 'development'
 }
 
 export function ehContaSintetica(email: string): boolean {

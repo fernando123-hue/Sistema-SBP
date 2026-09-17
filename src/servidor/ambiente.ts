@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { z } from 'zod'
 
 /**
@@ -223,11 +226,26 @@ export function ambiente(): Ambiente {
   // Entrar sem senha em produção não é configuração: é a porta da frente
   // aberta. Recusar subir é a única resposta que não depende de alguém lembrar
   // de desligar a variável antes de publicar.
-  if (resultado.data.ACESSO_LOCAL_SEM_SENHA && resultado.data.NODE_ENV === 'production') {
-    throw new Error(
-      'ACESSO_LOCAL_SEM_SENHA=1 com NODE_ENV=production. O acesso sem senha existe só para ' +
-        'desenvolvimento local — desligue a variável antes de subir o sistema.',
-    )
+  //
+  // Achado C-12: a trava era "NODE_ENV é production", e o `next start` só
+  // preenche NODE_ENV quando ele falta — herdado como `test`, um servidor
+  // publicado passava. Agora só DESENVOLVIMENTO libera, e a variável não pode
+  // morar num arquivo `.env`: quem liga é o `npm run dev:local`, só para o
+  // processo dele.
+  if (resultado.data.ACESSO_LOCAL_SEM_SENHA) {
+    if (resultado.data.NODE_ENV !== 'development') {
+      throw new Error(
+        `ACESSO_LOCAL_SEM_SENHA=1 com NODE_ENV=${resultado.data.NODE_ENV}. O acesso sem senha existe só para ` +
+          'desenvolvimento local — desligue a variável antes de subir o sistema.',
+      )
+    }
+    const arquivo = acessoLocalEmArquivoEnv(process.cwd())
+    if (arquivo !== null) {
+      throw new Error(
+        `ACESSO_LOCAL_SEM_SENHA=1 está escrito em ${arquivo}. Apague a linha: o acesso sem senha só se liga ` +
+          'com npm run dev:local, que vale só para aquele processo.',
+      )
+    }
   }
 
   // Todo adapter real de IA exige chave. Descobrir isso na primeira chamada ao
@@ -317,6 +335,37 @@ const SEGREDOS = ['SESSAO_SECRET', 'BUSCA_SECRET', 'ANEXOS_SECRET'] as const
  * deve seguir uma das duas formas, para esta trava continuar valendo.
  */
 const PARECE_VALOR_DE_TESTE = /nao-e-segredo|segredo-de-teste/
+
+/** Os arquivos que o Next e `process.loadEnvFile` leem. O `.env.example` não entra. */
+const ARQUIVOS_ENV = [
+  '.env',
+  '.env.local',
+  '.env.development',
+  '.env.development.local',
+  '.env.production',
+  '.env.production.local',
+] as const
+
+// `export` opcional: `process.loadEnvFile` aceita essa forma, e a trava precisa
+// enxergar o mesmo que o carregador (revisão do PR).
+const LIGADO_EM_ARQUIVO = /^[ \t]*(?:export[ \t]+)?ACESSO_LOCAL_SEM_SENHA[ \t]*=[ \t]*["']?1["']?[ \t]*$/m
+
+/**
+ * O primeiro arquivo `.env*` da pasta que liga o acesso sem senha, ou `null`.
+ * Linha comentada ou com outro valor não conta.
+ */
+export function acessoLocalEmArquivoEnv(pasta: string): string | null {
+  for (const arquivo of ARQUIVOS_ENV) {
+    let conteudo: string
+    try {
+      conteudo = readFileSync(join(pasta, arquivo), 'utf8')
+    } catch {
+      continue // arquivo que não existe não liga nada
+    }
+    if (LIGADO_EM_ARQUIVO.test(conteudo)) return arquivo
+  }
+  return null
+}
 
 /** Só para testes: força releitura do ambiente. */
 export function limparCacheDeAmbiente(): void {

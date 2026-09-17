@@ -35,7 +35,10 @@ const servidor = spawn(
   [binarioDoNext, 'dev', '--hostname', '127.0.0.1'],
   {
     stdio: 'inherit',
-    env: { ...process.env, ACESSO_LOCAL_SEM_SENHA: '1' },
+    // NODE_ENV explícito: o acesso sem senha só existe com `development`
+    // (achado C-12), e o `next dev` só preenche NODE_ENV quando ele falta —
+    // um valor herdado do shell faria este script recusar subir.
+    env: { ...process.env, ACESSO_LOCAL_SEM_SENHA: '1', NODE_ENV: 'development' },
   },
 )
 

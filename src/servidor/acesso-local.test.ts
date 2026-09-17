@@ -1,13 +1,18 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
+  acessoLocalEmArquivoEnv,
   acessoLocalHabilitado,
   ehContaSintetica,
   ehPedidoDaPropriaTela,
   ehRequisicaoLocal,
 } from './acesso-local'
 import { ambiente, limparCacheDeAmbiente } from './ambiente'
-import { lerCookie, montarCookie } from './sessao'
+import { lerCookie, montarCookie, OPCOES_DO_COOKIE } from './sessao'
 
 /**
  * As travas do acesso local sem senha que não precisam de banco.
@@ -162,5 +167,73 @@ describe('marca local no cookie', () => {
     const forjada = Buffer.from(JSON.stringify(carga)).toString('base64url')
 
     expect(lerCookie(`${forjada}.${original.slice(separador + 1)}`)).toBeNull()
+  })
+})
+
+/**
+ * Achado C-12 (`docs/auditoria/2026-09-17-achados-da-auditoria-por-agentes.md`):
+ * "produção" era detectada só por `NODE_ENV === 'production'`. O `next start`
+ * só preenche `NODE_ENV` quando ele falta — herdado como `test` ou qualquer
+ * outro valor, um servidor publicado subia com o acesso sem senha aceito
+ * (inclusive vindo do `.env`) e com o cookie sem `Secure`. Agora o que libera é
+ * o sinal POSITIVO de desenvolvimento.
+ */
+describe('C-12: desenvolvimento é sinal positivo, não ausência de produção', () => {
+  it.each(['test'] as const)('ligado com NODE_ENV=%s, o sistema recusa subir e o acesso fica desligado', (nodeEnv) => {
+    configurar('1', nodeEnv)
+    expect(() => ambiente()).toThrow(/ACESSO_LOCAL_SEM_SENHA/)
+    // Falha alta: a rota responde erro em vez de abrir a porta.
+    expect(() => acessoLocalHabilitado()).toThrow(/ACESSO_LOCAL_SEM_SENHA/)
+  })
+
+  it('o cookie sai com Secure fora de desenvolvimento', () => {
+    configurar(undefined, 'test')
+    expect(OPCOES_DO_COOKIE.secure).toBe(true)
+    configurar(undefined, 'development')
+    expect(OPCOES_DO_COOKIE.secure).toBe(false)
+  })
+})
+
+describe('C-12: o acesso sem senha não pode morar num arquivo .env', () => {
+  let pasta: string
+
+  beforeEach(() => {
+    pasta = mkdtempSync(join(tmpdir(), 'sbp-env-'))
+  })
+
+  afterEach(() => {
+    rmSync(pasta, { recursive: true, force: true })
+  })
+
+  it.each(['.env', '.env.local', '.env.development', '.env.production'])('ligado em %s é encontrado', (arquivo) => {
+    writeFileSync(join(pasta, arquivo), 'DATABASE_URL="x"\nACESSO_LOCAL_SEM_SENHA="1"\n')
+    expect(acessoLocalEmArquivoEnv(pasta)).toBe(arquivo)
+  })
+
+  it.each(['export ACESSO_LOCAL_SEM_SENHA=1', "  export\tACESSO_LOCAL_SEM_SENHA = '1'", 'ACESSO_LOCAL_SEM_SENHA=1\r'])(
+    'forma aceita pelo carregador de .env também é encontrada: %j',
+    (linha) => {
+      // `process.loadEnvFile` aceita `export`; a trava precisa ver o mesmo que ele.
+      writeFileSync(join(pasta, '.env'), `DATABASE_URL="x"\n${linha}\n`)
+      expect(acessoLocalEmArquivoEnv(pasta)).toBe('.env')
+    },
+  )
+
+  it('linha comentada, desligada ou só no .env.example não conta', () => {
+    writeFileSync(join(pasta, '.env'), '# ACESSO_LOCAL_SEM_SENHA="1"\nACESSO_LOCAL_SEM_SENHA="0"\n')
+    writeFileSync(join(pasta, '.env.example'), 'ACESSO_LOCAL_SEM_SENHA="1"\n')
+    expect(acessoLocalEmArquivoEnv(pasta)).toBeNull()
+  })
+
+  it('ligado no .env da pasta do processo, o sistema recusa subir mesmo em desenvolvimento', () => {
+    writeFileSync(join(pasta, '.env'), "ACESSO_LOCAL_SEM_SENHA=1\n")
+    const original = process.cwd()
+    process.chdir(pasta)
+    try {
+      configurar('1', 'development')
+      expect(() => ambiente()).toThrow(/dev:local/)
+    } finally {
+      process.chdir(original)
+    }
   })
 })
