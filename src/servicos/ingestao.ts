@@ -69,19 +69,19 @@ export const JANELA_DE_RELEITURA_DIAS = 7
 const LOTE_DE_CONSULTA = 500
 
 function consultaDeProcessados(banco: Banco) {
-  return async (messageIds: string[]): Promise<ReadonlySet<string>> => {
-    const achados: string[] = []
+  return async (messageIds: string[]): Promise<ReadonlyMap<string, Date>> => {
+    const achados: (readonly [string, Date])[] = []
     for (let inicio = 0; inicio < messageIds.length; inicio += LOTE_DE_CONSULTA) {
       const linhas = await banco.email.findMany({
         where: {
           messageId: { in: messageIds.slice(inicio, inicio + LOTE_DE_CONSULTA) },
           processadoEm: { not: null },
         },
-        select: { messageId: true },
+        select: { messageId: true, recebidoEm: true },
       })
-      achados.push(...linhas.map((linha) => linha.messageId))
+      achados.push(...linhas.map((linha) => [linha.messageId, linha.recebidoEm] as const))
     }
-    return new Set(achados)
+    return new Map(achados)
   }
 }
 
@@ -97,9 +97,15 @@ async function registrarAvisos(
   banco: Banco,
   correlacaoId: string,
   avisos: readonly AvisoDaBusca[],
+  colisoes: Colisao[],
 ): Promise<number> {
   let recusados = 0
   for (const aviso of avisos) {
+    if (aviso.tipo === 'colisao') {
+      // Gravadas no fim, junto com as que o laço achar: um evento só.
+      colisoes.push({ messageId: aviso.messageId, recebidoEm: aviso.recebidoEm })
+      continue
+    }
     if (aviso.tipo === 'recusado') {
       recusados += 1
       await registrarEvento(banco, {
@@ -123,6 +129,43 @@ async function registrarAvisos(
   return recusados
 }
 
+/** Exemplos guardados por evento de colisão. O resto é só contado. */
+const EXEMPLOS_DE_COLISAO = 10
+
+interface Colisao {
+  messageId: string
+  recebidoEm: string | null
+}
+
+/**
+ * Identificador repetido com outra data: UM evento por sincronização.
+ *
+ * O identificador é escrito por quem manda o e-mail, então quem o copiar faz a
+ * sua mensagem ser tratada como a já processada. Isso não pode sumir sem
+ * rastro (pendência da revisão de segurança do PR #59). Mas também não conta
+ * como falha do lote: uma cópia legítima — lista de e-mail, reentrega — cai no
+ * mesmo caso, e marcar o dia de vermelho por ela ensinaria a ignorar vermelho.
+ * Agregado porque o volume é escolhido por quem manda: um evento por cópia
+ * seria uma trilha sem retenção crescendo à vontade de terceiros.
+ */
+async function registrarColisoes(banco: Banco, correlacaoId: string, colisoes: readonly Colisao[]): Promise<void> {
+  registrarLog('aviso', 'mensagens com identificador de e-mail já processado, em outra data', {
+    correlacaoId,
+    quantidade: colisoes.length,
+  })
+  await registrarEvento(banco, {
+    correlacaoId,
+    etapa: 'ingestao',
+    situacao: 'falha',
+    ...(colisoes.length === 1 ? { referencia: colisoes[0]!.messageId } : {}),
+    mensagem:
+      `${colisoes.length} ${colisoes.length === 1 ? 'mensagem' : 'mensagens'} com o identificador de um e-mail já ` +
+      `processado, recebida${colisoes.length === 1 ? '' : 's'} em outra data — pode ser cópia ou falsificação; ` +
+      `confira na caixa`,
+    detalhe: { quantidade: colisoes.length, exemplos: colisoes.slice(0, EXEMPLOS_DE_COLISAO) },
+  })
+}
+
 export async function sincronizar(
   deps: DependenciasIngestao,
   ator: Ator = ATOR_SISTEMA,
@@ -143,16 +186,19 @@ export async function sincronizar(
     itensParaRevisao: 0,
     falhas: 0,
     anexosRejeitados: 0,
+    naoLidas: 0,
+    repetidas: 0,
   }
 
   const avisos: AvisoDaBusca[] = []
+  const colisoes: Colisao[] = []
   const brutos = await deps.ingestao.buscarNovos({
     desde: new Date(Date.now() - JANELA_DE_RELEITURA_DIAS * 24 * 60 * 60 * 1000),
     jaProcessados: consultaDeProcessados(deps.banco),
     avisar: (aviso) => avisos.push(aviso),
   })
   resumo.recebidos = brutos.length
-  resumo.falhas += await registrarAvisos(deps.banco, correlacaoId, avisos)
+  resumo.naoLidas = await registrarAvisos(deps.banco, correlacaoId, avisos, colisoes)
 
   await registrarEvento(deps.banco, {
     correlacaoId,
@@ -195,11 +241,15 @@ export async function sincronizar(
 
       const jaExiste = await deps.banco.email.findUnique({
         where: { messageId: email.messageId },
-        select: { id: true, processadoEm: true },
+        select: { id: true, processadoEm: true, recebidoEm: true },
       })
 
       if (jaExiste?.processadoEm) {
         resumo.duplicados += 1
+        // Adapter que não usa `jaProcessados` entrega a cópia até aqui.
+        if (jaExiste.recebidoEm.getTime() !== email.recebidoEm.getTime()) {
+          colisoes.push({ messageId: email.messageId, recebidoEm: email.recebidoEm.toISOString() })
+        }
         continue
       }
 
@@ -304,6 +354,9 @@ export async function sincronizar(
       })
     }
   }
+
+  resumo.repetidas = colisoes.length
+  if (colisoes.length > 0) await registrarColisoes(deps.banco, correlacaoId, colisoes)
 
   await registrarEvento(deps.banco, {
     correlacaoId,

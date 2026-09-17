@@ -293,14 +293,65 @@ describe('uma mensagem ruim, ou uma caixa cheia, não trava a leitura', () => {
     const antigas = varias(250, 'antiga')
     const novas = varias(3, 'nova')
     const cliente = clienteFalso([...antigas, ...novas])
-    const conhecidos = new Set(antigas.map((m) => m.internetMessageId!))
+    const gravados = new Map(antigas.map((m) => [m.internetMessageId!, new Date(m.receivedDateTime)] as const))
+    const { avisos, avisar } = coletor()
 
     const emails = await new IngestaoGraph(cliente, { lerDesde: LER_DESDE }).buscarNovos({
-      jaProcessados: async (ids) => new Set(ids.filter((id) => conhecidos.has(id))),
+      jaProcessados: async (ids) => new Map(ids.flatMap((id) => (gravados.has(id) ? [[id, gravados.get(id)!]] : []))),
+      avisar,
     })
 
     expect(emails.map((e) => e.messageId)).toEqual(novas.map((m) => m.internetMessageId))
     expect(cliente.anexosPedidos).toEqual(['nova-0', 'nova-1', 'nova-2'])
+    // Mesma chave e mesma data é o mesmo e-mail: descartado em silêncio.
+    expect(avisos).toEqual([])
+  })
+
+  it('chave conhecida com data ilegível não vira colisão falsa', async () => {
+    // `new Date('')` é NaN, e NaN é diferente de tudo: sem a guarda, a mesma
+    // mensagem relida viraria "possível falsificação" (revisão do PR).
+    const conhecida = mensagem({ id: 'k', internetMessageId: '<k@exemplo.test>', receivedDateTime: '' })
+    const { avisos, avisar } = coletor()
+
+    const emails = await new IngestaoGraph(clienteFalso([conhecida]), { lerDesde: LER_DESDE }).buscarNovos({
+      jaProcessados: async () => new Map([['<k@exemplo.test>', new Date('2026-09-10T00:00:00Z')]]),
+      avisar,
+    })
+
+    expect(emails).toEqual([])
+    expect(avisos).toEqual([])
+  })
+
+  it('mesma chave com outra data vira aviso de colisão, e não ocupa vaga do teto', async () => {
+    // Pendência da revisão de segurança do PR #59: o identificador é escrito por
+    // quem manda. Quem copia o de um e-mail já processado fazia o seu sumir sem
+    // rastro — e, se as cópias contassem no teto, 200 delas travariam a caixa.
+    const original = varias(1, 'original')[0]!
+    const copias = Array.from({ length: 250 }, (_, indice) =>
+      mensagem({
+        id: `copia-${indice}`,
+        internetMessageId: original.internetMessageId,
+        receivedDateTime: new Date(Date.UTC(2026, 8, 11, 0, indice)).toISOString(),
+        hasAttachments: true,
+      }),
+    )
+    const nova = varias(1, 'nova')[0]!
+    const cliente = clienteFalso([original, ...copias, nova])
+    const { avisos, avisar } = coletor()
+
+    const emails = await new IngestaoGraph(cliente, { lerDesde: LER_DESDE }).buscarNovos({
+      jaProcessados: async () => new Map([[original.internetMessageId!, new Date(original.receivedDateTime)]]),
+      avisar,
+    })
+
+    expect(emails.map((e) => e.messageId)).toEqual([nova.internetMessageId])
+    expect(cliente.anexosPedidos).toEqual(['nova-0'])
+    expect(avisos).toHaveLength(250)
+    expect(avisos[0]).toEqual({
+      tipo: 'colisao',
+      messageId: original.internetMessageId,
+      recebidoEm: copias[0]!.receivedDateTime,
+    })
   })
 
   it('lê a partir da data mais recente entre a janela pedida e a data de início da implantação', async () => {

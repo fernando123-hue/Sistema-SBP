@@ -108,7 +108,7 @@ describe('um identificador longo não paga IA nem derruba a sincronização', ()
 
     const resumo = await sincronizar({ banco, ingestao, ia: iaQueConta() }, base.operador)
 
-    expect(resumo.falhas).toBe(1)
+    expect(resumo.naoLidas).toBe(1)
     expect(resumo.novos).toBe(1)
   })
 })
