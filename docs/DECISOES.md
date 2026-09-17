@@ -824,6 +824,28 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 **Ainda não feito:** a rotina `A50` (tarefa agendada, fora do repositório) continua usando `ia:experimentar`; trocá-la para `ia:avaliar -- --json` muda a configuração da máquina do dono.
 
+### AT-37 — O adapter local fala protocolo, não produto; endereço público é recusado *(17/09/2026)*
+
+**O que existe:** `src/adapters/ia-local.ts` — `ClienteDeModelo` por `fetch` no caminho `/chat/completions` de qualquer servidor compatível com OpenAI (`A56 (b)`), sem SDK e sem dependência nova. Ligado em `criarAiPort()` e em `criarAssistentePort()`; `IA_ADAPTER="local"`, `IA_LOCAL_URL`, `IA_LOCAL_CHAVE` (opcional). Passo 4 do plano de `A56`. **Nenhum modelo foi medido**: a máquina não chegou (`A56 (d)`), e `IA_PARA_DADO_REAL.local` nasce `false` — e-mail real com IA local é recusado na partida.
+
+**O nome do arquivo é `ia-local.ts`, não `ia-ollama.ts`**, de propósito: o contrato é o protocolo. Trocar Ollama por llama.cpp, vLLM ou LM Studio é trocar o endereço.
+
+**Decisões provisórias:**
+- **Sem modelo padrão.** `PERFIL_LOCAL.modeloPadrao` é vazio e `IA_MODELO` é obrigatória com este adapter. Cada servidor serve o que baixaram nele; um padrão inventado daria 404 do servidor e a pessoa procuraria o defeito no endereço.
+- **Endereço público recusado** (`A56 (f)`): só loopback, `10.x`, `192.168.x`, `172.16–31.x` e `fc00::/7`. Nome que não seja `localhost` é recusado — resolver DNS na partida não garante nada, porque o mesmo nome pode resolver para outra coisa depois. **Por quê:** um `IA_LOCAL_URL` apontando para fora mandaria e-mail de associado a um terceiro **com o nome de "local"**, passando por cima da lista `IA_PARA_DADO_REAL`, que é por fornecedor.
+- **Erro do servidor não carrega o corpo da resposta**, só o status: servidor local costuma ecoar o pedido na mensagem de erro, e o pedido leva o corpo do e-mail — isso iria para o log, que não tem retenção (invariante 11).
+- **Teto de 5 minutos por chamada** (`AbortSignal.timeout`): modelo pequeno em CPU leva minutos, e sem SDK não há teto de ninguém; o que o teto impede é a chamada pendurada segurando o laço de ingestão.
+- **Cerca de código é retirada na borda** antes do `JSON.parse`: modelo pequeno devolve ```json … ``` mesmo mandado não devolver. O Zod do núcleo continua sendo quem aceita ou recusa.
+- **`response_format: {type: "json_object"}` é pedido, não garantia**: servidor que não conhece o campo o ignora.
+
+**Impacto se estiverem erradas:** um servidor legítimo fora dessas faixas (rede interna com outro endereçamento) é recusado e exige mudar a regra — de propósito, com decisão; teto de 5 minutos pode ser curto para modelo maior em máquina fraca; `json_object` recusado por algum servidor viraria erro na primeira chamada, visível.
+
+**Da revisão técnica do PR #74:** o endereço também recusa **usuário e senha embutidos** (viajariam em todo pedido e apareceriam no log de acesso do servidor e de qualquer proxy; a mensagem não repete o valor), e corpo com status 200 que não é JSON vira falha nomeada. **Uma sugestão da revisão foi recusada, com medida:** afrouxar o `fc00::/7` para 1 a 3 dígitos no primeiro hexteto abriria a trava — `fd1:2:3::4` é `0x0fd1`, endereço público, e todo ULA de verdade tem quatro dígitos ali. Virou teste.
+
+**Da revisão de segurança do PR #74:** o `fetch` **não segue redirecionamento** (`redirect: "manual"`; `3xx` vira falha). A trava de endereço vale na partida, e sem isso um servidor interno que respondesse `307` faria o Node reenviar o mesmo POST — com o corpo do e-mail — para onde ele mandasse. **Pendência anotada:** `localhost` é nome e é resolvido na hora da chamada; se o `hosts` mudar, o destino muda sem a trava perceber (baixo: é configuração de quem administra).
+
+**Prova:** `src/adapters/ia-local.test.ts` — 17 testes contra um `node:http` de verdade em `127.0.0.1`, porta efêmera, respondendo como servidor compatível com OpenAI (inclusive errado: 401, 500, `finish_reason: length`, conteúdo vazio, cerca de código). `src/servidor/ambiente-seguro.test.ts` cobre o portão do endereço. **Status:** ⏳ adotado; reavaliar com a máquina em mãos e a nota do gabarito.
+
 ---
 
 ## Segundo fornecedor de IA: Gemini — 07/09/2026

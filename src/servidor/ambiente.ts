@@ -25,7 +25,7 @@ function carregarArquivoEnv(): void {
 
 const AmbienteSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL é obrigatória — copie `.env.example` para `.env`'),
-  IA_ADAPTER: z.enum(['mock', 'anthropic', 'gemini']).default('mock'),
+  IA_ADAPTER: z.enum(['mock', 'anthropic', 'gemini', 'local']).default('mock'),
   INGESTAO_ADAPTER: z.enum(['mock', 'imap', 'graph', 'gmail']).default('mock'),
   /**
    * Modelo a usar. **Vazio significa "o padrão do adapter escolhido"**, nunca
@@ -47,6 +47,22 @@ const AmbienteSchema = z.object({
    * um dia entrar um, ela não precisa mudar de nome nem de dono.
    */
   GOOGLE_AI_KEY: z.string().optional(),
+  /**
+   * Endereço do servidor de modelo compatível com OpenAI (`A56 (b)`).
+   *
+   * É a raiz da API, terminando antes de `/chat/completions` — por exemplo
+   * `http://127.0.0.1:11434/v1` (Ollama) ou `http://127.0.0.1:8080/v1`
+   * (llama.cpp). Trocar de servidor é trocar este endereço; nada mais.
+   */
+  IA_LOCAL_URL: z.string().default(''),
+  /**
+   * Token do servidor local, quando ele exigir um.
+   *
+   * Vários servidores aceitam qualquer valor, e alguns não pedem nada. É
+   * opcional de propósito: exigir um segredo que não existe faria a pessoa
+   * inventar um e guardá-lo como se protegesse alguma coisa.
+   */
+  IA_LOCAL_CHAVE: z.string().optional(),
   /**
    * Segredo que assina o cookie de sessão.
    *
@@ -265,6 +281,26 @@ export function ambiente(): Ambiente {
     throw new Error(`IA_ADAPTER="${resultado.data.IA_ADAPTER}" exige ${exigida} configurada.`)
   }
 
+  // O servidor local não tem credencial na tabela acima, mas tem duas
+  // exigências próprias, e as duas falham na partida em vez de na primeira
+  // chamada ao modelo.
+  if (resultado.data.IA_ADAPTER === 'local') {
+    if (!resultado.data.IA_LOCAL_URL) {
+      throw new Error(
+        'IA_ADAPTER="local" exige IA_LOCAL_URL: o endereço do servidor de modelo compatível com OpenAI ' +
+          '(por exemplo http://127.0.0.1:11434/v1).',
+      )
+    }
+    if (!resultado.data.IA_MODELO) {
+      throw new Error(
+        'IA_ADAPTER="local" exige IA_MODELO: cada servidor local serve o modelo que baixaram nele, ' +
+          'e não há padrão que valha para todos.',
+      )
+    }
+    const recusa = motivoDeEnderecoLocalInvalido(resultado.data.IA_LOCAL_URL)
+    if (recusa) throw new Error(`IA_LOCAL_URL ${recusa}`)
+  }
+
   // Caixa real = e-mail real de associado (achado N-17). A IA simulada
   // aprovaria esse e-mail por regra fixa, e a chave gratuita do Gemini é só
   // para e-mail sintético (`A50`) — seus termos não excluem treino (`A38`).
@@ -319,7 +355,63 @@ const IA_PARA_DADO_REAL = {
   mock: false,
   anthropic: true,
   gemini: false,
+  // Nasce `false` por decisão do dono (`A56 (e)`): o modelo local só recebe
+  // e-mail de associado depois de medido pelo gabarito (`npm run ia:avaliar`)
+  // e de ele decidir. Trocar esta linha é a decisão, não um efeito colateral
+  // de configurar o endereço.
+  local: false,
 } as const satisfies Record<z.infer<typeof AmbienteSchema>['IA_ADAPTER'], boolean>
+
+/**
+ * Por que o endereço do modelo local não pode ser público (`A56 (f)`).
+ *
+ * Um `IA_LOCAL_URL` apontando para a internet manda o corpo do e-mail — nome,
+ * CPF, CRM de associado — a uma empresa qualquer, **com o nome de "local"**, e
+ * passa por cima da lista de permissão `IA_PARA_DADO_REAL`, que é por
+ * fornecedor. Fornecedor de fora entra como `ia-<nome>.ts` com decisão
+ * escrita; não pela porta dos fundos de um endereço.
+ *
+ * O laço é permitir a rede interna da associação (o servidor pode não ser a
+ * mesma máquina) e recusar o resto. Nome que não seja `localhost` é recusado
+ * porque resolvê-lo aqui seria consulta de DNS na partida — e o mesmo nome
+ * pode resolver para outra coisa depois.
+ */
+function motivoDeEnderecoLocalInvalido(valor: string): string | null {
+  let url: URL
+  try {
+    url = new URL(valor)
+  } catch {
+    return `não é um endereço válido: "${valor}".`
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return `precisa ser http ou https (recebido "${url.protocol}").`
+  }
+  // Credencial no endereço viaja em TODO pedido e aparece no log de acesso do
+  // servidor e de qualquer proxy no meio. A mensagem não repete o valor.
+  if (url.username || url.password) {
+    return 'não pode levar usuário e senha embutidos; use IA_LOCAL_CHAVE para o token do servidor.'
+  }
+
+  // `[::1]` chega com os colchetes em `hostname`.
+  const hospedeiro = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  if (hospedeiro === 'localhost' || hospedeiro === '::1' || /^127\./.test(hospedeiro)) return null
+  if (/^10\./.test(hospedeiro)) return null
+  if (/^192\.168\./.test(hospedeiro)) return null
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(hospedeiro)) return null
+  // `fc00::/7` — endereço local único do IPv6.
+  //
+  // OS QUATRO DÍGITOS SÃO A REGRA, não zero à esquerda esquecido. A faixa é
+  // `fc00::` a `fdff::`, e todo valor dela tem quatro dígitos no primeiro
+  // hexteto. `fd1:2:3::4` é `0x0fd1` — endereço público, não interno. Aceitar
+  // 1 a 3 dígitos abriria a trava justamente para o que ela existe para
+  // recusar (revisão do PR #74 sugeriu afrouxar; medido, seria um buraco).
+  if (/^f[cd][0-9a-f]{2}:/.test(hospedeiro)) return null
+
+  return (
+    `aponta para fora da máquina e da rede interna ("${hospedeiro}"). O modelo local não fica em endereço ` +
+    'público (A56 (f)); um fornecedor de fora entra como adapter próprio, com decisão registrada.'
+  )
+}
 
 /**
  * Menos caracteres distintos que isto é segredo previsível (`aaaa…`,

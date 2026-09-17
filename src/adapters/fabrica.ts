@@ -10,6 +10,7 @@ import { AssistentePorBusca } from './assistente-busca'
 import { AssistenteComModelo } from './assistente-modelo'
 import { clienteAnthropic, IaAnthropic, PERFIL_ANTHROPIC } from './ia-anthropic'
 import { clienteGemini, IaGemini, PERFIL_GEMINI } from './ia-gemini'
+import { clienteLocal, IaLocal, PERFIL_LOCAL } from './ia-local'
 import { IaMock } from './ia-mock'
 import { clienteDoGraph, IngestaoGraph, IngestaoIndisponivelError } from './ingestao-graph'
 import { IngestaoMock, type OpcoesIngestaoMock } from './ingestao-mock'
@@ -59,6 +60,8 @@ export function criarAiPort(): AiPort {
       return new IaAnthropic()
     case 'gemini':
       return new IaGemini()
+    case 'local':
+      return new IaLocal()
     default:
       throw new AdapterIndisponivelError('IA', nome)
   }
@@ -87,6 +90,8 @@ export function criarAssistentePort(): AssistentePort {
       return new AssistenteComModelo(PERFIL_ANTHROPIC, clienteAnthropic())
     case 'gemini':
       return new AssistenteComModelo(PERFIL_GEMINI, clienteGemini())
+    case 'local':
+      return new AssistenteComModelo(PERFIL_LOCAL, clienteLocal())
     default:
       throw new AdapterIndisponivelError('assistente', nome)
   }

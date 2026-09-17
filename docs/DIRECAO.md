@@ -42,7 +42,7 @@ Resumo de `DECISOES.md § A19–A26, A30, A33`:
 |---|---|
 | Anthropic | IA paga, depois da rodada de segurança (`A49`); vira capacidade avançada e escalonamento (`A51`) |
 | Gemini | Rotina de teste até o protótipo ficar pronto (`A50`) |
-| IA local | Desde o início da implantação (`A51`). Máquina garantida, **8 GB de RAM**; até ela chegar, só estrutura (`A56`) |
+| IA local | Desde o início da implantação (`A51`). Máquina garantida, **8 GB de RAM**. Estrutura pronta em 17/09/2026: gabarito (`AT-36`) e `ia-local.ts` (`AT-37`); faltam a máquina, o modelo e a decisão do dono para dado real |
 | CPF | Sai do texto antes de modelo externo (`A52`) |
 | Custo | Registro por chamada, teto diário e disjuntor (`A54`) |
 | Aprender | Medir e propor regra, com aprovação humana (`A53`); nada de treinar com dado real (invariante 9) |
