@@ -7,7 +7,7 @@ Pedido do dono (`DECISOES.md § A49`): *"reforçar a segurança e a qualidade do
 ## Como esta rodada é feita
 
 1. **Medições automáticas** — feitas em 16/09/2026 à noite, resultado abaixo.
-2. **Auditoria por agentes, só leitura, sobre a `main` inteira** — em paralelo, com verificação adversarial de cada achado. O dono autorizou em 16/09/2026 à noite e pediu que seja feita **com calma, quando o limite de uso voltar**: *"qualidade e segurança são o crucial aqui"*. Ainda não rodou.
+2. **Auditoria por agentes, só leitura, sobre a `main` inteira** — em paralelo, com verificação adversarial de cada achado. O dono autorizou em 16/09/2026 à noite e pediu que seja feita **com calma, quando o limite de uso voltar**: *"qualidade e segurança são o crucial aqui"*. Rodou em 16–17/09/2026 e parou no limite de uso; em 17/09/2026 o dono **revogou** o uso de workflow — o que falta é feito um por vez.
 3. **Correção por severidade**, um PR por tema, cada uma com teste visto vermelho antes.
 4. **Destino de cada achado** registrado na tabela do fim. Nenhum fica sem destino.
 
@@ -69,6 +69,8 @@ Não são achados ainda — são **onde a auditoria de testes deve olhar primeir
 
 ## 3. Destino de cada achado
 
+Os achados dos agentes têm a coluna **Destino** na própria tabela, em `2026-09-17-achados-da-auditoria-por-agentes.md`. Aqui ficam os destinos dos achados deste arquivo.
+
 | Id | Severidade | Onde | Resumo | Destino |
 |---|---|---|---|---|
-| — | — | — | — | — |
+| M-01 | BAIXO (ALTO em servidor) | comando de partida do MySQL | protocolo X em todas as interfaces | comando corrigido no `ESTADO.md` (17/09); falta entrar na lista de implantação (`A46`) |
