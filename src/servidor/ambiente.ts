@@ -264,6 +264,11 @@ export function ambiente(): Ambiente {
   // Segredo escrito no repositório não é segredo (achado N-18): o CI e a suíte
   // usam valores públicos de propósito, e nada impedia que um deles fosse
   // copiado para produção. A mensagem nomeia a variável, nunca o valor.
+  //
+  // LIMITE CONHECIDO: "produção" aqui é só `NODE_ENV`, o mesmo sinal fraco do
+  // achado C-12 (um servidor publicado com `NODE_ENV` herdado diferente passa
+  // sem esta trava). Quando o C-12 trouxer um sinal positivo de produção, esta
+  // trava deve usá-lo também.
   if (resultado.data.NODE_ENV === 'production') {
     const publicos = SEGREDOS.filter((nome) => {
       const valor = resultado.data[nome]

@@ -36,7 +36,7 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 | C-09 | MÉDIO | `src/servicos/autenticacao.ts:85` | A trava por conta pode ser furada disparando tentativas em paralelo | |
 | C-10 | MÉDIO | `src/servicos/fila.ts:139` | Concluir, devolver e transferir o mesmo item em paralelo passam sem trava | |
 | C-11 | MÉDIO | `src/servicos/ingestao.ts:277` | E-mail que falha na interpretação é reinterpretado, e pago, em toda sincronização, sem contador nem limite | |
-| C-12 | MÉDIO | `src/servidor/ambiente.ts:323` | 'Produção' é detectada só por NODE_ENV, e a trava de rede do acesso sem senha é toda escrita pelo cliente | |
+| C-12 | MÉDIO | `src/servidor/ambiente.ts:323` | 'Produção' é detectada só por NODE_ENV, e a trava de rede do acesso sem senha é toda escrita pelo cliente | **Pendente.** Atenção: a trava de segredo público do N-18 (17/09) usa o mesmo sinal `NODE_ENV` e herda esta fraqueza |
 | C-13 | MÉDIO | `src/servidor/http.ts:318` | Nenhuma rota autenticada confere origem; SameSite=Lax não cobre origem do mesmo site | |
 | C-14 | MÉDIO | `src/servidor/http.ts:235` | Com PROXIES_CONFIAVEIS=1, o cliente escolhe a própria chave do limite por origem | |
 | C-15 | BAIXO | `src/adapters/assistente-modelo.ts:111` | O assistente grava no log texto livre escolhido pelo modelo, o que abre caminho para a pergunta, com e-mail colado, chegar ao log | |
