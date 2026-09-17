@@ -2,9 +2,11 @@
 
 <!-- Uma frase. O que o sistema faz agora que não fazia antes. -->
 
-## Por que
+## Nível de risco
 
-<!-- Qual problema da operação isso resolve. Referencie a regra (RN-xx) ou a decisão (DECISOES.md § ...) quando houver. -->
+<!-- O CI calcula pelos arquivos alterados e mostra no resumo do job "Processo".
+     0 documentação · 1 tela · 2 regra de negócio · 3 sensível. Ver docs/PROCESSO.md.
+     O CI falha se faltar a evidência que o nível exige nas seções abaixo. -->
 
 ## Impacto
 
@@ -14,13 +16,37 @@
 - [ ] Altera comportamento da IA — prompt/versão registrados?
 - [ ] Nenhum dos acima
 
-## Testes
+## Evidência
 
-<!-- O que foi testado e como. Se mudou o motor ou a distribuição, cite os casos. -->
+### Especificação
 
-- [ ] `npm run verificar` passa (typecheck + testes)
-- [ ] Conservação de totais coberta por teste
-- [ ] Casos de borda cobertos (Q=0, Q ímpar, 1 elegível, 0 elegíveis)
+<!-- Todo nível. O que foi pedido e onde: regra (RN-xx), decisão (DECISOES.md § …), achado de auditoria. -->
+
+### Visto rodando
+
+<!-- Nível 1+. Tela vista rodando (sbp-local) e o que foi conferido. Sem tela: "Não se aplica — <motivo>". -->
+
+### Verificação comportamental
+
+<!-- Nível 2+. O comportamento pedido, provado: propriedade ou conta (ex.: Σ atribuições = entrada em N sorteios),
+     casos extremos (Q=0, Q ímpar, 1 elegível, 0 elegíveis), determinismo, erro tratado. Cite os testes. -->
+
+### Teste visto vermelho
+
+<!-- Nível 2+. Qual teste falhou com a correção revertida (ou com o defeito reintroduzido), e com que mensagem. -->
+
+### Revisão técnica
+
+<!-- Nível 2+. Agente revisor DIFERENTE do que escreveu o código, com o LINK do comentário publicado neste PR
+     (…/pull/N#issuecomment-…). Achados críticos e altos: corrigidos ou com destino escrito. -->
+
+### Revisão de segurança
+
+<!-- Nível 3. Agente de segurança, com o LINK do comentário publicado neste PR. -->
+
+### Regressão
+
+<!-- Nível 1+. `npm run verificar`: arquivos, testes, pulados. E os checks do CI lidos um a um. -->
 
 ## Segurança
 
