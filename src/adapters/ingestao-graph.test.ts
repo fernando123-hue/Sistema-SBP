@@ -329,6 +329,12 @@ describe('a fábrica exige o dia de início da leitura (AT-35)', () => {
     expect(() => criarIngestaoPort({ datas: [] })).toThrow(/GRAPH_LER_DESDE/)
   })
 
+  it.each(['2026-02-31', '2026-13-99'])('GRAPH_LER_DESDE=%s, data que não existe, é recusada', (data) => {
+    vi.stubEnv('GRAPH_LER_DESDE', data)
+    limparCacheDeAmbiente()
+    expect(() => criarIngestaoPort({ datas: [] })).toThrow(/GRAPH_LER_DESDE/)
+  })
+
   it('com GRAPH_LER_DESDE, lê a partir do início daquele dia no fuso da operação', async () => {
     vi.stubEnv('GRAPH_LER_DESDE', '2026-09-01')
     limparCacheDeAmbiente()

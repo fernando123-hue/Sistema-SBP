@@ -155,6 +155,14 @@ const AmbienteSchema = z.object({
   GRAPH_LER_DESDE: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'GRAPH_LER_DESDE precisa ser uma data AAAA-MM-DD')
+    // O formato não basta: `2026-02-31` viraria 3 de março em silêncio.
+    .refine(
+      (valor) => {
+        const data = new Date(`${valor}T00:00:00Z`)
+        return !Number.isNaN(data.getTime()) && data.toISOString().slice(0, 10) === valor
+      },
+      'GRAPH_LER_DESDE precisa ser uma data que existe',
+    )
     .optional()
     .or(z.literal('').transform(() => undefined)),
   /**

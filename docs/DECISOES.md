@@ -598,6 +598,8 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **Hipóteses:** 7 dias bastam para uma falha passageira (IA fora, rede) se resolver; o dia da implantação é conhecido e único; a listagem de uma semana (só metadado e corpo, sem anexo) é leve o bastante para cada sincronização. **Impacto se estiverem erradas:** falha que dura mais de 7 dias sai da nova tentativa automática (continua visível como evento); uma semana muito movimentada deixa a listagem pesada — aí a janela diminui ou a leitura passa a usar o `deltaLink` do Graph. Uma mensagem recusada gera um evento a cada sincronização enquanto estiver na janela.
 
+**Pendência (revisão de segurança do PR #59, anterior a ele):** `internetMessageId` é escrito por quem manda o e-mail e é a chave de idempotência. Um remetente que copie o identificador de um e-mail já processado faz o seu sumir **sem evento nenhum** — `jaProcessados` só tornou isso mais barato. Destino: registrar um evento quando uma mensagem é descartada como já processada **e** difere da gravada (data de chegada ou remetente), para a colisão ficar visível. Ainda não feito.
+
 **Prova:** `src/adapters/ingestao-graph.test.ts` e `src/servicos/ingestao-leitura-da-caixa.test.ts`, vistos vermelhos contra o código anterior.
 
 **Status:** 🟡 provisória — conferir a janela e a data com uso real, junto com a credencial do TI.
