@@ -24,7 +24,7 @@ const janelas = new Map<string, Janela>()
  * passar a incluir algo ilimitado — IP de visitante, remetente de e-mail — e o
  * mapa virar vazamento de verdade num processo de vida longa.
  */
-const TETO_DE_CHAVES = 1000
+export const TETO_DE_CHAVES = 1000
 
 export interface ResultadoDoLimite {
   permitido: boolean
@@ -43,7 +43,7 @@ export function verificarLimite(
   if (!janela || janela.reiniciaEm <= agora) {
     // Limpeza oportunista: sem isto, `limparJanelasExpiradas` nunca rodaria —
     // a função existia sem nenhum chamador.
-    if (janelas.size >= TETO_DE_CHAVES) limparJanelasExpiradas()
+    if (janelas.size >= TETO_DE_CHAVES) abrirEspaco()
 
     janelas.set(chave, { contagem: 1, reiniciaEm: agora + janelaSegundos * 1000 })
     return { permitido: true, restante: maximo - 1, reiniciaEmSegundos: janelaSegundos }
@@ -65,4 +65,31 @@ export function limparJanelasExpiradas(): void {
   for (const [chave, janela] of janelas) {
     if (janela.reiniciaEm <= agora) janelas.delete(chave)
   }
+}
+
+/**
+ * Garante lugar para uma chave nova sem passar do teto (achado N-37).
+ *
+ * Tirar só as vencidas não bastava: com mais de mil janelas ATIVAS — chaves que
+ * incluem algo escolhido de fora — o mapa crescia sem fim. Depois da limpeza,
+ * saem as mais antigas (o `Map` guarda a ordem de inserção). O custo é a
+ * chave antiga recomeçar a contagem; a alternativa, recusar chave nova, seria
+ * trancar quem chega depois de uma inundação.
+ */
+function abrirEspaco(): void {
+  limparJanelasExpiradas()
+  for (const chave of janelas.keys()) {
+    if (janelas.size < TETO_DE_CHAVES) break
+    janelas.delete(chave)
+  }
+}
+
+/** Só para testes. */
+export function chavesNoLimitador(): number {
+  return janelas.size
+}
+
+/** Só para testes. */
+export function esvaziarLimitador(): void {
+  janelas.clear()
 }
