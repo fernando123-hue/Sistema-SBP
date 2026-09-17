@@ -143,6 +143,24 @@ describe('pontuarCaso — a nota de uma resposta contra o gabarito', () => {
     expect(nota.literalidade).toBeCloseTo(2 / 3, 6)
   })
 
+  it('caso sem item nenhum, respondido sem item nenhum, é acerto — vazio contra vazio não é 0/0 = 0', () => {
+    const caso: CasoDoGabarito = { ...FICHA, esperado: { itens: [], suspeito: false } }
+    const nota = pontuarCaso(caso, interpretacao([]))
+    expect(nota.categorias).toBe(1)
+    expect(nota.nota).toBe(1)
+  })
+
+  it('valor de um ou dois caracteres não conta para a literalidade — "a" está em qualquer e-mail', () => {
+    const soCurtos = pontuarCaso(FICHA, interpretacao([item({ campos: { x: 'a', y: 'de' } })]))
+    expect(soCurtos.literalidade).toBeNull()
+
+    const misturado = pontuarCaso(
+      FICHA,
+      interpretacao([item({ campos: { x: 'a', nome: 'Fulano Sintético', crm: 'SP999999' } })]),
+    )
+    expect(misturado.literalidade).toBe(0.5)
+  })
+
   it('sem campo esperado e sem campo devolvido, as duas dimensões ficam de fora da média', () => {
     const caso: CasoDoGabarito = {
       ...FICHA,

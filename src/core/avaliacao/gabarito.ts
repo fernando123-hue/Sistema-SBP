@@ -98,6 +98,9 @@ function fracao(parte: number, total: number): number {
 }
 
 function pontuarCategorias(esperadas: readonly string[], obtidas: readonly string[]): number {
+  // Nada esperado e nada devolvido é acerto. `fracao(0, 0)` daria zero, e um
+  // e-mail que não gera trabalho, lido certo, sairia com nota de erro.
+  if (esperadas.length === 0 && obtidas.length === 0) return 1
   const restantes = [...obtidas]
   let acertos = 0
   for (const categoria of esperadas) {
@@ -132,11 +135,21 @@ function pontuarCampos(caso: CasoDoGabarito, resposta: Interpretacao): number | 
   return fracao(acertos, esperados.length)
 }
 
+/**
+ * Abaixo disto, "estar no e-mail" não prova nada: `"a"` e `"de"` estão em
+ * qualquer texto em português. Valor curto não entra nem no numerador nem no
+ * denominador — contá-lo como literal inflaria a nota; como inventado,
+ * puniria uma UF legítima.
+ */
+const TAMANHO_MINIMO_LITERAL = 3
+
 function pontuarLiteralidade(caso: CasoDoGabarito, resposta: Interpretacao): number | null {
   const texto = normalizarValor(`${caso.email.assunto}\n${caso.email.corpo}`)
-  const valores = resposta.itens.flatMap((item) => Object.values(item.campos).map(normalizarValor))
+  const valores = resposta.itens
+    .flatMap((item) => Object.values(item.campos).map(normalizarValor))
+    .filter((valor) => valor.length >= TAMANHO_MINIMO_LITERAL)
   if (valores.length === 0) return null
-  return fracao(valores.filter((valor) => valor.length > 0 && texto.includes(valor)).length, valores.length)
+  return fracao(valores.filter((valor) => texto.includes(valor)).length, valores.length)
 }
 
 function media(valores: readonly number[]): number | null {
