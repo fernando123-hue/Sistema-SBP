@@ -1,6 +1,6 @@
 # Estado do projeto — retomada
 
-Última atualização: **17/09/2026, noite** — `main` em `2a43687` mais o PR do gabarito da IA (`feat/gabarito-avaliacao-ia`). Suíte: **95 arquivos, 1082 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
+Última atualização: **17/09/2026, noite** — `main` em `2a43687` mais o PR do gabarito da IA (`feat/gabarito-avaliacao-ia`). Suíte: **95 arquivos, 1084 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
 
 > ## ▶ Próxima sessão: comece aqui
 >
