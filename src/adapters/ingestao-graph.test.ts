@@ -608,3 +608,81 @@ describe('anexos do Graph: o que não é arquivo aparece, e o grande não é bai
     })
   })
 })
+
+/**
+ * Revisão de segurança do PR #62: o teto de 50 anexos só agia no esquema,
+ * depois de tudo baixado — um remetente com 200 anexos de 25 MB enchia a
+ * memória antes da recusa.
+ */
+describe('o limite de anexos age antes de baixar', () => {
+  const pedidos: string[] = []
+
+  function caixaComAnexos(lista: Record<string, unknown>[]) {
+    vi.stubGlobal('fetch', async (url: string) => {
+      pedidos.push(decodeURIComponent(url))
+      if (url.includes('/oauth2/')) {
+        return new Response(JSON.stringify({ access_token: 'token-sintetico', expires_in: 3600 }), { status: 200 })
+      }
+      if (url.includes('/attachments?')) return new Response(JSON.stringify({ value: lista }), { status: 200 })
+      const id = url.split('/attachments/')[1]
+      return new Response(JSON.stringify({ id, contentBytes: 'YWJj' }), { status: 200 })
+    })
+  }
+
+  const arquivo = (id: string, size: number) => ({
+    id,
+    name: `${id}.pdf`,
+    contentType: 'application/pdf',
+    size,
+    '@odata.type': '#microsoft.graph.fileAttachment',
+  })
+
+  beforeEach(() => {
+    pedidos.length = 0
+    vi.stubEnv('GRAPH_TENANT_ID', 'tenant-sintetico')
+    vi.stubEnv('GRAPH_CLIENT_ID', 'cliente-sintetico')
+    vi.stubEnv('GRAPH_CLIENT_SECRET', 'segredo-sintetico')
+    vi.stubEnv('GRAPH_CAIXA', 'secretaria@exemplo.test')
+    limparCacheDeAmbiente()
+    limparTokenDoGraph()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+    limparCacheDeAmbiente()
+    limparTokenDoGraph()
+  })
+
+  it('com mais de 50 anexos, nenhum é baixado', async () => {
+    caixaComAnexos(Array.from({ length: 51 }, (_, i) => arquivo(`a${i}`, 3)))
+
+    const anexos = await clienteDoGraph().listarAnexos('msg-1')
+
+    expect(anexos).toHaveLength(51)
+    expect(anexos.every((anexo) => anexo.contentBytes === null)).toBe(true)
+    expect(pedidos.filter((url) => url.includes('/attachments/'))).toEqual([])
+  })
+
+  it('a soma dos bytes de uma mensagem tem teto; o que passa dele é recusado pelo nome', async () => {
+    caixaComAnexos(Array.from({ length: 5 }, (_, i) => arquivo(`g${i}`, TAMANHO_MAXIMO_ANEXO_BYTES)))
+
+    const anexos = await clienteDoGraph().listarAnexos('msg-1')
+
+    expect(anexos.slice(0, 4).every((anexo) => anexo.contentBytes === 'YWJj')).toBe(true)
+    expect(anexos[4]!.contentBytes).toBeNull()
+    expect(anexos[4]!.semBytesPorque).toMatch(/Outlook/)
+    expect(pedidos.some((url) => url.endsWith('/attachments/g4'))).toBe(false)
+  })
+
+  it('o adapter transforma o motivo do cliente em recusa', async () => {
+    const [email] = await new IngestaoGraph(
+      clienteFalso(
+        [mensagem({ hasAttachments: true })],
+        [{ name: 'g4.pdf', contentType: null, size: 1, contentBytes: null, semBytesPorque: 'anexos somam mais de 100 MB — abra no Outlook' }],
+      ),
+    ).buscarNovos()
+
+    expect(email!.anexos[0]!.recusa).toBe('anexos somam mais de 100 MB — abra no Outlook')
+  })
+})
