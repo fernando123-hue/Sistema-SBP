@@ -1,0 +1,59 @@
+# Roteiro da auditoria de segurança, red team e hardening
+
+Entregue pelo dono em 16/09/2026, à noite, como **método obrigatório** da rodada de segurança e qualidade (`DECISOES.md § A49`). Complementa o plano do bloco do topo de `ESTADO.md`, item 4 — onde os dois divergirem, vale o mais exigente.
+
+O texto abaixo é o roteiro do dono, reorganizado em lista de verificação, sem perder item. A seção final diz como ele se aplica **a este sistema**.
+
+## Postura
+
+- Papel: engenheiro principal de segurança de aplicação, red team, arquiteto de segurança e engenheiro sênior. Código do dono, análise autorizada, exploração **simulada e controlada**.
+- **Toda propriedade de segurança se prova com evidência** no código, na configuração ou na arquitetura. Não vale: "foi feito por IA", "biblioteca conhecida", "framework moderno", "tem login", "usa MySQL", "tem testes", "parece funcionar".
+- Não confundir: autenticação × autorização; cifra × hash; validação na tela × no servidor; função de segurança existir × ser aplicada; controle na aplicação × proteção do banco; biblioteca conhecida × uso seguro.
+- **Código feito por IA nunca reduz o escrutínio.** Nome de proteção no código não prova que a proteção existe.
+- Nunca: alteração destrutiva; dado real apagado; segredo revelado (mascarar sempre); afirmar "invulnerável".
+
+## Seções a auditar
+
+1. **Arquitetura** — reconstruir antes de caçar: frontend, backend, APIs, MySQL, autenticação, autorização, armazenamento, serviços externos, filas, jobs, webhooks, e-mail, upload, IA, infraestrutura, CI/CD, dependências, segredos, pontos de entrada. Fluxo **entrada externa → processamento → decisão → persistência → saída**. Ativos: credenciais, dados pessoais, documentos, banco, contas, funções administrativas, regras de negócio, dados enviados à IA, tokens, infraestrutura.
+2. **Ameaças** — para cada superfície: o que o atacante controla, modifica, observa; que identidade assume; que endpoint chama direto; que parâmetro adultera; que arquivo envia; que conteúdo externo fornece; que comportamento da IA manipula; o que dá para repetir, paralelizar ou fazer fora de ordem. Atacante anônimo **e** usuário autenticado.
+3. **OWASP Top 10 vigente** (controle de acesso, configuração, cadeia de suprimentos, criptografia, injeção, desenho inseguro, autenticação, integridade de software e dados, registro e alerta, tratamento de condições excepcionais) — **não é lista exaustiva**.
+4. **APIs** — autenticação, autorização por papel, **por objeto** e **por campo**; alteração indevida de campo; operações administrativas; limite por minuto; consumo excessivo; SSRF; webhooks; chamadas externas; inventário de endpoints (esquecidos, de debug, internos expostos). Todo id vindo do cliente: o servidor confirma que **esse** usuário pode **esse** recurso? Testar troca de id, recurso alheio, campo protegido, rota administrativa chamada direto, contorno da tela, repetição, alta velocidade.
+5. **Autenticação e sessão** — hash de senha, política, força bruta, credential stuffing, enumeração de usuário, recuperação de senha, expiração, revogação, refresh, cookies (`Secure`, `HttpOnly`, `SameSite`), CSRF, reautenticação em ação sensível, MFA em conta privilegiada, invalidação após mudança crítica. **Hash ≠ cifra reversível.**
+6. **Autorização** — papéis, recursos e operações por papel, posse de objeto, campos alteráveis, rotas administrativas. Procurar IDOR/BOLA, escalada horizontal e vertical, mass assignment, contorno de middleware, autorização só na tela.
+7. **MySQL** — *acesso:* usuário da aplicação, privilégios (SELECT/INSERT/UPDATE/DELETE/EXECUTE), menor privilégio, acesso a schemas, conta compartilhada, credencial exposta. *Consultas:* injeção, concatenação, parametrização, filtros manipuláveis, SQL dinâmico, procedures. *Estrutura:* FKs, únicos, constraints, NULL, integridade, triggers, views, eventos, funções com privilégio. *Dados:* o que é sensível, o que cifrar em repouso, o que precisa de controle extra, o que nem deveria ser guardado, dado sensível em log, backup protegido. *Segredos:* nunca expor.
+8. **Segredos** — chaves, tokens, senhas, connection strings; no código, na tela, em log, em commit, em arquivo versionado, no CI. Gestor de segredos (Infisical ou equivalente corporativo); separação dev/teste/produção; menor privilégio; rotação; expiração; trilha de acesso.
+9. **Entradas e injeções** — não confiável: usuário, URL, query, corpo, cabeçalho, cookie, e-mail, anexo, webhook, integração, **saída da IA**. SQL, comando, XSS, SSRF, path traversal, template, desserialização, cabeçalho, **CSV/fórmula**, e o que mais a stack permitir.
+10. **Uploads e documentos** — lista de extensões permitidas, tipo real (não o MIME do cliente), tamanho, nome seguro, path traversal, armazenamento, nada executável, compactados, arquivo malicioso, validação no servidor, controle de acesso, retenção, exclusão.
+11. **E-mail e conteúdo externo** — assunto, corpo, links, nomes e conteúdo de anexo são **dado, nunca instrução**. Injeção de prompt, links, SSRF, anexos, **duplicação, replay, processar duas vezes, idempotência**, spoofing, adulteração.
+12. **IA/LLM** — injeção de prompt, vazamento de informação, tratamento da saída, agência excessiva, uso inseguro de ferramentas, cadeia de suprimentos, envenenamento, privilégio e contexto em excesso, confiança excessiva. Caminho certo: **IA interpreta → validação estrutural → regra determinística → autorização → persistência**; nunca **IA decide → banco executa**.
+13. **Lógica de negócio** — invariantes: soma da distribuição correta; item com um só responsável; item processado uma vez; crédito não surge nem some; transições de estado válidas; operações atômicas; registro só muda pelas regras. Procurar contorno, parâmetro manipulado, corrida, duplicação, inconsistência, estado impossível, rollback incompleto.
+14. **Concorrência** — todo **ler → calcular → gravar**: corrida, atualização perdida, processamento duplo, inconsistência. Precisa de transação, único, trava, update atômico, chave de idempotência, versão otimista? **A tela nunca é a barreira.**
+15. **Dependências e cadeia de suprimentos** — `package.json`, lockfile, versões, transitivas, abandonadas, vulnerabilidades, scripts de instalação, desnecessárias, não oficiais, CI/CD, Docker, imagens, segredos do pipeline, dependência com acesso demais.
+16. **Frontend** — exposição de dados, segredo no cliente, tokens, chamadas inseguras, XSS, HTML inseguro, armazenamento local, componentes (shadcn/ui é código nosso). **A tela nunca é autorização.**
+17. **Registro e monitoramento** — login, falha de login, troca de senha, mudança de privilégio, operação administrativa, acesso sensível, falha de autorização, alteração crítica, erro importante. Sem senha, token, chave, dado pessoal desnecessário. Alertas, retenção, investigação, integridade da trilha.
+18. **Erros e exceções** — stack trace em produção, mensagem detalhada demais, vazamento, atualização parcial, rollback errado, exceção engolida, fallback inseguro, **fail-open**. Sempre: *"e se falhar exatamente no meio?"*
+19. **Infraestrutura** — HTTPS/TLS, cabeçalhos, CORS, CSP, cookies, containers, usuário do processo, permissões, firewall, portas, backups, recuperação, isolamento de ambientes, monitoramento, CI/CD, segredos, acesso administrativo. MySQL exposto à internet? Só serviços autorizados alcançam? TLS na conexão? Privilégios? Produção separada de desenvolvimento?
+20. **Testes de segurança** — para cada vulnerabilidade: prova de exploração segura e controlada → impacto → causa raiz → correção → teste automatizado → comportamento legítimo preservado → regressões vizinhas. Prova não destrutiva quando exploração real não couber.
+21. **Classificação** — CRÍTICO, ALTO, MÉDIO, BAIXO, INFORMATIVO. Cada achado com: **ID, severidade, categoria, arquivo, localização, descrição, vetor de ataque, pré-condições, impacto, causa raiz, correção recomendada, teste de regressão.** Pesar explorabilidade + impacto + privilégio exigido + exposição + dados afetados + encadeamento.
+22. **Correção** — causa raiz, não bloqueio superficial; nunca esconder vulnerabilidade; nunca desligar segurança para teste passar; preservar regra de negócio; defesa em profundidade; validação no servidor; menor privilégio; sem dependência nova sem necessidade; **revisar o próprio patch**.
+23. **Conclusão** — nunca "invulnerável". Informar: controles auditados, vulnerabilidades achadas e corrigidas, riscos residuais, o que não foi auditado, hipóteses, o que exige teste manual, o que depende da infraestrutura real.
+24. **Laço** — **MAPEAR → MODELAR → ATACAR → EVIDENCIAR → CLASSIFICAR → CORRIGIR → TESTAR → REAUDITAR.** Depois de cada correção: mesma classe, variantes, contornos, áreas parecidas, regressões. Correção que muda superfície relevante reabre a análise do sistema inteiro.
+25. **Relatório final** — resumo executivo (risco geral; críticos; altos; riscos de arquitetura, de IA, de banco, de infraestrutura); matriz `ID | Severidade | Categoria | Local | Status`; correções feitas; riscos residuais; próximos passos priorizados por **risco → impacto → esforço → dependências**.
+
+**Regra final:** procurar qualquer caminho pelo qual anônimo, usuário com pouco privilégio, conteúdo externo, dependência comprometida, IA ou falha de infraestrutura consiga acesso indevido, alterar dados, manipular regras, executar ação indevida, derrubar o sistema, ou produzir **decisão operacional errada**. Sistema completo: código + arquitetura + API + MySQL + autenticação + autorização + dados + IA + dependências + infraestrutura + operação + lógica de negócio.
+
+## Como se aplica a este sistema
+
+Leitura inicial, **não é achado** — cada linha precisa ser provada na auditoria.
+
+- **O que já existe e precisa ser provado, não presumido:** papéis e recorte `A24`; sessão própria (`src/servidor/sessao.ts`); limites por minuto (`limite-de-taxa.ts`, 72% de cobertura); três camadas contra injeção (`conteudo-nao-confiavel.ts`); assinatura real de arquivo (`assinatura-de-arquivo.ts`); cifra de anexos; conservação na transação (invariante 3); trilha append-only; IA só interpreta e passa por Zod (invariante 2); assistente sem campo de ação (invariante 13).
+- **Pontos que o roteiro acrescenta ao plano de `ESTADO.md` e que não estavam lá explícitos:**
+  - **Menor privilégio no MySQL.** Hoje a aplicação conecta como `root` sem senha (só em `127.0.0.1`, nesta máquina e no CI). Aceitável para desenvolvimento; **para a empresa, precisa de usuário próprio com só os privilégios necessários** — e a trilha append-only só é garantida de verdade se esse usuário não tiver `UPDATE`/`DELETE` nas tabelas de memória.
+  - **Gestor de segredos** (Infisical ou o da empresa) no lugar do `.env` em produção; rotação e expiração. Decisão depende de `A46` (onde publicar).
+  - **CSRF** e **reautenticação** em ação sensível (troca de senha, mudança de papel, prazo de retenção); **MFA** para conta privilegiada — decisão do dono se entra no protótipo.
+  - **Concorrência:** duas distribuições ao mesmo tempo; o mesmo e-mail lido duas vezes (idempotência pelo `messageId` e colação `AT-34`); concluir e transferir o mesmo item ao mesmo tempo.
+  - **CSV/fórmula:** se alguma exportação existir ou vier a existir.
+  - **Registro:** falha de login, falha de autorização e mudança de privilégio chegam à trilha? Com alerta para alguém?
+  - **Infraestrutura real** (TLS, firewall, backup, isolamento) **não pode ser auditada ainda**: não há máquina (`A46`). Vai como risco residual declarado, com lista do que conferir no dia.
+- **Provas de exploração** só contra a base `sbp_teste` ou dados sintéticos; nunca contra `sbp` sem ok do dono; nunca destrutivas.
+- **Formato do achado** passa a ser o da seção 21 no arquivo da rodada (`2026-09-16-rodada-de-seguranca-e-qualidade.md`).

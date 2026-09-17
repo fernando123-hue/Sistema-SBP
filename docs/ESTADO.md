@@ -1,8 +1,52 @@
 # Estado do projeto — retomada
 
-Última atualização: **16/09/2026, fim da tarde** — `main` em `c60fbea`, **nenhum PR aberto**, suíte com **82 arquivos e 877 testes** verde contra MySQL, aqui e no CI. Próximo trabalho decidido pelo dono: **rodada de segurança e qualidade** (`DECISOES.md § A49`).
+Última atualização: **17/09/2026, madrugada** — `main` em `47373ab` (PR #55, processo por nível de risco). **O trabalho novo está na branch `docs/auditoria-rodada-seguranca-qualidade`, enviada e ainda SEM PR** — inclusive esta versão do `ESTADO.md`; a da `main` está desatualizada. Suíte: **83 arquivos, 932 testes** verde (na branch do #55, antes do merge). Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 1 (auditar) quase fechada.
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### Retomada de 17/09/2026, madrugada — depois de um `/clear`
+>
+> **O dono limpou o contexto de propósito.** Leia *Como o dono prefere trabalhar* (mais abaixo) e **`docs/PROCESSO.md`** antes de mexer em qualquer coisa. Se algo aqui contradisser o código, o código vence.
+>
+> **Duas regras novas do dono (17/09/2026):**
+> - **Não usar Workflow** (agentes em paralelo): a auditoria gastou cerca de 5,5 milhões de tokens e bateu o limite duas vezes. Um agente revisor por vez, quando o processo exigir.
+> - **Quando ele avisar "vou dar clear" ou "vou trocar de chat": parar e preparar a retomada** — tudo que só existe na conversa vai para o repositório, commit e push, este bloco atualizado, nada rodando em segundo plano.
+>
+> **1. Ligue e confira, nesta ordem:**
+> 1. MySQL (não é serviço; para quando a sessão acaba). PowerShell, em segundo plano — **com `--mysqlx=OFF`** (achado M-01: sem isso o protocolo X abre a porta 33060 em todas as interfaces): `& "C:\Program Files\MySQL\MySQL Server 8.4\bin\mysqld.exe" --datadir=C:\Users\Irineu\mysql-sbp\dados --port=3307 --bind-address=127.0.0.1 --mysqlx=OFF`. Confira: `netstat -an | findstr "3307 33060"` — só `127.0.0.1:3307`.
+> 2. `git fetch && git switch docs/auditoria-rodada-seguranca-qualidade && git pull` → `git log --oneline -1` mostra o commit desta retomada ou mais novo. `git log --oneline -1 origin/main` → `47373ab` ou mais novo.
+> 3. `npm ci` (servidor de visualização parado antes), `npx prisma generate`, `npx prisma migrate deploy`, `npm run verificar` — zero vermelho, zero pulado.
+>
+> **2. O que aconteceu em 16–17/09/2026 (depois da retomada anterior):**
+> - **Dois roteiros do dono, gravados:** `docs/auditoria/roteiro-da-auditoria-de-seguranca.md` (método obrigatório da auditoria; formato de achado da seção 21) e `docs/arquitetura/2026-09-16-evolucao-prototipo-para-plataforma.md` (arquitetura evolutiva; perguntas respondidas).
+> - **Decisões novas** em `DECISOES.md`: `A50` (teste da IA com Gemini vira rotina — tarefa agendada `sbp-teste-ia-gemini`, 7h30 e 13h30, histórico em `C:/Users/Irineu/sbp-rotina-ia/historico.md`, fora do repositório), `A51` (IA local desde o início da implantação; até lá, estruturar), `A52` (CPF trocado por marcador antes de modelo externo, medido antes), `A53` ("aprender" = medir e propor regra com aprovação; conta do dono única e separada da gestão), `A54` (custo e disjuntor da IA entram nesta rodada), `A55` (processo por nível de risco). Pergunta nova ao dono: `§ H.4` item 29 (o que a conta do dono faz além de ver).
+> - **PR #55 mesclado** (`47373ab`): `docs/PROCESSO.md`, `scripts/processo/` e o job **Processo** do CI. **Todo PR agora precisa das seções de evidência do modelo; nível 2+ exige link de revisão por agente publicada no PR; nível 3 exige também revisão de segurança.** O próprio #55 passou por isso (duas revisões, 1 alto + 3 médios + 1 baixo corrigidos com teste visto vermelho).
+> - **Auditoria de segredos** (`docs/auditoria/2026-09-16-segredos-e-dados-sensiveis.md`): **nenhum segredo real** no histórico (83 revisões, branches remotas incluídas). `.gitignore` passou a recusar `*.pem`, `*.key`, `*.p12`, `*.pfx`. Ação do dono pendente: restringir a chave do Google no console.
+> - **Medições** (`docs/auditoria/2026-09-16-rodada-de-seguranca-e-qualidade.md`): `npm audit` 0; cobertura 95,63% das linhas; `ia-anthropic.ts` só 35%; bateria Gemini com `503` em 7 de 8 chamadas; achado manual **M-01**.
+> - **Auditoria por agentes** (`docs/auditoria/2026-09-17-achados-da-auditoria-por-agentes.md`): 68 achados únicos. **27 confirmados** (nenhum crítico; **4 altos**, 10 médios, 10 baixos, 3 informativos), **41 sem verificação** (o limite acabou; 1 alto), 19 de menor valor descartados pelo teto. O crítico de completude não rodou.
+>
+> **3. PRÓXIMO TRABALHO, nesta ordem:**
+> 1. **Abrir o PR da branch `docs/auditoria-rodada-seguranca-qualidade`.** É **nível 3** (mexe em `.gitignore`): preencher as seções de evidência do modelo; revisão técnica e de segurança por agentes, **uma de cada vez**, publicadas no PR e linkadas no corpo; CI check a check; mesclar.
+> 2. **N-01 primeiro, antes de qualquer outra coisa que rode a suíte:** `src/testes/preparar-banco.ts` apaga e recria **qualquer** base em `DATABASE_URL`, sem conferir se é de teste. Hoje o `vitest.config.ts` usa `sbp_teste` por padrão, **mas a variável do ambiente tem precedência** — um `DATABASE_URL` apontando para `sbp` no shell apagaria a base de desenvolvimento. Verificar lendo o código; se confirmado, corrigir (recusar base cujo nome não termine em `_teste`) com teste visto vermelho. **Até lá: nunca rodar testes com `DATABASE_URL` definido no shell.**
+> 3. **Os 4 altos confirmados**, um PR por tema (nível 3):
+>    - **C-01** `src/adapters/ia-anthropic.ts:88` — com a Anthropic, `campos` sai sempre vazio (nome, CPF, CRM nunca extraídos). **Bloqueia `A49`**: sem isso a chave paga não serve.
+>    - **C-02 e C-03** `src/adapters/ingestao-graph.ts:98,115` — um e-mail externo grande demais, ou o 201º e-mail da caixa, trava a ingestão real para sempre.
+>    - **C-04** `src/core/esquemas.ts:339` — `messageId` aceito até 500 caracteres, coluna com 191: o e-mail volta a pagar IA a cada sincronização.
+> 4. **Verificar os 40 restantes sem verificação (N-02…)**, um por vez, lendo o código (sem workflow) — cada um vira confirmado (com destino) ou refutado (com motivo) na tabela.
+> 5. **Médios, baixos e informativos confirmados**, agrupados por tema, e `A54` (registro de uso, teto diário, disjuntor da IA — há achados confirmados sobre isso).
+> 6. Preencher a coluna **Destino** de todos os achados; nenhum fica sem destino. Decisão de negócio vira pergunta ao dono (`§ H.4`).
+>
+> **4. Esperando gente de fora:** TI da associação (Microsoft 365, `Mail.Read` só da caixa, subpastas — `AT-33`); Anthropic só depois da rodada e de C-01; onde publicar (`A46`); canal de feedback (`A21`); papel `dono` (`A32` + `§ H.4` item 29); contar à equipe que as buscas são contadas (`A44(i)`).
+>
+> **5. Armadilhas desta máquina, novas:**
+> - **Git Bash converte argumentos que começam com `/`** em caminho do Windows (`/x` vira `C:/Program Files/Git/x`). Use `MSYS_NO_PATHCONV=1` antes do comando.
+> - **Worktree** (`.worktrees/…`) não tem `.env`: a suíte falha com `SESSAO_SECRET` ausente — defina um valor de teste no comando. Se ligar `node_modules` por junction, **remova a junction com `cmd /c rmdir` antes de `git worktree remove`**, senão a remoção pode apagar o original. Sobrou uma pasta vazia travada em `.worktrees/processo` (ignorada pelo Git; apagar quando destravar).
+> - O job **Processo** roda de novo a cada edição do corpo do PR e cancela o anterior: um check "cancelado" ao lado de um "sucesso" no mesmo commit é normal.
+> - As anteriores continuam valendo (abaixo, na retomada de 16/09 à tarde).
+>
+> ---
+>
+> *Histórico das retomadas anteriores, mantido como registro:*
 >
 > ### Retomada de 16/09/2026, fim da tarde — depois de um `/clear`
 >
