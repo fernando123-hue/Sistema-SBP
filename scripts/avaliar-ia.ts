@@ -58,8 +58,12 @@ function imprimir(resultado: ResultadoDaAvaliacao): void {
 async function principal(): Promise<void> {
   const emJson = process.argv.includes('--json')
   const configurado = ambiente().IA_ADAPTER
-  if (!emJson && configurado !== 'mock') {
-    linha(`Rodando contra a API REAL de "${configurado}".${configurado === 'anthropic' ? ' Isto gasta crédito.' : ''}`)
+  if (configurado !== 'mock') {
+    // Em `stderr` para valer também no `--json`, cuja única linha em `stdout`
+    // é a que se guarda (revisão de segurança do PR #73).
+    process.stderr.write(
+      `Rodando contra a API REAL de "${configurado}".${configurado === 'anthropic' ? ' Isto gasta crédito.' : ''}\n`,
+    )
   }
 
   const resultado = await avaliarInterpretacao(criarAiPort())
