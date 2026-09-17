@@ -270,7 +270,13 @@ export default function Distribuicao() {
       {erro ? <Aviso>{erro}</Aviso> : null}
 
       {ingestao ? (
-        <Aviso tom={ingestao.falhas > 0 || ingestao.emailsSemItem > 0 ? "atencao" : "ok"}>
+        <Aviso
+          tom={
+            ingestao.falhas > 0 || ingestao.emailsSemItem > 0 || ingestao.naoLidas > 0 || ingestao.repetidas > 0
+              ? "atencao"
+              : "ok"
+          }
+        >
           {ingestao.recebidos} e-mails lidos · {ingestao.novos} novos ·{' '}
           {ingestao.duplicados} já conhecidos · {ingestao.itensCriados} itens criados
           {ingestao.emailsSemItem > 0 ? (
@@ -285,6 +291,18 @@ export default function Distribuicao() {
             <>
               {' · '}
               <strong>{ingestao.falhas} falharam e voltam na próxima busca</strong>
+            </>
+          ) : null}
+          {ingestao.naoLidas > 0 ? (
+            <>
+              {' · '}
+              <strong>{ingestao.naoLidas} não puderam ser lidos — abra-os direto no Outlook</strong>
+            </>
+          ) : null}
+          {ingestao.repetidas > 0 ? (
+            <>
+              {' · '}
+              <strong>{ingestao.repetidas} parecem repetir um e-mail já lido — confira no Outlook</strong>
             </>
           ) : null}
         </Aviso>

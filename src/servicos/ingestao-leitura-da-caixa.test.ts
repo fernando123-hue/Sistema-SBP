@@ -80,14 +80,15 @@ describe('a ingestão pede uma janela e diz o que já foi processado', () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     await sincronizar({ banco, ingestao: adapter(async () => [email('<velho@exemplo.test>')]).porta, ia: IA }, base.operador)
 
-    let resposta: ReadonlySet<string> | undefined
+    let resposta: ReadonlyMap<string, Date> | undefined
     const { porta } = adapter(async (pedido) => {
       resposta = await pedido.jaProcessados!(['<velho@exemplo.test>', '<novo@exemplo.test>'])
       return []
     })
     await sincronizar({ banco, ingestao: porta, ia: IA }, base.operador)
 
-    expect([...resposta!]).toEqual(['<velho@exemplo.test>'])
+    expect([...resposta!.keys()]).toEqual(['<velho@exemplo.test>'])
+    expect(resposta!.get('<velho@exemplo.test>')).toBeInstanceOf(Date)
   })
 })
 
@@ -107,7 +108,10 @@ describe('os avisos do adapter ficam registrados', () => {
     const resumo = await sincronizar({ banco, ingestao: porta, ia: IA }, base.operador)
 
     expect(resumo.novos).toBe(1)
-    expect(resumo.falhas).toBe(1)
+    // Não é "falha que volta na próxima busca": volta recusada de novo. A tela
+    // precisa mandar tratar na caixa, e para isso o contador é outro.
+    expect(resumo.naoLidas).toBe(1)
+    expect(resumo.falhas).toBe(0)
     const evento = await banco.eventoProcessamento.findFirstOrThrow({
       where: { referencia: '<ruim@exemplo.test>' },
     })
@@ -130,5 +134,89 @@ describe('os avisos do adapter ficam registrados', () => {
       where: { mensagem: { contains: '7 mensagens' } },
     })
     expect(evento.situacao).toBe('reprocessavel')
+  })
+})
+
+describe('identificador repetido com outra data fica visível (pendência do PR #59)', () => {
+  it('as colisões avisadas pelo adapter viram UM evento por sincronização, sem contar como falha', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const { porta } = adapter(async (pedido) => {
+      for (let indice = 0; indice < 30; indice += 1) {
+        pedido.avisar!({ tipo: 'colisao', messageId: `<copia@exemplo.test>`, recebidoEm: `2026-09-16T12:${String(indice).padStart(2, '0')}:00Z` })
+      }
+      return []
+    })
+
+    const resumo = await sincronizar({ banco, ingestao: porta, ia: IA }, base.operador)
+
+    // Uma cópia legítima (lista de e-mail, reentrega) também cai aqui: marcar o
+    // dia de vermelho por ela ensinaria a ignorar vermelho.
+    expect(resumo.falhas).toBe(0)
+    // Mas aparece na tela: sem contador, a sincronização ficaria verde.
+    expect(resumo.repetidas).toBe(30)
+    const eventos = await banco.eventoProcessamento.findMany({ where: { mensagem: { contains: 'identificador' } } })
+    expect(eventos).toHaveLength(1)
+    expect(eventos[0]!.situacao).toBe('falha')
+    expect(eventos[0]!.mensagem).toContain('30 mensagens')
+    const detalhe = JSON.parse(eventos[0]!.detalhe!) as { exemplos: unknown[] }
+    expect(detalhe.exemplos.length).toBeLessThanOrEqual(10)
+  })
+
+  it('adapter que não usa jaProcessados: a repetição com outra data também é registrada, sem pagar IA', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    let chamadas = 0
+    const ia: AiPort = {
+      nome: 'duble',
+      interpretar: async (...argumentos) => {
+        chamadas += 1
+        return IA.interpretar(...argumentos)
+      },
+    }
+    const primeiro = { ...email('<repetido@exemplo.test>'), recebidoEm: new Date('2026-09-16T10:00:00Z') }
+    const segundo = { ...primeiro, recebidoEm: new Date('2026-09-16T11:00:00Z') }
+
+    await sincronizar({ banco, ingestao: adapter(async () => [primeiro]).porta, ia }, base.operador)
+    const resumo = await sincronizar({ banco, ingestao: adapter(async () => [segundo]).porta, ia }, base.operador)
+
+    expect(chamadas).toBe(1)
+    expect(resumo.duplicados).toBe(1)
+    expect(resumo.falhas).toBe(0)
+    expect(resumo.repetidas).toBe(1)
+    const eventos = await banco.eventoProcessamento.findMany({ where: { referencia: '<repetido@exemplo.test>' } })
+    expect(eventos.map((evento) => evento.situacao)).toEqual(['falha'])
+  })
+
+  it('várias repetições no laço, mais as do adapter, viram um evento só', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const originais = ['<r1@exemplo.test>', '<r2@exemplo.test>'].map((id) => ({
+      ...email(id),
+      recebidoEm: new Date('2026-09-16T10:00:00Z'),
+    }))
+    await sincronizar({ banco, ingestao: adapter(async () => originais).porta, ia: IA }, base.operador)
+
+    const copias = originais.map((original) => ({ ...original, recebidoEm: new Date('2026-09-16T12:00:00Z') }))
+    const { porta } = adapter(async (pedido) => {
+      pedido.avisar!({ tipo: 'colisao', messageId: '<r3@exemplo.test>', recebidoEm: '2026-09-16T13:00:00Z' })
+      return copias
+    })
+    const resumo = await sincronizar({ banco, ingestao: porta, ia: IA }, base.operador)
+
+    expect(resumo.repetidas).toBe(3)
+    const eventos = await banco.eventoProcessamento.findMany({
+      where: { correlacaoId: resumo.correlacaoId, mensagem: { contains: 'identificador' } },
+    })
+    expect(eventos).toHaveLength(1)
+    expect(eventos[0]!.mensagem).toContain('3 mensagens')
+  })
+
+  it('a mesma mensagem lida de novo (mesma data) continua silenciosa', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const mesmo = { ...email('<mesmo@exemplo.test>'), recebidoEm: new Date('2026-09-16T10:00:00Z') }
+
+    await sincronizar({ banco, ingestao: adapter(async () => [mesmo]).porta, ia: IA }, base.operador)
+    await sincronizar({ banco, ingestao: adapter(async () => [mesmo]).porta, ia: IA }, base.operador)
+
+    const eventos = await banco.eventoProcessamento.findMany({ where: { referencia: '<mesmo@exemplo.test>' } })
+    expect(eventos).toEqual([])
   })
 })

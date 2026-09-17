@@ -116,10 +116,31 @@ export class IngestaoGraph implements IngestaoPort {
   async buscarNovos(pedido: PedidoDeBusca = {}): Promise<EmailBruto[]> {
     const mensagens = await this.cliente.listarMensagens(this.desdeEfetivo(pedido.desde))
 
-    const conhecidos = pedido.jaProcessados
+    const gravados = pedido.jaProcessados
       ? await pedido.jaProcessados(mensagens.map(chaveDaMensagem))
-      : new Set<string>()
-    const novas = mensagens.filter((mensagem) => !conhecidos.has(chaveDaMensagem(mensagem)))
+      : new Map<string, Date>()
+
+    const novas: MensagemDoGraph[] = []
+    for (const mensagem of mensagens) {
+      const gravadoEm = gravados.get(chaveDaMensagem(mensagem))
+      if (gravadoEm === undefined) {
+        novas.push(mensagem)
+        continue
+      }
+      // Mesma chave, outra data: não é a mesma mensagem lida de novo. Fica de
+      // FORA do teto — senão 200 cópias do identificador de um e-mail antigo
+      // ocupariam todas as vagas e a caixa pararia por uma semana.
+      // Data ilegível não é prova de nada: `NaN` é diferente de tudo, e a mesma
+      // mensagem relida viraria "possível falsificação" (revisão do PR).
+      const chegada = new Date(mensagem.receivedDateTime).getTime()
+      if (!Number.isNaN(chegada) && gravadoEm.getTime() !== chegada) {
+        pedido.avisar?.({
+          tipo: 'colisao',
+          messageId: chaveDaMensagem(mensagem),
+          recebidoEm: mensagem.receivedDateTime || null,
+        })
+      }
+    }
 
     // A listagem vem da mais antiga para a mais nova: as que ficam para depois
     // são as mais recentes, e a ordem de chegada se mantém.

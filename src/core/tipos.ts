@@ -365,8 +365,22 @@ export interface ResumoIngestao {
   emailsSemItem: number
   itensAprovados: number
   itensParaRevisao: number
+  /** Falhas ao processar: o e-mail não foi gravado e volta na próxima busca. */
   falhas: number
   anexosRejeitados: number
+  /**
+   * Mensagens da caixa que não puderam ser lidas (fora do formato, anexo que
+   * não baixa). NÃO voltam sozinhas como trabalho: voltam recusadas de novo, e
+   * uma pessoa precisa tratá-las na caixa. Por isso não somam em `falhas`,
+   * cuja frase na tela promete o contrário (AT-35).
+   */
+  naoLidas: number
+  /**
+   * Mensagens com o identificador de um e-mail já processado, mas recebidas em
+   * outra data: cópia legítima ou falsificação (AT-35). Não são lidas; sem
+   * este contador a sincronização ficaria verde e ninguém saberia.
+   */
+  repetidas: number
 }
 
 export interface ItemEmRevisao {
