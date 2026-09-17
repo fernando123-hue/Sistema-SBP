@@ -91,7 +91,26 @@ export const EVIDENCIAS: readonly Evidencia[] = [
   { titulo: 'Regressão', aPartirDe: 1 },
 ]
 
-const LINK_DE_COMENTARIO = /https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+#(issuecomment|pullrequestreview)-\d+/
+export interface PullRequest {
+  /** `dono/repositorio`, como em `github.repository`. */
+  readonly repositorio: string
+  readonly numero: number
+}
+
+export type TipoDeComentario = 'issuecomment' | 'pullrequestreview'
+
+const NOME_DE_REPOSITORIO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
+
+// O link precisa ser DESTE repositório e DESTE PR: aceitar qualquer
+// `…/pull/N#issuecomment-…` deixava passar a revisão de outro PR, reciclada
+// (achado da revisão de segurança do PR #55).
+function linkDoPr(pr: PullRequest): RegExp {
+  if (!NOME_DE_REPOSITORIO.test(pr.repositorio) || !Number.isInteger(pr.numero) || pr.numero < 1) {
+    throw new Error(`pull request inválido: ${pr.repositorio}#${pr.numero}`)
+  }
+  const repo = pr.repositorio.replace(/\./g, '\\.')
+  return new RegExp(`https://github\\.com/${repo}/pull/${pr.numero}#(issuecomment|pullrequestreview)-(\\d+)\\b`, 'g')
+}
 
 /** Seções do corpo por título, com o texto já sem comentários e sem caixas desmarcadas. */
 export function secoesDoCorpo(corpo: string | null): Map<string, string> {
@@ -116,7 +135,7 @@ export function secoesDoCorpo(corpo: string | null): Map<string, string> {
 
 const TAMANHO_MINIMO = 10
 
-export function evidenciasFaltando(nivel: Nivel, corpo: string | null): string[] {
+export function evidenciasFaltando(nivel: Nivel, pr: PullRequest, corpo: string | null): string[] {
   const secoes = secoesDoCorpo(corpo)
   const faltando: string[] = []
   for (const e of EVIDENCIAS) {
@@ -124,9 +143,26 @@ export function evidenciasFaltando(nivel: Nivel, corpo: string | null): string[]
     const texto = secoes.get(e.titulo.toLowerCase()) ?? ''
     if (texto.length < TAMANHO_MINIMO) {
       faltando.push(`${e.titulo}: seção ausente ou vazia`)
-    } else if (e.exigeLinkDeRevisao && !LINK_DE_COMENTARIO.test(texto)) {
-      faltando.push(`${e.titulo}: falta o link do comentário publicado no PR (…/pull/N#issuecomment-…)`)
+    } else if (e.exigeLinkDeRevisao && !linkDoPr(pr).test(texto)) {
+      faltando.push(
+        `${e.titulo}: falta o link do comentário publicado neste PR (https://github.com/${pr.repositorio}/pull/${pr.numero}#issuecomment-…)`,
+      )
     }
   }
   return faltando
+}
+
+/** Comentários deste PR citados nas seções de revisão — o CI confere cada um na API. */
+export function comentariosCitados(pr: PullRequest, corpo: string | null): { tipo: TipoDeComentario; id: number }[] {
+  const secoes = secoesDoCorpo(corpo)
+  const vistos = new Map<string, { tipo: TipoDeComentario; id: number }>()
+  for (const e of EVIDENCIAS) {
+    if (!e.exigeLinkDeRevisao) continue
+    for (const m of (secoes.get(e.titulo.toLowerCase()) ?? '').matchAll(linkDoPr(pr))) {
+      const tipo = m[1] as TipoDeComentario
+      const id = Number(m[2])
+      vistos.set(`${tipo}-${id}`, { tipo, id })
+    }
+  }
+  return [...vistos.values()]
 }

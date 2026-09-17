@@ -26,6 +26,12 @@ jobs:
     # (ver PR #50), que passa por aqui normalmente.
     if: github.actor != 'dependabot[bot]'
 
+    # Ler os comentários e revisões do PR citados como evidência.
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+
     steps:
       - uses: actions/checkout@v7
         with:
@@ -44,5 +50,10 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPOSITORIO: ${{ github.repository }}
+          NUMERO_DO_PR: ${{ github.event.pull_request.number }}
           CORPO_DO_PR: ${{ github.event.pull_request.body }}
+          # Só para conferir que os comentários de revisão citados existem
+          # neste PR — leitura, com a permissão declarada no job.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx tsx scripts/processo/conferir-pr.ts

@@ -3,7 +3,14 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { EVIDENCIAS, evidenciasFaltando, nivelDaMudanca, nivelDoArquivo, secoesDoCorpo } from './nivel-de-risco'
+import {
+  comentariosCitados,
+  EVIDENCIAS,
+  evidenciasFaltando,
+  nivelDaMudanca,
+  nivelDoArquivo,
+  secoesDoCorpo,
+} from './nivel-de-risco'
 
 describe('nivelDoArquivo', () => {
   it.each([
@@ -92,6 +99,7 @@ describe('secoesDoCorpo', () => {
   })
 })
 
+const PR = { repositorio: 'dono/repo', numero: 7 }
 const LINK = 'https://github.com/dono/repo/pull/7#issuecomment-123456'
 
 function corpoCompleto(): string {
@@ -108,22 +116,22 @@ function corpoCompleto(): string {
 
 describe('evidenciasFaltando', () => {
   it('nível 0 pede só a especificação', () => {
-    expect(evidenciasFaltando(0, '### Especificação\nCorrige texto do ESTADO.')).toEqual([])
-    expect(evidenciasFaltando(0, '')).toEqual(['Especificação: seção ausente ou vazia'])
+    expect(evidenciasFaltando(0, PR, '### Especificação\nCorrige texto do ESTADO.')).toEqual([])
+    expect(evidenciasFaltando(0, PR, '')).toEqual(['Especificação: seção ausente ou vazia'])
   })
 
   it('nível 1 pede tela vista rodando e regressão', () => {
-    const faltam = evidenciasFaltando(1, '### Especificação\nMuda o texto do botão.')
+    const faltam = evidenciasFaltando(1, PR, '### Especificação\nMuda o texto do botão.')
     expect(faltam).toEqual(['Visto rodando: seção ausente ou vazia', 'Regressão: seção ausente ou vazia'])
   })
 
   it('nível 3 com tudo preenchido passa', () => {
-    expect(evidenciasFaltando(3, corpoCompleto())).toEqual([])
+    expect(evidenciasFaltando(3, PR, corpoCompleto())).toEqual([])
   })
 
   it('nível 3 sem revisão de segurança não passa', () => {
     const corpo = corpoCompleto().replace(/### Revisão de segurança\n.*\n/, '')
-    expect(evidenciasFaltando(3, corpo)).toEqual(['Revisão de segurança: seção ausente ou vazia'])
+    expect(evidenciasFaltando(3, PR, corpo)).toEqual(['Revisão de segurança: seção ausente ou vazia'])
   })
 
   // A revisão precisa existir publicada no PR, não só ser afirmada no texto:
@@ -131,8 +139,8 @@ describe('evidenciasFaltando', () => {
   // processo existe para impedir.
   it('revisão sem link para o comentário publicado não vale', () => {
     const corpo = corpoCompleto().replace(`code-reviewer: ${LINK}`, 'code-reviewer: revisado, tudo certo')
-    expect(evidenciasFaltando(2, corpo)).toEqual([
-      'Revisão técnica: falta o link do comentário publicado no PR (…/pull/N#issuecomment-…)',
+    expect(evidenciasFaltando(2, PR, corpo)).toEqual([
+      'Revisão técnica: falta o link do comentário publicado neste PR (https://github.com/dono/repo/pull/7#issuecomment-…)',
     ])
   })
 
@@ -142,7 +150,7 @@ describe('evidenciasFaltando', () => {
   // sendo lido como conteúdo da seção anterior.
   it('o modelo de PR sem preencher falha em todas as evidências do nível 3', () => {
     const modelo = readFileSync(join(process.cwd(), '.github/pull_request_template.md'), 'utf8')
-    expect(evidenciasFaltando(3, modelo)).toEqual(EVIDENCIAS.map((e) => `${e.titulo}: seção ausente ou vazia`))
+    expect(evidenciasFaltando(3, PR, modelo)).toEqual(EVIDENCIAS.map((e) => `${e.titulo}: seção ausente ou vazia`))
   })
 
   it('título de outro nível encerra a seção', () => {
@@ -150,8 +158,41 @@ describe('evidenciasFaltando', () => {
     expect(s.get('regressão')).toBe('')
   })
 
+  // Um link de outro PR, ou de outro repositório, é revisão de outra coisa.
+  it('link de revisão de outro PR não vale', () => {
+    const corpo = corpoCompleto().replace(`code-reviewer: ${LINK}`, 'code-reviewer: https://github.com/dono/repo/pull/6#issuecomment-1')
+    expect(evidenciasFaltando(2, PR, corpo)).toEqual([
+      'Revisão técnica: falta o link do comentário publicado neste PR (https://github.com/dono/repo/pull/7#issuecomment-…)',
+    ])
+  })
+
+  it('link de revisão de outro repositório não vale', () => {
+    const corpo = corpoCompleto().replace(`code-reviewer: ${LINK}`, 'code-reviewer: https://github.com/outro/repo/pull/7#issuecomment-1')
+    expect(evidenciasFaltando(2, PR, corpo)).toHaveLength(1)
+  })
+
   it('nível 2 não exige revisão de segurança', () => {
     const corpo = corpoCompleto().replace(/### Revisão de segurança\n.*\n/, '')
-    expect(evidenciasFaltando(2, corpo)).toEqual([])
+    expect(evidenciasFaltando(2, PR, corpo)).toEqual([])
+  })
+})
+
+describe('comentariosCitados', () => {
+  // O CI confere na API que cada comentário citado existe e é deste PR:
+  // o formato certo não prova que o comentário existe.
+  it('devolve os comentários citados nas seções de revisão, sem repetir', () => {
+    const corpo = corpoCompleto().replace(
+      `security-reviewer: ${LINK}`,
+      'security-reviewer: https://github.com/dono/repo/pull/7#pullrequestreview-99',
+    )
+    expect(comentariosCitados(PR, corpo)).toEqual([
+      { tipo: 'issuecomment', id: 123456 },
+      { tipo: 'pullrequestreview', id: 99 },
+    ])
+  })
+
+  it('ignora link fora das seções de revisão', () => {
+    expect(comentariosCitados(PR, `### Especificação
+Ver ${LINK}`)).toEqual([])
   })
 })

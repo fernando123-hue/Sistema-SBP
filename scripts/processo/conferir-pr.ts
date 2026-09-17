@@ -1,7 +1,8 @@
 /**
  * Portão do processo, rodado pelo CI em cada pull request (`.github/workflows/processo.yml`).
  *
- *   BASE_SHA=… HEAD_SHA=… CORPO_DO_PR="…" npx tsx scripts/processo/conferir-pr.ts
+ *   BASE_SHA=… HEAD_SHA=… REPOSITORIO=dono/repo NUMERO_DO_PR=N CORPO_DO_PR="…" \
+ *   GITHUB_TOKEN=… npx tsx scripts/processo/conferir-pr.ts
  *
  * Calcula o nível de risco pelos arquivos alterados e falha se o corpo do PR
  * não traz a evidência que esse nível exige. Regra em `docs/PROCESSO.md`.
@@ -14,7 +15,14 @@
 import { execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
 
-import { evidenciasFaltando, NOME_DO_NIVEL, nivelDaMudanca } from './nivel-de-risco'
+import {
+  comentariosCitados,
+  evidenciasFaltando,
+  NOME_DO_NIVEL,
+  nivelDaMudanca,
+  type PullRequest,
+  type TipoDeComentario,
+} from './nivel-de-risco'
 
 function exigir(nome: string): string {
   const valor = process.env[nome]
@@ -27,6 +35,8 @@ const SHA = /^[0-9a-f]{7,40}$/
 const base = exigir('BASE_SHA')
 const head = exigir('HEAD_SHA')
 if (!SHA.test(base) || !SHA.test(head)) throw new Error('BASE_SHA e HEAD_SHA precisam ser hashes de commit')
+const pr: PullRequest = { repositorio: exigir('REPOSITORIO'), numero: Number(exigir('NUMERO_DO_PR')) }
+const token = exigir('GITHUB_TOKEN')
 // Corpo vazio é permitido aqui: quem decide se falta evidência é a regra.
 const corpo = process.env['CORPO_DO_PR'] ?? ''
 
@@ -38,7 +48,33 @@ const arquivos = execFileSync('git', ['diff', '--name-only', '--no-renames', `${
   .filter(Boolean)
 
 const { nivel, porArquivo } = nivelDaMudanca(arquivos)
-const faltando = evidenciasFaltando(nivel, corpo)
+const faltando = evidenciasFaltando(nivel, pr, corpo)
+
+// O formato do link não prova que o comentário existe: confere na API que
+// cada comentário citado existe e pertence a ESTE PR.
+async function comentarioDestePr(tipo: TipoDeComentario, id: number): Promise<boolean> {
+  const caminho =
+    tipo === 'issuecomment'
+      ? `repos/${pr.repositorio}/issues/comments/${id}`
+      : `repos/${pr.repositorio}/pulls/${pr.numero}/reviews/${id}`
+  const resposta = await fetch(`https://api.github.com/${caminho}`, {
+    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' },
+  })
+  if (resposta.status === 404) return false
+  if (!resposta.ok) throw new Error(`API do GitHub respondeu ${resposta.status} ao conferir ${tipo}-${id}`)
+  if (tipo === 'pullrequestreview') return true
+  const dados = (await resposta.json()) as { issue_url?: unknown }
+  return typeof dados.issue_url === 'string' && dados.issue_url.endsWith(`/issues/${pr.numero}`)
+}
+
+for (const c of comentariosCitados(pr, corpo)) {
+  if (!(await comentarioDestePr(c.tipo, c.id))) {
+    faltando.push(`o comentário ${c.tipo}-${c.id} citado não existe neste PR`)
+  }
+}
+
+// `|` num nome de arquivo quebraria a tabela do resumo.
+const celula = (texto: string): string => texto.replace(/\|/g, '\\|')
 
 const linhas = [
   `## Processo: nível ${nivel} — ${NOME_DO_NIVEL[nivel]}`,
@@ -48,7 +84,7 @@ const linhas = [
   ...porArquivo
     .slice()
     .sort((a, b) => b.nivel - a.nivel)
-    .map((a) => `| \`${a.arquivo}\` | ${a.nivel} | ${a.motivo} |`),
+    .map((a) => `| \`${celula(a.arquivo)}\` | ${a.nivel} | ${a.motivo} |`),
   '',
   faltando.length === 0
     ? '**Evidência completa para este nível.**'

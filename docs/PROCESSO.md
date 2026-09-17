@@ -101,7 +101,7 @@ Achado crítico ou alto sem correção no PR → destino escrito (outro PR, perg
 
 ## 5. Limites, ditos como são
 
-- **O job confere que a evidência foi declarada e que a revisão tem link — não que o texto é verdadeiro**, nem que o comentário linkado foi escrito por outro agente. É um portão contra esquecimento e atalho, não contra má-fé. Quem garante o resto é o dono poder abrir qualquer link.
+- **O job confere que a evidência foi declarada e que cada revisão citada é um comentário que existe neste PR** (link amarrado ao repositório e ao número do PR, e conferido na API do GitHub). **Não confere que o texto é verdadeiro**, nem que o comentário foi escrito por outro agente: todos agem com a mesma conta do GitHub, então o autor do comentário não distingue ninguém. É um portão contra esquecimento e atalho, não contra má-fé. Quem garante o resto é o dono poder abrir qualquer link.
 - **Os revisores são o mesmo modelo que o autor**, em outra instância e com outra instrução. Isso pega muita coisa e deixa passar o ponto cego comum aos dois. A saída real é revisão humana antes de dado real de associado entrar — continua em aberto.
 - **Sem proteção de branch** (plano do GitHub), um check vermelho não bloqueia o botão de mesclar. A trava é a disciplina de ler os checks, agora com um check a mais.
 - **Lint adiado:** o `tsc` estrito já pega a maior parte do que um lint pegaria aqui; adicionar ESLint é dependência nova com configuração a manter. Reavaliar se a revisão técnica começar a repetir o mesmo tipo de achado.
