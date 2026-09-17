@@ -1,6 +1,6 @@
 # Estado do projeto — retomada
 
-Última atualização: **17/09/2026, noite** — `main` em `2a43687` mais o PR do gabarito da IA (`feat/gabarito-avaliacao-ia`). Suíte: **95 arquivos, 1084 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
+Última atualização: **17/09/2026, noite** — `main` em `15882e3` (gabarito mesclado) mais o PR do adapter local (`feat/ia-local`). Suíte: **96 arquivos, 1111 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
 
 > ## ▶ Próxima sessão: comece aqui
 >
@@ -12,7 +12,7 @@
 >   1. ~~Fechar o PR #70~~ — **mesclado** (N-37; a revisão de segurança achou despejo cruzado entre rotas, corrigido no mesmo PR com um mapa por compartimento; resíduo baixo na auditoria).
 >   2. ~~Este PR de documentos~~ — **mesclado** (#72).
 >   3. ~~**Gabarito de avaliação**~~ — **feito** (`DECISOES.md § AT-36`): 17 e-mails sintéticos com resposta esperada, nota automática em cinco dimensões, `npm run ia:avaliar` (qualquer fornecedor; `-- --json` para guardar). Linha de base do mock: **0,92**. Primeira rodada do Gemini: 7 de 17 casos com 503 (sobrecarga dele) — nota geral 0,58, só as respondidas 0,98. **Pendências:** a equipe conferir as respostas (`§ H.4` item 31); a rotina `A50` passar a usar `ia:avaliar` (configuração da máquina do dono).
->   4. **`ia-local.ts`**, testado contra servidor falso, com `IA_PARA_DADO_REAL.local = false`.
+>   4. ~~**`ia-local.ts`**~~ — **feito** (`DECISOES.md § AT-37`): `IA_ADAPTER="local"` fala com qualquer servidor compatível com OpenAI por `IA_LOCAL_URL`, sem dependência nova; 15 testes contra um servidor `node:http` de verdade. `IA_PARA_DADO_REAL.local = false`, `IA_MODELO` obrigatória e **endereço público recusado na partida** (`A56 (f)`).
 >   5. Com a máquina em mãos: medir o hardware, testar 2 ou 3 modelos pequenos pelo gabarito, e o dono decide.
 > - A fila de segurança abaixo (C-06, C-11…) continua valendo depois disso.
 >

@@ -99,3 +99,60 @@ describe('produção recusa segredo público (N-18)', () => {
     expect(() => ambiente()).not.toThrow()
   })
 })
+
+describe('servidor de modelo local (A56)', () => {
+  beforeEach(() => {
+    vi.stubEnv('IA_ADAPTER', 'local')
+    vi.stubEnv('IA_LOCAL_URL', 'http://127.0.0.1:11434/v1')
+    vi.stubEnv('IA_MODELO', 'qwen3-1.7b-instruct')
+    limparCacheDeAmbiente()
+  })
+
+  it('sobe com endereço de loopback e modelo escolhido', () => {
+    expect(() => ambiente()).not.toThrow()
+  })
+
+  it('sem IA_LOCAL_URL, recusa dizendo o que falta', () => {
+    vi.stubEnv('IA_LOCAL_URL', '')
+    expect(() => ambiente()).toThrow(/IA_LOCAL_URL/)
+  })
+
+  it('sem IA_MODELO, recusa: servidor local não tem modelo padrão', () => {
+    // Cada servidor serve o modelo que baixaram nele. Um padrão inventado aqui
+    // daria 404 do servidor, e a pessoa procuraria o defeito no endereço.
+    vi.stubEnv('IA_MODELO', '')
+    expect(() => ambiente()).toThrow(/IA_MODELO/)
+  })
+
+  it.each([
+    'http://ia.exemplo.test/v1',
+    'http://203.0.113.10:8000/v1',
+    'https://api.exemplo.test/v1',
+  ])('endereço público é recusado: %s', (url) => {
+    // `A56 (f)`: a porta do modelo nunca é pública. "local" apontando para fora
+    // mandaria e-mail de associado para um servidor de terceiro com o nome de
+    // servidor de dentro de casa.
+    vi.stubEnv('IA_LOCAL_URL', url)
+    expect(() => ambiente()).toThrow(/IA_LOCAL_URL/)
+  })
+
+  it.each([
+    'http://localhost:11434/v1',
+    'http://192.168.0.30:8080/v1',
+    'http://10.1.2.3:8000/v1',
+    'http://[::1]:11434/v1',
+  ])('endereço da própria máquina ou da rede interna sobe: %s', (url) => {
+    vi.stubEnv('IA_LOCAL_URL', url)
+    expect(() => ambiente()).not.toThrow()
+  })
+
+  it('endereço que não é http nem https é recusado', () => {
+    vi.stubEnv('IA_LOCAL_URL', 'file:///c:/modelo')
+    expect(() => ambiente()).toThrow(/IA_LOCAL_URL/)
+  })
+
+  it('caixa real com IA local é recusada enquanto o gabarito não decidir (A56 (e))', () => {
+    vi.stubEnv('INGESTAO_ADAPTER', 'graph')
+    expect(() => ambiente()).toThrow(/IA_ADAPTER/)
+  })
+})
