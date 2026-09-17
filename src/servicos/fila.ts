@@ -1,4 +1,5 @@
 import { ErroDeNegocio } from '../core/erros'
+import type { Operacao } from '../core/esquemas'
 import { ehOProprio, exigirPapel, type Ator } from '../servidor/ator'
 import { transacaoComNovaTentativa } from '../servidor/conflito'
 import { novaCorrelacao } from '../servidor/observabilidade'
@@ -133,12 +134,42 @@ async function travarItem(tx: Transacao, itemId: string): Promise<void> {
   await tx.$queryRaw`SELECT id FROM \`Item\` WHERE id = ${itemId} FOR UPDATE`
 }
 
+/**
+ * Permissão conferida ANTES de travar o item (revisão de segurança do PR #66).
+ *
+ * A trava vinha primeiro, e quem não tinha nada com o item conseguia segurá-lo
+ * até ser recusado — o dono esperava atrás de pedidos sem permissão. Esta
+ * leitura não trava nada; a conferência dentro da transação continua sendo a
+ * que vale, com o estado já travado.
+ *
+ * `operacao` nula: só o dono pode (concluir). Com nome: o dono, ou quem
+ * coordena a operação.
+ */
+async function conferirPermissaoAntesDeTravar(
+  banco: Banco,
+  itemId: string,
+  ator: Ator,
+  operacao: Operacao | null,
+): Promise<void> {
+  const atual = await banco.atribuicao.findFirst({
+    where: { itemId, ativa: true },
+    select: { colaboradorId: true },
+  })
+  // Sem responsável, a transação dá a mensagem certa.
+  if (!atual || ehOProprio(ator, atual.colaboradorId)) return
+  if (operacao === null) {
+    throw new ErroDeNegocio('Só o responsável ativo pode concluir o item. Use transferência.')
+  }
+  exigirPapel(ator, operacao, 'operador', 'gestor')
+}
+
 export async function concluir(
   banco: Banco,
   entrada: { itemId: string; observacao?: string },
   ator: Ator,
 ): Promise<void> {
   const correlacaoId = novaCorrelacao()
+  await conferirPermissaoAntesDeTravar(banco, entrada.itemId, ator, null)
 
   // Impasse com outra transação é repetido (`servidor/conflito.ts`).
   await transacaoComNovaTentativa(banco, async (tx) => {
@@ -202,6 +233,7 @@ export async function transferir(
   }
 
   const correlacaoId = novaCorrelacao()
+  await conferirPermissaoAntesDeTravar(banco, entrada.itemId, ator, 'transferir item de outra pessoa')
 
   // Impasse com outra transação é repetido (`servidor/conflito.ts`).
   await transacaoComNovaTentativa(banco, async (tx) => {
@@ -318,6 +350,7 @@ export async function devolver(
   }
 
   const correlacaoId = novaCorrelacao()
+  await conferirPermissaoAntesDeTravar(banco, entrada.itemId, ator, 'devolver item de outra pessoa')
 
   // Impasse com outra transação é repetido (`servidor/conflito.ts`).
   await transacaoComNovaTentativa(banco, async (tx) => {

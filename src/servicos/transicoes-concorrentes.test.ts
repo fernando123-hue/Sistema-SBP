@@ -223,3 +223,39 @@ describe('concluir enquanto o gestor desliga a pessoa', () => {
     }
   })
 })
+
+/**
+ * Revisão de segurança do PR #66: a trava vinha antes da conferência de
+ * permissão. Quem não tem nada com o item conseguia segurá-lo e fazer o dono
+ * esperar. A permissão agora é conferida antes de travar.
+ */
+describe('quem não pode mexer no item não chega a travá-lo', () => {
+  it('com o item travado por outra operação, o estranho é recusado na hora, sem esperar', async () => {
+    const { base, pessoa, outra } = await itemComDono()
+    const itemId = await novoItem(base, pessoa.id)
+
+    let soltar: () => void = () => undefined
+    const segurando = banco.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM \`Item\` WHERE id = ${itemId} FOR UPDATE`
+      await new Promise<void>((resolver) => {
+        soltar = resolver
+      })
+    })
+    await new Promise((resolver) => setTimeout(resolver, 200))
+
+    try {
+      for (const tentativa of [
+        () => concluir(banco, { itemId }, outra.ator),
+        () => devolver(banco, { itemId, justificativa: 'não é meu, mas devolvo' }, outra.ator),
+        () => transferir(banco, { itemId, paraColaboradorId: outra.id, justificativa: 'pegando para mim' }, outra.ator),
+      ]) {
+        const inicio = Date.now()
+        await expect(tentativa()).rejects.toThrow()
+        expect(Date.now() - inicio).toBeLessThan(1000)
+      }
+    } finally {
+      soltar()
+      await segurando
+    }
+  })
+})
