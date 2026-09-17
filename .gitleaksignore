@@ -1,0 +1,7 @@
+# Exceções do gitleaks. Cada linha é UMA impressão digital (commit:arquivo:regra:linha),
+# nunca um padrão: o resto do repositório continua varrido.
+#
+# 17/09/2026, PR #63 — UUID sintético de teste (não é segredo de nada) confundido com
+# chave pela regra genérica. O literal foi removido no commit seguinte; o commit antigo
+# fica no PR porque push forçado é bloqueado.
+09918508ee1a219e650f923e4f28a69330af4a29:src/servidor/ambiente-seguro.test.ts:generic-api-key:78

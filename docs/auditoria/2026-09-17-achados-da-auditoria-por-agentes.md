@@ -1,4 +1,4 @@
-**Confirmado e corrigido** (17/09): a listagem vem sem bytes, só o arquivo que cabe é baixado, e o tamanho que vale é o dos bytes |**Confirmado** — é o mesmo defeito do C-03; corrigido no PR #59 (`AT-35`) |**Confirmado e corrigido** (17/09): anexo que não é arquivo entra como recusado, com motivo, e o item vai para revisão |# Achados da auditoria por agentes — 16 e 17/09/2026
+**Confirmado e corrigido** (17/09): em produção, `SESSAO_SECRET`, `BUSCA_SECRET` e `ANEXOS_SECRET` com valor de teste público são recusados |**Confirmado e corrigido** (17/09): caixa real (`INGESTAO_ADAPTER` diferente de `mock`) recusa `IA_ADAPTER` `mock` ou `gemini` |**Confirmado e corrigido** (17/09): a listagem vem sem bytes, só o arquivo que cabe é baixado, e o tamanho que vale é o dos bytes |**Confirmado** — é o mesmo defeito do C-03; corrigido no PR #59 (`AT-35`) |**Confirmado e corrigido** (17/09): anexo que não é arquivo entra como recusado, com motivo, e o item vai para revisão |# Achados da auditoria por agentes — 16 e 17/09/2026
 
 Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `roteiro-da-auditoria-de-seguranca.md`. **Só leitura; nada foi corrigido ainda.** Medições automáticas e o achado manual M-01 estão em `2026-09-16-rodada-de-seguranca-e-qualidade.md`.
 
@@ -17,7 +17,7 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 | Confirmados | 0 | 4 | 10 | 10 | 3 |
 | Sem verificação | 0 | 1 | 18 | 18 | 4 |
 
-**Atualização de 17/09/2026, manhã:** C-01 a C-04 corrigidos; N-01, N-02, N-14 e N-27 verificados lendo o código e confirmados (N-01 no PR #57, N-14 no #59) (a contagem acima é a do fim da auditoria).
+**Atualização de 17/09/2026, manhã:** C-01 a C-04 corrigidos; N-01, N-02, N-14, N-17, N-18 e N-27 verificados lendo o código e confirmados (N-01 no PR #57, N-14 no #59) (a contagem acima é a do fim da auditoria).
 
 **Nenhum crítico.** Destino de cada achado: coluna "Destino" (vazia = pendente). Nenhum fica sem destino ao fim da rodada.
 
@@ -36,7 +36,7 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 | C-09 | MÉDIO | `src/servicos/autenticacao.ts:85` | A trava por conta pode ser furada disparando tentativas em paralelo | |
 | C-10 | MÉDIO | `src/servicos/fila.ts:139` | Concluir, devolver e transferir o mesmo item em paralelo passam sem trava | |
 | C-11 | MÉDIO | `src/servicos/ingestao.ts:277` | E-mail que falha na interpretação é reinterpretado, e pago, em toda sincronização, sem contador nem limite | |
-| C-12 | MÉDIO | `src/servidor/ambiente.ts:323` | 'Produção' é detectada só por NODE_ENV, e a trava de rede do acesso sem senha é toda escrita pelo cliente | |
+| C-12 | MÉDIO | `src/servidor/ambiente.ts:323` | 'Produção' é detectada só por NODE_ENV, e a trava de rede do acesso sem senha é toda escrita pelo cliente | **Pendente.** Atenção: a trava de segredo público do N-18 (17/09) usa o mesmo sinal `NODE_ENV` e herda esta fraqueza |
 | C-13 | MÉDIO | `src/servidor/http.ts:318` | Nenhuma rota autenticada confere origem; SameSite=Lax não cobre origem do mesmo site | |
 | C-14 | MÉDIO | `src/servidor/http.ts:235` | Com PROXIES_CONFIAVEIS=1, o cliente escolhe a própria chave do limite por origem | |
 | C-15 | BAIXO | `src/adapters/assistente-modelo.ts:111` | O assistente grava no log texto livre escolhido pelo modelo, o que abre caminho para a pergunta, com e-mail colado, chegar ao log | |

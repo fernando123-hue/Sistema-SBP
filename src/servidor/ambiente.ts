@@ -247,9 +247,76 @@ export function ambiente(): Ambiente {
     throw new Error(`IA_ADAPTER="${resultado.data.IA_ADAPTER}" exige ${exigida} configurada.`)
   }
 
+  // Caixa real = e-mail real de associado (achado N-17). A IA simulada
+  // aprovaria esse e-mail por regra fixa, e a chave gratuita do Gemini é só
+  // para e-mail sintético (`A50`) — seus termos não excluem treino (`A38`).
+  // Um fornecedor novo para dado real entra aqui por decisão, não por omissão.
+  if (
+    resultado.data.INGESTAO_ADAPTER !== 'mock' &&
+    !IA_PARA_DADO_REAL[resultado.data.IA_ADAPTER]
+  ) {
+    throw new Error(
+      `INGESTAO_ADAPTER="${resultado.data.INGESTAO_ADAPTER}" lê e-mail real, e IA_ADAPTER="${resultado.data.IA_ADAPTER}" ` +
+        'não pode recebê-lo (decisões A38 e A50). Use a IA contratada.',
+    )
+  }
+
+  // Segredo escrito no repositório não é segredo (achado N-18): o CI e a suíte
+  // usam valores públicos de propósito, e nada impedia que um deles fosse
+  // copiado para produção. A mensagem nomeia a variável, nunca o valor.
+  //
+  // LIMITE CONHECIDO: "produção" aqui é só `NODE_ENV`, o mesmo sinal fraco do
+  // achado C-12 (um servidor publicado com `NODE_ENV` herdado diferente passa
+  // sem esta trava). Quando o C-12 trouxer um sinal positivo de produção, esta
+  // trava deve usá-lo também.
+  if (resultado.data.NODE_ENV === 'production') {
+    const publicos = SEGREDOS.filter((nome) => {
+      const valor = resultado.data[nome]
+      return (
+        typeof valor === 'string' &&
+        (PARECE_VALOR_DE_TESTE.test(valor) || new Set(valor).size < VARIEDADE_MINIMA_DO_SEGREDO)
+      )
+    })
+    if (publicos.length > 0) {
+      throw new Error(
+        `${publicos.join(', ')} com valor de teste público ou previsível em NODE_ENV=production. ` +
+          'Gere um segredo novo para cada variável antes de subir o sistema.',
+      )
+    }
+  }
+
   cache = resultado.data
   return cache
 }
+
+/**
+ * Quais IAs podem receber e-mail real de associado.
+ *
+ * Lista de PERMISSÃO amarrada ao enum de `IA_ADAPTER`: um fornecedor novo — o
+ * modelo local de `A51`, por exemplo — não compila sem uma linha aqui, e essa
+ * linha é a decisão de que ele foi medido e pode receber dado real (revisão do
+ * PR que corrigiu o N-17).
+ */
+const IA_PARA_DADO_REAL = {
+  mock: false,
+  anthropic: true,
+  gemini: false,
+} as const satisfies Record<z.infer<typeof AmbienteSchema>['IA_ADAPTER'], boolean>
+
+/**
+ * Menos caracteres distintos que isto é segredo previsível (`aaaa…`,
+ * `1234…`). Um UUID tem pelo menos 11 (hexadecimal e o hífen), na prática.
+ */
+const VARIEDADE_MINIMA_DO_SEGREDO = 8
+
+const SEGREDOS = ['SESSAO_SECRET', 'BUSCA_SECRET', 'ANEXOS_SECRET'] as const
+
+/**
+ * A forma dos valores públicos do repositório: `…-nao-e-segredo-…` no CI e no
+ * vitest, `segredo-de-teste-…` nos testes. Quem criar outro valor de teste
+ * deve seguir uma das duas formas, para esta trava continuar valendo.
+ */
+const PARECE_VALOR_DE_TESTE = /nao-e-segredo|segredo-de-teste/
 
 /** Só para testes: força releitura do ambiente. */
 export function limparCacheDeAmbiente(): void {
