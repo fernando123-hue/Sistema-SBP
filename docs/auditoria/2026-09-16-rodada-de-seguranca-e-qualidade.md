@@ -47,6 +47,22 @@ Não são achados ainda — são **onde a auditoria de testes deve olhar primeir
 | `src/app/api/rodadas/[id]/route.ts` | 50% | 57% | leitura de uma distribuição |
 | `src/servidor/limite-de-taxa.ts` | 72% | 81% | limite por minuto (defesa contra abuso) |
 
+### Achado manual — MySQL local: X Plugin em todas as interfaces (16/09/2026, 21h12)
+
+| Campo | Valor |
+|---|---|
+| ID | M-01 |
+| Severidade | BAIXO nesta máquina · ALTO se o mesmo comando for usado num servidor |
+| Categoria | Infraestrutura / configuração do MySQL |
+| Onde | comando de partida em `docs/ESTADO.md` (bloco do topo, item 1) |
+| Evidência | log do `mysqld`: `X Plugin ready for connections. Bind-address: '::' port: 33060` |
+| Descrição | `--bind-address=127.0.0.1` vale só para a porta clássica (3307). O protocolo X (33060) escuta em **todas** as interfaces, IPv4 e IPv6 |
+| Vetor e pré-condições | alguém na mesma rede alcança a porta 33060. Hoje a conta `root` sem senha é só `root@localhost`, então a conexão de fora é recusada — mas a porta está aberta e anunciando a versão |
+| Impacto | superfície de ataque desnecessária; num servidor da empresa, com outra conta criada para `%`, vira acesso ao banco |
+| Causa raiz | opção de rede aplicada a um só protocolo |
+| Correção | acrescentar `--mysqlx=OFF` ao comando (o sistema não usa o protocolo X) ou `--mysqlx-bind-address=127.0.0.1`; conferir com `netstat -an \| findstr 33060` |
+| Teste de regressão | na lista de implantação: nenhuma porta do MySQL escutando fora de `127.0.0.1` / rede interna autorizada |
+
 ## 2. Achados da auditoria por agentes
 
 *Ainda não rodou.* Método: `roteiro-da-auditoria-de-seguranca.md` (entregue pelo dono em 16/09/2026) e as dimensões do `ESTADO.md`, item 4. Cada achado segue o formato da seção 21 do roteiro.
