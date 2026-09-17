@@ -1,26 +1,28 @@
 # Estado do projeto — retomada
 
-Última atualização: **17/09/2026, noite (depois do `/clear`)** — `main` em `08ca6c1` mais o **PR #75** (`feat/consumo-da-ia`), agora com **as duas revisões por agente publicadas e os achados corrigidos**. Suíte: **102 arquivos, 1171 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
+Última atualização: **17/09/2026, noite (depois do `/clear`)** — `main` em `88eb390`, com o **PR #75 mesclado** (teto diário, disjuntor e registro de uso da IA; as duas revisões por agente publicadas e todos os achados corrigidos). Suíte: **102 arquivos, 1171 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir). **Próximo: C-11/N-13** — contar tentativas por e-mail, para o e-mail que a IA nunca estrutura parar de ser pago a cada sincronização.
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 17/09/2026, noite — as duas revisões do PR #75 feitas e os achados corrigidos
+> ### 17/09/2026, noite — PR #75 MESCLADO (`88eb390`); o próximo é C-11/N-13
 >
-> **1. O [PR #75](https://github.com/fernando123-hue/Sistema-SBP/pull/75) passou pelas duas revisões por agente** ([técnica](https://github.com/fernando123-hue/Sistema-SBP/pull/75#issuecomment-5720953037), [segurança](https://github.com/fernando123-hue/Sistema-SBP/pull/75#issuecomment-5721034583)), e tudo que elas acharam foi corrigido **com teste visto vermelho antes** — detalhe em `DECISOES.md § AT-38`:
+> **Comece por aqui:** o trabalho seguinte é **C-11/N-13** — hoje um e-mail que a IA nunca consegue estruturar fica `reprocessavel` para sempre e é pago de novo a cada sincronização; falha de forma não abre o disjuntor, então nada o contém por item. Falta contar tentativas por e-mail e, depois de K falhas, mandá-lo a uma pessoa. A revisão de segurança do #75 reforçou a prioridade (achado A1 lá).
+>
+> **1. O [PR #75](https://github.com/fernando123-hue/Sistema-SBP/pull/75) foi mesclado e passou pelas duas revisões por agente** ([técnica](https://github.com/fernando123-hue/Sistema-SBP/pull/75#issuecomment-5720953037), [segurança](https://github.com/fernando123-hue/Sistema-SBP/pull/75#issuecomment-5721034583)), e tudo que elas acharam foi corrigido **com teste visto vermelho antes** — detalhe em `DECISOES.md § AT-38`:
 >   - **crítico:** `IA_TETO_DIARIO=""` (o valor do `.env.example`) virava `0`, que significa SEM TETO — a trava de gasto nascia desligada para quem seguisse a documentação. Reconferido à mão contra o Zod do repositório antes de publicar;
 >   - **alto:** corrida no disjuntor — o estado era lido antes do `await` e gravado depois, a partir da cópia velha; duas falhas simultâneas viravam uma;
 >   - **médios:** `registrarChamada` sem repetição em impasse do banco (agora usa `comNovaTentativaEmConflito`, que também cobre o `P2010`/1213 desta máquina) e a fronteira `adapters/` → `servicos/` sem guarda (agora `fronteira-dos-servicos.test.ts`: só a fábrica);
 >   - **baixo (segurança):** `ehSemCredito` da Anthropic casava só por texto, em qualquer `Error` — agora exige o status `400`, como o Gemini já exigia o `429`;
 >   - **aceitos por ora, escritos em `§ AT-38`:** o teto é aproximado sob concorrência (erro de unidades contra um teto de centenas) e o índice redundante em `UsoDaIa(dia)` fica para a próxima migração que tocar a tabela.
 >
->   Falta: `npm run verificar` já fechou **102 arquivos, 1171 testes**; ler os checks um a um (`gh pr view 75 --json headRefOid,statusCheckRollup`) e mesclar com `gh pr merge 75 --squash --delete-branch`.
+>   `npm run verificar` fechou **102 arquivos, 1171 testes**; os quatro checks foram lidos um a um em `3cc1f0a` e mesclado com squash. **Atenção ao ler o CI deste PR:** havia um *Nível de risco e evidência* vermelho ao lado de um verde no mesmo commit — o vermelho é a execução anterior à edição do corpo, quando as duas seções de revisão ainda diziam "(pendente)". Confirmado no log antes de mesclar; não confie na cor sem olhar o horário.
 >
 > **2. Ligar o ambiente** (passo 1 da retomada da madrugada, mais abaixo). O MySQL desta máquina continua **ligado sem `--mysqlx=OFF`** desde 16/09 (porta 33060 aberta em todas as interfaces, M-01): só o dono desliga e sobe de novo.
 >
 > **3. Feito nesta rodada (tudo mesclado, com as duas revisões publicadas e o CI lido):**
 > - **#73 — `AT-36`, gabarito de avaliação da IA:** 17 e-mails sintéticos com resposta esperada e nota automática em cinco dimensões (`npm run ia:avaliar`, `-- --json` para guardar). Mock tira **0,92**; o Gemini deu 503 em 7 de 17 casos (nota geral 0,58, só as respondidas 0,98).
 > - **#74 — `AT-37`, `ia-local.ts`:** `IA_ADAPTER="local"` fala com qualquer servidor compatível com OpenAI (`IA_LOCAL_URL`), sem dependência nova; endereço público recusado na partida, sem credencial na URL, sem seguir redirecionamento (SSRF achado na revisão de segurança), `IA_PARA_DADO_REAL.local = false`.
-> - **#75 (aberto) — `AT-38`, consumo da IA:** teto diário por fornecedor contado em `UsoDaIa` (`IA_TETO_DIARIO`, padrão 500), disjuntor por fornecedor (5 falhas seguidas, 10 minutos, meia-abertura), registro por dia/modelo/tarefa sem conteúdo, e saldo esgotado (Anthropic) ou cota (Gemini) parando o lote.
+> - **#75 (`88eb390`) — `AT-38`, consumo da IA:** teto diário por fornecedor contado em `UsoDaIa` (`IA_TETO_DIARIO`, padrão 500), disjuntor por fornecedor (5 falhas seguidas, 10 minutos, meia-abertura), registro por dia/modelo/tarefa sem conteúdo, e saldo esgotado (Anthropic) ou cota (Gemini) parando o lote.
 >
 > **4. Fila depois do #75:**
 > - **C-11/N-13** (o próximo): e-mail que a IA nunca estrutura é pago de novo a cada sincronização — falta contar tentativas por e-mail e mandá-lo a uma pessoa depois de K falhas.
