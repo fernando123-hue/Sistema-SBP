@@ -1,8 +1,26 @@
 # Estado do projeto — retomada
 
-Última atualização: **17/09/2026, madrugada** — `main` em `47373ab` (PR #55, processo por nível de risco). **O trabalho novo está na branch `docs/auditoria-rodada-seguranca-qualidade`, enviada e ainda SEM PR** — inclusive esta versão do `ESTADO.md`; a da `main` está desatualizada. Suíte: **83 arquivos, 932 testes** verde (na branch do #55, antes do merge). Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 1 (auditar) quase fechada.
+Última atualização: **17/09/2026, manhã** — `main` em `d165359` (PR #63). Suíte: **89 arquivos, 1004 testes** verde, local e no CI. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### Situação em 17/09/2026, manhã — o dono deu autonomia total e foi descansar
+>
+> **Feito nesta manhã, tudo mesclado com as duas revisões publicadas no PR e o CI lido check a check:**
+> - **#56** — documentos da auditoria (etapa 1) e `.gitignore` para chaves.
+> - **#57 — N-01**: a suíte só apaga base cujo nome termina em `_teste`.
+> - **#58 — C-01**: `campos` volta a sair preenchido com a Anthropic (lista de pares); prompts `anthropic-1.1.0`/`gemini-1.1.0`; o SDK não valida mais por nós (erro de forma volta a repetir uma vez).
+> - **#59 — C-02/C-03**: leitura da caixa com janela de 7 dias a partir de `GRAPH_LER_DESDE` (novo, obrigatório com `graph`), mensagem ruim recusada pelo nome, teto de 200 só sobre as novas (`AT-35`).
+> - **#60 — C-04**: `messageId` e `referencia` do evento limitados a 191 (conferido contra a coluna), corte por caractere e SHA-256 quando corta.
+> - **#61**: identificador repetido com outra data vira aviso (`repetidas`) e evento agregado; mensagens recusadas viram `naoLidas` na tela (visto rodando).
+> - **#62 — N-02/N-27**: anexo do Graph que não é arquivo vira recusa; grande não é baixado; teto de 50 anexos e de 100 MB por mensagem antes do download.
+> - **#63 — N-17/N-18**: caixa real só sobe com IA permitida para dado real (hoje só `anthropic`); produção recusa segredo público ou previsível. `.gitleaksignore` criado (uma exceção, com motivo).
+>
+> **Fila agora:** (a) continuar a verificação dos `N-` restantes — já verificados: N-01, N-02, N-14, N-17, N-18, N-27; (b) médios confirmados ainda abertos, a começar por **C-12** (sinal de produção só por `NODE_ENV` — a trava do N-18 herda essa fraqueza); (c) `A54`.
+>
+> **Pendências para o dono:** o MySQL desta máquina está ligado **sem** `--mysqlx=OFF` (porta 33060 aberta em todas as interfaces, M-01): o classificador recusou que o agente o desligasse. Desligue e suba de novo como no passo 1 abaixo.
+>
+> **Lições gravadas:** nunca rodar dois `vitest` ao mesmo tempo (o `globalSetup` recria a base — deu 17 falhas falsas); revisor por agente sem rodar testes durante a suíte e com temporários só na pasta da sessão; link de revisão no corpo do PR só depois de listar os comentários.
 >
 > ### Retomada de 17/09/2026, madrugada — depois de um `/clear`
 >
