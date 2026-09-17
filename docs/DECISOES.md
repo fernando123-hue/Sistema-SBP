@@ -882,6 +882,26 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 ---
 
+### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
+
+**O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
+
+**Decisões tomadas:**
+
+- **A trava do dia é `INSERT ... ON DUPLICATE KEY UPDATE`, não `upsert` (N-09).** Medido nesta base: o `upsert` do Prisma faz SELECT antes de escrever, e com REPEATABLE READ esse SELECT tira a fotografia da transação ANTES de a trava ser concedida — a segunda distribuição do dia esperava a trava e decidia o rateio com o crédito velho. A mesma leitura prévia fazia duas primeiras distribuições simultâneas estourarem unicidade crua na cara do operador. É SQL do MySQL (`A42`), isolado em `tomarTravaDoDia`; trocar de banco reescreve essa função, e dois testes de concorrência real avisam se ela mentir.
+- **A trilha é append-only em duas camadas (N-19).** Varredura de código impede `update`/`delete`/`upsert` em `LogAuditoria` e `EventoProcessamento`, com exceção nominal para `db:limpar`; e uma TRIGGER no MySQL recusa `UPDATE` venha de onde vier. **O `DELETE` fica de fora da trigger de propósito:** a suíte limpa as tabelas entre casos, e em produção quem impede `DELETE` é o privilégio do usuário do banco — que é a ferramenta certa, e é trabalho de implantação, não de código.
+- **Fato e trilha entram na mesma transação (N-08).** Vale para troca de senha, senha provisória e destravamento. O hash é derivado FORA da transação: scrypt custa centenas de milissegundos de propósito, e segurar linha travada durante isso convida impasse no pico.
+- **Hash ilegível é dito, não disfarçado (N-36).** `conferirSenha` devolve `confere | nao_confere | hash_ilegivel`. Defeito nosso não gasta tentativa da pessoa, não tranca a conta dela, grava evento para um humano e responde `CredencialIlegivelError` (503) com mensagem pública sem id. O piso de resposta continua pago no caminho novo — sem isso, ele responderia mais rápido que o da senha errada e viraria oráculo na tela de entrada.
+- **Permissão de serviço tem mapa próprio (N-11).** `permissoes.test.ts` cobre 12 operações sensíveis com papel insuficiente, mais o contraponto de que a própria fila continua aberta. Antes, só `exigirPapel` e quatro rotas tinham teste.
+- **Revogação de sessão é provada por `perfilAtual` (N-15).** Os testes comparavam datas entre si, o que prova aritmética; agora usam a função que responde em produção.
+
+**Impacto se estiverem erradas:** a trigger recusa um `UPDATE` legítimo que alguém venha a precisar (não existe hoje: nada no sistema altera trilha); a transação em volta da troca de senha alarga a janela de trava (medida em milissegundos, com o hash fora dela); `CredencialIlegivelError` distingue um caso que antes era indistinguível — só acontece com dado corrompido, que o atacante não controla.
+
+**Prova:** `trava-de-distribuicao.test.ts` (4, dois de concorrência real), `trilha-append-only.test.ts` (3, um deles contra o banco), `permissoes.test.ts` (14), `autenticacao.test.ts` (37), `revogacao-e-tempo.test.ts` (7). Quatro correções foram confirmadas por MUTAÇÃO: desfeita a correção, o teste fica vermelho. **Status:** ⏳ adotado.
+
+---
+
+
 ## Segundo fornecedor de IA: Gemini — 07/09/2026
 
 **O que motivou.** Duas coisas ao mesmo tempo: não acrescentar custo de API no protótipo, e testar se o sistema — e o harness em volta dele — opera de forma independente do fornecedor de IA. A segunda é a que vale a longo prazo: *não depender de um agente específico e poder trocar quando for necessário.*

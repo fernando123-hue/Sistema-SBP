@@ -180,3 +180,36 @@ export class CategoriaDesconhecidaError extends ErroDominio {
     )
   }
 }
+
+/**
+ * A credencial gravada para esta pessoa não pode ser lida (achado N-36).
+ *
+ * Hash truncado por migração malfeita, coluna editada à mão, campo corrompido.
+ * Antes isto era tratado como "senha errada": a pessoa tentava cinco vezes, a
+ * conta travava, o suporte destravava — e travava de novo, porque a causa
+ * continuava no banco. Ninguém, em lugar nenhum, ficava sabendo que o defeito
+ * era do SISTEMA. É o erro silencioso do invariante 7, cobrando o acesso de
+ * alguém.
+ *
+ * `503` e não `422`: a entrada da pessoa não tem defeito nenhum; o que está
+ * quebrado é o dado guardado deste lado.
+ */
+export class CredencialIlegivelError extends ErroOperacional {
+  readonly codigo = 'CREDENCIAL_ILEGIVEL'
+  readonly statusHttp = 503
+
+  constructor(colaboradorId: string) {
+    super(`Credencial ilegível no banco para o colaborador ${colaboradorId}`)
+  }
+
+  /**
+   * O id do colaborador NÃO sai daqui.
+   *
+   * A tela de entrada é pública, e a mensagem não pode confirmar que aquele
+   * e-mail existe. Ela manda procurar quem resolve, que é o que a pessoa
+   * precisa fazer; o id fica no log e no evento.
+   */
+  override get mensagemPublica(): string {
+    return 'Não foi possível validar sua entrada. Procure o gestor do sistema.'
+  }
+}

@@ -373,6 +373,25 @@ export async function previa(
 
 // ─── Confirmação (transacional) ──────────────────────────────
 
+/**
+ * Toma a trava do dia numa única escrita atômica.
+ *
+ * Exportada para o teste de concorrência exercitar EXATAMENTE esta linha:
+ * se ela virar um `upsert` de novo, é aqui que o teste falha, e não num
+ * cenário parecido escrito ao lado. É SQL do MySQL — o banco decidido em
+ * `A42` —, e trocar de banco reescreve só esta função.
+ */
+export async function tomarTravaDoDia(tx: Transacao, data: string): Promise<void> {
+  // `atualizadoEm` é `@updatedAt`, preenchido pelo Prisma e não pelo banco:
+  // em consulta crua ele precisa vir escrito, ou o MySQL recusa a linha
+  // (`Field 'atualizadoEm' doesn't have a default value`).
+  await tx.$executeRaw`
+    INSERT INTO TravaDeDistribuicao (data, execucoes, atualizadoEm)
+    VALUES (${data}, 1, NOW(3))
+    ON DUPLICATE KEY UPDATE execucoes = execucoes + 1, atualizadoEm = NOW(3)
+  `
+}
+
 export async function confirmar(
   banco: Banco,
   pedido: PedidoDistribuicao,
@@ -396,11 +415,27 @@ export async function confirmar(
     // outra ainda não gravado e decidiriam o desempate com dado obsoleto —
     // sem erro, sem exceção, só um rateio injusto. Ver o comentário de
     // `TravaDeDistribuicao` no schema.
-    await tx.travaDeDistribuicao.upsert({
-      where: { data: pedido.data },
-      create: { data: pedido.data, execucoes: 1 },
-      update: { execucoes: { increment: 1 } },
-    })
+    //
+    // ═══ POR QUE CONSULTA CRUA, E NÃO `upsert` (achado N-09) ═══
+    //
+    // O `upsert` do Prisma no MySQL é SELECT-e-depois-INSERT/UPDATE, e essa
+    // leitura acontece ANTES de qualquer trava. Duas consequências, as duas
+    // medidas nesta base:
+    //
+    //   1. Com REPEATABLE READ (o padrão do MySQL), aquele SELECT tira a
+    //      fotografia da transação. Quem chegou depois esperava a trava, sim —
+    //      e acordava lendo o mundo de antes dela. A trava serializava a
+    //      escrita e não protegia a leitura, que era justamente o que ela
+    //      existia para proteger.
+    //   2. Na primeira distribuição do dia, com a linha ainda inexistente, as
+    //      duas transações passavam pelo SELECT sem achar nada e as duas
+    //      tentavam INSERT: a segunda estourava unicidade crua na cara do
+    //      operador.
+    //
+    // `INSERT ... ON DUPLICATE KEY UPDATE` é uma ida só, atômica. Ela toma a
+    // trava sem ler antes, então a fotografia da transação só é tirada depois —
+    // e enxerga o que a distribuição anterior gravou.
+    await tomarTravaDoDia(tx, pedido.data)
 
     // Replaneja DENTRO da transação: o estado pode ter mudado entre a prévia
     // que o operador viu e o clique em confirmar. Mesma função da prévia.
