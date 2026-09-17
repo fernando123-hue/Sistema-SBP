@@ -4,6 +4,8 @@ import { AddressInfo } from 'node:net'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { EmailBrutoSchema } from '../core/esquemas'
+import { LIMITES_PADRAO } from '../core/ia/consumo'
+import { hojeIso } from '../core/util/datas'
 import { InterpretacaoIndisponivelError } from '../ports/ia'
 import { limparCacheDeAmbiente } from '../servidor/ambiente'
 import { obterPrisma } from '../servidor/prisma'
@@ -88,6 +90,26 @@ describe('criarAiPort liga o controle de consumo', () => {
 
     // A chamada impedida não é contada: ela não foi pedida a ninguém.
     expect((await banco.usoDaIa.findFirstOrThrow({})).chamadas).toBe(1)
+  })
+
+  it('IA_TETO_DIARIO vazia é o PADRÃO, não "sem teto" — é o valor que está no .env.example', async () => {
+    // `z.coerce.number().optional()` só intercepta a variável AUSENTE: a
+    // variável presente e vazia vira `Number('')`, que é 0 — e 0 significa
+    // "sem teto". Quem copiasse o `.env.example` como está desligaria em
+    // silêncio a única trava de gasto, que é o oposto do que o comentário
+    // dele promete. Mesma classe de defeito já corrigida em ANEXOS_SECRET e
+    // GRAPH_LER_DESDE, no mesmo arquivo.
+    await banco.usoDaIa.create({
+      data: {
+        dia: hojeIso(),
+        fornecedor: 'local',
+        modelo: 'modelo-do-servidor',
+        tarefa: 'interpretacao',
+        chamadas: LIMITES_PADRAO.tetoDiarioDeChamadas,
+      },
+    })
+
+    await expect(criarAiPort().interpretar(EMAIL)).rejects.toThrow(/teto diário/)
   })
 
   it('o mock não é contado — não custa nada e inflaria o teto do fornecedor de verdade', async () => {

@@ -83,7 +83,7 @@ export function comControleDeConsumo(cliente: ClienteDeModelo, opcoes: OpcoesDeC
       const inicio = Date.now()
       try {
         const resultado = await cliente.gerar(pedido)
-        disjuntores.set(opcoes.fornecedor, aposChamada(estado, 'ok', new Date(), limites))
+        anotarNoDisjuntor(opcoes.fornecedor, 'ok', limites)
         // O modelo REAL usado, não o apelido pedido: é ele que tem preço.
         await anotar(opcoes, resultado.modeloUsado, 'ok', Date.now() - inicio)
         return resultado
@@ -92,12 +92,31 @@ export function comControleDeConsumo(cliente: ClienteDeModelo, opcoes: OpcoesDeC
         // errou foi a resposta. Suspender a IA inteira por dois e-mails
         // difíceis seguidos seria trocar um problema pequeno por um grande.
         const conta = especieDoErro(erro) === 'transporte' ? 'falha' : 'ok'
-        disjuntores.set(opcoes.fornecedor, aposChamada(estado, conta, new Date(), limites))
+        anotarNoDisjuntor(opcoes.fornecedor, conta, limites)
         await anotar(opcoes, pedido.modelo, 'falha', Date.now() - inicio)
         throw erro
       }
     },
   }
+}
+
+/**
+ * Guarda o resultado no disjuntor LENDO O ESTADO NA HORA DE GRAVAR.
+ *
+ * O estado usado para DECIDIR é lido antes da chamada ao fornecedor, e entre
+ * essa leitura e a gravação existe um `await` que dura segundos. Gravar a
+ * partir da cópia velha perdia falha: duas chamadas simultâneas liam "1", as
+ * duas falhavam, as duas gravavam "2", e o disjuntor abria uma rodada depois
+ * do prometido. O contrário também acontecia — uma chamada lenta que falhava
+ * reabria, com informação vencida, um disjuntor que outra acabara de fechar.
+ *
+ * `Map` do JavaScript não é atômico, mas um `get`+`set` sem `await` no meio
+ * roda inteiro dentro do mesmo passo do laço de eventos: é o bastante aqui,
+ * onde não há paralelismo real de memória.
+ */
+function anotarNoDisjuntor(fornecedor: string, resultado: 'ok' | 'falha', limites: LimitesDeConsumo): void {
+  const atual = disjuntores.get(fornecedor) ?? DISJUNTOR_FECHADO
+  disjuntores.set(fornecedor, aposChamada(atual, resultado, new Date(), limites))
 }
 
 /**

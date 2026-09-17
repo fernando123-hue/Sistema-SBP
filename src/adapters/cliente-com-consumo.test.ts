@@ -133,6 +133,20 @@ describe('disjuntor', () => {
     expect(registradas).toHaveLength(2)
   })
 
+  it('falhas ao mesmo tempo não se perdem: o disjuntor abre na conta certa', async () => {
+    // O estado do disjuntor era lido ANTES do `await` da chamada e gravado
+    // depois dela. Duas chamadas simultâneas liam "0 falhas", as duas falhavam
+    // e as duas gravavam "1" — uma falha real sumia, e o disjuntor abria uma
+    // rodada depois do que `falhasParaAbrir` promete. O assistente é chamado
+    // por requisições concorrentes de pessoas diferentes: é cenário de todo
+    // dia, não hipótese.
+    const cliente = envolver(quebrado)
+    const duas = await Promise.allSettled([cliente.gerar(PEDIDO), cliente.gerar(PEDIDO)])
+    expect(duas.map((r) => r.status)).toEqual(['rejected', 'rejected'])
+
+    await expect(cliente.gerar(PEDIDO)).rejects.toBeInstanceOf(LimiteDeConsumoAtingido)
+  })
+
   it('o disjuntor é do FORNECEDOR, não da tarefa: a ingestão que o abre também poupa o assistente', async () => {
     // O que está fora do ar é o fornecedor. Um disjuntor por tarefa deixaria a
     // segunda tarefa redescobrir a queda, pagando de novo.

@@ -1,4 +1,5 @@
 import { hojeIso } from '../core/util/datas'
+import { codigoDoPrisma, comNovaTentativaEmConflito } from '../servidor/conflito'
 import type { Banco } from '../servidor/prisma'
 
 /**
@@ -25,12 +26,6 @@ export interface ChamadaRegistrada {
   dia?: string
 }
 
-function codigoDoPrisma(erro: unknown): unknown {
-  return erro !== null && typeof erro === 'object' && 'code' in erro
-    ? (erro as { code?: unknown }).code
-    : undefined
-}
-
 /**
  * Soma uma chamada na linha (dia, fornecedor, modelo, tarefa).
  *
@@ -43,8 +38,18 @@ function codigoDoPrisma(erro: unknown): unknown {
  * tentativa, e todas custam tempo), e contá-la só em `falhas` faria o teto
  * ignorar exatamente o cenário que ele existe para conter: o laço que fracassa
  * duzentas vezes seguidas.
+ *
+ * Impasse do banco é tentado de novo, como em `contarBusca`. Aqui a razão é
+ * mais forte: quem chama engole o erro de registro para não perder uma resposta
+ * já paga, então um impasse não tratado sumiria calado — e chamada paga que não
+ * é contada SUBESTIMA o teto, afrouxando a trava justamente no lote grande, que
+ * é quando ela importa.
  */
 export async function registrarChamada(banco: Banco, chamada: ChamadaRegistrada): Promise<void> {
+  return comNovaTentativaEmConflito(() => somarChamada(banco, chamada))
+}
+
+async function somarChamada(banco: Banco, chamada: ChamadaRegistrada): Promise<void> {
   const chave = {
     dia: chamada.dia ?? hojeIso(),
     fornecedor: chamada.fornecedor,

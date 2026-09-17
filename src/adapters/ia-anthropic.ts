@@ -64,9 +64,20 @@ export const PERFIL_ANTHROPIC: PerfilDoFornecedor = {
    * isso, e um `400` qualquer (pedido malformado) continua sendo defeito
    * desta chamada. O casamento é estreito de propósito: preferir deixar
    * passar a parar a operação por um 400 comum.
+   *
+   * Exige TAMBÉM o `status` da resposta, como o perfil do Gemini exige o
+   * `429`: só o texto, em qualquer `Error`, deixava um erro NOSSO que
+   * mencionasse saldo parar o lote inteiro pelo motivo errado. O status é
+   * lido do objeto, e não por `instanceof Anthropic.APIError`, porque o que
+   * importa é ter vindo de uma resposta HTTP do fornecedor — não a classe que
+   * a versão do SDK usa hoje.
    */
-  ehSemCredito: (erro) =>
-    erro instanceof Error && /credit balance is too low|insufficient (credit|quota)/i.test(erro.message),
+  ehSemCredito: (erro) => {
+    if (typeof erro !== 'object' || erro === null) return false
+    if ((erro as { status?: unknown }).status !== 400) return false
+    const mensagem = erro instanceof Error ? erro.message : ''
+    return /credit balance is too low|insufficient (credit|quota)/i.test(mensagem)
+  },
 }
 
 /**

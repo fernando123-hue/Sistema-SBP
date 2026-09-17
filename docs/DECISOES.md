@@ -865,9 +865,20 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 **Impacto se estiverem erradas:** teto baixo demais interrompe um dia de trabalho (a mensagem diz o número e a variável); disjuntor em memória não protege entre processos; `ehSemCredito` depende de texto do fornecedor e pode envelhecer — quando falhar, volta a ser falha de transporte, e o disjuntor segura.
 
-**Ainda aberto:** o C-11/N-13 (e-mail que a IA nunca estrutura é pago a cada sincronização) continua para o próximo PR — o teto limita o estrago, mas não conta tentativas por e-mail.
+**Corrigido nas duas revisões por agente do PR #75** (cada item com teste visto vermelho antes do conserto):
+- **`IA_TETO_DIARIO` vazia virava ZERO, ou seja, SEM TETO.** `z.coerce.number().optional()` só intercepta a variável ausente; a presente e vazia — o valor que está no `.env.example` — passava por `Number('')`, que é 0. Quem seguisse a documentação ao pé da letra desligava calado a única trava de gasto. Agora a vazia é tratada como ausente, como já se fazia em `ANEXOS_SECRET` e `GRAPH_LER_DESDE`.
+- **Corrida no disjuntor.** O estado era lido antes do `await` da chamada e gravado depois, a partir da cópia velha: duas chamadas simultâneas que falhavam gravavam a mesma contagem e uma falha se perdia; o caminho inverso reabria, com informação vencida, um disjuntor recém-fechado. Agora a gravação relê o estado na hora.
+- **Impasse do banco no registro de uso.** `registrarChamada` passou a usar `comNovaTentativaEmConflito` (que cobre `P2034` **e** o `P2010`/1213 desta base). Quem chama engole erro de registro para não perder resposta já paga — sem a repetição, o impasse sumiria calado, e chamada paga não contada subestima o teto.
+- **A fronteira `adapters/` → `servicos/` ganhou guarda** (`src/adapters/fronteira-dos-servicos.test.ts`): só `fabrica.ts` pode importar `servicos/`. Antes, só um comentário sustentava a exceção.
+- **`ehSemCredito` da Anthropic exige o status `400`**, não só o texto: casar texto em qualquer `Error` deixava um erro nosso que mencionasse saldo parar o lote inteiro. O Gemini já exigia o `429` junto.
 
-**Prova:** `src/core/ia/consumo.test.ts` (13), `src/servicos/consumo-da-ia.test.ts` (7), `src/adapters/cliente-com-consumo.test.ts` (12), `src/adapters/consumo-indisponivel.test.ts` (8) e `src/adapters/fabrica-consumo.test.ts` (3, contra um servidor de verdade, provando a fiação). **Status:** ⏳ adotado; reavaliar com uso real.
+**Limites conhecidos, aceitos por ora:**
+- **O teto é aproximado sob concorrência.** Ler a contagem, decidir e só depois somar é *check-then-act*: chamadas simultâneas podem ver o mesmo número e passar juntas. O erro máximo é o número de chamadas em voo (unidades), contra um teto de centenas, e fechar isso exigiria reservar a vaga antes de chamar — o que muda a semântica "a falha também conta". Revisar se o teto passar a ser argumento de proteção sob carga real.
+- **`UsoDaIa` tem um índice em `dia` redundante** com o prefixo da chave primária. Custo desprezível numa tabela de poucas linhas por dia; remover exigiria editar migração já aplicada e reset das bases. Fica para a próxima migração que tocar a tabela.
+
+**Ainda aberto:** o C-11/N-13 (e-mail que a IA nunca estrutura é pago a cada sincronização) continua para o próximo PR — o teto limita o estrago, mas não conta tentativas por e-mail. A revisão de segurança reforçou a prioridade: falha de forma não abre o disjuntor, então um único e-mail que o modelo nunca estrutura é custo recorrente que só esse contador por item conterá.
+
+**Prova:** `src/core/ia/consumo.test.ts` (13), `src/servicos/consumo-da-ia.test.ts` (11), `src/adapters/cliente-com-consumo.test.ts` (13), `src/adapters/consumo-indisponivel.test.ts` (9), `src/adapters/fronteira-dos-servicos.test.ts` (4) e `src/adapters/fabrica-consumo.test.ts` (4, contra um servidor de verdade, provando a fiação). **Status:** ⏳ adotado; reavaliar com uso real.
 
 ---
 

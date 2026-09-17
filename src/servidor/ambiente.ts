@@ -71,7 +71,15 @@ const AmbienteSchema = z.object({
    * oposto de falhar alto. O padrão vem de `core/ia/consumo.ts`, junto com a
    * conta que o justifica.
    */
-  IA_TETO_DIARIO: z.coerce.number().int().min(0).optional(),
+  // A variável VAZIA precisa significar o mesmo que a ausente — vazia é o valor
+  // que está no `.env.example`. Sem o `preprocess`, `z.coerce.number()` lê `''`
+  // como `Number('')`, que é 0, e 0 significa SEM TETO: quem copiasse o arquivo
+  // de exemplo desligava em silêncio a única trava de gasto. Mesma classe de
+  // defeito já corrigida em ANEXOS_SECRET e GRAPH_LER_DESDE, neste arquivo.
+  IA_TETO_DIARIO: z.preprocess(
+    (valor) => (typeof valor === 'string' && valor.trim() === '' ? undefined : valor),
+    z.coerce.number().int().min(0).optional(),
+  ),
   /**
    * Segredo que assina o cookie de sessão.
    *

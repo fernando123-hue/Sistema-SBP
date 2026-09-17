@@ -1,16 +1,19 @@
 # Estado do projeto — retomada
 
-Última atualização: **17/09/2026, noite** — `main` em `08ca6c1` (gabarito e adapter local mesclados) mais o **PR #75 aberto** (`feat/consumo-da-ia`, `32cb2a3`). Suíte: **101 arquivos, 1160 testes** verde; no CI do #75 só o job *Processo* está vermelho, por falta das duas revisões. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
+Última atualização: **17/09/2026, noite (depois do `/clear`)** — `main` em `08ca6c1` mais o **PR #75** (`feat/consumo-da-ia`), agora com **as duas revisões por agente publicadas e os achados corrigidos**. Suíte: **102 arquivos, 1171 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 17/09/2026, noite — preparado para um `/clear`, com o PR #75 ABERTO
+> ### 17/09/2026, noite — as duas revisões do PR #75 feitas e os achados corrigidos
 >
-> **1. Primeiro passo técnico: fechar o [PR #75](https://github.com/fernando123-hue/Sistema-SBP/pull/75)** (`feat/consumo-da-ia`, commit `32cb2a3` — teto diário, disjuntor e registro de uso da IA; `DECISOES.md § AT-38`; achado C-06). Código, testes e documentos estão prontos: `npm run verificar` fechou **101 arquivos, 1160 testes**, e no CI só o job *Processo* está vermelho — **de propósito, porque faltam as duas revisões**. O que falta, nesta ordem:
->   1. `code-reviewer` (um agente por vez, nunca dois) sobre o diff `git diff main...feat/consumo-da-ia`. **O agente não roda vitest** e grava temporário só na pasta da sessão. Pontos que a revisão precisa olhar: corrida entre chamadas paralelas no disjuntor de módulo; a contagem no banco **não** trata `P2034` (deadlock), e `servicos/contagem-de-buscas.ts` trata — ver se é inconsistência que importa; a migração nova (colação `AT-34`, índices, tamanho de coluna); e a fábrica (`adapters/`) importando `servicos/`, que é novo e está documentado como raiz de composição.
->   2. `security-reviewer` depois, sobre o mesmo diff.
->   3. Publicar cada uma com `gh pr comment 75 --body-file ...` e **colar no corpo do PR a URL que o comando imprime** (seções *Revisão técnica* e *Revisão de segurança*, hoje "(pendente)").
->   4. Corrigir o que aparecer com **teste visto vermelho**, rodar `npm run verificar`, ler os checks um a um (`gh pr view 75 --json headRefOid,statusCheckRollup`) e mesclar com `gh pr merge 75 --squash --delete-branch`.
+> **1. O [PR #75](https://github.com/fernando123-hue/Sistema-SBP/pull/75) passou pelas duas revisões por agente** ([técnica](https://github.com/fernando123-hue/Sistema-SBP/pull/75#issuecomment-5720953037), [segurança](https://github.com/fernando123-hue/Sistema-SBP/pull/75#issuecomment-5721034583)), e tudo que elas acharam foi corrigido **com teste visto vermelho antes** — detalhe em `DECISOES.md § AT-38`:
+>   - **crítico:** `IA_TETO_DIARIO=""` (o valor do `.env.example`) virava `0`, que significa SEM TETO — a trava de gasto nascia desligada para quem seguisse a documentação. Reconferido à mão contra o Zod do repositório antes de publicar;
+>   - **alto:** corrida no disjuntor — o estado era lido antes do `await` e gravado depois, a partir da cópia velha; duas falhas simultâneas viravam uma;
+>   - **médios:** `registrarChamada` sem repetição em impasse do banco (agora usa `comNovaTentativaEmConflito`, que também cobre o `P2010`/1213 desta máquina) e a fronteira `adapters/` → `servicos/` sem guarda (agora `fronteira-dos-servicos.test.ts`: só a fábrica);
+>   - **baixo (segurança):** `ehSemCredito` da Anthropic casava só por texto, em qualquer `Error` — agora exige o status `400`, como o Gemini já exigia o `429`;
+>   - **aceitos por ora, escritos em `§ AT-38`:** o teto é aproximado sob concorrência (erro de unidades contra um teto de centenas) e o índice redundante em `UsoDaIa(dia)` fica para a próxima migração que tocar a tabela.
+>
+>   Falta: `npm run verificar` já fechou **102 arquivos, 1171 testes**; ler os checks um a um (`gh pr view 75 --json headRefOid,statusCheckRollup`) e mesclar com `gh pr merge 75 --squash --delete-branch`.
 >
 > **2. Ligar o ambiente** (passo 1 da retomada da madrugada, mais abaixo). O MySQL desta máquina continua **ligado sem `--mysqlx=OFF`** desde 16/09 (porta 33060 aberta em todas as interfaces, M-01): só o dono desliga e sobe de novo.
 >

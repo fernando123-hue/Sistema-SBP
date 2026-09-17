@@ -96,3 +96,67 @@ describe('chamadasDoDia', () => {
     expect(await chamadasDoDia(banco, 'gemini', '2026-09-18')).toBe(0)
   })
 })
+
+describe('conflito do banco na hora de registrar', () => {
+  // Mesmo molde de `contagem-de-buscas.test.ts`: impasse não se provoca de
+  // propósito, o banco falso entrega o erro que o Prisma entregaria. A
+  // diferença importa aqui porque uma chamada paga que não é contada
+  // SUBESTIMA o teto — enfraquece justamente a trava que este registro serve.
+  function bancoQueFalha(erros: unknown[]) {
+    const chamadas = { create: 0 }
+    const falso = {
+      usoDaIa: {
+        updateMany: async () => ({ count: 0 }),
+        create: async () => {
+          chamadas.create++
+          const erro = erros.shift()
+          if (erro) throw erro
+          return {}
+        },
+        update: async () => ({}),
+      },
+    } as unknown as typeof banco
+    return { falso, chamadas }
+  }
+
+  const CHAMADA = {
+    fornecedor: 'gemini',
+    modelo: 'a',
+    tarefa: 'interpretacao' as const,
+    resultado: 'ok' as const,
+    duracaoMs: 1,
+    dia: '2026-09-18',
+  }
+
+  it('impasse é tentado de novo, e o registro acontece', async () => {
+    const { falso, chamadas } = bancoQueFalha([{ code: 'P2034' }])
+
+    await expect(registrarChamada(falso, CHAMADA)).resolves.toBeUndefined()
+    expect(chamadas.create).toBe(2)
+  })
+
+  it('impasse em consulta crua (P2010, código 1213) também é tentado de novo', async () => {
+    // Medido nesta base em 17/09/2026: o impasse nem sempre chega como P2034.
+    const impasse = {
+      code: 'P2010',
+      meta: { driverAdapterError: { cause: { kind: 'TransactionWriteConflict', originalCode: '1213' } } },
+    }
+    const { falso, chamadas } = bancoQueFalha([impasse])
+
+    await expect(registrarChamada(falso, CHAMADA)).resolves.toBeUndefined()
+    expect(chamadas.create).toBe(2)
+  })
+
+  it('impasse que não passa falha alto — contagem perdida em silêncio é teto que mente', async () => {
+    const { falso } = bancoQueFalha([{ code: 'P2034' }, { code: 'P2034' }, { code: 'P2034' }])
+
+    await expect(registrarChamada(falso, CHAMADA)).rejects.toMatchObject({ code: 'P2034' })
+  })
+
+  it('outro erro não é tentado de novo', async () => {
+    const { falso, chamadas } = bancoQueFalha([{ code: 'P1001' }])
+
+    await expect(registrarChamada(falso, CHAMADA)).rejects.toMatchObject({ code: 'P1001' })
+    expect(chamadas.create).toBe(1)
+  })
+})

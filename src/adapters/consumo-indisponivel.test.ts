@@ -84,6 +84,14 @@ describe('saldo esgotado e cota são indisponibilidade, não falha de transporte
     expect(PERFIL_ANTHROPIC.ehSemCredito?.(Object.assign(new Error('bad request'), { status: 400 }))).toBe(false)
   })
 
+  it('Anthropic: erro NOSSO com o mesmo texto não para a operação', () => {
+    // Casar só pelo texto, em qualquer `Error`, deixava um erro interno que
+    // mencionasse saldo — uma mensagem de log, um teste, uma validação nossa —
+    // parar o lote inteiro pelo motivo errado. Saldo esgotado vem do
+    // fornecedor, e vir do fornecedor significa ter status HTTP.
+    expect(PERFIL_ANTHROPIC.ehSemCredito?.(new Error('credit balance is too low'))).toBe(false)
+  })
+
   it('Gemini: 429 de cota esgotada', () => {
     const erro = Object.assign(new Error('Quota exceeded: RESOURCE_EXHAUSTED'), { status: 429 })
     expect(PERFIL_GEMINI.ehSemCredito?.(erro)).toBe(true)
