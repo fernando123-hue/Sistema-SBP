@@ -55,6 +55,50 @@ export interface EntradaAutorizada {
   senhaDefinidaEm: Date | null
 }
 
+/**
+ * Reserva a tentativa ANTES de conferir a senha (achado C-09).
+ *
+ * O bloqueio era decidido com o valor lido antes do scrypt (~90 ms) e só
+ * gravado depois dele: toda tentativa que leu antes da quinta falha passava e
+ * testava uma senha — cinco por janela viravam centenas. Agora a linha da
+ * conta é travada, o bloqueio é conferido com o valor de agora, e a tentativa
+ * já entra na conta; a que chega ao limite já trava a conta antes do hash.
+ * Quem acerta a senha zera tudo depois (`zerarTentativas`).
+ *
+ * Devolve `restante > 0` quando a conta está bloqueada: nesse caso nada foi
+ * contado e a senha não deve ser conferida.
+ */
+async function reservarTentativa(
+  banco: Banco,
+  colaboradorId: string,
+): Promise<{ restante: number; tentativas: number; bloqueio: number }> {
+  return transacaoComNovaTentativa(banco, async (tx) => {
+    const [linha] = await tx.$queryRaw<{ tentativasFalhas: number | bigint; bloqueadoAte: Date | null }[]>`
+      SELECT tentativasFalhas, bloqueadoAte FROM \`Colaborador\` WHERE id = ${colaboradorId} FOR UPDATE`
+    const agora = new Date()
+    const restante = bloqueioRestanteEmSegundos(linha?.bloqueadoAte ?? null, agora)
+    if (restante > 0) return { restante, tentativas: Number(linha?.tentativasFalhas ?? 0), bloqueio: 0 }
+
+    const tentativas = Number(linha?.tentativasFalhas ?? 0) + 1
+    const bloqueio = segundosDeBloqueio(tentativas)
+    await tx.colaborador.update({
+      where: { id: colaboradorId },
+      data: {
+        tentativasFalhas: tentativas,
+        ...(bloqueio > 0 ? { bloqueadoAte: new Date(agora.getTime() + bloqueio * 1000) } : {}),
+      },
+    })
+    return { restante: 0, tentativas, bloqueio }
+  })
+}
+
+async function zerarTentativas(banco: Banco, colaboradorId: string): Promise<void> {
+  await banco.colaborador.update({
+    where: { id: colaboradorId },
+    data: { tentativasFalhas: 0, bloqueadoAte: null },
+  })
+}
+
 export async function autenticar(banco: Banco, entrada: unknown): Promise<EntradaAutorizada> {
   const dados = CredenciaisSchema.parse(entrada)
   const correlacaoId = novaCorrelacao()
@@ -83,7 +127,8 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
     throw new ErroDeNegocio(FALHA_DE_ENTRADA, 'FALHA_DE_ENTRADA')
   }
 
-  const restante = bloqueioRestanteEmSegundos(colaborador.bloqueadoAte, new Date())
+  const reserva = await reservarTentativa(banco, colaborador.id)
+  const restante = reserva.restante
   if (restante > 0) {
     // Aqui a mensagem PRECISA ser específica, e isso é decisão consciente: a
     // pessoa legítima tem de saber que a conta destrava sozinha, senão liga
@@ -98,26 +143,11 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
   const confere = await conferirSenha(dados.senha, colaborador.senhaHash)
 
   if (!confere) {
-    // INCREMENTO ATÔMICO, não "li 3, gravo 4".
-    //
-    // Ler o contador no início da função e gravar o valor absoluto aqui era
-    // corrida clássica: dez tentativas disparadas ao mesmo tempo liam todas
-    // `0` e gravavam todas `1`. O bloqueio por conta nunca disparava, e ele é
-    // justamente a defesa contra o atacante distribuído — o que vem de muitos
-    // IPs e não é contido pelo limite por origem. Bastava paralelizar.
-    const { tentativasFalhas: tentativas } = await banco.colaborador.update({
-      where: { id: colaborador.id },
-      data: { tentativasFalhas: { increment: 1 } },
-      select: { tentativasFalhas: true },
-    })
-
-    const bloqueio = segundosDeBloqueio(tentativas)
-    if (bloqueio > 0) {
-      await banco.colaborador.update({
-        where: { id: colaborador.id },
-        data: { bloqueadoAte: new Date(Date.now() + bloqueio * 1000) },
-      })
-    }
+    // A tentativa já foi contada — e o bloqueio já gravado, se era a que chega
+    // ao limite — em `reservarTentativa`, antes do hash. Contar aqui, depois,
+    // era a janela do C-09. (O incremento atômico que morava aqui continua lá:
+    // dez tentativas simultâneas não podem gravar todas o mesmo valor.)
+    const { tentativas, bloqueio } = reserva
 
     await auditar(banco, {
       entidade: 'Colaborador',
@@ -136,19 +166,19 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
 
   // Senha correta: o contador zera. Sem isso, cinco erros espalhados ao longo
   // de meses acabariam trancando alguém que nunca errou cinco vezes seguidas.
-  await banco.colaborador.update({
-    where: { id: colaborador.id },
-    data: {
-      tentativasFalhas: 0,
-      bloqueadoAte: null,
-      // Custo de hash endurecido no código só alcança as senhas existentes se
-      // alguém as reescrever. O momento em que a senha em texto está
-      // legitimamente na memória é este.
-      ...(precisaRehash(colaborador.senhaHash)
-        ? { senhaHash: await gerarHash(dados.senha) }
-        : {}),
-    },
-  })
+  // Zera ANTES do rehash, em escrita própria (revisão do PR do C-09): uma falha
+  // ao gerar o hash novo não pode deixar contada a tentativa de quem acertou.
+  await zerarTentativas(banco, colaborador.id)
+
+  // Custo de hash endurecido no código só alcança as senhas existentes se
+  // alguém as reescrever. O momento em que a senha em texto está
+  // legitimamente na memória é este.
+  if (precisaRehash(colaborador.senhaHash)) {
+    await banco.colaborador.update({
+      where: { id: colaborador.id },
+      data: { senhaHash: await gerarHash(dados.senha) },
+    })
+  }
 
   await auditar(banco, {
     entidade: 'Colaborador',
@@ -193,7 +223,9 @@ export async function trocarSenha(
   // entrada — e precisa da MESMA trava. Sem isto, quem roubasse um cookie
   // poderia adivinhar a senha aqui indefinidamente, contornando o bloqueio que
   // protege `/api/sessao`.
-  const restante = bloqueioRestanteEmSegundos(colaborador.bloqueadoAte, new Date())
+  // Mesma reserva da entrada (achado C-09): o bloqueio decidido com o valor de
+  // agora, e a tentativa contada antes do hash.
+  const { restante } = await reservarTentativa(banco, colaborador.id)
   if (restante > 0) {
     throw new ErroDeNegocio(
       `Muitas tentativas. Tente de novo em ${restante}s.`,
@@ -202,22 +234,12 @@ export async function trocarSenha(
   }
 
   if (!(await conferirSenha(dados.senhaAtual, colaborador.senhaHash))) {
-    const { tentativasFalhas: tentativas } = await banco.colaborador.update({
-      where: { id: colaborador.id },
-      data: { tentativasFalhas: { increment: 1 } },
-      select: { tentativasFalhas: true },
-    })
-
-    const bloqueio = segundosDeBloqueio(tentativas)
-    if (bloqueio > 0) {
-      await banco.colaborador.update({
-        where: { id: colaborador.id },
-        data: { bloqueadoAte: new Date(Date.now() + bloqueio * 1000) },
-      })
-    }
-
     throw new ErroDeNegocio('A senha atual está incorreta.', 'FALHA_DE_ENTRADA')
   }
+
+  // A senha atual confere: a tentativa reservada não foi falha. Zera já, e não
+  // só no fim — a checagem abaixo pode recusar a senha nova.
+  await zerarTentativas(banco, colaborador.id)
 
   if (await conferirSenha(dados.senhaNova, colaborador.senhaHash)) {
     throw new ErroDeNegocio('A senha nova precisa ser diferente da atual.')
@@ -283,6 +305,15 @@ export async function definirSenhaProvisoria(
   })
   if (!colaborador) throw new ErroDeNegocio(`Colaborador "${dados.colaboradorId}" não existe.`)
   if (!colaborador.ativo) throw new ErroDeNegocio('Colaborador desativado não recebe senha.')
+
+  // A PRÓPRIA senha só se troca por `trocarSenha`, que exige a senha atual
+  // (achado C-08). Por aqui, uma sessão de gestor roubada ou esquecida aberta
+  // trocava a senha do dono sem saber a atual e o trancava para fora.
+  // Compara o id GRAVADO, não o enviado: a colação hoje é NO PAD, mas a
+  // conferência não deve depender de como o banco compara texto.
+  if (colaborador.id === ator.colaboradorId) {
+    throw new ErroDeNegocio('A própria senha se troca na tela "Trocar senha", informando a senha atual.')
+  }
 
   const senhaProvisoria = senhaFixa ?? sortearSenhaProvisoria()
 
@@ -424,14 +455,20 @@ export async function definirAtivacao(
     //
     // A contagem morava FORA da transação: dois gestores desativando um ao outro
     // ao mesmo tempo contavam, cada um, o outro ainda ativo, e passavam os dois.
-    // Dentro dela, a leitura e a escrita ficam sob a mesma transação, e o SQLite
-    // admite um escritor por vez. Em PostgreSQL com READ COMMITTED isto sozinho
-    // não basta — seria preciso bloquear as linhas de gestor —, e fica
-    // registrado para a migração. Revisão do PR #35.
+    // Dentro dela, e com as linhas de gestor travadas (abaixo) — o que o SQLite
+    // dava de graça, com um escritor por vez, o MySQL só dá com a trava.
+    // Revisão do PR #35; trava desde o achado N-07.
     if (colaborador.ativo && !dados.ativo && colaborador.papel === 'gestor') {
-      const outrosGestores = await tx.colaborador.count({
-        where: { papel: 'gestor', ativo: true, id: { not: colaborador.id } },
-      })
+      // No MySQL (REPEATABLE READ) a contagem comum não bastava (achado N-07):
+      // as duas transações contavam a outra ainda ativa. Travar as linhas dos
+      // gestores ativos, em ordem, faz a segunda esperar e contar de novo — e a
+      // leitura travada devolve o estado de agora, não a fotografia antiga.
+      const gestoresAtivos = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM \`Colaborador\`
+        WHERE papel = 'gestor' AND ativo = 1
+        ORDER BY id
+        FOR UPDATE`
+      const outrosGestores = gestoresAtivos.filter((gestor) => gestor.id !== colaborador.id).length
       if (outrosGestores === 0) {
         throw new ErroDeNegocio(
           'Este é o último gestor ativo. Promova ou ative outro gestor antes de desativar este — ' +

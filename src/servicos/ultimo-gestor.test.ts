@@ -14,8 +14,11 @@ import { definirAtivacao } from './autenticacao'
  * contavam, cada um, o outro ainda ativo — e passavam os dois, deixando a
  * associação sem ninguém que cadastra senha ou reativa acesso.
  *
- * Concorrência real não é observável sob better-sqlite3, que é síncrono; ONDE
- * a contagem acontece é. É o que o primeiro teste prova.
+ * Desde o MySQL (achado N-07), contar dentro da transação não bastava: a
+ * leitura comum usava a fotografia do começo dela. A contagem virou leitura
+ * TRAVADA das linhas de gestor. A prova de concorrência real está em
+ * `autenticacao.test.ts` ("N-07: dois gestores desativando um ao outro");
+ * aqui fica a de ORDEM: a leitura travada vem antes da escrita.
  */
 
 const banco = obterPrisma()
@@ -35,7 +38,7 @@ async function doisGestores() {
 }
 
 describe('último gestor ativo', () => {
-  it('a contagem dos outros gestores acontece DENTRO da transação que desativa', async () => {
+  it('os gestores são lidos com trava, DENTRO da transação e antes de desativar', async () => {
     const { a, b } = await doisGestores()
     const ordem: string[] = []
 
@@ -47,8 +50,8 @@ describe('último gestor ativo', () => {
 
     // `bancoQueAnota` só enxerga o que passa pelo `tx`: se a contagem voltar
     // para fora da transação, ela some desta lista.
-    expect(ordem).toContain('colaborador.count')
-    expect(ordem.indexOf('colaborador.count')).toBeLessThan(ordem.indexOf('colaborador.update'))
+    expect(ordem).toContain('tx.$queryRaw')
+    expect(ordem.lastIndexOf('tx.$queryRaw')).toBeLessThan(ordem.indexOf('colaborador.update'))
     expect((await banco.colaborador.findUnique({ where: { id: a.id } }))?.ativo).toBe(false)
   })
 
