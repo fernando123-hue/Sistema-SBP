@@ -64,6 +64,23 @@ const AmbienteSchema = z.object({
    */
   IA_LOCAL_CHAVE: z.string().optional(),
   /**
+   * Teto de chamadas à IA por dia, por fornecedor (`A54`, achado C-06).
+   *
+   * **Zero significa sem teto**, e não "nenhuma chamada": um teto zerado por
+   * engano deixaria o sistema mudo por causa de uma variável esquecida, que é o
+   * oposto de falhar alto. O padrão vem de `core/ia/consumo.ts`, junto com a
+   * conta que o justifica.
+   */
+  // A variável VAZIA precisa significar o mesmo que a ausente — vazia é o valor
+  // que está no `.env.example`. Sem o `preprocess`, `z.coerce.number()` lê `''`
+  // como `Number('')`, que é 0, e 0 significa SEM TETO: quem copiasse o arquivo
+  // de exemplo desligava em silêncio a única trava de gasto. Mesma classe de
+  // defeito já corrigida em ANEXOS_SECRET e GRAPH_LER_DESDE, neste arquivo.
+  IA_TETO_DIARIO: z.preprocess(
+    (valor) => (typeof valor === 'string' && valor.trim() === '' ? undefined : valor),
+    z.coerce.number().int().min(0).optional(),
+  ),
+  /**
    * Segredo que assina o cookie de sessão.
    *
    * VALIDADO NA PARTIDA, não na primeira entrada. Era `optional()`, e o sistema

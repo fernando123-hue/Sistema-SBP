@@ -846,6 +846,40 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 **Prova:** `src/adapters/ia-local.test.ts` — 17 testes contra um `node:http` de verdade em `127.0.0.1`, porta efêmera, respondendo como servidor compatível com OpenAI (inclusive errado: 401, 500, `finish_reason: length`, conteúdo vazio, cerca de código). `src/servidor/ambiente-seguro.test.ts` cobre o portão do endereço. **Status:** ⏳ adotado; reavaliar com a máquina em mãos e a nota do gabarito.
 
+### AT-38 — Consumo da IA: teto diário no banco, disjuntor na memória *(17/09/2026)*
+
+**O que existe** (`A54`, achado C-06): `src/core/ia/consumo.ts` (política pura: teto, disjuntor, meia-abertura), `src/servicos/consumo-da-ia.ts` e a tabela `UsoDaIa` (contagem por dia, fornecedor, modelo e tarefa), `src/ports/consumo.ts` (`RegistroDeConsumo`, `LimiteDeConsumoAtingido`) e `src/adapters/cliente-com-consumo.ts`, que envolve **qualquer** `ClienteDeModelo`. A fábrica liga tudo; o `mock` fica de fora, porque não custa nada.
+
+**O defeito medido:** com o fornecedor caído ou o crédito acabado, o laço de ingestão errava os 200 e-mails da sincronização um a um, cada um com até três requisições e dois minutos de espera — e nenhum lugar do sistema sabia dizer quanto a IA tinha sido usada no dia.
+
+**Decisões provisórias:**
+- **Teto no banco, disjuntor na memória.** São durações diferentes: o teto é sobre a conta do mês e precisa sobreviver a reinício; o disjuntor é sobre o fornecedor estar fora do ar agora e morre sozinho em minutos. Guardar o disjuntor no banco custaria uma escrita por chamada para uma informação descartável. **Custo assumido:** com mais de um processo, cada um descobre a queda uma vez.
+- **Números padrão:** 500 chamadas por dia e por fornecedor, 5 falhas seguidas para abrir, 10 minutos aberto. A operação real é de dezenas de e-mails por dia e a sincronização vai a 200 (`AT-35`).
+- **`IA_TETO_DIARIO` vazia = o padrão; zero = SEM teto**, nunca "nenhuma chamada": um zero por engano deixaria o sistema mudo, que é o oposto de falhar alto.
+- **A tabela conta, não guarda chamadas.** Uma linha por (dia, fornecedor, modelo, tarefa), somada por `increment`. Uma linha por chamada cresceria para sempre sem responder nada a mais. Recortada por modelo porque é ele que tem preço. **Nenhuma tela lê** — como a contagem de buscas (`A44(g)`), para não virar meta.
+- **A falha conta como chamada:** ela foi paga, e é justamente o laço que fracassa 200 vezes que o teto existe para conter.
+- **Falha de FORMA não abre o disjuntor:** o fornecedor respondeu; quem errou foi a resposta. Só falha de transporte conta.
+- **O disjuntor é por fornecedor, compartilhado pelas tarefas:** o que está fora do ar é o fornecedor, e um disjuntor por tarefa faria o assistente redescobrir a queda pagando de novo.
+- **Saldo esgotado e cota viram indisponibilidade** (`PerfilDoFornecedor.ehSemCredito`, opcional): Anthropic manda `400` com *"credit balance is too low"*; Gemini manda `429` com `RESOURCE_EXHAUSTED`. O `503` de sobrecarga do Gemini fica de fora de propósito — ele volta em minutos, e quem cuida dele é o disjuntor. O contrato de `InterpretacaoIndisponivelError` já prometia parar o lote em "conta sem crédito"; agora isso é verdade.
+- **A contabilidade nunca derruba a chamada:** se o banco falhar ao registrar, a resposta já paga é devolvida e a falha vai para o log.
+
+**Impacto se estiverem erradas:** teto baixo demais interrompe um dia de trabalho (a mensagem diz o número e a variável); disjuntor em memória não protege entre processos; `ehSemCredito` depende de texto do fornecedor e pode envelhecer — quando falhar, volta a ser falha de transporte, e o disjuntor segura.
+
+**Corrigido nas duas revisões por agente do PR #75** (cada item com teste visto vermelho antes do conserto):
+- **`IA_TETO_DIARIO` vazia virava ZERO, ou seja, SEM TETO.** `z.coerce.number().optional()` só intercepta a variável ausente; a presente e vazia — o valor que está no `.env.example` — passava por `Number('')`, que é 0. Quem seguisse a documentação ao pé da letra desligava calado a única trava de gasto. Agora a vazia é tratada como ausente, como já se fazia em `ANEXOS_SECRET` e `GRAPH_LER_DESDE`.
+- **Corrida no disjuntor.** O estado era lido antes do `await` da chamada e gravado depois, a partir da cópia velha: duas chamadas simultâneas que falhavam gravavam a mesma contagem e uma falha se perdia; o caminho inverso reabria, com informação vencida, um disjuntor recém-fechado. Agora a gravação relê o estado na hora.
+- **Impasse do banco no registro de uso.** `registrarChamada` passou a usar `comNovaTentativaEmConflito` (que cobre `P2034` **e** o `P2010`/1213 desta base). Quem chama engole erro de registro para não perder resposta já paga — sem a repetição, o impasse sumiria calado, e chamada paga não contada subestima o teto.
+- **A fronteira `adapters/` → `servicos/` ganhou guarda** (`src/adapters/fronteira-dos-servicos.test.ts`): só `fabrica.ts` pode importar `servicos/`. Antes, só um comentário sustentava a exceção.
+- **`ehSemCredito` da Anthropic exige o status `400`**, não só o texto: casar texto em qualquer `Error` deixava um erro nosso que mencionasse saldo parar o lote inteiro. O Gemini já exigia o `429` junto.
+
+**Limites conhecidos, aceitos por ora:**
+- **O teto é aproximado sob concorrência.** Ler a contagem, decidir e só depois somar é *check-then-act*: chamadas simultâneas podem ver o mesmo número e passar juntas. O erro máximo é o número de chamadas em voo (unidades), contra um teto de centenas, e fechar isso exigiria reservar a vaga antes de chamar — o que muda a semântica "a falha também conta". Revisar se o teto passar a ser argumento de proteção sob carga real.
+- **`UsoDaIa` tem um índice em `dia` redundante** com o prefixo da chave primária. Custo desprezível numa tabela de poucas linhas por dia; remover exigiria editar migração já aplicada e reset das bases. Fica para a próxima migração que tocar a tabela.
+
+**Ainda aberto:** o C-11/N-13 (e-mail que a IA nunca estrutura é pago a cada sincronização) continua para o próximo PR — o teto limita o estrago, mas não conta tentativas por e-mail. A revisão de segurança reforçou a prioridade: falha de forma não abre o disjuntor, então um único e-mail que o modelo nunca estrutura é custo recorrente que só esse contador por item conterá.
+
+**Prova:** `src/core/ia/consumo.test.ts` (13), `src/servicos/consumo-da-ia.test.ts` (11), `src/adapters/cliente-com-consumo.test.ts` (13), `src/adapters/consumo-indisponivel.test.ts` (9), `src/adapters/fronteira-dos-servicos.test.ts` (4) e `src/adapters/fabrica-consumo.test.ts` (4, contra um servidor de verdade, provando a fiação). **Status:** ⏳ adotado; reavaliar com uso real.
+
 ---
 
 ## Segundo fornecedor de IA: Gemini — 07/09/2026

@@ -1,20 +1,35 @@
 # Estado do projeto — retomada
 
-Última atualização: **17/09/2026, noite** — `main` em `15882e3` (gabarito mesclado) mais o PR do adapter local (`feat/ia-local`). Suíte: **96 arquivos, 1117 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
+Última atualização: **17/09/2026, noite (depois do `/clear`)** — `main` em `08ca6c1` mais o **PR #75** (`feat/consumo-da-ia`), agora com **as duas revisões por agente publicadas e os achados corrigidos**. Suíte: **102 arquivos, 1171 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 17/09/2026, noite — direção consolidada e IA local
+> ### 17/09/2026, noite — as duas revisões do PR #75 feitas e os achados corrigidos
 >
-> - **`docs/DIRECAO.md`** (novo): o rumo em uma página. Informação nova do dono é comparada com ela antes de virar trabalho.
-> - **`A56`**: Odysseus é ferramenta, nunca o cérebro. O SBP fala com qualquer servidor de modelo compatível com OpenAI. Máquina da IA local garantida, **8 GB de RAM**; o dono avisa quando chegar.
-> - **Plano autorizado pelo dono, nesta ordem:**
->   1. ~~Fechar o PR #70~~ — **mesclado** (N-37; a revisão de segurança achou despejo cruzado entre rotas, corrigido no mesmo PR com um mapa por compartimento; resíduo baixo na auditoria).
->   2. ~~Este PR de documentos~~ — **mesclado** (#72).
->   3. ~~**Gabarito de avaliação**~~ — **feito** (`DECISOES.md § AT-36`): 17 e-mails sintéticos com resposta esperada, nota automática em cinco dimensões, `npm run ia:avaliar` (qualquer fornecedor; `-- --json` para guardar). Linha de base do mock: **0,92**. Primeira rodada do Gemini: 7 de 17 casos com 503 (sobrecarga dele) — nota geral 0,58, só as respondidas 0,98. **Pendências:** a equipe conferir as respostas (`§ H.4` item 31); a rotina `A50` passar a usar `ia:avaliar` (configuração da máquina do dono).
->   4. ~~**`ia-local.ts`**~~ — **feito** (`DECISOES.md § AT-37`): `IA_ADAPTER="local"` fala com qualquer servidor compatível com OpenAI por `IA_LOCAL_URL`, sem dependência nova; 15 testes contra um servidor `node:http` de verdade. `IA_PARA_DADO_REAL.local = false`, `IA_MODELO` obrigatória e **endereço público recusado na partida** (`A56 (f)`).
->   5. Com a máquina em mãos: medir o hardware, testar 2 ou 3 modelos pequenos pelo gabarito, e o dono decide.
-> - A fila de segurança abaixo (C-06, C-11…) continua valendo depois disso.
+> **1. O [PR #75](https://github.com/fernando123-hue/Sistema-SBP/pull/75) passou pelas duas revisões por agente** ([técnica](https://github.com/fernando123-hue/Sistema-SBP/pull/75#issuecomment-5720953037), [segurança](https://github.com/fernando123-hue/Sistema-SBP/pull/75#issuecomment-5721034583)), e tudo que elas acharam foi corrigido **com teste visto vermelho antes** — detalhe em `DECISOES.md § AT-38`:
+>   - **crítico:** `IA_TETO_DIARIO=""` (o valor do `.env.example`) virava `0`, que significa SEM TETO — a trava de gasto nascia desligada para quem seguisse a documentação. Reconferido à mão contra o Zod do repositório antes de publicar;
+>   - **alto:** corrida no disjuntor — o estado era lido antes do `await` e gravado depois, a partir da cópia velha; duas falhas simultâneas viravam uma;
+>   - **médios:** `registrarChamada` sem repetição em impasse do banco (agora usa `comNovaTentativaEmConflito`, que também cobre o `P2010`/1213 desta máquina) e a fronteira `adapters/` → `servicos/` sem guarda (agora `fronteira-dos-servicos.test.ts`: só a fábrica);
+>   - **baixo (segurança):** `ehSemCredito` da Anthropic casava só por texto, em qualquer `Error` — agora exige o status `400`, como o Gemini já exigia o `429`;
+>   - **aceitos por ora, escritos em `§ AT-38`:** o teto é aproximado sob concorrência (erro de unidades contra um teto de centenas) e o índice redundante em `UsoDaIa(dia)` fica para a próxima migração que tocar a tabela.
+>
+>   Falta: `npm run verificar` já fechou **102 arquivos, 1171 testes**; ler os checks um a um (`gh pr view 75 --json headRefOid,statusCheckRollup`) e mesclar com `gh pr merge 75 --squash --delete-branch`.
+>
+> **2. Ligar o ambiente** (passo 1 da retomada da madrugada, mais abaixo). O MySQL desta máquina continua **ligado sem `--mysqlx=OFF`** desde 16/09 (porta 33060 aberta em todas as interfaces, M-01): só o dono desliga e sobe de novo.
+>
+> **3. Feito nesta rodada (tudo mesclado, com as duas revisões publicadas e o CI lido):**
+> - **#73 — `AT-36`, gabarito de avaliação da IA:** 17 e-mails sintéticos com resposta esperada e nota automática em cinco dimensões (`npm run ia:avaliar`, `-- --json` para guardar). Mock tira **0,92**; o Gemini deu 503 em 7 de 17 casos (nota geral 0,58, só as respondidas 0,98).
+> - **#74 — `AT-37`, `ia-local.ts`:** `IA_ADAPTER="local"` fala com qualquer servidor compatível com OpenAI (`IA_LOCAL_URL`), sem dependência nova; endereço público recusado na partida, sem credencial na URL, sem seguir redirecionamento (SSRF achado na revisão de segurança), `IA_PARA_DADO_REAL.local = false`.
+> - **#75 (aberto) — `AT-38`, consumo da IA:** teto diário por fornecedor contado em `UsoDaIa` (`IA_TETO_DIARIO`, padrão 500), disjuntor por fornecedor (5 falhas seguidas, 10 minutos, meia-abertura), registro por dia/modelo/tarefa sem conteúdo, e saldo esgotado (Anthropic) ou cota (Gemini) parando o lote.
+>
+> **4. Fila depois do #75:**
+> - **C-11/N-13** (o próximo): e-mail que a IA nunca estrutura é pago de novo a cada sincronização — falta contar tentativas por e-mail e mandá-lo a uma pessoa depois de K falhas.
+> - Depois: **C-05** (máscara de CPF de `A52`, medir com o gabarito antes), **C-14** (adiado para a publicação), baixos e informativos confirmados (C-15…C-27) e os `N-` ainda sem verificação.
+> - **Passo 5 do plano de `A56`** (medir hardware e testar 2 ou 3 modelos pequenos pelo gabarito) **depende da máquina**, que o dono avisa quando chegar.
+>
+> **5. Perguntas abertas ao dono:** `DECISOES.md § H.4` itens **29** (o que a conta do dono faz), **30** (pedir a senha do gestor de novo em ações sensíveis) e **31** (novo: alguém da equipe conferir as respostas esperadas do gabarito — meia hora, uma página). Mais: trocar a rotina `A50` de `ia:experimentar` para `ia:avaliar -- --json` (é configuração da máquina dele); restringir a chave do Google no console; TI da associação (Microsoft 365, `Mail.Read` só da caixa, e o `GRAPH_LER_DESDE` no dia de ligar — `AT-35`); `A46`, `A21`, `A32`, `A44(i)`.
+>
+> **6. Lições desta rodada:** a revisão por agente erra — no #74 ela pediu para afrouxar a faixa `fc00::/7`, o que abriria a trava (`fd1:2:3::4` é endereço público), e a recusa virou teste; `node:http` de verdade em `127.0.0.1` prova protocolo onde um duble de `fetch` só provaria a si mesmo; o `fetch` do Node segue redirecionamento por padrão, e isso transforma trava de endereço na partida em nada; nota de modelo com falha de fornecedor no meio não se compara (por isso a nota das respondidas sai ao lado).
 >
 > ### Retomada de 17/09/2026, fim da tarde — depois de um `/clear`
 >
