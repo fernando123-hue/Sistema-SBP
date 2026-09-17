@@ -2,7 +2,7 @@
 
 Pedido do dono (`DECISOES.md § A49`): *"reforçar a segurança e a qualidade do protótipo"*, antes de ligar a IA paga. Plano completo no bloco do topo de `docs/ESTADO.md`, item 4.
 
-**Situação: etapa 1 (auditar) em andamento.** Este arquivo é gravado **antes** de qualquer correção, para que nenhum achado exista só numa conversa.
+**Situação (17/09/2026): etapa 1 quase fechada — 41 achados ainda sem verificação; nenhuma correção feita.** Este arquivo é gravado **antes** de qualquer correção, para que nenhum achado exista só numa conversa.
 
 ## Como esta rodada é feita
 
@@ -65,7 +65,7 @@ Não são achados ainda — são **onde a auditoria de testes deve olhar primeir
 
 ## 2. Achados da auditoria por agentes
 
-*Ainda não rodou.* Método: `roteiro-da-auditoria-de-seguranca.md` (entregue pelo dono em 16/09/2026) e as dimensões do `ESTADO.md`, item 4. Cada achado segue o formato da seção 21 do roteiro.
+**Rodou em 16–17/09/2026; resultado em `2026-09-17-achados-da-auditoria-por-agentes.md`** (27 confirmados, 41 sem verificação). Método: `roteiro-da-auditoria-de-seguranca.md` (entregue pelo dono em 16/09/2026) e as dimensões do `ESTADO.md`, item 4. Cada achado segue o formato da seção 21 do roteiro.
 
 ## 3. Destino de cada achado
 
