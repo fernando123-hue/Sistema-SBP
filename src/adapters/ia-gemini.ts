@@ -1,8 +1,12 @@
 import { GoogleGenAI } from '@google/genai'
-import { z } from 'zod'
 
 import { InterpretadorEstruturado } from './ia-estruturada'
-import { formaEsperadaEmTexto, type ClienteDeModelo, type PerfilDoFornecedor } from './fornecedor'
+import {
+  formaEsperadaEmTexto,
+  lerRespostaJson,
+  type ClienteDeModelo,
+  type PerfilDoFornecedor,
+} from './fornecedor'
 import { ambiente } from '../servidor/ambiente'
 
 /**
@@ -28,9 +32,10 @@ import { ambiente } from '../servidor/ambiente'
  * O SDK da Anthropic aceita um schema Zod e devolve objeto já validado contra
  * ele. O Gemini tem `responseJsonSchema`, mas aceita um SUBCONJUNTO do JSON
  * Schema — e o nosso não cabe nele. Medido em 07/09/2026: enviar o schema
- * derivado do Zod devolve `400 INVALID_ARGUMENT`, porque `campos` é um mapa
+ * derivado do Zod devolve `400 INVALID_ARGUMENT`, porque `campos` era um mapa
  * aberto (`propertyNames` + `additionalProperties`) e os campos anuláveis usam
- * `anyOf`.
+ * `anyOf`. Desde o C-01 (17/09/2026) `campos` é lista de pares; o `anyOf`
+ * continua, e o envio como `responseJsonSchema` não foi medido de novo.
  *
  * A saída NÃO foi redigitar um schema compatível à mão. Um segundo schema,
  * mantido em paralelo ao Zod, é a dívida `H-D7` na camada onde ela custaria
@@ -192,34 +197,9 @@ export function clienteGemini(): ClienteDeModelo {
         throw new Error('o modelo devolveu resposta vazia')
       }
 
-      // `JSON.parse` aqui, `RespostaDoModeloSchema.parse` no núcleo. O erro de
-      // sintaxe precisa ser distinguível do erro de forma: os dois viram nova
-      // tentativa, mas só o segundo tem o que dizer ao modelo sobre o que
-      // corrigir.
-      let objeto: unknown
-      try {
-        objeto = JSON.parse(texto)
-      } catch {
-        // SEM `input: texto`, e isto é segurança, não economia.
-        //
-        // `ZodError.message` é `JSON.stringify(issues)`, e o replacer do Zod só
-        // remove `input` dos issues que ele mesmo cria — um issue escrito à mão
-        // preserva o campo. Com `input: texto`, a resposta CRUA do modelo (até
-        // `MAXIMO_DE_TOKENS`, derivada do corpo do e-mail, com nome e CPF do
-        // associado) entrava na mensagem do erro. Dali ela ia para o log, que
-        // não tem retenção, e — pior — era colada nas INSTRUÇÕES da segunda
-        // tentativa, fora dos marcadores de conteúdo não confiável.
-        //
-        // Para corrigir o formato, o modelo precisa saber que a resposta não
-        // era JSON. Não precisa que a devolvam a ele.
-        throw new z.ZodError([
-          {
-            code: 'custom',
-            path: [],
-            message: `a resposta não é JSON válido (${texto.length} caracteres)`,
-          },
-        ])
-      }
+      // `JSON.parse` aqui, `RespostaDoModeloSchema.parse` no núcleo — ver
+      // `lerRespostaJson` sobre por que a falha vira erro de forma sem o texto.
+      const objeto = lerRespostaJson(texto)
 
       // `modelVersion` é o que o serviço de fato usou, que pode ser mais
       // específico que o apelido pedido (`gemini-2.5-flash` → a versão datada).

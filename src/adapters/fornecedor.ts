@@ -102,6 +102,35 @@ export function especieDoErro(erro: unknown): EspecieDeFalha {
 }
 
 /**
+ * O texto do modelo, lido como JSON — com a falha virando erro de FORMA.
+ *
+ * Erro de sintaxe precisa ser distinguível de falha de transporte: os dois
+ * são falha, mas só o de formato vale uma nova tentativa (`especieDoErro`).
+ *
+ * SEM `input: texto` no issue, e isto é segurança, não economia.
+ * `ZodError.message` é `JSON.stringify(issues)`, e o replacer do Zod só remove
+ * `input` dos issues que ele mesmo cria — um issue escrito à mão preserva o
+ * campo. Com `input: texto`, a resposta CRUA do modelo (derivada do corpo do
+ * e-mail, com nome e CPF do associado) entrava na mensagem do erro, dali no
+ * log, que não tem retenção, e nas INSTRUÇÕES da segunda tentativa, fora dos
+ * marcadores de conteúdo não confiável. Para corrigir o formato, o modelo
+ * precisa saber que a resposta não era JSON; não precisa que a devolvam a ele.
+ */
+export function lerRespostaJson(texto: string): unknown {
+  try {
+    return JSON.parse(texto)
+  } catch {
+    throw new z.ZodError([
+      {
+        code: 'custom',
+        path: [],
+        message: `a resposta não é JSON válido (${texto.length} caracteres)`,
+      },
+    ])
+  }
+}
+
+/**
  * A forma esperada, dita ao modelo em texto.
  *
  * Para fornecedor cujo suporte a JSON Schema não cobre a forma inteira. A

@@ -227,11 +227,12 @@ export class InterpretadorEstruturado implements AiPort {
         modelo,
       })
 
-      // O SDK já valida contra o schema, mas revalidamos aqui: a saída
-      // estruturada vem nula quando o parse falha, e um `null` seguindo adiante
+      // ESTA é a validação, para todo fornecedor. A decodificação restrita da
+      // Anthropic ajuda o modelo a acertar a forma, mas o SDK não valida mais
+      // por nós (ver `ia-anthropic.ts`): a validação dele lançava um erro que
+      // parecia de transporte e matava a nova tentativa. E o Gemini só
+      // garante "é JSON". Um `null` ou uma forma errada seguindo adiante
       // viraria "e-mail sem item nenhum" — trabalho que desaparece sem erro.
-      // Com fornecedores que só garantem "é JSON" (ver `ia-gemini.ts`), esta
-      // linha deixa de ser cinto de segurança e passa a ser a validação.
       return { tipo: 'ok', resposta: RespostaDoModeloSchema.parse(objeto), modeloUsado }
     } catch (erro) {
       const causa = erro instanceof Error ? erro.message : String(erro)

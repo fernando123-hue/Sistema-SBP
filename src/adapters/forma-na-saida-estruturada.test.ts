@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { RespostaDoModeloAssistenteSchema } from '../core/assistente/esquemas'
 import { EmailBrutoSchema } from '../core/esquemas'
 import { InterpretadorEstruturado, RespostaDoModeloSchema, type ClienteDeModelo } from './ia-estruturada'
-import { PERFIL_ANTHROPIC } from './ia-anthropic'
+import { clienteAnthropic, IaAnthropic, PERFIL_ANTHROPIC } from './ia-anthropic'
 
 /**
  * Achado C-01 (`docs/auditoria/2026-09-17-achados-da-auditoria-por-agentes.md`).
@@ -136,5 +136,88 @@ describe('campos: pares do modelo viram o mapa do sistema', () => {
     const duble = cliente([antigo, antigo])
 
     await expect(new InterpretadorEstruturado(PERFIL_ANTHROPIC, duble).interpretar(EMAIL)).rejects.toThrow()
+  })
+})
+
+/**
+ * O caminho REAL do SDK, com a rede trocada por um `fetch` falso.
+ *
+ * Revisão do PR #58: `messages.parse` validava a resposta dentro do SDK e
+ * lançava `AnthropicError`, que `especieDoErro` lê como transporte — a nova
+ * tentativa por erro de forma nunca acontecia com a Anthropic, e a causa crua
+ * ia para o log. O duble dos testes acima não passa pelo SDK e não via isso.
+ */
+describe('Anthropic pelo SDK de verdade, sem rede', () => {
+  function respostaDaApi(texto: string): Response {
+    return new Response(
+      JSON.stringify({
+        id: 'msg_teste',
+        type: 'message',
+        role: 'assistant',
+        model: 'claude-modelo-de-teste',
+        content: [{ type: 'text', text: texto }],
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )
+  }
+
+  function apiFalsa(textos: string[]) {
+    const corpos: Record<string, unknown>[] = []
+    const falso = async (_url: unknown, init?: { body?: unknown }) => {
+      corpos.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+      return respostaDaApi(textos[Math.min(corpos.length - 1, textos.length - 1)]!)
+    }
+    return { corpos, fetch: falso as unknown as typeof fetch }
+  }
+
+  const PARES = JSON.stringify({
+    itens: [item([{ chave: 'cpf', valor: '000.000.000-00' }])],
+    pareceInstrucao: false,
+  })
+
+  it('a forma vai no pedido e os campos voltam preenchidos', async () => {
+    const api = apiFalsa([PARES])
+    const ia = new IaAnthropic(clienteAnthropic({ chave: 'chave-de-teste', fetch: api.fetch }))
+
+    const interpretacao = await ia.interpretar(EMAIL)
+
+    expect(interpretacao.itens[0]!.campos).toEqual({ cpf: '000.000.000-00' })
+    expect(interpretacao.modelo).toBe('claude-modelo-de-teste')
+    const formato = (api.corpos[0]!['output_config'] as { format: { type: string; schema: unknown } }).format
+    expect(formato.type).toBe('json_schema')
+    expect(objetosFechadosVazios(formato.schema)).toEqual([])
+  })
+
+  it('erro de forma repete UMA vez, com o defeito resumido', async () => {
+    const repetida = JSON.stringify({
+      itens: [
+        item([
+          { chave: 'cpf', valor: '000.000.000-00' },
+          { chave: 'cpf', valor: '111.111.111-11' },
+        ]),
+      ],
+      pareceInstrucao: false,
+    })
+    const api = apiFalsa([repetida, PARES])
+    const ia = new IaAnthropic(clienteAnthropic({ chave: 'chave-de-teste', fetch: api.fetch }))
+
+    const interpretacao = await ia.interpretar(EMAIL)
+
+    expect(api.corpos).toHaveLength(2)
+    expect(String(api.corpos[1]!['system'])).toContain('rejeitada pela validação')
+    expect(interpretacao.itens[0]!.campos).toEqual({ cpf: '000.000.000-00' })
+  })
+
+  it('resposta que não é JSON também repete, sem devolver o texto ao modelo', async () => {
+    const api = apiFalsa(['não é json: CPF 000.000.000-00', PARES])
+    const ia = new IaAnthropic(clienteAnthropic({ chave: 'chave-de-teste', fetch: api.fetch }))
+
+    await ia.interpretar(EMAIL)
+
+    expect(api.corpos).toHaveLength(2)
+    expect(String(api.corpos[1]!['system'])).not.toContain('000.000.000-00')
   })
 })
