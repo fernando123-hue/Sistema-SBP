@@ -212,9 +212,95 @@ describe('entrada com senha', () => {
       ),
     )
 
+    // Desde o C-09 a tentativa é reservada ANTES do hash: a quinta já trava a
+    // conta, e as outras cinco são recusadas sem nem conferir a senha.
     const depois = await banco.colaborador.findUniqueOrThrow({ where: { id: base.pessoaId } })
-    expect(depois.tentativasFalhas).toBe(10)
+    expect(depois.tentativasFalhas).toBe(5)
     expect(depois.bloqueadoAte).not.toBeNull()
+    expect(await banco.logAuditoria.count({ where: { acao: 'entrada_recusada' } })).toBe(5)
+  })
+
+  it('C-09: com a conta a uma falha do bloqueio, vinte tentativas simultâneas conferem UMA senha', async () => {
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(banco, { colaboradorId: base.pessoaId }, base.gestor, SENHA_PROVISORIA)
+    await banco.colaborador.update({ where: { id: base.pessoaId }, data: { tentativasFalhas: 4 } })
+
+    // O bloqueio era conferido com o valor lido antes do scrypt (~90 ms) e só
+    // gravado depois dele: toda tentativa que leu antes passava e testava uma
+    // senha. Cinco tentativas por janela viravam centenas.
+    const resultados = await Promise.allSettled(
+      Array.from({ length: 20 }, () => autenticar(banco, { email: 'pessoa@teste.local', senha: 'errada' })),
+    )
+
+    expect(await banco.logAuditoria.count({ where: { acao: 'entrada_recusada' } })).toBe(1)
+    const bloqueadas = resultados.filter(
+      (resultado) => resultado.status === 'rejected' && /Muitas tentativas/.test(String(resultado.reason)),
+    )
+    expect(bloqueadas).toHaveLength(19)
+  })
+
+  it('C-09: acertar a senha na tentativa que chegaria ao limite entra e zera o contador', async () => {
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(banco, { colaboradorId: base.pessoaId }, base.gestor, SENHA_PROVISORIA)
+    await banco.colaborador.update({ where: { id: base.pessoaId }, data: { tentativasFalhas: 4 } })
+
+    await autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA })
+
+    const depois = await banco.colaborador.findUniqueOrThrow({ where: { id: base.pessoaId } })
+    expect(depois.tentativasFalhas).toBe(0)
+    expect(depois.bloqueadoAte).toBeNull()
+  })
+
+  it('C-09: troca de senha também confere uma senha só, em paralelo', async () => {
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(banco, { colaboradorId: base.pessoaId }, base.gestor, SENHA_PROVISORIA)
+    await banco.colaborador.update({ where: { id: base.pessoaId }, data: { tentativasFalhas: 4 } })
+
+    const resultados = await Promise.allSettled(
+      Array.from({ length: 10 }, () =>
+        trocarSenha(banco, { senhaAtual: 'errada-errada', senhaNova: SENHA_NOVA }, base.pessoaAtor),
+      ),
+    )
+
+    const erradas = resultados.filter(
+      (resultado) => resultado.status === 'rejected' && /senha atual está incorreta/.test(String(resultado.reason)),
+    )
+    expect(erradas).toHaveLength(1)
+  })
+
+  it('N-07: dois gestores desativando um ao outro ao mesmo tempo — um deles continua ativo', async () => {
+    for (let rodada = 0; rodada < 10; rodada += 1) {
+      await limparTudo(banco)
+      const base = await semearPessoa()
+      const segunda = await banco.colaborador.create({
+        data: { nome: 'Segunda Gestora', email: 'segunda.gestora@teste.local', papel: 'gestor' },
+      })
+      const segundaAtor = atorDeTeste(segunda.id, 'gestor')
+
+      // A contagem do último gestor era leitura comum: no InnoDB, as duas
+      // transações contavam a outra ainda ativa e passavam as duas.
+      await Promise.allSettled([
+        definirAtivacao(banco, { colaboradorId: segunda.id, ativo: false }, base.gestor),
+        definirAtivacao(banco, { colaboradorId: base.gestorId, ativo: false }, segundaAtor),
+      ])
+
+      const ativos = await banco.colaborador.count({ where: { papel: 'gestor', ativo: true } })
+      expect(ativos).toBe(1)
+    }
+  })
+
+  it('C-08: gestor não redefine a PRÓPRIA senha por aqui', async () => {
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(banco, { colaboradorId: base.gestorId }, atorDeTeste(base.pessoaId, 'gestor'), SENHA_PROVISORIA)
+    const antes = await banco.colaborador.findUniqueOrThrow({ where: { id: base.gestorId } })
+
+    await expect(
+      definirSenhaProvisoria(banco, { colaboradorId: base.gestorId }, base.gestor),
+    ).rejects.toThrow(/própria senha/)
+
+    const depois = await banco.colaborador.findUniqueOrThrow({ where: { id: base.gestorId } })
+    expect(depois.senhaHash).toBe(antes.senhaHash)
+    expect(depois.senhaDefinidaEm).toEqual(antes.senhaDefinidaEm)
   })
 
   it('entrada bem-sucedida zera o contador de falhas', async () => {
