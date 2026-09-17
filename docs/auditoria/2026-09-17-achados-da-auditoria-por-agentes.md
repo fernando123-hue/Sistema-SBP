@@ -1,4 +1,4 @@
-# Achados da auditoria por agentes — 16 e 17/09/2026
+**Confirmado e corrigido** (17/09): a listagem vem sem bytes, só o arquivo que cabe é baixado, e o tamanho que vale é o dos bytes |**Confirmado** — é o mesmo defeito do C-03; corrigido no PR #59 (`AT-35`) |**Confirmado e corrigido** (17/09): anexo que não é arquivo entra como recusado, com motivo, e o item vai para revisão |# Achados da auditoria por agentes — 16 e 17/09/2026
 
 Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `roteiro-da-auditoria-de-seguranca.md`. **Só leitura; nada foi corrigido ainda.** Medições automáticas e o achado manual M-01 estão em `2026-09-16-rodada-de-seguranca-e-qualidade.md`.
 
@@ -17,7 +17,7 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 | Confirmados | 0 | 4 | 10 | 10 | 3 |
 | Sem verificação | 0 | 1 | 18 | 18 | 4 |
 
-**Atualização de 17/09/2026, manhã:** N-01 verificado lendo o código — confirmado e corrigido (PR #57); C-01 a C-04 corrigidos (a contagem acima é a do fim da auditoria).
+**Atualização de 17/09/2026, manhã:** C-01 a C-04 corrigidos; N-01, N-02, N-14 e N-27 verificados lendo o código e confirmados (N-01 no PR #57, N-14 no #59) (a contagem acima é a do fim da auditoria).
 
 **Nenhum crítico.** Destino de cada achado: coluna "Destino" (vazia = pendente). Nenhum fica sem destino ao fim da rodada.
 

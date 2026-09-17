@@ -1,5 +1,6 @@
 import {
   EmailBrutoSchema,
+  MAXIMO_ANEXOS_POR_EMAIL,
   TAMANHO_MAXIMO_ANEXO_BYTES,
   TAMANHO_MAXIMO_ASSUNTO,
   TAMANHO_MAXIMO_NOME_ANEXO,
@@ -69,8 +70,54 @@ export interface AnexoDoGraph {
   name: string | null
   contentType: string | null
   size: number
-  /** Base64, como o Graph devolve. Ausente em anexo que não é arquivo. */
+  /**
+   * Base64, como o Graph devolve. Nulo em anexo que não é arquivo e em arquivo
+   * acima do teto, que não é baixado (achado N-27).
+   */
   contentBytes: string | null
+  /**
+   * O `@odata.type` do Graph: `#microsoft.graph.fileAttachment`,
+   * `itemAttachment` (e-mail encaminhado como anexo) ou
+   * `referenceAttachment` (link para arquivo na nuvem). Ausente = arquivo.
+   */
+  tipoNoGraph?: string
+  /**
+   * Por que um arquivo que cabia no teto individual não foi baixado — hoje, só
+   * a soma dos anexos da mensagem (revisão de segurança do PR #62). Vira
+   * recusa na ingestão, nunca anexo aceito sem bytes.
+   */
+  semBytesPorque?: string
+}
+
+const ANEXO_ARQUIVO = '#microsoft.graph.fileAttachment'
+
+/**
+ * Tipo que nem a listagem nem o pedido do anexo informaram. Não se presume
+ * arquivo: o anexo é recusado e uma pessoa abre o original (falha fechada).
+ */
+const TIPO_DESCONHECIDO = '#desconhecido'
+
+/**
+ * Quantos anexos de uma mensagem são baixados ao mesmo tempo.
+ *
+ * Um por vez deixava a leitura lenta (revisão do PR); todos juntos, com até 50
+ * anexos de até 25 MB, poderiam somar mais de um gigabyte na memória.
+ */
+const DOWNLOADS_SIMULTANEOS = 4
+
+/**
+ * Quantos bytes, somados, os anexos de UMA mensagem podem ocupar na memória.
+ *
+ * O teto por anexo sozinho não bastava: 50 anexos de 25 MB cada passam um a
+ * um. O que ultrapassar a soma não é baixado e é recusado pelo nome.
+ */
+const TETO_DE_BYTES_POR_MENSAGEM = 4 * TAMANHO_MAXIMO_ANEXO_BYTES
+
+/** O que dizer de um anexo que não é arquivo — curto, e mandando abrir o original. */
+function recusaPorTipo(tipoNoGraph: string): string {
+  if (tipoNoGraph.endsWith('itemAttachment')) return 'e-mail anexado dentro do e-mail, não é arquivo — abra no Outlook'
+  if (tipoNoGraph.endsWith('referenceAttachment')) return 'link para arquivo na nuvem, não é arquivo — abra no Outlook'
+  return 'anexo que o sistema não sabe ler — abra no Outlook'
 }
 
 export class IngestaoIndisponivelError extends ErroOperacional {
@@ -240,9 +287,31 @@ export class IngestaoGraph implements IngestaoPort {
     const doGraph = await this.cliente.listarAnexos(mensagem.id)
 
     return doGraph.map((anexo) => {
+      // Não é arquivo (N-02): entra com o motivo, sem bytes, para ser recusado
+      // na ingestão e mandar o item à revisão — nunca sumir da lista.
+      if (anexo.semBytesPorque !== undefined) {
+        return {
+          nome: nomeQueCabe(anexo.name || 'anexo-sem-nome'),
+          tipoDeclarado: (anexo.contentType || 'application/octet-stream').slice(0, TAMANHO_MAXIMO_TIPO_DECLARADO),
+          tamanho: anexo.size,
+          hash: null,
+          recusa: anexo.semBytesPorque,
+        }
+      }
+
+      if (anexo.tipoNoGraph !== undefined && anexo.tipoNoGraph !== ANEXO_ARQUIVO) {
+        return {
+          nome: nomeQueCabe(anexo.name || 'anexo-sem-nome'),
+          tipoDeclarado: anexo.tipoNoGraph.slice(0, TAMANHO_MAXIMO_TIPO_DECLARADO),
+          tamanho: anexo.size,
+          hash: null,
+          recusa: recusaPorTipo(anexo.tipoNoGraph),
+        }
+      }
+
       const cabe = anexo.contentBytes !== null && anexo.size <= TAMANHO_MAXIMO_ANEXO_BYTES
 
-      if (!cabe && anexo.contentBytes !== null) {
+      if (anexo.size > TAMANHO_MAXIMO_ANEXO_BYTES) {
         registrarLog('aviso', 'anexo grande demais: metadado guardado, bytes não', {
           adapter: this.nome,
           tamanho: anexo.size,
@@ -452,12 +521,64 @@ export function clienteDoGraph(): ClienteDoGraph {
     },
 
     async listarAnexos(mensagemId) {
-      const pagina = await pedir(
-        `/users/${encodeURIComponent(config.caixa)}/messages/${encodeURIComponent(mensagemId)}/attachments`,
-      )
-      return ((pagina['value'] as AnexoDoGraph[] | undefined) ?? []).filter(
-        (anexo) => anexo.contentBytes !== undefined,
-      )
+      const base = `/users/${encodeURIComponent(config.caixa)}/messages/${encodeURIComponent(mensagemId)}/attachments`
+
+      // Lista SEM os bytes (N-27): antes a listagem trazia `contentBytes` de
+      // todos, inclusive dos acima do teto, que seriam descartados. Todo anexo
+      // volta (N-02) — o que não é arquivo também, com o seu tipo.
+      const pagina = await pedir(`${base}?$select=id,name,contentType,size`)
+      const listados = (pagina['value'] as Record<string, unknown>[] | undefined) ?? []
+
+      // O plano de download é feito ANTES de baixar (revisão de segurança do
+      // PR #62): mais de 50 anexos — o esquema vai recusar a mensagem — não
+      // baixa nada; e a soma dos que cabem tem teto.
+      const muitos = listados.length > MAXIMO_ANEXOS_POR_EMAIL
+      let somados = 0
+      const planos = listados.map((listado) => {
+        const tipoListado = typeof listado['@odata.type'] === 'string' ? listado['@odata.type'] : undefined
+        const size = typeof listado['size'] === 'number' ? listado['size'] : 0
+        // Pede o anexo inteiro quando ele cabe e é — ou pode ser — arquivo. Sem
+        // tipo na listagem, é o pedido completo que diz o que ele é.
+        const candidato =
+          !muitos && size <= TAMANHO_MAXIMO_ANEXO_BYTES && (tipoListado === undefined || tipoListado === ANEXO_ARQUIVO)
+        const cabeNaSoma = candidato && somados + size <= TETO_DE_BYTES_POR_MENSAGEM
+        if (cabeNaSoma) somados += size
+        return { listado, tipoListado, size, baixar: cabeNaSoma, estourouSoma: candidato && !cabeNaSoma }
+      })
+
+      const umAnexo = async ({
+        listado,
+        tipoListado,
+        size,
+        baixar,
+        estourouSoma,
+      }: (typeof planos)[number]): Promise<AnexoDoGraph> => {
+        const completo = baixar ? await pedir(`${base}/${encodeURIComponent(String(listado['id']))}`) : undefined
+        const tipoNoGraph =
+          tipoListado ?? (typeof completo?.['@odata.type'] === 'string' ? completo['@odata.type'] : TIPO_DESCONHECIDO)
+
+        return {
+          name: typeof listado['name'] === 'string' ? listado['name'] : null,
+          contentType: typeof listado['contentType'] === 'string' ? listado['contentType'] : null,
+          size,
+          contentBytes:
+            tipoNoGraph === ANEXO_ARQUIVO && typeof completo?.['contentBytes'] === 'string'
+              ? completo['contentBytes']
+              : null,
+          tipoNoGraph,
+          ...(estourouSoma
+            ? {
+                semBytesPorque: `anexos da mensagem somam mais de ${Math.round(TETO_DE_BYTES_POR_MENSAGEM / 1024 / 1024)} MB — abra no Outlook`,
+              }
+            : {}),
+        }
+      }
+
+      const anexos: AnexoDoGraph[] = []
+      for (let inicio = 0; inicio < planos.length; inicio += DOWNLOADS_SIMULTANEOS) {
+        anexos.push(...(await Promise.all(planos.slice(inicio, inicio + DOWNLOADS_SIMULTANEOS).map(umAnexo))))
+      }
+      return anexos
     },
   }
 }
