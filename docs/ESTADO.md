@@ -4,6 +4,18 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
+> ### 17/09/2026, noite — direção consolidada e IA local
+>
+> - **`docs/DIRECAO.md`** (novo): o rumo em uma página. Informação nova do dono é comparada com ela antes de virar trabalho.
+> - **`A56`**: Odysseus é ferramenta, nunca o cérebro. O SBP fala com qualquer servidor de modelo compatível com OpenAI. Máquina da IA local garantida, **8 GB de RAM**; o dono avisa quando chegar.
+> - **Plano autorizado pelo dono, nesta ordem:**
+>   1. Fechar o PR #70.
+>   2. Este PR de documentos.
+>   3. **Gabarito de avaliação** com nota automática (dados sintéticos, qualquer fornecedor).
+>   4. **`ia-local.ts`**, testado contra servidor falso, com `IA_PARA_DADO_REAL.local = false`.
+>   5. Com a máquina em mãos: medir o hardware, testar 2 ou 3 modelos pequenos pelo gabarito, e o dono decide.
+> - A fila de segurança abaixo (C-06, C-11…) continua valendo depois disso.
+>
 > ### Retomada de 17/09/2026, fim da tarde — depois de um `/clear`
 >
 > **O dono pediu: logo depois do `/clear`, um RELATÓRIO** do que foi feito nesta rodada. Monte-o a partir deste bloco e do bloco da manhã logo abaixo (PRs #56 a #70), da tabela de `docs/auditoria/2026-09-17-achados-da-auditoria-por-agentes.md` (coluna Destino) e das perguntas abertas. Texto claro e curto, sem termo técnico sem explicação (ver *Como o dono prefere trabalhar*). Ofereça publicar como página se ele quiser compartilhar.
