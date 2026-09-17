@@ -1,13 +1,18 @@
 import { ErroOperacional } from '../core/erros'
+import { LIMITES_PADRAO } from '../core/ia/consumo'
 import { inicioDoDia } from '../core/util/datas'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { AssistentePort } from '../ports/assistente'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
+import { chamadasDoDia, registrarChamada } from '../servicos/consumo-da-ia'
 import { ambiente } from '../servidor/ambiente'
+import { obterPrisma } from '../servidor/prisma'
 import { ArmazenamentoEmDisco } from './armazenamento-disco'
+import { comControleDeConsumo } from './cliente-com-consumo'
 import { AssistentePorBusca } from './assistente-busca'
 import { AssistenteComModelo } from './assistente-modelo'
+import type { ClienteDeModelo } from './fornecedor'
 import { clienteAnthropic, IaAnthropic, PERFIL_ANTHROPIC } from './ia-anthropic'
 import { clienteGemini, IaGemini, PERFIL_GEMINI } from './ia-gemini'
 import { clienteLocal, IaLocal, PERFIL_LOCAL } from './ia-local'
@@ -55,16 +60,50 @@ export function criarAiPort(): AiPort {
   const nome = ambiente().IA_ADAPTER
   switch (nome) {
     case 'mock':
+      // Sem invólucro de propósito: o mock não chama ninguém e não custa nada.
+      // Contá-lo inflaria o teto do fornecedor de verdade e encheria a tabela
+      // de uso com o que a suíte faz.
       return new IaMock()
     case 'anthropic':
-      return new IaAnthropic()
+      return new IaAnthropic(controlar(clienteAnthropic(), 'anthropic', 'interpretacao'))
     case 'gemini':
-      return new IaGemini()
+      return new IaGemini(controlar(clienteGemini(), 'gemini', 'interpretacao'))
     case 'local':
-      return new IaLocal()
+      return new IaLocal(controlar(clienteLocal(), 'local', 'interpretacao'))
     default:
       throw new AdapterIndisponivelError('IA', nome)
   }
+}
+
+/**
+ * O teto diário e o disjuntor em volta do cliente (`A54`, achado C-06).
+ *
+ * Aqui, e não dentro de cada adapter, porque esta é a fiação: o invólucro é
+ * política do sistema, a contagem é banco, e nenhum dos dois pertence a um
+ * fornecedor. É também o único lugar do sistema que importa `servicos/` para
+ * dentro de `adapters/` — a fábrica é a raiz de composição, e é dela o
+ * trabalho de juntar as duas metades.
+ */
+function controlar(
+  cliente: ClienteDeModelo,
+  fornecedor: string,
+  tarefa: 'interpretacao' | 'assistente',
+): ClienteDeModelo {
+  const banco = obterPrisma()
+  const tetoConfigurado = ambiente().IA_TETO_DIARIO
+
+  return comControleDeConsumo(cliente, {
+    fornecedor,
+    tarefa,
+    registro: {
+      chamadasDoDia: (qual) => chamadasDoDia(banco, qual),
+      registrar: (chamada) => registrarChamada(banco, chamada),
+    },
+    limites:
+      tetoConfigurado === undefined
+        ? LIMITES_PADRAO
+        : { ...LIMITES_PADRAO, tetoDiarioDeChamadas: tetoConfigurado },
+  })
 }
 
 /**
@@ -87,11 +126,11 @@ export function criarAssistentePort(): AssistentePort {
     case 'mock':
       return new AssistentePorBusca()
     case 'anthropic':
-      return new AssistenteComModelo(PERFIL_ANTHROPIC, clienteAnthropic())
+      return new AssistenteComModelo(PERFIL_ANTHROPIC, controlar(clienteAnthropic(), 'anthropic', 'assistente'))
     case 'gemini':
-      return new AssistenteComModelo(PERFIL_GEMINI, clienteGemini())
+      return new AssistenteComModelo(PERFIL_GEMINI, controlar(clienteGemini(), 'gemini', 'assistente'))
     case 'local':
-      return new AssistenteComModelo(PERFIL_LOCAL, clienteLocal())
+      return new AssistenteComModelo(PERFIL_LOCAL, controlar(clienteLocal(), 'local', 'assistente'))
     default:
       throw new AdapterIndisponivelError('assistente', nome)
   }

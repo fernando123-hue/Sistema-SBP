@@ -846,6 +846,29 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 **Prova:** `src/adapters/ia-local.test.ts` — 17 testes contra um `node:http` de verdade em `127.0.0.1`, porta efêmera, respondendo como servidor compatível com OpenAI (inclusive errado: 401, 500, `finish_reason: length`, conteúdo vazio, cerca de código). `src/servidor/ambiente-seguro.test.ts` cobre o portão do endereço. **Status:** ⏳ adotado; reavaliar com a máquina em mãos e a nota do gabarito.
 
+### AT-38 — Consumo da IA: teto diário no banco, disjuntor na memória *(17/09/2026)*
+
+**O que existe** (`A54`, achado C-06): `src/core/ia/consumo.ts` (política pura: teto, disjuntor, meia-abertura), `src/servicos/consumo-da-ia.ts` e a tabela `UsoDaIa` (contagem por dia, fornecedor, modelo e tarefa), `src/ports/consumo.ts` (`RegistroDeConsumo`, `LimiteDeConsumoAtingido`) e `src/adapters/cliente-com-consumo.ts`, que envolve **qualquer** `ClienteDeModelo`. A fábrica liga tudo; o `mock` fica de fora, porque não custa nada.
+
+**O defeito medido:** com o fornecedor caído ou o crédito acabado, o laço de ingestão errava os 200 e-mails da sincronização um a um, cada um com até três requisições e dois minutos de espera — e nenhum lugar do sistema sabia dizer quanto a IA tinha sido usada no dia.
+
+**Decisões provisórias:**
+- **Teto no banco, disjuntor na memória.** São durações diferentes: o teto é sobre a conta do mês e precisa sobreviver a reinício; o disjuntor é sobre o fornecedor estar fora do ar agora e morre sozinho em minutos. Guardar o disjuntor no banco custaria uma escrita por chamada para uma informação descartável. **Custo assumido:** com mais de um processo, cada um descobre a queda uma vez.
+- **Números padrão:** 500 chamadas por dia e por fornecedor, 5 falhas seguidas para abrir, 10 minutos aberto. A operação real é de dezenas de e-mails por dia e a sincronização vai a 200 (`AT-35`).
+- **`IA_TETO_DIARIO` vazia = o padrão; zero = SEM teto**, nunca "nenhuma chamada": um zero por engano deixaria o sistema mudo, que é o oposto de falhar alto.
+- **A tabela conta, não guarda chamadas.** Uma linha por (dia, fornecedor, modelo, tarefa), somada por `increment`. Uma linha por chamada cresceria para sempre sem responder nada a mais. Recortada por modelo porque é ele que tem preço. **Nenhuma tela lê** — como a contagem de buscas (`A44(g)`), para não virar meta.
+- **A falha conta como chamada:** ela foi paga, e é justamente o laço que fracassa 200 vezes que o teto existe para conter.
+- **Falha de FORMA não abre o disjuntor:** o fornecedor respondeu; quem errou foi a resposta. Só falha de transporte conta.
+- **O disjuntor é por fornecedor, compartilhado pelas tarefas:** o que está fora do ar é o fornecedor, e um disjuntor por tarefa faria o assistente redescobrir a queda pagando de novo.
+- **Saldo esgotado e cota viram indisponibilidade** (`PerfilDoFornecedor.ehSemCredito`, opcional): Anthropic manda `400` com *"credit balance is too low"*; Gemini manda `429` com `RESOURCE_EXHAUSTED`. O `503` de sobrecarga do Gemini fica de fora de propósito — ele volta em minutos, e quem cuida dele é o disjuntor. O contrato de `InterpretacaoIndisponivelError` já prometia parar o lote em "conta sem crédito"; agora isso é verdade.
+- **A contabilidade nunca derruba a chamada:** se o banco falhar ao registrar, a resposta já paga é devolvida e a falha vai para o log.
+
+**Impacto se estiverem erradas:** teto baixo demais interrompe um dia de trabalho (a mensagem diz o número e a variável); disjuntor em memória não protege entre processos; `ehSemCredito` depende de texto do fornecedor e pode envelhecer — quando falhar, volta a ser falha de transporte, e o disjuntor segura.
+
+**Ainda aberto:** o C-11/N-13 (e-mail que a IA nunca estrutura é pago a cada sincronização) continua para o próximo PR — o teto limita o estrago, mas não conta tentativas por e-mail.
+
+**Prova:** `src/core/ia/consumo.test.ts` (13), `src/servicos/consumo-da-ia.test.ts` (7), `src/adapters/cliente-com-consumo.test.ts` (12), `src/adapters/consumo-indisponivel.test.ts` (8) e `src/adapters/fabrica-consumo.test.ts` (3, contra um servidor de verdade, provando a fiação). **Status:** ⏳ adotado; reavaliar com uso real.
+
 ---
 
 ## Segundo fornecedor de IA: Gemini — 07/09/2026

@@ -64,6 +64,15 @@ const AmbienteSchema = z.object({
    */
   IA_LOCAL_CHAVE: z.string().optional(),
   /**
+   * Teto de chamadas à IA por dia, por fornecedor (`A54`, achado C-06).
+   *
+   * **Zero significa sem teto**, e não "nenhuma chamada": um teto zerado por
+   * engano deixaria o sistema mudo por causa de uma variável esquecida, que é o
+   * oposto de falhar alto. O padrão vem de `core/ia/consumo.ts`, junto com a
+   * conta que o justifica.
+   */
+  IA_TETO_DIARIO: z.coerce.number().int().min(0).optional(),
+  /**
    * Segredo que assina o cookie de sessão.
    *
    * VALIDADO NA PARTIDA, não na primeira entrada. Era `optional()`, e o sistema

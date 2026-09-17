@@ -6,6 +6,7 @@ import {
 import { montarMaterial, type QuemPergunta } from '../core/assistente/prompt'
 import { prepararConteudoExterno } from '../core/seguranca/conteudo-nao-confiavel'
 import { resumoDeValidacao } from '../core/seguranca/resumo-de-validacao'
+import { LimiteDeConsumoAtingido } from '../ports/consumo'
 import {
   AssistenteIndisponivelError,
   FalhaDoAssistente,
@@ -149,6 +150,13 @@ export class AssistenteComModelo implements AssistentePort {
       // Sobe inteiro: chave recusada não é problema desta pergunta, e a
       // mensagem tem de mandar arrumar a configuração.
       if (this.perfil.ehCredencialRecusada(erro)) throw new AssistenteIndisponivelError(causa)
+
+      // Mesma razão da interpretação: teto, disjuntor e conta sem crédito são
+      // a camada fora do ar, não defeito desta pergunta — e repetir a chamada
+      // gastaria a segunda tentativa contra uma porta que já está fechada.
+      if (erro instanceof LimiteDeConsumoAtingido || this.perfil.ehSemCredito?.(erro) === true) {
+        throw new AssistenteIndisponivelError(causa)
+      }
 
       const especie = especieDoErro(erro)
       // Validação vira resumo estrutural; transporte é texto do fornecedor e

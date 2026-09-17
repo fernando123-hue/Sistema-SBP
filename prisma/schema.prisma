@@ -928,3 +928,39 @@ model ContagemDeBusca {
   @@id([colaboradorId, dia])
   @@index([dia])
 }
+
+/// Uso da IA por dia, fornecedor, modelo e tarefa (`DECISOES.md § A54`, achado C-06).
+///
+/// É o que responde "quanto a IA foi usada hoje" e o que sustenta o teto
+/// diário — a única trava que sobrevive a um reinício do servidor. O disjuntor,
+/// que é sobre o fornecedor estar fora do ar AGORA, vive na memória do
+/// processo: são problemas de durações diferentes.
+///
+/// CONTA CHAMADAS, NÃO GUARDA CHAMADAS. Uma linha por combinação, somada por
+/// `increment`, em vez de uma linha por chamada: o número que interessa é o do
+/// dia, e uma linha por chamada cresceria para sempre sem responder nada a
+/// mais. Nada de conteúdo de e-mail, pergunta ou resposta aqui — só contagem,
+/// e por isso esta tabela é histórico operacional (invariante 11), sem prazo.
+///
+/// Recortado por `modelo` porque é ele que tem preço: trocar de modelo muda a
+/// conta, e sem esse recorte a comparação entre fornecedores (a razão de haver
+/// mais de um) não fecharia sobre o histórico.
+model UsoDaIa {
+  /// Dia da operação, `YYYY-MM-DD`, no fuso de Brasília.
+  dia            String
+  /// Valor de `IA_ADAPTER`: anthropic | gemini | local | mock.
+  fornecedor     String
+  /// O modelo que o fornecedor disse ter usado.
+  modelo         String
+  /// interpretacao | assistente
+  tarefa         String
+  chamadas       Int    @default(0)
+  /// Chamadas que terminaram em erro — do fornecedor (fora do ar, cota) ou
+  /// de forma (resposta que não passou na validação). As duas foram pagas.
+  falhas         Int    @default(0)
+  /// Soma dos tempos de resposta. Serve para ver lentidão antes da conta subir.
+  duracaoMsTotal Int    @default(0)
+
+  @@id([dia, fornecedor, modelo, tarefa])
+  @@index([dia])
+}

@@ -57,6 +57,16 @@ export const PERFIL_ANTHROPIC: PerfilDoFornecedor = {
   ehCredencialRecusada: (erro) =>
     erro instanceof Anthropic.AuthenticationError ||
     erro instanceof Anthropic.PermissionDeniedError,
+  /**
+   * Saldo esgotado chega como `400`, não como `402` (achado C-06).
+   *
+   * É reconhecido pelo TEXTO porque a Anthropic não tem classe de erro para
+   * isso, e um `400` qualquer (pedido malformado) continua sendo defeito
+   * desta chamada. O casamento é estreito de propósito: preferir deixar
+   * passar a parar a operação por um 400 comum.
+   */
+  ehSemCredito: (erro) =>
+    erro instanceof Error && /credit balance is too low|insufficient (credit|quota)/i.test(erro.message),
 }
 
 /**

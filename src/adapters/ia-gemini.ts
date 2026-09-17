@@ -135,6 +135,20 @@ export const PERFIL_GEMINI: PerfilDoFornecedor = {
     const mensagem = erro instanceof Error ? erro.message : ''
     return /API key not valid|API_KEY_INVALID|PERMISSION_DENIED|UNAUTHENTICATED/i.test(mensagem)
   },
+  /**
+   * Cota esgotada chega como `429` com `RESOURCE_EXHAUSTED` (achado C-06).
+   *
+   * Exige o status E o texto porque `429` também é o limite por minuto, que
+   * passa sozinho. E `503` — sobrecarga, 7 de 8 chamadas em 16/09/2026 — fica
+   * de fora de propósito: ele se resolve em minutos, e quem cuida dele é o
+   * disjuntor, não a parada do lote.
+   */
+  ehSemCredito: (erro) => {
+    if (typeof erro !== 'object' || erro === null) return false
+    if ((erro as { status?: unknown }).status !== 429) return false
+    const mensagem = erro instanceof Error ? erro.message : ''
+    return /RESOURCE_EXHAUSTED|quota/i.test(mensagem)
+  },
 }
 
 export function clienteGemini(): ClienteDeModelo {

@@ -81,6 +81,18 @@ export interface PerfilDoFornecedor {
    * erro que não dá para escrever uma vez só.
    */
   ehCredencialRecusada(erro: unknown): boolean
+  /**
+   * Conta sem crédito ou cota do dia esgotada — também é sistema fora, não
+   * defeito desta chamada (achado C-06).
+   *
+   * Separado de `ehCredencialRecusada` porque a causa e o conserto são
+   * outros: uma se resolve trocando a chave, a outra pagando ou esperando o
+   * dia virar. E porque a forma de reconhecer é frágil — a Anthropic manda
+   * `400` com texto, e o Gemini manda `429`, que também é usado para limite
+   * por minuto. Um perfil que não saiba reconhecer nada simplesmente não
+   * implementa: o erro segue como falha de transporte, e o disjuntor cuida.
+   */
+  ehSemCredito?(erro: unknown): boolean
 }
 
 /**
