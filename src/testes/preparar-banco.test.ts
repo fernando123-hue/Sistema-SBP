@@ -34,6 +34,11 @@ describe('conferirBaseDeTeste', () => {
     expect(() => conferirBaseDeTeste('mysql://root@127.0.0.1:3307')).toThrow()
   })
 
+  it('recusa URL malformada e nome com barra codificada', () => {
+    expect(() => conferirBaseDeTeste('mysql://root@127.0.0.1:3307/sbp%zz_teste')).toThrow(/não é uma URL válida/)
+    expect(() => conferirBaseDeTeste('mysql://root@127.0.0.1:3307/sbp%2F_teste')).toThrow(/_teste/)
+  })
+
   it('recusa o que não é MySQL', () => {
     expect(() => conferirBaseDeTeste('file:./prisma/dev_teste')).toThrow(/MySQL/)
     expect(() => conferirBaseDeTeste('postgresql://h/sbp_teste')).toThrow(/MySQL/)

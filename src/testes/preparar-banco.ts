@@ -51,6 +51,12 @@ const PADRAO_LOCAL = 'mysql://root@127.0.0.1:3307/sbp_teste'
  * aqui, antes do `migrate reset` — nunca a boa memória de quem roda.
  *
  * A mensagem nunca repete a URL: ela pode trazer senha.
+ *
+ * `SHADOW_DATABASE_URL` fica de fora de propósito: no Prisma 7 o `migrate
+ * reset` chama `engine.reset()` só na conexão principal (conferido no pacote
+ * instalado, `prisma/build/cli.js`); a base sombra só é usada por `migrate dev`
+ * e `migrate diff`. Se um dia a suíte passar a rodar um desses, esta trava
+ * precisa olhar a sombra também.
  */
 export function conferirBaseDeTeste(url: string): string {
   if (!url.startsWith('mysql://')) {
