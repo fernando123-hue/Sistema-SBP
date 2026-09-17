@@ -105,7 +105,12 @@ export async function registrarEvento(banco: Transacao, evento: EventoEntrada): 
       correlacaoId: evento.correlacaoId,
       etapa: evento.etapa,
       situacao: evento.situacao,
-      referencia: evento.referencia?.slice(0, TAMANHO_MAXIMO_REFERENCIA) ?? null,
+      // Corte por CARACTERE (`Array.from`), como o MySQL conta: `slice` conta
+      // unidades UTF-16 e partia um emoji ao meio, gravando `�` no lugar.
+      referencia:
+        evento.referencia === undefined || evento.referencia === null
+          ? null
+          : Array.from(evento.referencia).slice(0, TAMANHO_MAXIMO_REFERENCIA).join(''),
       mensagem: evento.mensagem ?? null,
       // `detalhe` também passa por redação. Hoje só recebe contagens agregadas,
       // mas o campo é gravado no banco sem TTL: um chamador futuro que passasse

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { EmailBrutoSchema, TAMANHO_MAXIMO_MESSAGE_ID, type EmailBruto } from '../core/esquemas'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
-import { TAMANHO_MAXIMO_REFERENCIA } from '../servidor/observabilidade'
+import { registrarEvento, TAMANHO_MAXIMO_REFERENCIA } from '../servidor/observabilidade'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo, semearBase } from '../testes/apoio'
 import { sincronizar } from './ingestao'
@@ -110,5 +110,24 @@ describe('um identificador longo não paga IA nem derruba a sincronização', ()
 
     expect(resumo.falhas).toBe(1)
     expect(resumo.novos).toBe(1)
+  })
+})
+
+describe('o corte da referência não parte um caractere ao meio', () => {
+  it('um emoji na posição 191 entra inteiro, sem metade solta', async () => {
+    // `slice` conta unidades UTF-16; o MySQL conta caracteres. Cortar um par
+    // substituto ao meio gravaria texto inválido (revisão do PR #60).
+    const referencia = `${'x'.repeat(190)}😀resto`
+    await registrarEvento(banco, {
+      correlacaoId: 'corte-de-referencia',
+      etapa: 'ingestao',
+      situacao: 'falha',
+      referencia,
+    })
+
+    const evento = await banco.eventoProcessamento.findFirstOrThrow({
+      where: { correlacaoId: 'corte-de-referencia' },
+    })
+    expect(evento.referencia).toBe(`${'x'.repeat(190)}😀`)
   })
 })
