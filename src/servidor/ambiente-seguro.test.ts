@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ambiente, limparCacheDeAmbiente } from './ambiente'
@@ -75,7 +77,8 @@ describe('produção recusa segredo público (N-18)', () => {
 
   it('um UUID gerado como o README manda continua aceito', () => {
     vi.stubEnv('NODE_ENV', 'production')
-    vi.stubEnv('SESSAO_SECRET', '3f1c9a7e-5b2d-4e8f-a6c0-9d7b1e2f4a58')
+    // Gerado na hora: um UUID escrito no arquivo é confundido com chave pelo gitleaks.
+    vi.stubEnv('SESSAO_SECRET', randomUUID())
     expect(() => ambiente()).not.toThrow()
   })
 
