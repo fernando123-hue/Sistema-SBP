@@ -209,6 +209,37 @@ describe('clienteLocal — o protocolo compatível com OpenAI', () => {
     ).rejects.toThrow(/resposta do servidor não é JSON/i)
   })
 
+  it('redirecionamento NÃO é seguido — seria o e-mail saindo da rede interna', async () => {
+    // A trava de endereço roda na partida, sobre IA_LOCAL_URL. Se o servidor
+    // (por defeito ou por invasão) respondesse 307 para fora, o fetch padrão
+    // reenviaria o corpo POST — com o e-mail dentro — sem passar por trava
+    // nenhuma. Achado MÉDIO da revisão de segurança do PR #74.
+    let pedidoNoDestino = 0
+    const destino = createServer((_requisicao, resposta) => {
+      pedidoNoDestino += 1
+      resposta.writeHead(200, { 'content-type': 'application/json' })
+      resposta.end(JSON.stringify({ model: 'x', choices: [{ finish_reason: 'stop', message: { content: '{}' } }] }))
+    })
+    await new Promise<void>((pronto) => destino.listen(0, '127.0.0.1', pronto))
+    const porta = (destino.address() as AddressInfo).port
+
+    servidor.close()
+    servidor = createServer((_requisicao, resposta) => {
+      resposta.writeHead(307, { location: `http://127.0.0.1:${porta}/v1/chat/completions` })
+      resposta.end()
+    })
+    await new Promise<void>((pronto) => servidor.listen(0, '127.0.0.1', pronto))
+    vi.stubEnv('IA_LOCAL_URL', `http://127.0.0.1:${(servidor.address() as AddressInfo).port}/v1`)
+    limparCacheDeAmbiente()
+
+    await expect(
+      clienteLocal().gerar({ instrucoes: 'x', conteudo: 'y', modelo: 'm', esquema: ESQUEMA_DE_TESTE }),
+    ).rejects.toThrow(/redirecion/i)
+    expect(pedidoNoDestino).toBe(0)
+
+    await new Promise<void>((pronto) => destino.close(() => pronto()))
+  })
+
   it('endereço não configurado é recusado na construção do cliente', () => {
     vi.stubEnv('IA_ADAPTER', 'mock')
     vi.stubEnv('IA_LOCAL_URL', '')

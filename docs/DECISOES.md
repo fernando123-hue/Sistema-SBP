@@ -842,7 +842,9 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 **Da revisão técnica do PR #74:** o endereço também recusa **usuário e senha embutidos** (viajariam em todo pedido e apareceriam no log de acesso do servidor e de qualquer proxy; a mensagem não repete o valor), e corpo com status 200 que não é JSON vira falha nomeada. **Uma sugestão da revisão foi recusada, com medida:** afrouxar o `fc00::/7` para 1 a 3 dígitos no primeiro hexteto abriria a trava — `fd1:2:3::4` é `0x0fd1`, endereço público, e todo ULA de verdade tem quatro dígitos ali. Virou teste.
 
-**Prova:** `src/adapters/ia-local.test.ts` — 16 testes contra um `node:http` de verdade em `127.0.0.1`, porta efêmera, respondendo como servidor compatível com OpenAI (inclusive errado: 401, 500, `finish_reason: length`, conteúdo vazio, cerca de código). `src/servidor/ambiente-seguro.test.ts` cobre o portão do endereço. **Status:** ⏳ adotado; reavaliar com a máquina em mãos e a nota do gabarito.
+**Da revisão de segurança do PR #74:** o `fetch` **não segue redirecionamento** (`redirect: "manual"`; `3xx` vira falha). A trava de endereço vale na partida, e sem isso um servidor interno que respondesse `307` faria o Node reenviar o mesmo POST — com o corpo do e-mail — para onde ele mandasse. **Pendência anotada:** `localhost` é nome e é resolvido na hora da chamada; se o `hosts` mudar, o destino muda sem a trava perceber (baixo: é configuração de quem administra).
+
+**Prova:** `src/adapters/ia-local.test.ts` — 17 testes contra um `node:http` de verdade em `127.0.0.1`, porta efêmera, respondendo como servidor compatível com OpenAI (inclusive errado: 401, 500, `finish_reason: length`, conteúdo vazio, cerca de código). `src/servidor/ambiente-seguro.test.ts` cobre o portão do endereço. **Status:** ⏳ adotado; reavaliar com a máquina em mãos e a nota do gabarito.
 
 ---
 

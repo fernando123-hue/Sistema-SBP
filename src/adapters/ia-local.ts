@@ -170,7 +170,26 @@ export function clienteLocal(): ClienteDeModelo {
         // `AbortSignal.timeout` porque aqui não há SDK com teto próprio: sem
         // ele, uma chamada pendurada segura o laço de ingestão para sempre.
         signal: AbortSignal.timeout(TEMPO_LIMITE_MS),
+        // REDIRECIONAMENTO NÃO É SEGUIDO, e isto é a trava de endereço
+        // continuando a valer depois da partida.
+        //
+        // `IA_LOCAL_URL` é conferida uma vez, ao subir. Com o padrão do
+        // `fetch` (`follow`), um servidor interno que responda `307` — por
+        // defeito de configuração ou por invasão — faria o Node reenviar este
+        // mesmo POST, com o corpo do e-mail dentro, para o endereço que ele
+        // mandasse, inclusive fora da associação. Achado MÉDIO da revisão de
+        // segurança do PR #74.
+        redirect: 'manual',
       })
+
+      // Com `manual`, o `fetch` do Node devolve a resposta `3xx` em vez de
+      // segui-la. Ela não é resposta do modelo: é falha de transporte.
+      if (resposta.status >= 300 && resposta.status < 400) {
+        throw new Error(
+          `o servidor de modelo respondeu com redirecionamento (${resposta.status}), que não é seguido: ` +
+            'IA_LOCAL_URL precisa apontar direto para o servidor.',
+        )
+      }
 
       if (!resposta.ok) {
         // `status` no objeto para `ehCredencialRecusada` reconhecer 401 e 403
