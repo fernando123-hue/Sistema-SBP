@@ -98,8 +98,11 @@ export const PERFIL_LOCAL: PerfilDoFornecedor = {
    * `401` e `403`, nada mais: `500` e `503` são o servidor em apuros (modelo
    * carregando, memória estourada), que é falha transitória deste e-mail.
    */
-  ehCredencialRecusada: (erro) =>
-    typeof erro === 'object' && erro !== null && [401, 403].includes((erro as { status?: unknown }).status as number),
+  ehCredencialRecusada: (erro) => {
+    if (typeof erro !== 'object' || erro === null) return false
+    const status = (erro as { status?: unknown }).status
+    return status === 401 || status === 403
+  },
 }
 
 /**
@@ -175,7 +178,15 @@ export function clienteLocal(): ClienteDeModelo {
         throw Object.assign(new FalhaDoServidorLocal(resposta.status), { status: resposta.status })
       }
 
-      const corpo = (await resposta.json()) as RespostaOpenAI
+      // `resposta.json()` estoura quando o corpo não é JSON — acontece com
+      // proxy que devolve HTML de erro com status 200. Sem este `catch`, a
+      // mensagem do runtime subiria no lugar do que houve de fato.
+      let corpo: RespostaOpenAI
+      try {
+        corpo = (await resposta.json()) as RespostaOpenAI
+      } catch {
+        throw new Error('a resposta do servidor não é JSON')
+      }
       const escolha = corpo.choices?.[0]
 
       const fim = escolha?.finish_reason

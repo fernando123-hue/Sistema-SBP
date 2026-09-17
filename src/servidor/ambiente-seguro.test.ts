@@ -146,6 +146,31 @@ describe('servidor de modelo local (A56)', () => {
     expect(() => ambiente()).not.toThrow()
   })
 
+  it('endereço com usuário e senha embutidos é recusado — a credencial viajaria em todo pedido', () => {
+    // Ela apareceria no log de acesso do servidor e de qualquer proxy no meio.
+    vi.stubEnv('IA_LOCAL_URL', 'http://admin:segredo@127.0.0.1:11434/v1')
+    expect(() => ambiente()).toThrow(/IA_LOCAL_CHAVE/)
+  })
+
+  it('a recusa não repete a senha', () => {
+    vi.stubEnv('IA_LOCAL_URL', 'http://admin:segredo@127.0.0.1:11434/v1')
+    expect(() => ambiente()).toThrow(
+      expect.objectContaining({ message: expect.not.stringContaining('segredo') }),
+    )
+  })
+
+  it('IPv6 que só PARECE interno é recusado: fd1:2:3::4 é 0x0fd1, fora de fc00::/7', () => {
+    // A faixa vai de fc00:: a fdff::, e todo endereço dela tem quatro dígitos
+    // no primeiro hexteto. Três dígitos não é zero esquecido: é outro endereço.
+    vi.stubEnv('IA_LOCAL_URL', 'http://[fd1:2:3::4]:8080/v1')
+    expect(() => ambiente()).toThrow(/IA_LOCAL_URL/)
+  })
+
+  it('IPv6 interno de verdade sobe', () => {
+    vi.stubEnv('IA_LOCAL_URL', 'http://[fd00:1:2::4]:8080/v1')
+    expect(() => ambiente()).not.toThrow()
+  })
+
   it('endereço que não é http nem https é recusado', () => {
     vi.stubEnv('IA_LOCAL_URL', 'file:///c:/modelo')
     expect(() => ambiente()).toThrow(/IA_LOCAL_URL/)

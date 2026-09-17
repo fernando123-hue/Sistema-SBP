@@ -386,6 +386,11 @@ function motivoDeEnderecoLocalInvalido(valor: string): string | null {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return `precisa ser http ou https (recebido "${url.protocol}").`
   }
+  // Credencial no endereço viaja em TODO pedido e aparece no log de acesso do
+  // servidor e de qualquer proxy no meio. A mensagem não repete o valor.
+  if (url.username || url.password) {
+    return 'não pode levar usuário e senha embutidos; use IA_LOCAL_CHAVE para o token do servidor.'
+  }
 
   // `[::1]` chega com os colchetes em `hostname`.
   const hospedeiro = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
@@ -394,6 +399,12 @@ function motivoDeEnderecoLocalInvalido(valor: string): string | null {
   if (/^192\.168\./.test(hospedeiro)) return null
   if (/^172\.(1[6-9]|2\d|3[01])\./.test(hospedeiro)) return null
   // `fc00::/7` — endereço local único do IPv6.
+  //
+  // OS QUATRO DÍGITOS SÃO A REGRA, não zero à esquerda esquecido. A faixa é
+  // `fc00::` a `fdff::`, e todo valor dela tem quatro dígitos no primeiro
+  // hexteto. `fd1:2:3::4` é `0x0fd1` — endereço público, não interno. Aceitar
+  // 1 a 3 dígitos abriria a trava justamente para o que ela existe para
+  // recusar (revisão do PR #74 sugeriu afrouxar; medido, seria um buraco).
   if (/^f[cd][0-9a-f]{2}:/.test(hospedeiro)) return null
 
   return (

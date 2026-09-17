@@ -192,6 +192,23 @@ describe('clienteLocal — o protocolo compatível com OpenAI', () => {
     ).rejects.toThrow(/500/)
   })
 
+  it('corpo 200 que não é JSON vira falha, não resposta vazia', async () => {
+    // Servidor que devolve HTML de erro com status 200 existe: sem isto, o
+    // `resposta.json()` estouraria com a mensagem do runtime.
+    servidor.close()
+    servidor = createServer((_requisicao, resposta) => {
+      resposta.writeHead(200, { 'content-type': 'application/json' })
+      resposta.end('<html>erro do proxy</html>')
+    })
+    await new Promise<void>((pronto) => servidor.listen(0, '127.0.0.1', pronto))
+    vi.stubEnv('IA_LOCAL_URL', `http://127.0.0.1:${(servidor.address() as AddressInfo).port}/v1`)
+    limparCacheDeAmbiente()
+
+    await expect(
+      clienteLocal().gerar({ instrucoes: 'x', conteudo: 'y', modelo: 'm', esquema: ESQUEMA_DE_TESTE }),
+    ).rejects.toThrow(/resposta do servidor não é JSON/i)
+  })
+
   it('endereço não configurado é recusado na construção do cliente', () => {
     vi.stubEnv('IA_ADAPTER', 'mock')
     vi.stubEnv('IA_LOCAL_URL', '')
