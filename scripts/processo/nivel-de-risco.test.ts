@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   comentariosCitados,
+  conferirComentarios,
   EVIDENCIAS,
   evidenciasFaltando,
   nivelDaMudanca,
@@ -194,5 +195,69 @@ describe('comentariosCitados', () => {
   it('ignora link fora das seções de revisão', () => {
     expect(comentariosCitados(PR, `### Especificação
 Ver ${LINK}`)).toEqual([])
+  })
+})
+
+// Achados da revisão técnica do PR #55.
+describe('secoesDoCorpo — o que o GitHub mostra, não o que parece título', () => {
+  it('linha com # dentro de bloco de código não encerra a seção', () => {
+    const corpo = '### Regressão\nRodei:\n```bash\n# comentário de shell\nnpm run verificar\n```\n### Especificação\nPedido.'
+    expect(secoesDoCorpo(corpo).get('regressão')).toBe('Rodei:\n```bash\n# comentário de shell\nnpm run verificar\n```')
+  })
+
+  it('bloco com ~~~ também conta', () => {
+    const corpo = '### Regressão\n~~~\n# saída\n~~~\n'
+    expect(secoesDoCorpo(corpo).get('regressão')).toBe('~~~\n# saída\n~~~')
+  })
+
+  it('título com emoji, pontuação ou espaço a mais é reconhecido', () => {
+    const s = secoesDoCorpo('###   🔍 Revisão técnica:  \nlink\n')
+    expect(s.get('revisão técnica')).toBe('link')
+  })
+})
+
+describe('conferirComentarios', () => {
+  const corpo = `### Revisão técnica\n${LINK}\n`
+  const resposta = (status: number, corpoJson: unknown = {}) => async () => ({ status, json: async () => corpoJson })
+
+  it('comentário deste PR passa', async () => {
+    const buscar = resposta(200, { issue_url: 'https://api.github.com/repos/dono/repo/issues/7' })
+    expect(await conferirComentarios(PR, corpo, buscar)).toEqual([])
+  })
+
+  it('comentário de outro PR não passa', async () => {
+    const buscar = resposta(200, { issue_url: 'https://api.github.com/repos/dono/repo/issues/70' })
+    expect(await conferirComentarios(PR, corpo, buscar)).toEqual(['o comentário issuecomment-123456 citado não existe neste PR'])
+  })
+
+  it('404 é comentário inexistente', async () => {
+    expect(await conferirComentarios(PR, corpo, resposta(404))).toEqual([
+      'o comentário issuecomment-123456 citado não existe neste PR',
+    ])
+  })
+
+  // Falha da API não pode sumir com o relatório nem passar como evidência:
+  // vira pendência própria, e o job continua vermelho com o motivo certo.
+  it('erro da API vira pendência com o motivo, sem lançar', async () => {
+    expect(await conferirComentarios(PR, corpo, resposta(503))).toEqual([
+      'não foi possível conferir o comentário issuecomment-123456 (API do GitHub respondeu 503) — rode o job de novo',
+    ])
+    const quebrada = async () => {
+      throw new Error('rede fora')
+    }
+    expect(await conferirComentarios(PR, corpo, quebrada)).toEqual([
+      'não foi possível conferir o comentário issuecomment-123456 (rede fora) — rode o job de novo',
+    ])
+  })
+
+  it('pede a revisão pelo caminho do próprio PR', async () => {
+    const caminhos: string[] = []
+    const buscar = async (caminho: string) => {
+      caminhos.push(caminho)
+      return { status: 200, json: async () => ({}) }
+    }
+    const comRevisao = '### Revisão técnica\nhttps://github.com/dono/repo/pull/7#pullrequestreview-9\n'
+    expect(await conferirComentarios(PR, comRevisao, buscar)).toEqual([])
+    expect(caminhos).toEqual(['repos/dono/repo/pulls/7/reviews/9'])
   })
 })

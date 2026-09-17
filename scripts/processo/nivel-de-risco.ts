@@ -112,24 +112,56 @@ function linkDoPr(pr: PullRequest): RegExp {
   return new RegExp(`https://github\\.com/${repo}/pull/${pr.numero}#(issuecomment|pullrequestreview)-(\\d+)\\b`, 'g')
 }
 
+/**
+ * Chave de comparação de um título: sem emoji, pontuação nem espaço a mais.
+ * Quem preenche o PR decora o título (`### 🔍 Revisão técnica:`) e a
+ * evidência não pode sumir por isso (revisão técnica do PR #55).
+ */
+function chaveDoTitulo(titulo: string): string {
+  return titulo
+    .replace(/[^\p{L}\p{N} ]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+const TITULO = /^ {0,3}#{1,6}[ \t]+(.+?)[ \t#]*$/
+const CERCA = /^ {0,3}(```|~~~)/
+
 /** Seções do corpo por título, com o texto já sem comentários e sem caixas desmarcadas. */
 export function secoesDoCorpo(corpo: string | null): Map<string, string> {
   const secoes = new Map<string, string>()
   if (!corpo) return secoes
   const semComentario = corpo.replace(/\r\n/g, '\n').replace(/<!--[\s\S]*?-->/g, '')
-  // Título de QUALQUER nível encerra a seção. Só com `###`, o `## Segurança`
-  // do modelo virava conteúdo da `### Regressão` e a preenchia sozinho.
-  const partes = semComentario.split(/^#{1,6}[ \t]+(.+)$/m)
-  // `split` com grupo devolve [antes, título1, texto1, título2, texto2, ...].
-  for (let i = 1; i < partes.length; i += 2) {
-    const titulo = (partes[i] ?? '').trim().toLowerCase()
-    const texto = (partes[i + 1] ?? '')
-      .split('\n')
-      .filter((linha) => !/^\s*[-*]\s+\[ \]/.test(linha))
-      .join('\n')
-      .trim()
-    secoes.set(titulo, texto)
+  let atual: string | null = null
+  let linhas: string[] = []
+  let cerca: string | null = null
+  const fechar = () => {
+    if (atual !== null) secoes.set(atual, linhas.join('\n').trim())
   }
+  for (const linha of semComentario.split('\n')) {
+    // Dentro de bloco de código, `# comentário` é texto, não título: sem isso
+    // a saída colada de um comando cortava a seção no meio (revisão do PR #55).
+    const abreOuFecha = CERCA.exec(linha)
+    if (abreOuFecha) {
+      const marca = abreOuFecha[1] ?? ''
+      if (cerca === null) cerca = marca
+      else if (cerca === marca) cerca = null
+    } else if (cerca === null) {
+      // Título de QUALQUER nível encerra a seção. Só com `###`, o
+      // `## Segurança` do modelo virava conteúdo da `### Regressão`.
+      const titulo = TITULO.exec(linha)
+      if (titulo) {
+        fechar()
+        atual = chaveDoTitulo(titulo[1] ?? '')
+        linhas = []
+        continue
+      }
+      if (/^\s*[-*]\s+\[ \]/.test(linha)) continue
+    }
+    linhas.push(linha)
+  }
+  fechar()
   return secoes
 }
 
@@ -140,7 +172,7 @@ export function evidenciasFaltando(nivel: Nivel, pr: PullRequest, corpo: string 
   const faltando: string[] = []
   for (const e of EVIDENCIAS) {
     if (nivel < e.aPartirDe) continue
-    const texto = secoes.get(e.titulo.toLowerCase()) ?? ''
+    const texto = secoes.get(chaveDoTitulo(e.titulo)) ?? ''
     if (texto.length < TAMANHO_MINIMO) {
       faltando.push(`${e.titulo}: seção ausente ou vazia`)
     } else if (e.exigeLinkDeRevisao && !linkDoPr(pr).test(texto)) {
@@ -158,11 +190,54 @@ export function comentariosCitados(pr: PullRequest, corpo: string | null): { tip
   const vistos = new Map<string, { tipo: TipoDeComentario; id: number }>()
   for (const e of EVIDENCIAS) {
     if (!e.exigeLinkDeRevisao) continue
-    for (const m of (secoes.get(e.titulo.toLowerCase()) ?? '').matchAll(linkDoPr(pr))) {
+    for (const m of (secoes.get(chaveDoTitulo(e.titulo)) ?? '').matchAll(linkDoPr(pr))) {
       const tipo = m[1] as TipoDeComentario
       const id = Number(m[2])
       vistos.set(`${tipo}-${id}`, { tipo, id })
     }
   }
   return [...vistos.values()]
+}
+
+/** Uma chamada GET à API do GitHub; `caminho` sem a barra inicial. */
+export type BuscarNaApi = (caminho: string) => Promise<{ status: number; json: () => Promise<unknown> }>
+
+/**
+ * Confere na API que cada comentário citado existe e é deste PR.
+ *
+ * Nunca lança: falha da API vira pendência com o motivo, para o relatório
+ * sair mesmo assim e o job ficar vermelho pela razão certa — antes, um 401 ou
+ * 503 derrubava o script sem relatório nenhum (revisão técnica do PR #55).
+ */
+export async function conferirComentarios(pr: PullRequest, corpo: string | null, buscar: BuscarNaApi): Promise<string[]> {
+  const pendencias: string[] = []
+  for (const c of comentariosCitados(pr, corpo)) {
+    const nome = `${c.tipo}-${c.id}`
+    const caminho =
+      c.tipo === 'issuecomment'
+        ? `repos/${pr.repositorio}/issues/comments/${c.id}`
+        : `repos/${pr.repositorio}/pulls/${pr.numero}/reviews/${c.id}`
+    try {
+      const resposta = await buscar(caminho)
+      if (resposta.status === 404) {
+        pendencias.push(`o comentário ${nome} citado não existe neste PR`)
+        continue
+      }
+      if (resposta.status !== 200) {
+        pendencias.push(`não foi possível conferir o comentário ${nome} (API do GitHub respondeu ${resposta.status}) — rode o job de novo`)
+        continue
+      }
+      // A revisão é buscada pelo caminho do próprio PR: existir já basta.
+      if (c.tipo === 'pullrequestreview') continue
+      const dados = await resposta.json()
+      const url = typeof dados === 'object' && dados !== null ? (dados as { issue_url?: unknown }).issue_url : undefined
+      if (typeof url !== 'string' || !url.endsWith(`/issues/${pr.numero}`)) {
+        pendencias.push(`o comentário ${nome} citado não existe neste PR`)
+      }
+    } catch (erro) {
+      const motivo = erro instanceof Error ? erro.message : String(erro)
+      pendencias.push(`não foi possível conferir o comentário ${nome} (${motivo}) — rode o job de novo`)
+    }
+  }
+  return pendencias
 }

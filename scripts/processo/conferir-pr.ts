@@ -16,12 +16,11 @@ import { execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
 
 import {
-  comentariosCitados,
+  conferirComentarios,
   evidenciasFaltando,
   NOME_DO_NIVEL,
   nivelDaMudanca,
   type PullRequest,
-  type TipoDeComentario,
 } from './nivel-de-risco'
 
 function exigir(nome: string): string {
@@ -52,26 +51,13 @@ const faltando = evidenciasFaltando(nivel, pr, corpo)
 
 // O formato do link não prova que o comentário existe: confere na API que
 // cada comentário citado existe e pertence a ESTE PR.
-async function comentarioDestePr(tipo: TipoDeComentario, id: number): Promise<boolean> {
-  const caminho =
-    tipo === 'issuecomment'
-      ? `repos/${pr.repositorio}/issues/comments/${id}`
-      : `repos/${pr.repositorio}/pulls/${pr.numero}/reviews/${id}`
-  const resposta = await fetch(`https://api.github.com/${caminho}`, {
-    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' },
-  })
-  if (resposta.status === 404) return false
-  if (!resposta.ok) throw new Error(`API do GitHub respondeu ${resposta.status} ao conferir ${tipo}-${id}`)
-  if (tipo === 'pullrequestreview') return true
-  const dados = (await resposta.json()) as { issue_url?: unknown }
-  return typeof dados.issue_url === 'string' && dados.issue_url.endsWith(`/issues/${pr.numero}`)
-}
-
-for (const c of comentariosCitados(pr, corpo)) {
-  if (!(await comentarioDestePr(c.tipo, c.id))) {
-    faltando.push(`o comentário ${c.tipo}-${c.id} citado não existe neste PR`)
-  }
-}
+faltando.push(
+  ...(await conferirComentarios(pr, corpo, (caminho) =>
+    fetch(`https://api.github.com/${caminho}`, {
+      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' },
+    }),
+  )),
+)
 
 // `|` num nome de arquivo quebraria a tabela do resumo.
 const celula = (texto: string): string => texto.replace(/\|/g, '\\|')
