@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
+import { pedidoDeOutraOrigem } from './servidor/mesma-origem'
+
 /**
  * Política de segurança de conteúdo, com nonce por requisição.
  *
@@ -31,6 +33,16 @@ import { NextResponse, type NextRequest } from 'next/server'
  * motivo que não é o dela. Em produção a diretriz sai, e o build não usa `eval`.
  */
 export function middleware(requisicao: NextRequest): NextResponse {
+  // Pedido de outra origem que altera estado não chega à rota (achados C-13 e
+  // C-17) — inclusive o de entrada, que não tem sessão para conferir. Ver
+  // `servidor/mesma-origem.ts`. Mesmo formato de erro das rotas.
+  if (requisicao.nextUrl.pathname.startsWith('/api/') && pedidoDeOutraOrigem(requisicao)) {
+    return NextResponse.json(
+      { sucesso: false, dados: null, erro: 'Pedido recusado: ele não veio da tela do sistema.' },
+      { status: 403 },
+    )
+  }
+
   // Sinal positivo (achado C-12): `unsafe-eval` só no servidor de desenvolvimento.
   // Com PONTO de propósito, ao contrário de `sessao.ts`: aqui o Next troca o
   // valor no build, e um `next build` fica `'production'` mesmo com NODE_ENV
