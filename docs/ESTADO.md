@@ -27,7 +27,7 @@
 >
 > **3. PRÓXIMO TRABALHO, nesta ordem:**
 > 1. **Abrir o PR da branch `docs/auditoria-rodada-seguranca-qualidade`.** É **nível 3** (mexe em `.gitignore`): preencher as seções de evidência do modelo; revisão técnica e de segurança por agentes, **uma de cada vez**, publicadas no PR e linkadas no corpo; CI check a check; mesclar.
-> 2. **N-01 primeiro, antes de qualquer outra coisa que rode a suíte:** `src/testes/preparar-banco.ts` apaga e recria **qualquer** base em `DATABASE_URL`, sem conferir se é de teste. Hoje o `vitest.config.ts` usa `sbp_teste` por padrão, **mas a variável do ambiente tem precedência** — um `DATABASE_URL` apontando para `sbp` no shell apagaria a base de desenvolvimento. Verificar lendo o código; se confirmado, corrigir (recusar base cujo nome não termine em `_teste`) com teste visto vermelho. **Até lá: nunca rodar testes com `DATABASE_URL` definido no shell.**
+> 2. ~~**N-01**~~ **FEITO (17/09/2026, manhã):** confirmado lendo o código e corrigido — `src/testes/preparar-banco.ts` (`conferirBaseDeTeste`) recusa, antes do `migrate reset`, qualquer base cujo nome não termine em `_teste`. Um `DATABASE_URL` da base `sbp` esquecido no shell agora derruba a suíte com mensagem clara, sem apagar nada.
 > 3. **Os 4 altos confirmados**, um PR por tema (nível 3):
 >    - **C-01** `src/adapters/ia-anthropic.ts:88` — com a Anthropic, `campos` sai sempre vazio (nome, CPF, CRM nunca extraídos). **Bloqueia `A49`**: sem isso a chave paga não serve.
 >    - **C-02 e C-03** `src/adapters/ingestao-graph.ts:98,115` — um e-mail externo grande demais, ou o 201º e-mail da caixa, trava a ingestão real para sempre.
