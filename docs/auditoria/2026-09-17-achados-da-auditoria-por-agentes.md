@@ -1,4 +1,4 @@
-**Confirmado e corrigido** (17/09): em produção, `SESSAO_SECRET`, `BUSCA_SECRET` e `ANEXOS_SECRET` com valor de teste público são recusados |**Confirmado e corrigido** (17/09): caixa real (`INGESTAO_ADAPTER` diferente de `mock`) recusa `IA_ADAPTER` `mock` ou `gemini` |**Confirmado e corrigido** (17/09): a listagem vem sem bytes, só o arquivo que cabe é baixado, e o tamanho que vale é o dos bytes |**Confirmado** — é o mesmo defeito do C-03; corrigido no PR #59 (`AT-35`) |**Confirmado e corrigido** (17/09): anexo que não é arquivo entra como recusado, com motivo, e o item vai para revisão |# Achados da auditoria por agentes — 16 e 17/09/2026
+**Corrigido** (17/09): `resolver` recusa categoria desativada |**Corrigido** (17/09): `resolver` trava a linha da revisão antes de ler |**Corrigido** (17/09): `concluir`, `devolver` e `transferir` travam a linha do item antes de ler; `definirAtivacao` também, na mesma ordem; impasse é repetido (`servidor/conflito.ts`) |**Mesmo defeito do N-02**, corrigido no PR #62 |**Em parte** (17/09, PR #63): caixa real recusa IA simulada e Gemini. **Falta** a máscara de CPF de `A52`, que exige medir antes |**Confirmado e corrigido** (17/09): em produção, `SESSAO_SECRET`, `BUSCA_SECRET` e `ANEXOS_SECRET` com valor de teste público são recusados |**Confirmado e corrigido** (17/09): caixa real (`INGESTAO_ADAPTER` diferente de `mock`) recusa `IA_ADAPTER` `mock` ou `gemini` |**Confirmado e corrigido** (17/09): a listagem vem sem bytes, só o arquivo que cabe é baixado, e o tamanho que vale é o dos bytes |**Confirmado** — é o mesmo defeito do C-03; corrigido no PR #59 (`AT-35`) |**Confirmado e corrigido** (17/09): anexo que não é arquivo entra como recusado, com motivo, e o item vai para revisão |# Achados da auditoria por agentes — 16 e 17/09/2026
 
 Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `roteiro-da-auditoria-de-seguranca.md`. **Só leitura; nada foi corrigido ainda.** Medições automáticas e o achado manual M-01 estão em `2026-09-16-rodada-de-seguranca-e-qualidade.md`.
 
@@ -17,7 +17,7 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 | Confirmados | 0 | 4 | 10 | 10 | 3 |
 | Sem verificação | 0 | 1 | 18 | 18 | 4 |
 
-**Atualização de 17/09/2026, manhã:** C-01 a C-04 corrigidos; N-01, N-02, N-14, N-17, N-18 e N-27 verificados lendo o código e confirmados (N-01 no PR #57, N-14 no #59) (a contagem acima é a do fim da auditoria).
+**Atualização de 17/09/2026, manhã:** C-01 a C-04 corrigidos; N-01, N-02, N-10, N-14, N-17, N-18 e N-27 verificados lendo o código e confirmados (N-01 no PR #57, N-14 no #59) (a contagem acima é a do fim da auditoria).
 
 **Nenhum crítico.** Destino de cada achado: coluna "Destino" (vazia = pendente). Nenhum fica sem destino ao fim da rodada.
 
@@ -66,7 +66,7 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 | N-07 | MÉDIO | `src/servicos/autenticacao.ts:409` | A trava do último gestor ativo não segura no MySQL: dois gestores podem desativar um ao outro ao mesmo tempo | |
 | N-08 | MÉDIO | `src/servicos/autenticacao.ts:288` | Redefinição e troca de senha e destravamento gravam o fato e a trilha em escritas separadas; falha entre as duas deixa a mudança sem registro | |
 | N-09 | MÉDIO | `src/servicos/distribuicao.ts:399` | No InnoDB, a TravaDeDistribuicao serializa a escrita mas não a leitura: a segunda confirmação pode calcular com crédito antigo | |
-| N-10 | MÉDIO | `src/servicos/fila.ts:332` | Item concluído pode voltar ao pool e ser distribuído de novo quando concluir e devolver (ou desativar o acesso) acontecem ao mesmo tempo | |
+| N-10 | MÉDIO | `src/servicos/fila.ts:332` | Item concluído pode voltar ao pool e ser distribuído de novo quando concluir e devolver (ou desativar o acesso) acontecem ao mesmo tempo | **Confirmado e corrigido** (17/09) junto com o C-10: `definirAtivacao` lê e trava os itens abertos antes de tudo, e as transições repetem em impasse |
 | N-11 | MÉDIO | `src/servicos/fila.ts:49` | Operações sensíveis sem nenhum teste negativo de papel: fila de outra pessoa, confirmar/prévia, resolver/aprovar revisão, habilitação | |
 | N-12 | MÉDIO | `src/servicos/ingestao.ts:559` | Conteúdo externo cria Liga sem limite, o índice único de Liga não protege nada e toda ingestão lê a tabela inteira de ligas | |
 | N-13 | MÉDIO | `src/servicos/ingestao.ts:212` | E-mail que a IA nunca consegue estruturar nunca chega a um humano e é cobrado de novo a cada sincronização | |
