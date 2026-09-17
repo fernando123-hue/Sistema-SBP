@@ -41,14 +41,42 @@ import { execSync } from 'node:child_process'
  */
 const PADRAO_LOCAL = 'mysql://root@127.0.0.1:3307/sbp_teste'
 
+/**
+ * Só uma base cujo nome termina em `_teste` pode ser apagada pela suíte.
+ *
+ * Achado N-01: a `DATABASE_URL` do ambiente tem precedência sobre o padrão
+ * (e precisa ter, por causa do CI). Um `DATABASE_URL` da base de
+ * desenvolvimento esquecido no shell fazia `npm test` apagar a base `sbp`
+ * inteira. Quem decide o que pode ser apagado é o NOME da base, conferido
+ * aqui, antes do `migrate reset` — nunca a boa memória de quem roda.
+ *
+ * A mensagem nunca repete a URL: ela pode trazer senha.
+ */
+export function conferirBaseDeTeste(url: string): string {
+  if (!url.startsWith('mysql://')) {
+    throw new Error('A suíte precisa de uma DATABASE_URL de MySQL (decisão A42).')
+  }
+
+  let base: string
+  try {
+    base = decodeURIComponent(new URL(url).pathname.replace(/^\//, ''))
+  } catch {
+    throw new Error('A DATABASE_URL da suíte não é uma URL válida.')
+  }
+
+  if (!/^[A-Za-z0-9_]+_teste$/.test(base)) {
+    throw new Error(
+      `A suíte apaga e recria a base inteira, e só aceita base cujo nome termina em "_teste". ` +
+        `Recebi a base "${base || '(nenhuma)'}". Tire DATABASE_URL do shell ou aponte para uma base de teste.`,
+    )
+  }
+  return base
+}
+
 export async function setup(): Promise<void> {
   const url = process.env['DATABASE_URL'] ?? PADRAO_LOCAL
 
-  if (!url.startsWith('mysql://')) {
-    throw new Error(
-      `A suíte precisa de uma DATABASE_URL de MySQL (decisão A42). Recebi: ${url}`,
-    )
-  }
+  conferirBaseDeTeste(url)
 
   try {
     // `--force` pula a confirmação interativa, e é a ÚNICA bandeira que serve

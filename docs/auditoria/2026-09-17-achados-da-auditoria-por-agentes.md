@@ -17,6 +17,8 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 | Confirmados | 0 | 4 | 10 | 10 | 3 |
 | Sem verificação | 0 | 1 | 18 | 18 | 4 |
 
+**Atualização de 17/09/2026, manhã:** N-01 verificado lendo o código — confirmado e corrigido (a contagem acima é a do fim da auditoria).
+
 **Nenhum crítico.** Destino de cada achado: coluna "Destino" (vazia = pendente). Nenhum fica sem destino ao fim da rodada.
 
 ## 2. Confirmados
@@ -55,7 +57,7 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 
 | ID | Severidade (do auditor) | Local | Achado | Destino |
 |---|---|---|---|---|
-| N-01 | ALTO | `src/testes/preparar-banco.ts:45` | A suíte de testes apaga e recria QUALQUER base que estiver em DATABASE_URL, sem conferir se é a base de teste | |
+| N-01 | ALTO | `src/testes/preparar-banco.ts:45` | A suíte de testes apaga e recria QUALQUER base que estiver em DATABASE_URL, sem conferir se é a base de teste | **Confirmado** (leitura do código, 17/09) e **corrigido**: branch `fix/n01-suite-so-apaga-base-de-teste` — a suíte recusa base cujo nome não termina em `_teste` |
 | N-02 | MÉDIO | `src/adapters/ingestao-graph.ts:330` | Anexo do Graph que não é arquivo (e-mail encaminhado como anexo, link do OneDrive) é descartado sem metadado, recusa ou log | |
 | N-03 | MÉDIO | `src/app/caixa/page.tsx:573` | Caixa no celular esconde o remetente, a liga e o aviso de "texto apagado pelo prazo, original no Outlook" | |
 | N-04 | MÉDIO | `src/app/fila/page.tsx:225` | "Concluir" na Minha fila: um toque, sem confirmação e sem desfazer, com botão de 36 px no celular | |
