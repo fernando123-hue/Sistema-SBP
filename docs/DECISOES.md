@@ -559,6 +559,8 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **Status:** ✅ registrado como limite conhecido, não como dívida. Quem rodar a conferência em Windows e vir esse relatório: confira as chaves estrangeiras no banco antes de acreditar nele.
 
+**Irmã da armadilha, medida em 22/09/2026 — e com o sinal INVERTIDO.** O mesmo `lower_case_table_names = 1` faz o `prisma migrate dev` GERAR a migração com os nomes em minúsculas (`ALTER TABLE atribuicao`, quando a tabela é `Atribuicao`). No Windows ela aplica sem reclamar; no Linux do CI — e no servidor da implantação — a tabela se chama `Atribuicao`, e a migração morre com *"Table sbp_sombra.atribuicao doesn't exist"*. Aconteceu com `historico_nao_cascateia` (PR #82). **Regra prática:** toda migração gerada nesta máquina tem a caixa dos nomes conferida à mão antes do PR. Lá o Windows acusa diferença que não existe; aqui ele esconde uma que existe.
+
 ### AT-33 — A caixa do Microsoft 365 é lida só pela pasta de entrada *(16/09/2026)*
 
 **O defeito:** o adapter do Graph (`A47`) listava `/users/{caixa}/messages`, que devolve **todas as pastas**. A resposta que a secretaria manda a um associado fica em Itens Enviados e voltaria na leitura seguinte como pedido novo — virando tarefa com responsável. Rascunho e lixeira, igual. Nenhum teste pegava isso porque a fronteira `ClienteDoGraph` era provada só com dublê; o caminho real nunca tinha sido conferido.
