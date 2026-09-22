@@ -1,3 +1,16 @@
+-- ATENÇÃO À CAIXA DOS NOMES — irmã da armadilha registrada em `AT-32`.
+--
+-- O `prisma migrate dev` que gerou este arquivo rodou no Windows, onde o MySQL
+-- guarda nome de tabela em minúsculas (`lower_case_table_names = 1`). Ele
+-- escreveu os `DROP FOREIGN KEY` como `ALTER TABLE atribuicao`. No Linux — que
+-- é onde o CI roda e para onde a implantação vai — a tabela se chama
+-- `Atribuicao`, e a migração morre com "Table 'sbp_sombra.atribuicao' doesn't
+-- exist".
+--
+-- Os nomes abaixo foram corrigidos à mão para a caixa do schema. Quem gerar
+-- migração nesta máquina precisa conferir isto ANTES de abrir o PR:
+-- localmente passa, e só o CI acusa.
+
 -- Histórico operacional não desaparece em cascata (achado N-22).
 --
 -- `Atribuicao`, `Execucao`, `JustificativaDeAtribuicao` e `Revisao` guardam o
@@ -15,16 +28,16 @@
 -- a referência deve acompanhar.
 
 -- DropForeignKey
-ALTER TABLE `atribuicao` DROP FOREIGN KEY `Atribuicao_itemId_fkey`;
+ALTER TABLE `Atribuicao` DROP FOREIGN KEY `Atribuicao_itemId_fkey`;
 
 -- DropForeignKey
-ALTER TABLE `execucao` DROP FOREIGN KEY `Execucao_itemId_fkey`;
+ALTER TABLE `Execucao` DROP FOREIGN KEY `Execucao_itemId_fkey`;
 
 -- DropForeignKey
-ALTER TABLE `justificativadeatribuicao` DROP FOREIGN KEY `JustificativaDeAtribuicao_atribuicaoId_fkey`;
+ALTER TABLE `JustificativaDeAtribuicao` DROP FOREIGN KEY `JustificativaDeAtribuicao_atribuicaoId_fkey`;
 
 -- DropForeignKey
-ALTER TABLE `revisao` DROP FOREIGN KEY `Revisao_itemId_fkey`;
+ALTER TABLE `Revisao` DROP FOREIGN KEY `Revisao_itemId_fkey`;
 
 -- AddForeignKey
 ALTER TABLE `Atribuicao` ADD CONSTRAINT `Atribuicao_itemId_fkey` FOREIGN KEY (`itemId`) REFERENCES `Item`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
