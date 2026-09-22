@@ -64,10 +64,15 @@ interface Violacao {
  * recusa `NODE_ENV=production` e exige `PERMITIR_LIMPEZA=sim`; a exceção mora
  * aqui, com nome e motivo, em vez de a varredura inteira ficar frouxa.
  */
-const EXCECAO = join(RAIZ_PROJETO, 'scripts', 'limpar-transacional.ts')
+const EXCECOES = [
+  join(RAIZ_PROJETO, 'scripts', 'limpar-transacional.ts'),
+  // A ordem da limpeza mora aqui desde o PR #82 — em `scripts/`, e não em
+  // `src/`, justamente para que nenhum código de produção a alcance.
+  join(RAIZ_PROJETO, 'scripts', 'limpeza-transacional.ts'),
+]
 
 function analisar(fonte: string, arquivo: string): Violacao[] {
-  if (arquivo === EXCECAO) return []
+  if (EXCECOES.includes(arquivo)) return []
   const violacoes: Violacao[] = []
   for (const tabela of TABELAS_DA_TRILHA) {
     for (const metodo of METODOS_PROIBIDOS) {

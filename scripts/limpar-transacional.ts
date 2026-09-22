@@ -11,6 +11,7 @@
 import { ArmazenamentoEmDisco } from '../src/adapters/armazenamento-disco'
 import { ambiente } from '../src/servidor/ambiente'
 import { obterPrisma } from '../src/servidor/prisma'
+import { limparTransacional } from './limpeza-transacional'
 
 async function principal(): Promise<void> {
   const config = ambiente()
@@ -40,42 +41,12 @@ async function principal(): Promise<void> {
   }
 
   const banco = obterPrisma()
-
-  // ═══ OS BYTES SAEM ANTES DAS LINHAS (achado N-23) ═══
-  //
-  // Apagar `Email` levava `Anexo` junto (cascata), mas os ARQUIVOS ficavam no
-  // disco — sem referência, fora de qualquer retenção, invisíveis para o
-  // expurgo, que só sabe apagar o que ainda está no banco. Rodar a demo
-  // algumas vezes ia empilhando anexos órfãos que ninguém mais conseguiria
-  // relacionar a nada.
-  //
-  // A chave sai do banco ENQUANTO ela ainda existe, e o arquivo é removido
-  // antes. Falha aqui derruba o comando: deixar bytes para trás em silêncio é
-  // o que esta correção existe para impedir.
-  const armazenamento = new ArmazenamentoEmDisco()
-  const comBytes = await banco.anexo.findMany({
-    where: { chaveArmazenamento: { not: null } },
-    select: { chaveArmazenamento: true },
-  })
-  for (const anexo of comBytes) {
-    if (anexo.chaveArmazenamento) await armazenamento.remover(anexo.chaveArmazenamento)
-  }
-
-  // Ordem importa: filhos antes dos pais, para respeitar as chaves estrangeiras.
-  const removidos = {
-    anexosNoDisco: comBytes.length,
-    execucoes: (await banco.execucao.deleteMany()).count,
-    atribuicoes: (await banco.atribuicao.deleteMany()).count,
-    revisoes: (await banco.revisao.deleteMany()).count,
-    rodadas: (await banco.rodadaDistribuicao.deleteMany()).count,
-    travas: (await banco.travaDeDistribuicao.deleteMany()).count,
-    itens: (await banco.item.deleteMany()).count,
-    emails: (await banco.email.deleteMany()).count,
-    saldosCarga: (await banco.saldoCarga.deleteMany()).count,
-    saldosGlobais: (await banco.saldoCargaGlobal.deleteMany()).count,
-    eventos: (await banco.eventoProcessamento.deleteMany()).count,
-    auditoria: (await banco.logAuditoria.deleteMany()).count,
-  }
+  // A ordem da limpeza e a remoção dos bytes moram em
+  // `src/servicos/limpeza-transacional.ts`, e não aqui: o teste que prova a
+  // ordem precisa chamar ESTA rotina, e não uma cópia escrita ao lado (foi
+  // assim que a lista do script e a do teste divergiram — achado da revisão
+  // técnica do PR #82).
+  const removidos = await limparTransacional(banco, new ArmazenamentoEmDisco())
 
   process.stdout.write(`Dados transacionais removidos: ${JSON.stringify(removidos)}\n`)
   process.stdout.write('Cadastro base preservado (colaboradores, categorias, escalas).\n')

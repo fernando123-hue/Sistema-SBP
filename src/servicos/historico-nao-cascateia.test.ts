@@ -1,12 +1,22 @@
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { ArmazenamentoEmDisco } from '../adapters/armazenamento-disco'
 import { IaMock } from '../adapters/ia-mock'
 import { IngestaoMock } from '../adapters/ingestao-mock'
 import { sequenciaDeDatas } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
-import { DATA_BASE, aprovarTudoNoBanco, limparTudo, semearBase } from '../testes/apoio'
+import { DATA_BASE, aprovarTudoNoBanco, atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
 import { confirmar } from './distribuicao'
+import { devolver } from './fila'
 import { sincronizar } from './ingestao'
+import { limparTransacional } from '../../scripts/limpeza-transacional'
+
+/** Raiz descartável: a limpeza remove bytes, e não pode ser a pasta real. */
+const pastaTemporaria = () => mkdtemp(join(tmpdir(), 'sbp-limpeza-'))
 
 /**
  * O banco recusa apagar item que tem histórico (achado N-22).
@@ -75,10 +85,18 @@ describe('histórico operacional não desaparece em cascata', () => {
     expect(await banco.atribuicao.count({ where: { itemId: atribuicao.itemId } })).toBeGreaterThan(0)
   })
 
-  it('a ordem de `db:limpar` continua funcionando: filhos primeiro, pai depois', async () => {
-    // O `RESTRICT` não pode ter quebrado a rotina de desenvolvimento que existe
-    // para repetir a demo. Ela apaga na ordem certa — e é essa ordem, e não a
-    // cascata, que deve fazer a limpeza funcionar.
+  it('a rotina REAL de `db:limpar` continua funcionando, inclusive depois de uma devolução', async () => {
+    // ═══ POR QUE ESTE TESTE CHAMA A ROTINA, E NÃO UMA CÓPIA DELA ═══
+    //
+    // A primeira versão deste teste reimplementava a ordem de limpeza à mão. As
+    // duas listas divergiram na primeira oportunidade: o teste ganhou a linha
+    // de `justificativaDeAtribuicao` e o script não, e o teste passou verde
+    // afirmando que "a rotina de desenvolvimento apaga na ordem certa" enquanto
+    // a rotina real quebrava depois de qualquer transferência ou devolução.
+    // Achado da revisão técnica do PR #82.
+    //
+    // A devolução abaixo não é enfeite: é ela que cria a
+    // `JustificativaDeAtribuicao` que fazia o script falhar.
     const base = await semearBase(banco, { totalDeDias: 1 })
     const [data] = sequenciaDeDatas(DATA_BASE, 1) as [string]
     await sincronizar(
@@ -88,13 +106,21 @@ describe('histórico operacional não desaparece em cascata', () => {
     await aprovarTudoNoBanco(banco)
     await confirmar(banco, { data, categorias: [] }, base.operador)
 
-    await banco.execucao.deleteMany()
-    await banco.justificativaDeAtribuicao.deleteMany()
-    await banco.atribuicao.deleteMany()
-    await banco.revisao.deleteMany()
-    await banco.rodadaDistribuicao.deleteMany()
+    const atribuicao = await banco.atribuicao.findFirstOrThrow({
+      where: { ativa: true },
+      select: { itemId: true, colaboradorId: true },
+    })
+    await devolver(
+      banco,
+      { itemId: atribuicao.itemId, justificativa: 'devolvido no teste da limpeza' },
+      atorDeTeste(atribuicao.colaboradorId, 'operador'),
+    )
+    expect(await banco.justificativaDeAtribuicao.count()).toBeGreaterThan(0)
 
-    await expect(banco.item.deleteMany()).resolves.toMatchObject({ count: expect.any(Number) })
+    const removidos = await limparTransacional(banco, new ArmazenamentoEmDisco(await pastaTemporaria()))
+
+    expect(removidos.justificativas).toBeGreaterThan(0)
     expect(await banco.item.count()).toBe(0)
+    expect(await banco.atribuicao.count()).toBe(0)
   })
 })
