@@ -190,6 +190,35 @@ describe('entrada com senha', () => {
     expect(evento?.referencia).toBe(base.pessoaId)
   })
 
+  it('hash ilegível na TROCA de senha também não gasta tentativa da pessoa', async () => {
+    // A porta dos fundos do N-36, achada na revisão do PR #77: o ramo de hash
+    // ilegível existia no login e faltava aqui. `reservarTentativa` já contou a
+    // tentativa antes do hash — sem devolvê-la, cinco tentativas de trocar a
+    // senha contra um hash corrompido trancam a conta pelo mesmo defeito que o
+    // achado diz ter eliminado, só que por outra rota.
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(
+      banco,
+      { colaboradorId: base.pessoaId },
+      base.gestor,
+      SENHA_PROVISORIA,
+    )
+    await banco.colaborador.update({
+      where: { id: base.pessoaId },
+      data: { senhaHash: 'isto-nao-e-um-hash' },
+    })
+
+    await expect(
+      trocarSenha(banco, { senhaAtual: SENHA_PROVISORIA, senhaNova: SENHA_NOVA }, base.pessoaAtor),
+    ).rejects.toMatchObject({ codigo: 'CREDENCIAL_ILEGIVEL' })
+
+    const depois = await banco.colaborador.findUniqueOrThrow({
+      where: { id: base.pessoaId },
+      select: { tentativasFalhas: true },
+    })
+    expect(depois.tentativasFalhas).toBe(0)
+  })
+
   it('senha trocada e trilha entram JUNTAS: falha no meio não deixa mudança sem registro', async () => {
     // ═══ O QUE ESTE TESTE IMPEDE (achado N-08) ═══
     //

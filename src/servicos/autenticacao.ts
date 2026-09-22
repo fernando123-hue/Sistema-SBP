@@ -284,7 +284,12 @@ export async function trocarSenha(
   // não pode virar só "sua senha está errada": a pessoa ficaria tentando
   // trocar uma senha que o sistema não consegue conferir.
   if (conferenciaDaAtual === 'hash_ilegivel') {
-    await avisarCredencialIlegivel(banco, colaborador.id)
+    // Devolve a tentativa que `reservarTentativa` já contou: sem isto, cinco
+    // tentativas de trocar a senha contra um hash corrompido trancam a conta
+    // pelo mesmo defeito que o N-36 existe para eliminar — só que por esta
+    // rota em vez da de entrada.
+    await zerarTentativas(banco, colaborador.id)
+    await avisarCredencialIlegivel(banco, colaborador.id, correlacaoId)
     throw new CredencialIlegivelError(colaborador.id)
   }
   if (conferenciaDaAtual !== 'confere') {
