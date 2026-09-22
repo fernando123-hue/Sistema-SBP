@@ -44,3 +44,6 @@ armazenamento/
 
 .DS_Store
 Thumbs.db
+
+# Revisões geradas por agente durante a sessão: material de trabalho, não do repositório.
+.claude/reviews/
