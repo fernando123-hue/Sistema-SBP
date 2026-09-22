@@ -1,10 +1,10 @@
 import { createHmac } from 'node:crypto'
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PISO_DE_RESPOSTA_DE_ENTRADA_MS } from '../core/autenticacao'
 import { obterPrisma } from '../servidor/prisma'
-import { lerCookie, montarCookie } from '../servidor/sessao'
+import { lerCookie, montarCookie, perfilAtual } from '../servidor/sessao'
 import { limparCacheDeAmbiente } from '../servidor/ambiente'
 import { atorDeTeste, limparTudo } from '../testes/apoio'
 import { autenticar, definirSenhaProvisoria, trocarSenha } from './autenticacao'
@@ -18,6 +18,28 @@ import { autenticar, definirSenhaProvisoria, trocarSenha } from './autenticacao'
  * inexistente e senha errada dão exatamente a mesma mensagem") — e o vazamento
  * não estava na mensagem, estava no relógio.
  */
+
+/**
+ * O duble de `next/headers` — o mesmo de `autorizacao-de-rotas.test.ts`.
+ *
+ * ═══ POR QUE ELE PRECISOU EXISTIR AQUI (achado N-15) ═══
+ *
+ * Os testes de revogação comparavam datas por conta própria: pegavam o
+ * `emitidoEm` do cookie, pegavam o `sessoesInvalidasAntes` do banco e
+ * afirmavam que um era menor que o outro. Isso prova aritmética, não
+ * revogação — apagar a conferência inteira de `perfilAtual` deixava a suíte
+ * verde, e a sessão de quem clicou em "sair" continuaria válida. Agora é
+ * `perfilAtual` que responde, que é quem responde em produção.
+ */
+const cookieDaVez = { valor: '' }
+
+vi.mock('next/headers', () => ({
+  cookies: async () => ({
+    get: (nome: string) => (cookieDaVez.valor ? { name: nome, value: cookieDaVez.valor } : undefined),
+    set: () => {},
+    delete: () => {},
+  }),
+}))
 
 const banco = obterPrisma()
 const SENHA = 'frase-longa-escolhida-pela-pessoa'
@@ -127,19 +149,19 @@ describe('revogação de sessão ao sair', () => {
     const cookie = montarCookie(entrada.colaboradorId, entrada.papel, entrada.senhaDefinidaEm)
     expect(lerCookie(cookie)).not.toBeNull()
 
-    // É o que a rota DELETE faz. A conferência de `perfilAtual` compara o
-    // `emitidoEm` do cookie com este carimbo.
+    // Com o cookie na mão, a sessão vale — e quem diz isso é `perfilAtual`.
+    cookieDaVez.valor = cookie
+    expect(await perfilAtual()).not.toBeNull()
+
+    // É o que a rota DELETE faz.
     await banco.colaborador.update({
       where: { id: pessoaId },
       data: { sessoesInvalidasAntes: new Date(Date.now() + 1000) },
     })
 
-    const colaborador = await banco.colaborador.findUniqueOrThrow({
-      where: { id: pessoaId },
-      select: { sessoesInvalidasAntes: true },
-    })
-    const conteudo = lerCookie(cookie)!
-    expect(conteudo.emitidoEm).toBeLessThan(colaborador.sessoesInvalidasAntes!.getTime())
+    // O MESMO cookie agora é recusado. Comparar as datas aqui provaria
+    // aritmética; isto prova revogação.
+    expect(await perfilAtual()).toBeNull()
   })
 
   it('cookie emitido DEPOIS do "sair" continua valendo — reentrar tem de funcionar', async () => {
@@ -150,15 +172,11 @@ describe('revogação de sessão ao sair', () => {
     })
 
     const entrada = await autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA })
-    const conteudo = lerCookie(
-      montarCookie(entrada.colaboradorId, entrada.papel, entrada.senhaDefinidaEm),
-    )!
+    cookieDaVez.valor = montarCookie(entrada.colaboradorId, entrada.papel, entrada.senhaDefinidaEm)
 
-    const colaborador = await banco.colaborador.findUniqueOrThrow({
-      where: { id: pessoaId },
-      select: { sessoesInvalidasAntes: true },
-    })
-    expect(conteudo.emitidoEm).toBeGreaterThan(colaborador.sessoesInvalidasAntes!.getTime())
+    // Sem isto, uma revogação escrita larga demais (por exemplo, recusar
+    // qualquer cookie de quem já saiu uma vez) passaria: ninguém mais entrava.
+    expect(await perfilAtual()).not.toBeNull()
   })
 
   it('cookie sem carimbo de emissão é recusado — é o formato anterior à revogação', () => {

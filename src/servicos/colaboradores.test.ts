@@ -61,7 +61,7 @@ describe('cadastro', () => {
     // A senha devolvida precisa realmente conferir contra o hash gravado —
     // entregar ao gestor uma senha que não abre a conta seria uma pessoa
     // cadastrada e trancada do lado de fora.
-    expect(await conferirSenha(criado.senhaProvisoria, gravado!.senhaHash!)).toBe(true)
+    expect(await conferirSenha(criado.senhaProvisoria, gravado!.senhaHash!)).toBe('confere')
     expect(gravado!.precisaTrocarSenha).toBe(true)
     expect(gravado!.ativo).toBe(true)
   })

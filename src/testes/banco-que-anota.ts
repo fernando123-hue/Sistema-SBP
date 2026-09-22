@@ -26,10 +26,11 @@ export function bancoQueAnota(banco: Banco, ordem: string[]): Banco {
     new Proxy(tx, {
       get(alvo, chave) {
         const valor: unknown = Reflect.get(alvo, chave)
-        // Consulta crua também entra na ordem: as travas `FOR UPDATE` moram nela.
-        if (chave === '$queryRaw' && typeof valor === 'function') {
+        // Consulta crua também entra na ordem: as travas `FOR UPDATE` e o
+        // `INSERT ... ON DUPLICATE KEY UPDATE` da trava do dia moram nela.
+        if ((chave === '$queryRaw' || chave === '$executeRaw') && typeof valor === 'function') {
           return (...argumentos: unknown[]) => {
-            ordem.push('tx.$queryRaw')
+            ordem.push(`tx.${chave}`)
             return (valor as (...a: unknown[]) => unknown).apply(alvo, argumentos)
           }
         }

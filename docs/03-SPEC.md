@@ -441,3 +441,58 @@ Next.js (App Router) · TypeScript strict · Tailwind · Prisma · Vitest · Zod
 | 7 | Adapter Anthropic real |
 | 8 | Simulação de 30 dias contra os critérios de aceitação |
 | 9 | Exportação e adapter de integração com o legado |
+
+## 14. Implantação: o usuário do banco
+
+A aplicação **não** se conecta como `root`. A trilha (`LogAuditoria`,
+`EventoProcessamento`) é append-only por invariante, e essa promessa tem três
+camadas — duas no repositório e uma aqui:
+
+| Camada | O que impede | Onde vive |
+|---|---|---|
+| Varredura de código | `update`/`delete`/`upsert` na trilha escritos no sistema | `src/servicos/trilha-append-only.test.ts` |
+| TRIGGER do MySQL | qualquer `UPDATE`, venha de onde vier | migração `20260918010000_trilha_append_only` |
+| **Privilégio do usuário** | `DELETE`, `DROP`, `ALTER` e `TRIGGER` na trilha | **este documento, aplicado na implantação** |
+
+A terceira é a única que vale contra um cliente de linha de comando aberto
+direto no servidor, onde nem o código nem a aplicação estão no caminho. Sem ela
+a trigger também cai: quem tem `TRIGGER` na tabela pode derrubar a trava e
+reescrever o passado em seguida.
+
+### Concessão mínima
+
+Crie um usuário próprio para a aplicação e conceda, tabela a tabela, só o que
+ela precisa. O trecho abaixo é o mínimo; ajuste o nome da base e do host.
+
+```sql
+CREATE USER 'sbp_app'@'localhost' IDENTIFIED BY 'a-senha-que-so-o-servidor-sabe';
+
+-- O resto do sistema: leitura e escrita normais.
+GRANT SELECT, INSERT, UPDATE, DELETE ON `sbp`.* TO 'sbp_app'@'localhost';
+
+-- A trilha: só nasce, nunca muda nem some.
+REVOKE UPDATE, DELETE ON `sbp`.`LogAuditoria` FROM 'sbp_app'@'localhost';
+REVOKE UPDATE, DELETE ON `sbp`.`EventoProcessamento` FROM 'sbp_app'@'localhost';
+
+FLUSH PRIVILEGES;
+```
+
+**As migrações não rodam com este usuário.** `prisma migrate deploy` precisa de
+DDL (`CREATE`, `ALTER`, `TRIGGER`), que a aplicação não deve ter; use uma
+credencial de manutenção, separada, só no momento de migrar.
+
+### Conferir
+
+```bash
+npm run db:privilegios
+```
+
+Lê `SHOW GRANTS FOR CURRENT_USER()` e lista o que ainda alcança a trilha. Em
+desenvolvimento apenas relata — a base local roda como `root` de propósito, e
+transformar isso em erro treinaria a equipe a ignorar o aviso. Em produção
+(`NODE_ENV=production`, ou `EXIGIR_PRIVILEGIO_MINIMO=sim` em qualquer ambiente)
+ele **recusa**, com código de saída 1.
+
+Rode na implantação e sempre que a credencial do banco mudar. É o tipo de
+garantia que envelhece calada: ninguém percebe que voltou a ser `root` até
+precisar da trilha para investigar alguma coisa — e aí ela já não prova nada.

@@ -1,5 +1,5 @@
 import { bloqueioRestanteEmSegundos, segundosDeBloqueio } from '../core/autenticacao'
-import { ErroDeNegocio } from '../core/erros'
+import { CredencialIlegivelError, ErroDeNegocio } from '../core/erros'
 import {
   AtivacaoSchema,
   CredenciaisSchema,
@@ -19,9 +19,63 @@ import {
   sortearSenhaProvisoria,
 } from '../servidor/credenciais'
 import { transacaoComNovaTentativa } from '../servidor/conflito'
-import { novaCorrelacao } from '../servidor/observabilidade'
+import { novaCorrelacao, registrarEvento, registrarLog } from '../servidor/observabilidade'
 import type { Banco } from '../servidor/prisma'
 import { auditar } from './auditoria'
+
+/**
+ * Uma linha de trilha por credencial ilegível a cada hora, por pessoa.
+ *
+ * A trilha é append-only e não tem expurgo (invariantes 11 e 14): o que entra
+ * nela fica. O humano precisa saber que a credencial de alguém está ilegível —
+ * não precisa saber mil vezes, e quem martelasse a conta escreveria uma linha
+ * permanente por tentativa. Uma hora é curta o bastante para o aviso reaparecer
+ * enquanto o defeito durar, e longa o bastante para o flood não valer a pena.
+ */
+const JANELA_DO_AVISO_DE_CREDENCIAL_MS = 60 * 60 * 1000
+
+/**
+ * Leva a credencial ilegível a um humano (achado N-36).
+ *
+ * Duas saídas de propósito: o log é para quem está olhando agora; o evento
+ * fica no banco, é consultável depois e sobrevive ao reinício — que é o que
+ * transforma "aconteceu com uma pessoa numa terça" em algo investigável. Nada
+ * do hash entra em nenhum dos dois: só o id de quem não conseguiu entrar.
+ *
+ * O log sai sempre; só o EVENTO é limitado por janela. São coisas diferentes:
+ * o log é volátil e barato, a trilha é permanente.
+ */
+async function avisarCredencialIlegivel(
+  banco: Banco,
+  colaboradorId: string,
+  correlacaoId: string = novaCorrelacao(),
+): Promise<void> {
+  registrarLog('erro', 'credencial ilegível no banco — a pessoa não consegue entrar', {
+    colaboradorId,
+    correlacaoId,
+  })
+
+  const jaAvisado = await banco.eventoProcessamento.findFirst({
+    where: {
+      etapa: 'autenticacao',
+      situacao: 'falha',
+      referencia: colaboradorId,
+      criadoEm: { gte: new Date(Date.now() - JANELA_DO_AVISO_DE_CREDENCIAL_MS) },
+    },
+    select: { id: true },
+  })
+  if (jaAvisado) return
+
+  await registrarEvento(banco, {
+    correlacaoId,
+    etapa: 'autenticacao',
+    situacao: 'falha',
+    referencia: colaboradorId,
+    mensagem:
+      'A senha gravada para este colaborador não pode ser lida. Redefina a senha provisória: ' +
+      'enquanto isso não for feito, a pessoa não entra, e não é culpa da senha que ela digita.',
+  })
+}
 
 /**
  * Autenticação.
@@ -140,9 +194,34 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
     )
   }
 
-  const confere = await conferirSenha(dados.senha, colaborador.senhaHash)
+  const conferencia = await conferirSenha(dados.senha, colaborador.senhaHash)
 
-  if (!confere) {
+  // ═══ DEFEITO NOSSO NÃO GASTA TENTATIVA DA PESSOA (achado N-36) ═══
+  //
+  // Hash ilegível era indistinguível de senha errada: cinco tentativas e a
+  // conta travava, sem que nada dissesse a ninguém que o problema estava no
+  // dado gravado — o suporte destravava, e travava de novo. Agora a tentativa
+  // reservada é devolvida, o evento leva o caso a um humano, e a pessoa lê uma
+  // mensagem que manda procurar quem resolve.
+  //
+  // O piso de resposta continua sendo pago: sem ele, o caminho do hash
+  // corrompido responderia mais rápido que o da senha errada e viraria um
+  // oráculo a mais na tela de entrada.
+  if (conferencia === 'hash_ilegivel') {
+    // Paga o mesmo custo de CPU do caminho normal. `conferirSenha` decide
+    // "ilegível" pelo FORMATO, antes do scrypt — sem isto, a conta com hash
+    // corrompido ficaria sem as duas defesas contra força bruta ao mesmo
+    // tempo: sem o custo de derivação (que é o que satura a vazão) e sem a
+    // trava por tentativas (que a linha seguinte devolve de propósito, porque
+    // o defeito é nosso). Achado da revisão de segurança do PR #77.
+    await gastarTempoDeConferencia()
+    await zerarTentativas(banco, colaborador.id)
+    await avisarCredencialIlegivel(banco, colaborador.id, correlacaoId)
+    await esperarAtePisoDeEntrada(inicio)
+    throw new CredencialIlegivelError(colaborador.id)
+  }
+
+  if (conferencia !== 'confere') {
     // A tentativa já foi contada — e o bloqueio já gravado, se era a que chega
     // ao limite — em `reservarTentativa`, antes do hash. Contar aqui, depois,
     // era a janela do C-09. (O incremento atômico que morava aqui continua lá:
@@ -233,7 +312,23 @@ export async function trocarSenha(
     )
   }
 
-  if (!(await conferirSenha(dados.senhaAtual, colaborador.senhaHash))) {
+  const conferenciaDaAtual = await conferirSenha(dados.senhaAtual, colaborador.senhaHash)
+  // Hash ilegível aqui é o mesmo defeito do login (N-36) e, pelo mesmo motivo,
+  // não pode virar só "sua senha está errada": a pessoa ficaria tentando
+  // trocar uma senha que o sistema não consegue conferir.
+  if (conferenciaDaAtual === 'hash_ilegivel') {
+    // Mesmo custo de CPU do caminho normal, pelo mesmo motivo do login: esta
+    // rota confere a senha atual, então também é superfície de adivinhação.
+    await gastarTempoDeConferencia()
+    // Devolve a tentativa que `reservarTentativa` já contou: sem isto, cinco
+    // tentativas de trocar a senha contra um hash corrompido trancam a conta
+    // pelo mesmo defeito que o N-36 existe para eliminar — só que por esta
+    // rota em vez da de entrada.
+    await zerarTentativas(banco, colaborador.id)
+    await avisarCredencialIlegivel(banco, colaborador.id, correlacaoId)
+    throw new CredencialIlegivelError(colaborador.id)
+  }
+  if (conferenciaDaAtual !== 'confere') {
     throw new ErroDeNegocio('A senha atual está incorreta.', 'FALHA_DE_ENTRADA')
   }
 
@@ -241,30 +336,41 @@ export async function trocarSenha(
   // só no fim — a checagem abaixo pode recusar a senha nova.
   await zerarTentativas(banco, colaborador.id)
 
-  if (await conferirSenha(dados.senhaNova, colaborador.senhaHash)) {
+  if ((await conferirSenha(dados.senhaNova, colaborador.senhaHash)) === 'confere') {
     throw new ErroDeNegocio('A senha nova precisa ser diferente da atual.')
   }
 
   const senhaDefinidaEm = new Date()
+  // O hash é derivado FORA da transação: scrypt custa centenas de milissegundos
+  // de CPU de propósito, e segurar linha travada durante isso é convidar
+  // impasse num horário de pico.
+  const senhaHash = await gerarHash(dados.senhaNova)
 
-  await banco.colaborador.update({
-    where: { id: colaborador.id },
-    data: {
-      senhaHash: await gerarHash(dados.senhaNova),
-      senhaDefinidaEm,
-      precisaTrocarSenha: false,
-      tentativasFalhas: 0,
-      bloqueadoAte: null,
-    },
-  })
+  // ═══ O FATO E A TRILHA ENTRAM JUNTOS (achado N-08) ═══
+  //
+  // Eram duas escritas soltas. Uma queda entre elas deixava a senha de alguém
+  // trocada sem nenhum registro de quem trocou e quando — e o que falta numa
+  // trilha não faz barulho: ninguém descobre depois. A auditoria registra QUE
+  // a senha mudou e quando; nunca o valor, nunca o hash.
+  await transacaoComNovaTentativa(banco, async (tx) => {
+    await tx.colaborador.update({
+      where: { id: colaborador.id },
+      data: {
+        senhaHash,
+        senhaDefinidaEm,
+        precisaTrocarSenha: false,
+        tentativasFalhas: 0,
+        bloqueadoAte: null,
+      },
+    })
 
-  // A auditoria registra QUE a senha mudou e quando. Nunca o valor, nem o hash.
-  await auditar(banco, {
-    entidade: 'Colaborador',
-    entidadeId: colaborador.id,
-    acao: 'senha_trocada',
-    usuario: ator.colaboradorId,
-    correlacaoId,
+    await auditar(tx, {
+      entidade: 'Colaborador',
+      entidadeId: colaborador.id,
+      acao: 'senha_trocada',
+      usuario: ator.colaboradorId,
+      correlacaoId,
+    })
   })
 
   // Quem chamou precisa disto para reemitir o cookie: a troca acabou de
@@ -317,24 +423,30 @@ export async function definirSenhaProvisoria(
 
   const senhaProvisoria = senhaFixa ?? sortearSenhaProvisoria()
 
-  await banco.colaborador.update({
-    where: { id: colaborador.id },
-    data: {
-      senhaHash: await gerarHash(senhaProvisoria),
-      senhaDefinidaEm: new Date(),
-      precisaTrocarSenha: true,
-      tentativasFalhas: 0,
-      bloqueadoAte: null,
-    },
-  })
+  // Hash fora da transação, trilha dentro dela, pelos mesmos motivos de
+  // `trocarSenha` (achado N-08).
+  const senhaHash = await gerarHash(senhaProvisoria)
 
-  await auditar(banco, {
-    entidade: 'Colaborador',
-    entidadeId: colaborador.id,
-    acao: colaborador.senhaHash ? 'senha_redefinida_pelo_gestor' : 'senha_inicial_definida',
-    depois: { precisaTrocarSenha: true },
-    usuario: ator.colaboradorId,
-    correlacaoId,
+  await transacaoComNovaTentativa(banco, async (tx) => {
+    await tx.colaborador.update({
+      where: { id: colaborador.id },
+      data: {
+        senhaHash,
+        senhaDefinidaEm: new Date(),
+        precisaTrocarSenha: true,
+        tentativasFalhas: 0,
+        bloqueadoAte: null,
+      },
+    })
+
+    await auditar(tx, {
+      entidade: 'Colaborador',
+      entidadeId: colaborador.id,
+      acao: colaborador.senhaHash ? 'senha_redefinida_pelo_gestor' : 'senha_inicial_definida',
+      depois: { precisaTrocarSenha: true },
+      usuario: ator.colaboradorId,
+      correlacaoId,
+    })
   })
 
   // Devolvida em texto UMA vez, para o gestor entregar. Não é gravada em lugar
@@ -365,17 +477,22 @@ export async function destravarConta(
   })
   if (!colaborador) throw new ErroDeNegocio(`Colaborador "${dados.colaboradorId}" não existe.`)
 
-  await banco.colaborador.update({
-    where: { id: colaborador.id },
-    data: { tentativasFalhas: 0, bloqueadoAte: null },
-  })
+  // Destravar sem registro é pior que os outros dois casos: é exatamente a
+  // ação que alguém investigaria depois ("quem tirou o bloqueio desta conta,
+  // e quando?"). As duas escritas entram juntas (achado N-08).
+  await transacaoComNovaTentativa(banco, async (tx) => {
+    await tx.colaborador.update({
+      where: { id: colaborador.id },
+      data: { tentativasFalhas: 0, bloqueadoAte: null },
+    })
 
-  await auditar(banco, {
-    entidade: 'Colaborador',
-    entidadeId: colaborador.id,
-    acao: 'conta_destravada',
-    usuario: ator.colaboradorId,
-    correlacaoId,
+    await auditar(tx, {
+      entidade: 'Colaborador',
+      entidadeId: colaborador.id,
+      acao: 'conta_destravada',
+      usuario: ator.colaboradorId,
+      correlacaoId,
+    })
   })
 
   return { colaboradorId: colaborador.id }

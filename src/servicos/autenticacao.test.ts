@@ -45,6 +45,36 @@ async function semearPessoa(opcoes: { papel?: string; ativo?: boolean } = {}) {
   }
 }
 
+/**
+ * Um `Banco` cuja gravação da TRILHA falha, e só ela (achado N-08).
+ *
+ * A falha precisa nascer dentro da transação, no `tx` que o serviço usa: um
+ * espião no cliente de fora nunca é chamado, e o teste passaria verde
+ * acreditando ter derrubado algo.
+ */
+function bancoQueDerrubaATrilha(real: typeof banco): typeof banco {
+  return new Proxy(real, {
+    get(alvo, chave) {
+      if (chave !== '$transaction') return Reflect.get(alvo, chave)
+      return (executar: (tx: unknown) => Promise<unknown>, opcoes?: unknown) =>
+        alvo.$transaction(
+          (tx) =>
+            executar(
+              new Proxy(tx, {
+                get(txAlvo, txChave) {
+                  if (txChave !== 'logAuditoria') return Reflect.get(txAlvo, txChave)
+                  return {
+                    create: () => Promise.reject(new Error('banco caiu ao gravar a trilha')),
+                  }
+                },
+              }),
+            ) as Promise<never>,
+          opcoes as never,
+        )
+    },
+  })
+}
+
 beforeEach(async () => {
   await limparTudo(banco)
 })
@@ -63,15 +93,17 @@ describe('hash de senha', () => {
 
   it('confere a senha certa e recusa a errada', async () => {
     const hash = await gerarHash(SENHA_NOVA)
-    expect(await conferirSenha(SENHA_NOVA, hash)).toBe(true)
-    expect(await conferirSenha(`${SENHA_NOVA}x`, hash)).toBe(false)
+    expect(await conferirSenha(SENHA_NOVA, hash)).toBe('confere')
+    expect(await conferirSenha(`${SENHA_NOVA}x`, hash)).toBe('nao_confere')
   })
 
-  it('hash corrompido devolve falso em vez de lançar', async () => {
-    // Um registro quebrado no banco significa "não entra", nunca um 500 que
-    // conta ao cliente que aquela conta existe.
+  it('hash corrompido é DITO ilegível, e não confundido com senha errada', async () => {
+    // Continua sem lançar — um registro quebrado no banco não pode virar 500
+    // que conta ao cliente que aquela conta existe. Mas também não pode se
+    // disfarçar de senha errada: quem chama precisa saber a diferença para não
+    // gastar a tentativa da pessoa nem trancar a conta dela (achado N-36).
     for (const invalido of ['', 'lixo', 'scrypt$1$1$1$a', 'outro$16384$8$1$YQ$Yg', 'scrypt$0$8$1$YQ$Yg']) {
-      await expect(conferirSenha(SENHA_NOVA, invalido)).resolves.toBe(false)
+      await expect(conferirSenha(SENHA_NOVA, invalido)).resolves.toBe('hash_ilegivel')
     }
   })
 
@@ -115,6 +147,151 @@ describe('entrada com senha', () => {
 
     expect(entrada.colaboradorId).toBe(base.pessoaId)
     expect(entrada.precisaTrocarSenha).toBe(true)
+  })
+
+  it('hash ilegível no banco falha alto e NÃO gasta tentativa da pessoa', async () => {
+    // ═══ O QUE ESTE TESTE IMPEDE (achado N-36) ═══
+    //
+    // Hash corrompido (migração malfeita, coluna truncada, edição manual) era
+    // tratado como "senha errada": a pessoa tentava cinco vezes, a conta
+    // travava, e nada em lugar nenhum dizia que o problema era do SISTEMA e
+    // não dela. A pessoa liga para o suporte e o suporte destrava — e trava
+    // de novo, para sempre, porque a causa continua lá. Erro silencioso que
+    // custa o acesso de alguém, que é a doença que o invariante 7 existe para
+    // curar.
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(
+      banco,
+      { colaboradorId: base.pessoaId },
+      base.gestor,
+      SENHA_PROVISORIA,
+    )
+    await banco.colaborador.update({
+      where: { id: base.pessoaId },
+      data: { senhaHash: 'isto-nao-e-um-hash' },
+    })
+
+    await expect(
+      autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
+    ).rejects.toMatchObject({ codigo: 'CREDENCIAL_ILEGIVEL' })
+
+    // A pessoa não errou nada: o contador dela não pode andar, senão o defeito
+    // do sistema acaba trancando a conta.
+    const depois = await banco.colaborador.findUniqueOrThrow({
+      where: { id: base.pessoaId },
+      select: { tentativasFalhas: true },
+    })
+    expect(depois.tentativasFalhas).toBe(0)
+
+    // E alguém fica sabendo: o evento é o que faz isso chegar a um humano.
+    const evento = await banco.eventoProcessamento.findFirst({
+      where: { etapa: 'autenticacao', situacao: 'falha' },
+    })
+    expect(evento?.referencia).toBe(base.pessoaId)
+  })
+
+  it('hash ilegível não vira máquina de encher a trilha: o evento sai uma vez por janela', async () => {
+    // ═══ ACHADO DA REVISÃO DE SEGURANÇA DO PR #77 ═══
+    //
+    // No estado de hash ilegível as duas defesas contra força bruta sumiam
+    // juntas: `conferirSenha` decide antes do scrypt (custo de CPU zero) e o
+    // ramo devolve a tentativa (conta nunca trava). Sobrava o limite por
+    // origem. Cada tentativa ainda gravava um evento numa tabela que este
+    // mesmo PR tornou impossível de apagar — martelar uma conta corrompida
+    // enchia a trilha de graça.
+    //
+    // Continua sem trancar a pessoa (é defeito nosso), mas o aviso é gravado
+    // UMA vez por janela: o humano precisa saber, não precisa saber mil vezes.
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(
+      banco,
+      { colaboradorId: base.pessoaId },
+      base.gestor,
+      SENHA_PROVISORIA,
+    )
+    await banco.colaborador.update({
+      where: { id: base.pessoaId },
+      data: { senhaHash: 'isto-nao-e-um-hash' },
+    })
+
+    for (let tentativa = 0; tentativa < 4; tentativa += 1) {
+      await expect(
+        autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
+      ).rejects.toMatchObject({ codigo: 'CREDENCIAL_ILEGIVEL' })
+    }
+
+    expect(
+      await banco.eventoProcessamento.count({ where: { etapa: 'autenticacao', situacao: 'falha' } }),
+    ).toBe(1)
+  })
+
+  it('hash ilegível na TROCA de senha também não gasta tentativa da pessoa', async () => {
+    // A porta dos fundos do N-36, achada na revisão do PR #77: o ramo de hash
+    // ilegível existia no login e faltava aqui. `reservarTentativa` já contou a
+    // tentativa antes do hash — sem devolvê-la, cinco tentativas de trocar a
+    // senha contra um hash corrompido trancam a conta pelo mesmo defeito que o
+    // achado diz ter eliminado, só que por outra rota.
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(
+      banco,
+      { colaboradorId: base.pessoaId },
+      base.gestor,
+      SENHA_PROVISORIA,
+    )
+    await banco.colaborador.update({
+      where: { id: base.pessoaId },
+      data: { senhaHash: 'isto-nao-e-um-hash' },
+    })
+
+    await expect(
+      trocarSenha(banco, { senhaAtual: SENHA_PROVISORIA, senhaNova: SENHA_NOVA }, base.pessoaAtor),
+    ).rejects.toMatchObject({ codigo: 'CREDENCIAL_ILEGIVEL' })
+
+    const depois = await banco.colaborador.findUniqueOrThrow({
+      where: { id: base.pessoaId },
+      select: { tentativasFalhas: true },
+    })
+    expect(depois.tentativasFalhas).toBe(0)
+  })
+
+  it('senha trocada e trilha entram JUNTAS: falha no meio não deixa mudança sem registro', async () => {
+    // ═══ O QUE ESTE TESTE IMPEDE (achado N-08) ═══
+    //
+    // O fato e a trilha eram duas escritas soltas: trocar a senha e gravar o
+    // registro. Uma queda entre elas — processo reiniciado, conexão perdida —
+    // deixava a senha de alguém trocada sem NENHUM registro de quem trocou e
+    // quando. É a memória de que fala o invariante 14, com um buraco que
+    // ninguém veria depois, porque o que falta numa trilha não faz barulho.
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(
+      banco,
+      { colaboradorId: base.pessoaId },
+      base.gestor,
+      SENHA_PROVISORIA,
+    )
+    const antes = await banco.colaborador.findUniqueOrThrow({
+      where: { id: base.pessoaId },
+      select: { senhaHash: true },
+    })
+
+    // A trilha falha DEPOIS de a senha já ter sido gravada. Sem transação, a
+    // senha nova fica; com transação, as duas voltam atrás. O dublê precisa
+    // derrubar a escrita DE DENTRO da transação — espionar o cliente de fora
+    // não alcança o `tx`, que é outro objeto.
+    await expect(
+      trocarSenha(
+        bancoQueDerrubaATrilha(banco),
+        { senhaAtual: SENHA_PROVISORIA, senhaNova: SENHA_NOVA },
+        base.pessoaAtor,
+      ),
+    ).rejects.toThrow(/banco caiu/)
+
+    const depois = await banco.colaborador.findUniqueOrThrow({
+      where: { id: base.pessoaId },
+      select: { senhaHash: true, senhaDefinidaEm: true },
+    })
+    expect(depois.senhaHash).toBe(antes.senhaHash)
+    expect(await banco.logAuditoria.count({ where: { acao: 'senha_trocada' } })).toBe(0)
   })
 
   it('e-mail inexistente e senha errada dão exatamente a mesma mensagem', async () => {
@@ -691,7 +868,7 @@ describe('o gestor não escolhe a senha de ninguém', () => {
       where: { id: base.pessoaId },
       select: { senhaHash: true },
     })
-    expect(await conferirSenha('SenhaEscolhida1', gravado.senhaHash!)).toBe(false)
-    expect(await conferirSenha(resultado.senhaProvisoria, gravado.senhaHash!)).toBe(true)
+    expect(await conferirSenha('SenhaEscolhida1', gravado.senhaHash!)).toBe('nao_confere')
+    expect(await conferirSenha(resultado.senhaProvisoria, gravado.senhaHash!)).toBe('confere')
   })
 })

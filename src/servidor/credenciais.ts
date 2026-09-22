@@ -67,15 +67,26 @@ export async function gerarHash(senha: string): Promise<string> {
 }
 
 /**
+ * O que a conferência de senha pode responder.
+ *
+ * `hash_ilegivel` existe separado de `nao_confere` porque as duas coisas pedem
+ * reações opostas (achado N-36): senha errada é da pessoa e conta tentativa;
+ * hash ilegível é defeito NOSSO, não pode gastar tentativa dela nem trancar a
+ * conta, e precisa chegar a um humano. Enquanto as duas eram `false`, o
+ * segundo caso se disfarçava de primeiro.
+ */
+export type ResultadoDaConferencia = 'confere' | 'nao_confere' | 'hash_ilegivel'
+
+/**
  * Confere a senha contra o hash gravado.
  *
- * Nunca lança por hash malformado: um registro corrompido no banco deve
- * significar "não entra", não uma exceção que a rota traduz em 500 e conta ao
- * cliente que aquela conta existe e está quebrada.
+ * Nunca lança por hash malformado: quem decide o que fazer com isso é quem
+ * chama — aqui só se diz o que se viu. Uma exceção solta deste ponto viraria
+ * 500 na rota e contaria ao cliente que aquela conta existe e está quebrada.
  */
-export async function conferirSenha(senha: string, hashGravado: string): Promise<boolean> {
+export async function conferirSenha(senha: string, hashGravado: string): Promise<ResultadoDaConferencia> {
   const partes = hashGravado.split('$')
-  if (partes.length !== 6) return false
+  if (partes.length !== 6) return 'hash_ilegivel'
 
   const [algoritmo, textoN, textoR, textoP, salBase64, derivadoBase64] = partes as [
     string,
@@ -85,24 +96,24 @@ export async function conferirSenha(senha: string, hashGravado: string): Promise
     string,
     string,
   ]
-  if (algoritmo !== ALGORITMO) return false
+  if (algoritmo !== ALGORITMO) return 'hash_ilegivel'
 
   const n = Number(textoN)
   const r = Number(textoR)
   const p = Number(textoP)
-  if (!Number.isInteger(n) || !Number.isInteger(r) || !Number.isInteger(p)) return false
+  if (!Number.isInteger(n) || !Number.isInteger(r) || !Number.isInteger(p)) return 'hash_ilegivel'
   // Parâmetros vindos do banco entram direto no custo da derivação. Um valor
   // absurdo gravado por engano viraria uma requisição que trava o processo.
-  if (n < 1024 || n > 1_048_576 || r < 1 || r > 32 || p < 1 || p > 16) return false
+  if (n < 1024 || n > 1_048_576 || r < 1 || r > 32 || p < 1 || p > 16) return 'hash_ilegivel'
   // Limitar `N` e `r` isoladamente não basta: no teto de cada um, o PRODUTO
   // pede ~8 GB numa única derivação. Um hash corrompido derrubaria o processo
   // inteiro — todo mundo fora do sistema, não só o dono daquela conta.
-  if (memoriaNecessaria(n, r) > TETO_DE_MEMORIA_BYTES) return false
+  if (memoriaNecessaria(n, r) > TETO_DE_MEMORIA_BYTES) return 'hash_ilegivel'
 
   const esperado = Buffer.from(derivadoBase64, 'base64url')
   // O tamanho do derivado vira `keylen`: sem teto, um valor gigante gravado na
   // coluna é CPU queimada por tentativa de login.
-  if (esperado.length === 0 || esperado.length > 256) return false
+  if (esperado.length === 0 || esperado.length > 256) return 'hash_ilegivel'
 
   try {
     const derivado = await derivar(senha.normalize('NFKC'), Buffer.from(salBase64, 'base64url'), esperado.length, {
@@ -111,9 +122,11 @@ export async function conferirSenha(senha: string, hashGravado: string): Promise
       p,
       maxmem: memoriaNecessaria(n, r),
     })
-    return timingSafeEqual(derivado, esperado)
+    return timingSafeEqual(derivado, esperado) ? 'confere' : 'nao_confere'
   } catch {
-    return false
+    // A derivação falhou (sal que não é base64url, parâmetro que o Node recusa):
+    // continua sendo dado ilegível deste lado, não senha errada da pessoa.
+    return 'hash_ilegivel'
   }
 }
 
