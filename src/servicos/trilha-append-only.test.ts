@@ -64,10 +64,15 @@ interface Violacao {
  * recusa `NODE_ENV=production` e exige `PERMITIR_LIMPEZA=sim`; a exceção mora
  * aqui, com nome e motivo, em vez de a varredura inteira ficar frouxa.
  */
-const EXCECAO = join(RAIZ_PROJETO, 'scripts', 'limpar-transacional.ts')
+const EXCECOES = [
+  join(RAIZ_PROJETO, 'scripts', 'limpar-transacional.ts'),
+  // A ordem da limpeza mora aqui desde o PR #82 — em `scripts/`, e não em
+  // `src/`, justamente para que nenhum código de produção a alcance.
+  join(RAIZ_PROJETO, 'scripts', 'limpeza-transacional.ts'),
+]
 
 function analisar(fonte: string, arquivo: string): Violacao[] {
-  if (arquivo === EXCECAO) return []
+  if (EXCECOES.includes(arquivo)) return []
   const violacoes: Violacao[] = []
   for (const tabela of TABELAS_DA_TRILHA) {
     for (const metodo of METODOS_PROIBIDOS) {
@@ -91,6 +96,34 @@ describe('a trilha é append-only', () => {
       violacoes,
       'A trilha só recebe `create`. Corrigir um registro errado é gravar um registro NOVO que o explique — ' +
         'reescrever o passado é exatamente o que uma trilha de auditoria existe para impedir.',
+    ).toEqual([])
+  })
+
+  it('nenhum código de produção importa de `scripts/`', () => {
+    // ═══ O QUE ESTE TESTE FECHA (revisão de segurança do PR #82) ═══
+    //
+    // A rotina que apaga a trilha mora em `scripts/`, e o argumento para isso
+    // era "de lá nenhum código de produção a alcança". Isso era convenção de
+    // pasta, não limite: nada impedia uma rota escrever
+    // `import { limparTransacional } from '../../../scripts/limpeza-transacional'`
+    // e deixar a trilha apagável por requisição HTTP. Agora impede.
+    //
+    // Teste pode importar de `scripts/` — é como se prova que a rotina REAL
+    // funciona, em vez de uma cópia escrita ao lado.
+    const arquivos = listarTs(RAIZ_SRC).filter((arquivo) => !/\.test\.tsx?$/.test(arquivo))
+    const violacoes = arquivos.flatMap((arquivo) => {
+      const fonte = readFileSync(arquivo, 'utf8')
+      const achados = [...fonte.matchAll(/from\s+'([^']*\/scripts\/[^']*)'/g)]
+      return achados.map((achado) => ({
+        arquivo: relative(RAIZ_PROJETO, arquivo),
+        chamada: achado[1] ?? '',
+      }))
+    })
+
+    expect(
+      violacoes,
+      '`scripts/` é ferramenta de linha de comando, e algumas delas apagam dado que o sistema promete nunca apagar. ' +
+        'Se a aplicação precisa do que existe lá, mova o que ela precisa para `src/` — e aí valem as regras de `src/`.',
     ).toEqual([])
   })
 

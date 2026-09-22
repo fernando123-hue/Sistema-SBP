@@ -61,9 +61,14 @@ jobs:
       BUSCA_SECRET: ci-nao-e-segredo-so-para-cpf-sintetico
 
     steps:
-      - uses: actions/checkout@v7
+      # `persist-credentials: false`: nenhum passo destes jobs empurra nada, e
+      # deixar o token do CI escrito no `.git/config` do executor o entrega a
+      # qualquer script de dependência que resolva lê-lo (achado N-20).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -130,12 +135,16 @@ jobs:
       pull-requests: read
 
     steps:
-      - uses: actions/checkout@v7
+      # `persist-credentials: false`: nenhum passo destes jobs empurra nada, e
+      # deixar o token do CI escrito no `.git/config` do executor o entrega a
+      # qualquer script de dependência que resolva lê-lo (achado N-20).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v3
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -145,14 +154,23 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v7
+      # `persist-credentials: false`: nenhum passo destes jobs empurra nada, e
+      # deixar o token do CI escrito no `.git/config` do executor o entrega a
+      # qualquer script de dependência que resolva lê-lo (achado N-20).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      # `--ignore-scripts`: este job existe para AUDITAR as dependências, e
+      # auditar não exige executá-las. Um pacote comprometido roda o script de
+      # instalação antes de qualquer verificação — o job que deveria acusar a
+      # cadeia de suprimentos seria o primeiro a executá-la (achado N-20).
+      - run: npm ci --ignore-scripts
 
       # Falha só em vulnerabilidade alta ou crítica — ruído baixo não trava PR.
       - name: npm audit

@@ -8,8 +8,10 @@
  *   PERMITIR_LIMPEZA=sim npm run db:limpar
  */
 
+import { ArmazenamentoEmDisco } from '../src/adapters/armazenamento-disco'
 import { ambiente } from '../src/servidor/ambiente'
 import { obterPrisma } from '../src/servidor/prisma'
+import { limparTransacional } from './limpeza-transacional'
 
 async function principal(): Promise<void> {
   const config = ambiente()
@@ -39,21 +41,12 @@ async function principal(): Promise<void> {
   }
 
   const banco = obterPrisma()
-
-  // Ordem importa: filhos antes dos pais, para respeitar as chaves estrangeiras.
-  const removidos = {
-    execucoes: (await banco.execucao.deleteMany()).count,
-    atribuicoes: (await banco.atribuicao.deleteMany()).count,
-    revisoes: (await banco.revisao.deleteMany()).count,
-    rodadas: (await banco.rodadaDistribuicao.deleteMany()).count,
-    travas: (await banco.travaDeDistribuicao.deleteMany()).count,
-    itens: (await banco.item.deleteMany()).count,
-    emails: (await banco.email.deleteMany()).count,
-    saldosCarga: (await banco.saldoCarga.deleteMany()).count,
-    saldosGlobais: (await banco.saldoCargaGlobal.deleteMany()).count,
-    eventos: (await banco.eventoProcessamento.deleteMany()).count,
-    auditoria: (await banco.logAuditoria.deleteMany()).count,
-  }
+  // A ordem da limpeza e a remoção dos bytes moram em
+  // `src/servicos/limpeza-transacional.ts`, e não aqui: o teste que prova a
+  // ordem precisa chamar ESTA rotina, e não uma cópia escrita ao lado (foi
+  // assim que a lista do script e a do teste divergiram — achado da revisão
+  // técnica do PR #82).
+  const removidos = await limparTransacional(banco, new ArmazenamentoEmDisco())
 
   process.stdout.write(`Dados transacionais removidos: ${JSON.stringify(removidos)}\n`)
   process.stdout.write('Cadastro base preservado (colaboradores, categorias, escalas).\n')

@@ -4,10 +4,11 @@ import type { Banco, Transacao } from '../servidor/prisma'
  * Um `Banco` cujo `$transaction` entrega um `tx` que anota cada chamada de
  * delegate (`modelo.metodo`), na ordem em que acontecem. Só para teste.
  *
- * Concorrência real não é observável sob better-sqlite3, que é síncrono; a
- * ORDEM e a QUANTIDADE de chamadas são. É com isto que os testes provam que a
- * trava do dia vem primeiro e que a gravação da rodada não voltou a ser item a
- * item.
+ * O que ele prova é ORDEM e QUANTIDADE de chamadas: que a trava do dia vem
+ * primeiro e que a gravação da rodada não voltou a ser item a item. A
+ * CONCORRÊNCIA de verdade é observável desde que o banco virou MySQL (`A42`) e
+ * tem testes próprios em `trava-de-distribuicao.test.ts` — foram eles que
+ * mostraram que serializar a escrita não bastava (achado N-09).
  */
 export function bancoQueAnota(banco: Banco, ordem: string[]): Banco {
   const anotarDelegate = (modelo: string, delegate: object) =>

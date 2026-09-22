@@ -30,6 +30,11 @@ export async function limparTudo(banco: Banco): Promise<void> {
   await banco.execucaoDeRotina.deleteMany()
   await banco.avisoVisto.deleteMany()
   await banco.execucao.deleteMany()
+  // `JustificativaDeAtribuicao` ANTES de `Atribuicao`: desde o N-22 a relação
+  // é `Restrict`, e a cascata não apaga mais a justificativa junto. É o
+  // comportamento pedido — histórico operacional não some sozinho —, e o preço
+  // é a ordem explícita aqui.
+  await banco.justificativaDeAtribuicao.deleteMany()
   await banco.atribuicao.deleteMany()
   await banco.revisao.deleteMany()
   await banco.rodadaDistribuicao.deleteMany()

@@ -127,7 +127,11 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
   }
 
   private caminhoDe(chave: string): string {
-    const alvo = resolve(this.raiz, chave)
+    // A chave é gravada no banco com `/`, sempre (ver `guardar`). Aqui ela
+    // vira caminho do sistema — e o `\` das chaves gravadas antes desta
+    // correção (achado N-25) continua sendo aceito, porque quem já guardou
+    // anexo nesta máquina precisa continuar lendo.
+    const alvo = resolve(this.raiz, chave.replace(/\\/g, '/'))
     const raizResolvida = resolve(this.raiz)
 
     // Defesa em profundidade. A chave é gerada aqui e não deveria escapar da
@@ -413,7 +417,14 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
     await this.conferirChave()
     const sorteio = randomBytes(16).toString('hex')
     const seguraExtensao = /^\.[a-z0-9]{1,10}$/i.test(extensao) ? extensao.toLowerCase() : ''
-    const chave = join(sorteio.slice(0, 2), `${sorteio}${seguraExtensao}`)
+    // `/` cravado, NUNCA `join` (achado N-25): esta chave é gravada no banco e
+    // precisa valer em qualquer sistema. Montada com `join`, ela sairia com
+    // `\` no Windows — e no dia da migração para o servidor Linux nenhuma
+    // dessas chaves acharia o arquivo. Pior: "arquivo ausente" é resposta
+    // legítima aqui (pode ter sido expurgado pela retenção), então a leitura
+    // devolveria vazio e o expurgo apagaria o nada, os dois calados, com os
+    // anexos ficando no disco para sempre sem referência.
+    const chave = `${sorteio.slice(0, 2)}/${sorteio}${seguraExtensao}`
     const caminho = this.caminhoDe(chave)
 
     try {

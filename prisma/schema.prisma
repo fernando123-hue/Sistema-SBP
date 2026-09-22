@@ -480,7 +480,13 @@ model Atribuicao {
   atribuidoEm   DateTime @default(now())
   encerradoEm   DateTime?
 
-  item        Item                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// `Restrict`, e não `Cascade` (achado N-22): esta linha é HISTÓRICO
+  /// OPERACIONAL, e o invariante 11 promete nunca apagá-lo. Com cascata, um
+  /// `DELETE` no pai — script de limpeza, engano num cliente de banco — levava
+  /// junto a prova de quem recebeu o quê, sem erro nenhum. Com `Restrict`, o
+  /// banco recusa e o histórico fica. Quem precisa limpar de verdade (`db:limpar`,
+  /// em desenvolvimento) já apaga os filhos antes, na ordem certa.
+  item        Item                @relation(fields: [itemId], references: [id], onDelete: Restrict)
   colaborador Colaborador         @relation(fields: [colaboradorId], references: [id])
   rodada      RodadaDistribuicao? @relation(fields: [rodadaId], references: [id])
   /// O texto da transferência ou devolução, à parte: ver o modelo abaixo.
@@ -510,7 +516,13 @@ model JustificativaDeAtribuicao {
   texto        String   @db.Text
   criadoEm     DateTime @default(now())
 
-  atribuicao Atribuicao @relation(fields: [atribuicaoId], references: [id], onDelete: Cascade)
+  /// `Restrict`, e não `Cascade` (achado N-22): esta linha é HISTÓRICO
+  /// OPERACIONAL, e o invariante 11 promete nunca apagá-lo. Com cascata, um
+  /// `DELETE` no pai — script de limpeza, engano num cliente de banco — levava
+  /// junto a prova de quem recebeu o quê, sem erro nenhum. Com `Restrict`, o
+  /// banco recusa e o histórico fica. Quem precisa limpar de verdade (`db:limpar`,
+  /// em desenvolvimento) já apaga os filhos antes, na ordem certa.
+  atribuicao Atribuicao @relation(fields: [atribuicaoId], references: [id], onDelete: Restrict)
 
   @@index([atribuicaoId])
 }
@@ -526,7 +538,13 @@ model Execucao {
   resultado     String?
   observacao    String?   @db.Text
 
-  item        Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// `Restrict`, e não `Cascade` (achado N-22): esta linha é HISTÓRICO
+  /// OPERACIONAL, e o invariante 11 promete nunca apagá-lo. Com cascata, um
+  /// `DELETE` no pai — script de limpeza, engano num cliente de banco — levava
+  /// junto a prova de quem recebeu o quê, sem erro nenhum. Com `Restrict`, o
+  /// banco recusa e o histórico fica. Quem precisa limpar de verdade (`db:limpar`,
+  /// em desenvolvimento) já apaga os filhos antes, na ordem certa.
+  item        Item        @relation(fields: [itemId], references: [id], onDelete: Restrict)
   colaborador Colaborador @relation(fields: [colaboradorId], references: [id])
 
   @@index([colaboradorId, concluidoEm])
@@ -837,7 +855,13 @@ model Revisao {
   resolvidoEm  DateTime?
   criadoEm     DateTime  @default(now())
 
-  item      Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  /// `Restrict`, e não `Cascade` (achado N-22): esta linha é HISTÓRICO
+  /// OPERACIONAL, e o invariante 11 promete nunca apagá-lo. Com cascata, um
+  /// `DELETE` no pai — script de limpeza, engano num cliente de banco — levava
+  /// junto a prova de quem recebeu o quê, sem erro nenhum. Com `Restrict`, o
+  /// banco recusa e o histórico fica. Quem precisa limpar de verdade (`db:limpar`,
+  /// em desenvolvimento) já apaga os filhos antes, na ordem certa.
+  item      Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
   revisor   Colaborador? @relation(fields: [resolvidoPor], references: [id])
 
   @@index([resolvidoEm, motivo])

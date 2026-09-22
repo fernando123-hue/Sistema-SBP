@@ -559,6 +559,8 @@ Casar por semelhança troca um erro visível e corrigível por um invisível e p
 
 **Status:** ✅ registrado como limite conhecido, não como dívida. Quem rodar a conferência em Windows e vir esse relatório: confira as chaves estrangeiras no banco antes de acreditar nele.
 
+**Irmã da armadilha, medida em 22/09/2026 — e com o sinal INVERTIDO.** O mesmo `lower_case_table_names = 1` faz o `prisma migrate dev` GERAR a migração com os nomes em minúsculas (`ALTER TABLE atribuicao`, quando a tabela é `Atribuicao`). No Windows ela aplica sem reclamar; no Linux do CI — e no servidor da implantação — a tabela se chama `Atribuicao`, e a migração morre com *"Table sbp_sombra.atribuicao doesn't exist"*. Aconteceu com `historico_nao_cascateia` (PR #82). **Regra prática:** toda migração gerada nesta máquina tem a caixa dos nomes conferida à mão antes do PR. Lá o Windows acusa diferença que não existe; aqui ele esconde uma que existe.
+
 ### AT-33 — A caixa do Microsoft 365 é lida só pela pasta de entrada *(16/09/2026)*
 
 **O defeito:** o adapter do Graph (`A47`) listava `/users/{caixa}/messages`, que devolve **todas as pastas**. A resposta que a secretaria manda a um associado fica em Itens Enviados e voltaria na leitura seguinte como pedido novo — virando tarefa com responsável. Rascunho e lixeira, igual. Nenhum teste pegava isso porque a fronteira `ClienteDoGraph` era provada só com dublê; o caminho real nunca tinha sido conferido.
@@ -879,6 +881,27 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 **Ainda aberto:** o C-11/N-13 (e-mail que a IA nunca estrutura é pago a cada sincronização) continua para o próximo PR — o teto limita o estrago, mas não conta tentativas por e-mail. A revisão de segurança reforçou a prioridade: falha de forma não abre o disjuntor, então um único e-mail que o modelo nunca estrutura é custo recorrente que só esse contador por item conterá.
 
 **Prova:** `src/core/ia/consumo.test.ts` (13), `src/servicos/consumo-da-ia.test.ts` (11), `src/adapters/cliente-com-consumo.test.ts` (13), `src/adapters/consumo-indisponivel.test.ts` (9), `src/adapters/fronteira-dos-servicos.test.ts` (4) e `src/adapters/fabrica-consumo.test.ts` (4, contra um servidor de verdade, provando a fiação). **Status:** ⏳ adotado; reavaliar com uso real.
+
+---
+
+### AT-40 — Cadeia de suprimentos e o que fica no disco *(22/09/2026)*
+
+**O que motivou:** bloco B da rodada de auditoria (achados N-20 a N-25). O fio comum: coisas que só machucam **no dia da mudança** — uma action atualizada por baixo, uma migração de servidor, uma limpeza de rotina. Nenhuma delas aparece enquanto tudo fica parado.
+
+**Decisões tomadas:**
+
+- **Action fixada por SHA, com a versão em comentário (N-20).** Tag é ponteiro móvel: `@v7` aponta hoje para um commit e amanhã para outro, e quem move não somos nós. Vale em dobro para `gitleaks-action`, que é de terceiro e recebe o `GITHUB_TOKEN`.
+- **`persist-credentials: false` em todo checkout (N-20).** Nenhum job empurra nada, e o token escrito no `.git/config` do executor fica ao alcance de qualquer script de dependência.
+- **`npm ci --ignore-scripts` no job de auditoria (N-20).** Auditar dependência não exige executá-la. Sem isso, o job que existe para acusar a cadeia de suprimentos seria o primeiro a rodar o script de instalação de um pacote comprometido.
+- **Dependência sem uso sai (N-21).** `@prisma/adapter-better-sqlite3`: 12 MB de binário e um script de instalação, zero uso no código, herdado de quando o banco era SQLite.
+- **Histórico operacional não cascateia (N-22).** `Atribuicao`, `Execucao`, `JustificativaDeAtribuicao` e `Revisao` viraram `Restrict`. A cascata era teoria — o sistema nunca apaga item — até um `DELETE` chegar por fora. **Preço aceito:** quem limpa de verdade apaga os filhos na ordem certa, e a suíte precisou de uma linha a mais em `limparTudo`. É o preço certo: a ordem fica explícita onde alguém a lê.
+- **Os bytes saem antes das linhas (N-23).** `db:limpar` remove os arquivos dos anexos antes de apagar `Email`. Arquivo órfão no disco não é alcançado por retenção nenhuma: o expurgo só sabe apagar o que ainda está no banco.
+- **Pasta ilegível não é "nenhum anexo" (N-24).** `anexos:conferir` respondia "0 em texto puro" quando não conseguia ler a pasta — dizia "está tudo certo" exatamente quando não conseguia olhar. Pasta inexistente continua valendo zero; o resto sobe.
+- **A chave do anexo é POSIX, sempre (N-25).** Montada com `join`, ela saía com a barra invertida do Windows e ia para o banco assim. Numa migração para o servidor Linux — o caminho previsto — nenhuma dessas chaves acharia o arquivo, e como "ausente" é resposta legítima aqui (o anexo pode ter sido expurgado pela retenção), tanto a leitura quanto o expurgo falhariam calados. Chave antiga continua sendo aceita na leitura.
+
+**Impacto se estiverem erradas:** SHA fixo exige atualização deliberada das actions (é o ponto); `Restrict` faz uma limpeza escrita na ordem errada falhar alto em vez de apagar demais; a chave POSIX muda o formato do que é gravado de agora em diante, e o formato antigo continua legível.
+
+**Prova:** `historico-nao-cascateia.test.ts` (3, um deles conferindo a regra direto no `information_schema`), `armazenamento.test.ts` (21, dois novos sobre a chave), mais `npm run build` verde sem a dependência removida. **Status:** ⏳ adotado.
 
 ---
 
