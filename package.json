@@ -23,7 +23,8 @@
     "dev": "next dev",
     "dev:local": "tsx scripts/dev-local.ts",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "db:privilegios": "tsx scripts/conferir-privilegios.ts"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

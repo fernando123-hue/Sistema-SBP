@@ -190,6 +190,41 @@ describe('entrada com senha', () => {
     expect(evento?.referencia).toBe(base.pessoaId)
   })
 
+  it('hash ilegível não vira máquina de encher a trilha: o evento sai uma vez por janela', async () => {
+    // ═══ ACHADO DA REVISÃO DE SEGURANÇA DO PR #77 ═══
+    //
+    // No estado de hash ilegível as duas defesas contra força bruta sumiam
+    // juntas: `conferirSenha` decide antes do scrypt (custo de CPU zero) e o
+    // ramo devolve a tentativa (conta nunca trava). Sobrava o limite por
+    // origem. Cada tentativa ainda gravava um evento numa tabela que este
+    // mesmo PR tornou impossível de apagar — martelar uma conta corrompida
+    // enchia a trilha de graça.
+    //
+    // Continua sem trancar a pessoa (é defeito nosso), mas o aviso é gravado
+    // UMA vez por janela: o humano precisa saber, não precisa saber mil vezes.
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(
+      banco,
+      { colaboradorId: base.pessoaId },
+      base.gestor,
+      SENHA_PROVISORIA,
+    )
+    await banco.colaborador.update({
+      where: { id: base.pessoaId },
+      data: { senhaHash: 'isto-nao-e-um-hash' },
+    })
+
+    for (let tentativa = 0; tentativa < 4; tentativa += 1) {
+      await expect(
+        autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
+      ).rejects.toMatchObject({ codigo: 'CREDENCIAL_ILEGIVEL' })
+    }
+
+    expect(
+      await banco.eventoProcessamento.count({ where: { etapa: 'autenticacao', situacao: 'falha' } }),
+    ).toBe(1)
+  })
+
   it('hash ilegível na TROCA de senha também não gasta tentativa da pessoa', async () => {
     // A porta dos fundos do N-36, achada na revisão do PR #77: o ramo de hash
     // ilegível existia no login e faltava aqui. `reservarTentativa` já contou a

@@ -24,12 +24,26 @@ import type { Banco } from '../servidor/prisma'
 import { auditar } from './auditoria'
 
 /**
+ * Uma linha de trilha por credencial ilegível a cada hora, por pessoa.
+ *
+ * A trilha é append-only e não tem expurgo (invariantes 11 e 14): o que entra
+ * nela fica. O humano precisa saber que a credencial de alguém está ilegível —
+ * não precisa saber mil vezes, e quem martelasse a conta escreveria uma linha
+ * permanente por tentativa. Uma hora é curta o bastante para o aviso reaparecer
+ * enquanto o defeito durar, e longa o bastante para o flood não valer a pena.
+ */
+const JANELA_DO_AVISO_DE_CREDENCIAL_MS = 60 * 60 * 1000
+
+/**
  * Leva a credencial ilegível a um humano (achado N-36).
  *
  * Duas saídas de propósito: o log é para quem está olhando agora; o evento
  * fica no banco, é consultável depois e sobrevive ao reinício — que é o que
  * transforma "aconteceu com uma pessoa numa terça" em algo investigável. Nada
  * do hash entra em nenhum dos dois: só o id de quem não conseguiu entrar.
+ *
+ * O log sai sempre; só o EVENTO é limitado por janela. São coisas diferentes:
+ * o log é volátil e barato, a trilha é permanente.
  */
 async function avisarCredencialIlegivel(
   banco: Banco,
@@ -40,6 +54,18 @@ async function avisarCredencialIlegivel(
     colaboradorId,
     correlacaoId,
   })
+
+  const jaAvisado = await banco.eventoProcessamento.findFirst({
+    where: {
+      etapa: 'autenticacao',
+      situacao: 'falha',
+      referencia: colaboradorId,
+      criadoEm: { gte: new Date(Date.now() - JANELA_DO_AVISO_DE_CREDENCIAL_MS) },
+    },
+    select: { id: true },
+  })
+  if (jaAvisado) return
+
   await registrarEvento(banco, {
     correlacaoId,
     etapa: 'autenticacao',
@@ -182,6 +208,13 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
   // corrompido responderia mais rápido que o da senha errada e viraria um
   // oráculo a mais na tela de entrada.
   if (conferencia === 'hash_ilegivel') {
+    // Paga o mesmo custo de CPU do caminho normal. `conferirSenha` decide
+    // "ilegível" pelo FORMATO, antes do scrypt — sem isto, a conta com hash
+    // corrompido ficaria sem as duas defesas contra força bruta ao mesmo
+    // tempo: sem o custo de derivação (que é o que satura a vazão) e sem a
+    // trava por tentativas (que a linha seguinte devolve de propósito, porque
+    // o defeito é nosso). Achado da revisão de segurança do PR #77.
+    await gastarTempoDeConferencia()
     await zerarTentativas(banco, colaborador.id)
     await avisarCredencialIlegivel(banco, colaborador.id, correlacaoId)
     await esperarAtePisoDeEntrada(inicio)
@@ -284,6 +317,9 @@ export async function trocarSenha(
   // não pode virar só "sua senha está errada": a pessoa ficaria tentando
   // trocar uma senha que o sistema não consegue conferir.
   if (conferenciaDaAtual === 'hash_ilegivel') {
+    // Mesmo custo de CPU do caminho normal, pelo mesmo motivo do login: esta
+    // rota confere a senha atual, então também é superfície de adivinhação.
+    await gastarTempoDeConferencia()
     // Devolve a tentativa que `reservarTentativa` já contou: sem isto, cinco
     // tentativas de trocar a senha contra um hash corrompido trancam a conta
     // pelo mesmo defeito que o N-36 existe para eliminar — só que por esta
