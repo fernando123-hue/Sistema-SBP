@@ -52,7 +52,27 @@ async function principal(): Promise<void> {
   const somenteConferir = process.argv.includes('--conferir')
   const armazenamento = new ArmazenamentoEmDisco(raiz)
 
-  const chaves = await chavesDeAnexo(raiz).catch(() => [])
+  // ═══ PASTA ILEGÍVEL NÃO É "NENHUM ANEXO" (achado N-24) ═══
+  //
+  // Era `.catch(() => [])`. Permissão negada, caminho errado em
+  // `ARMAZENAMENTO_DIR`, disco desmontado — tudo virava lista vazia, e o
+  // comando respondia "0 anexo(s) no disco; 0 ainda em texto puro". A
+  // conferência que existe para dizer se os anexos estão cifrados passava a
+  // dizer "está tudo certo" exatamente quando não conseguia olhar.
+  //
+  // Pasta INEXISTENTE é resposta legítima (instalação nova, nenhum anexo
+  // recebido ainda) e continua valendo zero. Qualquer outra falha sobe.
+  const chaves = await chavesDeAnexo(raiz).catch((erro: unknown) => {
+    if (erro !== null && typeof erro === 'object' && (erro as { code?: unknown }).code === 'ENOENT') {
+      process.stdout.write(`A pasta de anexos ainda não existe: ${raiz}\n`)
+      return [] as string[]
+    }
+    throw new Error(
+      `Não foi possível ler a pasta de anexos (${raiz}): ` +
+        `${erro instanceof Error ? erro.message : String(erro)}. ` +
+        `Nada foi conferido — e "nada conferido" não é o mesmo que "nada a corrigir".`,
+    )
+  })
   const emTextoPuro: string[] = []
   for (const chave of chaves) {
     if (await estaEmTextoPuro(join(raiz, chave))) emTextoPuro.push(chave)

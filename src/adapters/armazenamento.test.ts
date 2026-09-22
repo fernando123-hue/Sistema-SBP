@@ -31,6 +31,34 @@ afterEach(async () => {
 })
 
 describe('armazenamento em disco', () => {
+  it('a chave gravada atravessa sistema operacional: separador POSIX, sempre', async () => {
+    // ═══ O QUE ESTE TESTE IMPEDE (achado N-25) ═══
+    //
+    // A chave era montada com `join`, que usa o separador do sistema. No
+    // Windows isso grava `ab\abcd.pdf` na coluna do banco. No dia em que a
+    // base migrar para um servidor Linux — o caminho previsto para a
+    // implantação —, essa chave não encontra arquivo nenhum: `ler` devolve
+    // "ausente" e o expurgo apaga o que já não acha, os dois em silêncio,
+    // porque arquivo ausente é resposta legítima aqui (pode ter sido
+    // expurgado pela retenção). O anexo continuaria no disco para sempre,
+    // sem referência, e ninguém saberia.
+    const chave = await armazenamento.guardar(PDF, '.pdf')
+
+    expect(chave).not.toContain('\\')
+    expect(chave).toMatch(/^[0-9a-f]{2}\/[0-9a-f]{32}\.pdf$/)
+  })
+
+  it('chave antiga com separador do Windows continua sendo lida', async () => {
+    // Compatibilidade com o que já foi gravado nesta máquina: quem leu antes
+    // tem de continuar lendo, senão a correção apaga o acesso ao passado.
+    const chave = await armazenamento.guardar(PDF, '.pdf')
+    const comoWindows = chave.replace('/', '\\')
+
+    const lido = await armazenamento.ler(comoWindows)
+    expect(lido).not.toBeNull()
+    expect(Array.from(lido!)).toEqual(Array.from(PDF))
+  })
+
   it('guarda e devolve os mesmos bytes', async () => {
     const chave = await armazenamento.guardar(PDF, '.pdf')
     const lido = await armazenamento.ler(chave)

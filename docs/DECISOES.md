@@ -882,6 +882,27 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 ---
 
+### AT-40 — Cadeia de suprimentos e o que fica no disco *(22/09/2026)*
+
+**O que motivou:** bloco B da rodada de auditoria (achados N-20 a N-25). O fio comum: coisas que só machucam **no dia da mudança** — uma action atualizada por baixo, uma migração de servidor, uma limpeza de rotina. Nenhuma delas aparece enquanto tudo fica parado.
+
+**Decisões tomadas:**
+
+- **Action fixada por SHA, com a versão em comentário (N-20).** Tag é ponteiro móvel: `@v7` aponta hoje para um commit e amanhã para outro, e quem move não somos nós. Vale em dobro para `gitleaks-action`, que é de terceiro e recebe o `GITHUB_TOKEN`.
+- **`persist-credentials: false` em todo checkout (N-20).** Nenhum job empurra nada, e o token escrito no `.git/config` do executor fica ao alcance de qualquer script de dependência.
+- **`npm ci --ignore-scripts` no job de auditoria (N-20).** Auditar dependência não exige executá-la. Sem isso, o job que existe para acusar a cadeia de suprimentos seria o primeiro a rodar o script de instalação de um pacote comprometido.
+- **Dependência sem uso sai (N-21).** `@prisma/adapter-better-sqlite3`: 12 MB de binário e um script de instalação, zero uso no código, herdado de quando o banco era SQLite.
+- **Histórico operacional não cascateia (N-22).** `Atribuicao`, `Execucao`, `JustificativaDeAtribuicao` e `Revisao` viraram `Restrict`. A cascata era teoria — o sistema nunca apaga item — até um `DELETE` chegar por fora. **Preço aceito:** quem limpa de verdade apaga os filhos na ordem certa, e a suíte precisou de uma linha a mais em `limparTudo`. É o preço certo: a ordem fica explícita onde alguém a lê.
+- **Os bytes saem antes das linhas (N-23).** `db:limpar` remove os arquivos dos anexos antes de apagar `Email`. Arquivo órfão no disco não é alcançado por retenção nenhuma: o expurgo só sabe apagar o que ainda está no banco.
+- **Pasta ilegível não é "nenhum anexo" (N-24).** `anexos:conferir` respondia "0 em texto puro" quando não conseguia ler a pasta — dizia "está tudo certo" exatamente quando não conseguia olhar. Pasta inexistente continua valendo zero; o resto sobe.
+- **A chave do anexo é POSIX, sempre (N-25).** Montada com `join`, ela saía com a barra invertida do Windows e ia para o banco assim. Numa migração para o servidor Linux — o caminho previsto — nenhuma dessas chaves acharia o arquivo, e como "ausente" é resposta legítima aqui (o anexo pode ter sido expurgado pela retenção), tanto a leitura quanto o expurgo falhariam calados. Chave antiga continua sendo aceita na leitura.
+
+**Impacto se estiverem erradas:** SHA fixo exige atualização deliberada das actions (é o ponto); `Restrict` faz uma limpeza escrita na ordem errada falhar alto em vez de apagar demais; a chave POSIX muda o formato do que é gravado de agora em diante, e o formato antigo continua legível.
+
+**Prova:** `historico-nao-cascateia.test.ts` (3, um deles conferindo a regra direto no `information_schema`), `armazenamento.test.ts` (21, dois novos sobre a chave), mais `npm run build` verde sem a dependência removida. **Status:** ⏳ adotado.
+
+---
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.

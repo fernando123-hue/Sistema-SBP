@@ -3,7 +3,7 @@ import type { NextConfig } from 'next'
 const config: NextConfig = {
   reactStrictMode: true,
   // O cliente Prisma não pode ser empacotado pelo bundler do servidor.
-  serverExternalPackages: ['@prisma/client', '@prisma/adapter-better-sqlite3'],
+  serverExternalPackages: ['@prisma/client'],
   poweredByHeader: false,
 
   async headers() {

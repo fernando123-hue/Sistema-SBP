@@ -8,6 +8,7 @@
  *   PERMITIR_LIMPEZA=sim npm run db:limpar
  */
 
+import { ArmazenamentoEmDisco } from '../src/adapters/armazenamento-disco'
 import { ambiente } from '../src/servidor/ambiente'
 import { obterPrisma } from '../src/servidor/prisma'
 
@@ -40,8 +41,29 @@ async function principal(): Promise<void> {
 
   const banco = obterPrisma()
 
+  // ═══ OS BYTES SAEM ANTES DAS LINHAS (achado N-23) ═══
+  //
+  // Apagar `Email` levava `Anexo` junto (cascata), mas os ARQUIVOS ficavam no
+  // disco — sem referência, fora de qualquer retenção, invisíveis para o
+  // expurgo, que só sabe apagar o que ainda está no banco. Rodar a demo
+  // algumas vezes ia empilhando anexos órfãos que ninguém mais conseguiria
+  // relacionar a nada.
+  //
+  // A chave sai do banco ENQUANTO ela ainda existe, e o arquivo é removido
+  // antes. Falha aqui derruba o comando: deixar bytes para trás em silêncio é
+  // o que esta correção existe para impedir.
+  const armazenamento = new ArmazenamentoEmDisco()
+  const comBytes = await banco.anexo.findMany({
+    where: { chaveArmazenamento: { not: null } },
+    select: { chaveArmazenamento: true },
+  })
+  for (const anexo of comBytes) {
+    if (anexo.chaveArmazenamento) await armazenamento.remover(anexo.chaveArmazenamento)
+  }
+
   // Ordem importa: filhos antes dos pais, para respeitar as chaves estrangeiras.
   const removidos = {
+    anexosNoDisco: comBytes.length,
     execucoes: (await banco.execucao.deleteMany()).count,
     atribuicoes: (await banco.atribuicao.deleteMany()).count,
     revisoes: (await banco.revisao.deleteMany()).count,
