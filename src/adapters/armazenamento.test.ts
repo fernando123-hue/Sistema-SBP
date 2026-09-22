@@ -48,6 +48,17 @@ describe('armazenamento em disco', () => {
     expect(chave).toMatch(/^[0-9a-f]{2}\/[0-9a-f]{32}\.pdf$/)
   })
 
+  it('travessia com separador do Windows também é barrada', async () => {
+    // A normalização de `\` para `/` (N-25) passa a aceitar uma forma a mais
+    // de chave — então a defesa de raiz precisa ser provada nessa forma
+    // também, e não só na de barra normal. A checagem acontece depois do
+    // `resolve`, sobre o caminho final, mas isso é raciocínio; aqui vira
+    // prova. Achado da revisão de segurança do PR #82.
+    for (const chave of ['..\\..\\etc\\passwd', 'ab\\..\\..\\..\\segredo.txt', '..\\..\\..\\windows\\system32']) {
+      await expect(armazenamento.ler(chave)).rejects.toThrow(/fora da raiz/)
+    }
+  })
+
   it('chave antiga com separador do Windows continua sendo lida', async () => {
     // Compatibilidade com o que já foi gravado nesta máquina: quem leu antes
     // tem de continuar lendo, senão a correção apaga o acesso ao passado.

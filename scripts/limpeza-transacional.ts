@@ -1,4 +1,5 @@
 import type { ArmazenamentoPort } from '../src/ports/armazenamento'
+import { ambiente } from '../src/servidor/ambiente'
 import type { Banco } from '../src/servidor/prisma'
 
 /**
@@ -54,6 +55,25 @@ export async function limparTransacional(
   banco: Banco,
   armazenamento: ArmazenamentoPort,
 ): Promise<LimpezaFeita> {
+  // ═══ A TRAVA MORA AQUI, E NÃO SÓ NO SCRIPT (revisão de segurança do #82) ═══
+  //
+  // Quando esta rotina virou função exportada, as duas travas ficaram para
+  // trás, no invólucro de linha de comando: a função em si apagava trilha de
+  // auditoria sem perguntar nada a ninguém. O que a protegia era morar em
+  // `scripts/` — convenção de pasta, não limite que alguém faça cumprir.
+  //
+  // Agora ela se recusa sozinha. Quem a chamar de onde não devia recebe erro,
+  // não uma base vazia.
+  if (ambiente().NODE_ENV === 'production') {
+    throw new Error('Recusado: a limpeza de dados transacionais não roda em produção.')
+  }
+  if (process.env['PERMITIR_LIMPEZA'] !== 'sim' && process.env['NODE_ENV'] !== 'test') {
+    throw new Error(
+      'Recusado: esta rotina APAGA itens, atribuições, saldos e a trilha de auditoria. ' +
+        'Exige PERMITIR_LIMPEZA=sim.',
+    )
+  }
+
   const comBytes = await banco.anexo.findMany({
     where: { chaveArmazenamento: { not: null } },
     select: { chaveArmazenamento: true },

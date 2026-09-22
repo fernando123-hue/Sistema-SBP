@@ -99,6 +99,34 @@ describe('a trilha é append-only', () => {
     ).toEqual([])
   })
 
+  it('nenhum código de produção importa de `scripts/`', () => {
+    // ═══ O QUE ESTE TESTE FECHA (revisão de segurança do PR #82) ═══
+    //
+    // A rotina que apaga a trilha mora em `scripts/`, e o argumento para isso
+    // era "de lá nenhum código de produção a alcança". Isso era convenção de
+    // pasta, não limite: nada impedia uma rota escrever
+    // `import { limparTransacional } from '../../../scripts/limpeza-transacional'`
+    // e deixar a trilha apagável por requisição HTTP. Agora impede.
+    //
+    // Teste pode importar de `scripts/` — é como se prova que a rotina REAL
+    // funciona, em vez de uma cópia escrita ao lado.
+    const arquivos = listarTs(RAIZ_SRC).filter((arquivo) => !/\.test\.tsx?$/.test(arquivo))
+    const violacoes = arquivos.flatMap((arquivo) => {
+      const fonte = readFileSync(arquivo, 'utf8')
+      const achados = [...fonte.matchAll(/from\s+'([^']*\/scripts\/[^']*)'/g)]
+      return achados.map((achado) => ({
+        arquivo: relative(RAIZ_PROJETO, arquivo),
+        chamada: achado[1] ?? '',
+      }))
+    })
+
+    expect(
+      violacoes,
+      '`scripts/` é ferramenta de linha de comando, e algumas delas apagam dado que o sistema promete nunca apagar. ' +
+        'Se a aplicação precisa do que existe lá, mova o que ela precisa para `src/` — e aí valem as regras de `src/`.',
+    ).toEqual([])
+  })
+
   it('detecta a chamada proibida que promete detectar', () => {
     // Sem isto, um erro na varredura devolveria lista vazia e o teste acima
     // ficaria verde para sempre sem guardar nada.
