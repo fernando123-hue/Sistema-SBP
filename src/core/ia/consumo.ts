@@ -97,9 +97,32 @@ export function impedimentoParaChamar(entrada: {
   //
   // CONTAGEM DESCONHECIDA NÃO IMPEDE (decisão do dono, 23/09/2026 — `AT-42`):
   // o teto protege a conta do mês; o banco fora protege nada e pararia o
-  // trabalho inteiro. Quem segura o estrago enquanto a contagem não volta é o
-  // disjuntor logo abaixo, que vive na memória e não depende do banco.
-  if (chamadasHoje !== null && limites.tetoDiarioDeChamadas > 0 && chamadasHoje >= limites.tetoDiarioDeChamadas) {
+  // trabalho inteiro.
+  //
+  // ENQUANTO A CONTAGEM NÃO VOLTA, NADA LIMITA O GASTO — e é preciso dizer
+  // isso aqui, onde alguém lê. O disjuntor abaixo NÃO cobre este caso: ele só
+  // conta falha de TRANSPORTE, e `aposChamada` zera a contagem a cada
+  // sucesso. Fornecedor saudável respondendo normalmente com a contagem
+  // ilegível = chamadas sem teto, e o disjuntor nunca abre. O que limita nesse
+  // intervalo é o orçamento do próprio fornecedor (achado MÉDIO da revisão
+  // técnica do PR #86; risco aceito e escrito em `AT-42`).
+  //
+  // ═══ ESTA GUARDA É CLAREZA, NÃO COMPORTAMENTO — e é honesto dizer ═══
+  //
+  // `null >= 500` já é `false` em JavaScript (o `null` é coagido a zero), e
+  // `undefined >= 500` também. Ou seja: sem guarda nenhuma, o resultado seria
+  // o mesmo. O que ela compra é impedir que uma edição futura — um `?? 0`, um
+  // `Number(...)` — transforme "não sei" em "nenhuma chamada hoje" sem que
+  // ninguém perceba, que é exatamente a armadilha do `IA_TETO_DIARIO` vazio do
+  // `AT-38`. `typeof === 'number'` em vez de `!== null` pela mesma razão: pega
+  // `undefined` junto. A correção de COMPORTAMENTO deste PR está no adapter,
+  // não aqui (achado MÉDIO da revisão técnica do PR #86: o "teste visto
+  // vermelho" original alegava o contrário para estes dois casos).
+  if (
+    typeof chamadasHoje === 'number' &&
+    limites.tetoDiarioDeChamadas > 0 &&
+    chamadasHoje >= limites.tetoDiarioDeChamadas
+  ) {
     return {
       motivo: 'teto_diario',
       mensagem:

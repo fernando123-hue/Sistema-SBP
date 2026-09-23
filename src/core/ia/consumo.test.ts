@@ -54,17 +54,25 @@ describe('teto diário de chamadas', () => {
     expect(impedimento({ chamadasHoje: 9_999, limites: { ...LIMITES, tetoDiarioDeChamadas: 0 } })).toBeNull()
   })
 
-  it('contagem desconhecida não impede: banco fora não é conta estourada (`AT-42`)', () => {
-    // `null` chega quando a leitura da contagem falhou. Impedir aqui deixaria
-    // o sistema inteiro sem IA por causa de uma oscilação do banco — e foi
-    // exatamente o que aconteceu ao rodar o gabarito com o MySQL fora.
+  /**
+   * TRAVAS DE REGRESSÃO, não prova de correção — e a diferença importa.
+   *
+   * A revisão técnica do PR #86 mediu e mostrou: estes dois casos já passavam
+   * ANTES da guarda, porque `null >= 10` é `false` em JavaScript. Chamá-los de
+   * "teste visto vermelho" seria afirmação falsa, e este projeto trata
+   * comentário que mente como defeito.
+   *
+   * O que eles seguram é o futuro: no dia em que alguém escrever
+   * `chamadasHoje ?? 0` ou `Number(chamadasHoje)`, "não foi possível contar"
+   * viraria "nenhuma chamada hoje" e o teto nasceria desligado em silêncio —
+   * a armadilha do `IA_TETO_DIARIO` vazio do `AT-38`, de novo. Aí eles ficam
+   * vermelhos. A correção de comportamento deste PR está no adapter.
+   */
+  it('contagem desconhecida não impede pelo teto (`AT-42`)', () => {
     expect(impedimento({ chamadasHoje: null })).toBeNull()
   })
 
-  it('contagem desconhecida NÃO é zero: o disjuntor continua valendo', () => {
-    // A decisão do dono foi "não impedir pelo teto", não "liberar tudo". O
-    // disjuntor mora na memória e não depende do banco, então ele é o que
-    // segura o estrago enquanto a contagem não volta.
+  it('contagem desconhecida não atropela o disjuntor: quem está aberto continua aberto', () => {
     const estado: EstadoDoDisjuntor = { falhasSeguidas: 3, abertoAte: new Date('2026-09-18T14:05:00.000Z') }
     expect(impedimento({ estado, chamadasHoje: null })?.motivo).toBe('disjuntor_aberto')
   })
