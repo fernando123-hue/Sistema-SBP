@@ -47,3 +47,8 @@ Thumbs.db
 
 # Revisões geradas por agente durante a sessão: material de trabalho, não do repositório.
 .claude/reviews/
+
+# Worktrees isolados que um agente cria para revisar ou investigar em paralelo
+# sem tocar o diretório de trabalho principal: material de sessão, mesma razão
+# de `.claude/reviews/` acima.
+.claude/worktrees/
