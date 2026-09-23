@@ -35,7 +35,7 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 | C-08 | MÉDIO | `src/servicos/autenticacao.ts:275` | Com uma sessão de gestor roubada ou deixada aberta, o atacante toma a conta de forma permanente e tranca o gestor legítimo para fora | |
 | C-09 | MÉDIO | `src/servicos/autenticacao.ts:85` | A trava por conta pode ser furada disparando tentativas em paralelo | |
 | C-10 | MÉDIO | `src/servicos/fila.ts:139` | Concluir, devolver e transferir o mesmo item em paralelo passam sem trava | |
-| C-11 | MÉDIO | `src/servicos/ingestao.ts:277` | E-mail que falha na interpretação é reinterpretado, e pago, em toda sincronização, sem contador nem limite | |
+| C-11 | MÉDIO | `src/servicos/ingestao.ts:277` | E-mail que falha na interpretação é reinterpretado, e pago, em toda sincronização, sem contador nem limite | **Corrigido** (PR #83, `§ AT-41`): mesma correção do N-13 — desiste depois de 3 tentativas, marca como tratado |
 | C-12 | MÉDIO | `src/servidor/ambiente.ts:323` | 'Produção' é detectada só por NODE_ENV, e a trava de rede do acesso sem senha é toda escrita pelo cliente | **Corrigido** (17/09): acesso sem senha, `unsafe-eval` e cookie sem `Secure` só com `NODE_ENV=development`; a variável é recusada fora de desenvolvimento e quando escrita num `.env*`. Resíduo: `X-Forwarded-For` escrito pelo cliente continua indistinguível (o `dev:local` só escuta em 127.0.0.1). A trava de segredo público do N-18 ainda usa `NODE_ENV=production` |
 | C-13 | MÉDIO | `src/servidor/http.ts:318` | Nenhuma rota autenticada confere origem; SameSite=Lax não cobre origem do mesmo site | |
 | C-14 | MÉDIO | `src/servidor/http.ts:235` | Com PROXIES_CONFIAVEIS=1, o cliente escolhe a própria chave do limite por origem | |
@@ -58,30 +58,30 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 | ID | Severidade (do auditor) | Local | Achado | Destino |
 |---|---|---|---|---|
 | N-01 | ALTO | `src/testes/preparar-banco.ts:45` | A suíte de testes apaga e recria QUALQUER base que estiver em DATABASE_URL, sem conferir se é a base de teste | **Confirmado** (leitura do código, 17/09) e **corrigido**: branch `fix/n01-suite-so-apaga-base-de-teste` — a suíte recusa base cujo nome não termina em `_teste` |
-| N-02 | MÉDIO | `src/adapters/ingestao-graph.ts:330` | Anexo do Graph que não é arquivo (e-mail encaminhado como anexo, link do OneDrive) é descartado sem metadado, recusa ou log | |
+| N-02 | MÉDIO | `src/adapters/ingestao-graph.ts:330` | Anexo do Graph que não é arquivo (e-mail encaminhado como anexo, link do OneDrive) é descartado sem metadado, recusa ou log | **Corrigido** (PR #62): vira recusa com motivo, sem ser baixado |
 | N-03 | MÉDIO | `src/app/caixa/page.tsx:573` | Caixa no celular esconde o remetente, a liga e o aviso de "texto apagado pelo prazo, original no Outlook" | |
 | N-04 | MÉDIO | `src/app/fila/page.tsx:225` | "Concluir" na Minha fila: um toque, sem confirmação e sem desfazer, com botão de 36 px no celular | |
 | N-05 | MÉDIO | `src/app/fila/page.tsx:276` | Lista "Transferir para" inclui a própria pessoa e quem está afastado, e transferir para si mesma some com o item da tela sem aviso | |
 | N-06 | MÉDIO | `src/app/painel/page.tsx:489` | Painel "Por pessoa" ignora o período escolhido e não avisa | |
 | N-07 | MÉDIO | `src/servicos/autenticacao.ts:409` | A trava do último gestor ativo não segura no MySQL: dois gestores podem desativar um ao outro ao mesmo tempo | |
-| N-08 | MÉDIO | `src/servicos/autenticacao.ts:288` | Redefinição e troca de senha e destravamento gravam o fato e a trilha em escritas separadas; falha entre as duas deixa a mudança sem registro | |
-| N-09 | MÉDIO | `src/servicos/distribuicao.ts:399` | No InnoDB, a TravaDeDistribuicao serializa a escrita mas não a leitura: a segunda confirmação pode calcular com crédito antigo | |
+| N-08 | MÉDIO | `src/servicos/autenticacao.ts:288` | Redefinição e troca de senha e destravamento gravam o fato e a trilha em escritas separadas; falha entre as duas deixa a mudança sem registro | **Corrigido** (PR #77, `§ AT-39`): fato e trilha na mesma transação |
+| N-09 | MÉDIO | `src/servicos/distribuicao.ts:399` | No InnoDB, a TravaDeDistribuicao serializa a escrita mas não a leitura: a segunda confirmação pode calcular com crédito antigo | **Corrigido** (PR #77, `§ AT-39`): `INSERT ... ON DUPLICATE KEY UPDATE` (`tomarTravaDoDia`), medido contra o defeito real |
 | N-10 | MÉDIO | `src/servicos/fila.ts:332` | Item concluído pode voltar ao pool e ser distribuído de novo quando concluir e devolver (ou desativar o acesso) acontecem ao mesmo tempo | **Confirmado e corrigido** (17/09) junto com o C-10: `definirAtivacao` lê e trava os itens abertos antes de tudo, e as transições repetem em impasse |
-| N-11 | MÉDIO | `src/servicos/fila.ts:49` | Operações sensíveis sem nenhum teste negativo de papel: fila de outra pessoa, confirmar/prévia, resolver/aprovar revisão, habilitação | |
+| N-11 | MÉDIO | `src/servicos/fila.ts:49` | Operações sensíveis sem nenhum teste negativo de papel: fila de outra pessoa, confirmar/prévia, resolver/aprovar revisão, habilitação | **Corrigido** (PR #77, `§ AT-39`): `permissoes.test.ts`, 12 operações cobertas |
 | N-12 | MÉDIO | `src/servicos/ingestao.ts:559` | Conteúdo externo cria Liga sem limite, o índice único de Liga não protege nada e toda ingestão lê a tabela inteira de ligas | |
-| N-13 | MÉDIO | `src/servicos/ingestao.ts:212` | E-mail que a IA nunca consegue estruturar nunca chega a um humano e é cobrado de novo a cada sincronização | |
+| N-13 | MÉDIO | `src/servicos/ingestao.ts:212` | E-mail que a IA nunca consegue estruturar nunca chega a um humano e é cobrado de novo a cada sincronização | **Corrigido** (PR #83, `§ AT-41`): desiste depois de 3 tentativas, marca como tratado e mostra contador em `/distribuicao` |
 | N-14 | MÉDIO | `src/servicos/ingestao.ts:76` | A sincronização nunca informa 'desde': com mais de 200 mensagens na Inbox, toda busca pelo Graph falha para sempre | |
-| N-15 | MÉDIO | `src/servicos/revogacao-e-tempo.test.ts:123` | Os testes de revogação de sessão não chamam perfilAtual: apagar a conferência em sessao.ts deixa a suíte verde | |
+| N-15 | MÉDIO | `src/servicos/revogacao-e-tempo.test.ts:123` | Os testes de revogação de sessão não chamam perfilAtual: apagar a conferência em sessao.ts deixa a suíte verde | **Corrigido** (PR #77, `§ AT-39`): testes passam a chamar a função real, não comparar datas |
 | N-16 | MÉDIO | `src/servicos/rotinas.ts:133` | Uma única linha de Afastamento com tipo inválido suspende toda a limpeza diária (motivos, e-mails, dados de item, contagem), e a falha gravada diz só 'Error' | |
 | N-17 | MÉDIO | `src/servidor/ambiente.ts:26` | Ingestão e IA simuladas são o padrão também com NODE_ENV=production | |
 | N-18 | MÉDIO | `src/servidor/ambiente.ts:61` | SESSAO_SECRET e BUSCA_SECRET aceitam qualquer texto com 16 caracteres, inclusive os valores públicos do CI e do vitest, e produção não tem nenhuma checagem de entropia | |
-| N-19 | MÉDIO | `src/servidor/prisma.ts:24` | Trilha append-only e menor privilégio existem só por convenção: a aplicação conecta como root e nada no banco impede UPDATE/DELETE em LogAuditoria | |
-| N-20 | BAIXO | `.github/workflows/ci.yml:141` | Actions fixadas por tag mutável (inclusive a de terceiro gitleaks/gitleaks-action@v3, que recebe o GITHUB_TOKEN), checkout com credencial persistida e `npm ci` com scripts de instalação no job que só audita | |
-| N-21 | BAIXO | `package.json:42` | @prisma/adapter-better-sqlite3 continua em `dependencies` sem uso e arrasta 40 pacotes transitivos, entre eles um script de instalação que baixa um binário fora do lockfile | |
-| N-22 | BAIXO | `prisma/schema.prisma:485` | Chaves estrangeiras que apagariam ou desligariam histórico se um DELETE chegar ao banco | |
-| N-23 | BAIXO | `scripts/limpar-transacional.ts:51` | db:limpar apaga Email (e Anexo em cascata) mas deixa os arquivos de anexo no disco, sem referência e fora de qualquer retenção | |
-| N-24 | BAIXO | `scripts/recifrar-anexos.ts:55` | 'anexos:conferir' responde '0 em texto puro' quando não consegue ler a pasta | |
-| N-25 | BAIXO | `src/adapters/armazenamento-disco.ts:416` | A chave do anexo usa o separador do sistema operacional, e numa migração Windows→Linux o expurgo 'apaga' o que não existe | |
+| N-19 | MÉDIO | `src/servidor/prisma.ts:24` | Trilha append-only e menor privilégio existem só por convenção: a aplicação conecta como root e nada no banco impede UPDATE/DELETE em LogAuditoria | **Corrigido** (PR #77, `§ AT-39`): varredura de código + TRIGGER no MySQL recusam UPDATE; `npm run db:privilegios` confere o privilégio mínimo |
+| N-20 | BAIXO | `.github/workflows/ci.yml:141` | Actions fixadas por tag mutável (inclusive a de terceiro gitleaks/gitleaks-action@v3, que recebe o GITHUB_TOKEN), checkout com credencial persistida e `npm ci` com scripts de instalação no job que só audita | **Corrigido** (PR #82, `§ AT-40`): actions por SHA, `persist-credentials: false`, `--ignore-scripts` |
+| N-21 | BAIXO | `package.json:42` | @prisma/adapter-better-sqlite3 continua em `dependencies` sem uso e arrasta 40 pacotes transitivos, entre eles um script de instalação que baixa um binário fora do lockfile | **Corrigido** (PR #82, `§ AT-40`): dependência removida |
+| N-22 | BAIXO | `prisma/schema.prisma:485` | Chaves estrangeiras que apagariam ou desligariam histórico se um DELETE chegar ao banco | **Corrigido** (PR #82, `§ AT-40`): `Atribuicao`, `Execucao`, `JustificativaDeAtribuicao`, `Revisao` viraram `Restrict` |
+| N-23 | BAIXO | `scripts/limpar-transacional.ts:51` | db:limpar apaga Email (e Anexo em cascata) mas deixa os arquivos de anexo no disco, sem referência e fora de qualquer retenção | **Corrigido** (PR #82, `§ AT-40`): bytes removidos antes das linhas |
+| N-24 | BAIXO | `scripts/recifrar-anexos.ts:55` | 'anexos:conferir' responde '0 em texto puro' quando não consegue ler a pasta | **Corrigido** (PR #82, `§ AT-40`): pasta ilegível não é mais contada como "nenhum anexo" |
+| N-25 | BAIXO | `src/adapters/armazenamento-disco.ts:416` | A chave do anexo usa o separador do sistema operacional, e numa migração Windows→Linux o expurgo 'apaga' o que não existe | **Corrigido** (PR #82, `§ AT-40`): chave sempre POSIX; a antiga continua legível |
 | N-26 | BAIXO | `src/adapters/ingestao-graph.ts:121` | Remetente vem do cabeçalho From sem nenhum sinal de autenticação, e a tela o mostra como fato | |
 | N-27 | BAIXO | `src/adapters/ingestao-graph.ts:151` | O teto do anexo decide pelo tamanho declarado e não evita baixar os bytes grandes | |
 | N-28 | BAIXO | `src/app/acesso/page.tsx:133` | Mensagens em inglês, com ids internos e com notas de desenvolvimento na tela | |
@@ -92,7 +92,7 @@ Etapa 1 da rodada de segurança e qualidade (`DECISOES.md § A49`), método em `
 | N-33 | BAIXO | `src/servicos/distribuicao.ts:835` | Distribuição concorrente com a desativação de uma pessoa pode entregar itens a quem acabou de ser desligado, e eles ficam invisíveis | |
 | N-34 | BAIXO | `src/servicos/revisao.ts:110` | A fila de revisão carrega o corpo inteiro (LongText) de até 100 e-mails a cada abertura e não usa | |
 | N-35 | BAIXO | `src/servicos/revisao.ts:174` | Payload ilegível vira padrão vazio na revisão e é sobrescrito, apagando campos da IA e liga mencionada sem log | |
-| N-36 | BAIXO | `src/servidor/credenciais.ts:115` | Hash de senha corrompido é tratado como 'senha errada' em silêncio e acaba bloqueando a conta | |
+| N-36 | BAIXO | `src/servidor/credenciais.ts:115` | Hash de senha corrompido é tratado como 'senha errada' em silêncio e acaba bloqueando a conta | **Corrigido** (PR #77, `§ AT-39`): `conferirSenha` distingue `hash_ilegivel`, não gasta tentativa nem tranca a conta |
 | N-37 | BAIXO | `src/servidor/limite-de-taxa.ts:46` | O teto de chaves do limitador não limita: com mais de 1000 janelas ativas o mapa cresce sem fim, e não há teste | |
 | N-38 | INFORMATIVO | `src/adapters/ingestao-graph.ts:176` | O token de aplicativo `.default` alcança toda caixa que a permissão permitir, e o código não tem como limitar | |
 | N-39 | INFORMATIVO | `src/app/api/painel/route.ts:33` | Colaborador recebe números da equipe inteira por categoria, a qualidade da IA e a contagem de itens por liga | |
