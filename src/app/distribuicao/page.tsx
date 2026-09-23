@@ -272,7 +272,11 @@ export default function Distribuicao() {
       {ingestao ? (
         <Aviso
           tom={
-            ingestao.falhas > 0 || ingestao.emailsSemItem > 0 || ingestao.naoLidas > 0 || ingestao.repetidas > 0
+            ingestao.falhas > 0 ||
+            ingestao.emailsSemItem > 0 ||
+            ingestao.naoLidas > 0 ||
+            ingestao.repetidas > 0 ||
+            ingestao.naoInterpretados > 0
               ? "atencao"
               : "ok"
           }
@@ -303,6 +307,15 @@ export default function Distribuicao() {
             <>
               {' · '}
               <strong>{ingestao.repetidas} parecem repetir um e-mail já lido — confira no Outlook</strong>
+            </>
+          ) : null}
+          {ingestao.naoInterpretados > 0 ? (
+            <>
+              {' · '}
+              <strong>
+                {ingestao.naoInterpretados} não puderam ser entendidos pela IA depois de várias tentativas — abra-os
+                direto no Outlook
+              </strong>
             </>
           ) : null}
         </Aviso>

@@ -1,10 +1,25 @@
 # Estado do projeto — retomada
 
-Última atualização: **17/09/2026, noite (depois do `/clear`)** — `main` em `88eb390`, com o **PR #75 mesclado** (teto diário, disjuntor e registro de uso da IA; as duas revisões por agente publicadas e todos os achados corrigidos). Suíte: **102 arquivos, 1171 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir). **Próximo: C-11/N-13** — contar tentativas por e-mail, para o e-mail que a IA nunca estrutura parar de ser pago a cada sincronização.
+Última atualização: **23/09/2026** — `main` em `3480d34` (PR #82 mesclado). Suíte: **106 arquivos, 1209 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 17/09/2026, noite — PR #75 MESCLADO (`88eb390`); o próximo é C-11/N-13
+> ### 23/09/2026 — este arquivo estava desatualizado desde o PR #76; **C-11/N-13 corrigido** (branch aberta, PR ainda não)
+>
+> **Este bloco existe porque o arquivo mentia.** A sessão anterior mesclou o **PR #77** (N-08, N-09, N-11, N-15, N-19, N-36 — `DECISOES.md § AT-39`) e o **PR #82** (N-20 a N-25, cadeia de suprimentos — `§ AT-40`) sem nunca atualizar este arquivo — o dono perdeu o acesso ao computador dela no meio do trabalho (`fase-1/privacidade-e-prazos` era a fonte, `fix/auditoria-conteudo-externo` o branch de saída registrado na sessão, que **nunca chegou a ser enviado ao GitHub** — não há nada para recuperar dele, e o nome não corresponde a nenhum PR real). Se este arquivo disser uma coisa e o `git log --oneline -20` disser outra, **o `git log` vence**; foi exatamente isso que aconteceu aqui.
+>
+> **1. Corrigido nesta sessão: C-11/N-13** — e-mail que a IA nunca consegue estruturar. Antes: `reprocessavel` para sempre, pago a cada sincronização, e depois de 7 dias (`JANELA_DE_RELEITURA_DIAS`) sumia sem que ninguém tivesse visto. Agora: desiste depois de **3** tentativas (hipótese, `§ C`, pergunta no `§ H.4` item 32), marca o e-mail como tratado — não cobra mais — e mostra um contador novo em `/distribuicao` (`ingestao.naoInterpretados`, mesmo padrão de `naoLidas`/`repetidas`: "abra-os direto no Outlook"). Teste visto vermelho antes: `pipeline.test.ts`, descrição *"e-mail que a IA nunca consegue estruturar (C-11/N-13)"`. `npm run verificar`: 106 arquivos, **1209** testes. Visto rodando em `sbp-local` com o adapter mock (que nunca falha, então não força `naoInterpretados > 0`, mas prova que a tela não quebrou). Detalhe em `DECISOES.md § AT-41`.
+>
+> **2. Falta antes de considerar isto pronto:**
+> - **Abrir o PR** (nível 2 — toca `src/servicos/` e `src/core/`): precisa de **revisão técnica por um agente diferente do autor**, publicada no PR e linkada no corpo (`docs/PROCESSO.md`). Ainda não foi pedida nesta sessão.
+> - **Preencher a pergunta 32 do `§ H.4`** com o dono quando ele voltar: o número `3` é hipótese, e se "aparecer como contador na tela" resolve `mandar a uma pessoa` ou se o volume real vai pedir uma fila própria.
+> - Nada mais ficou pendente do #77/#82 — os dois foram conferidos linha a linha contra `DECISOES.md § AT-39` e `§ AT-40` antes deste bloco ser escrito.
+>
+> **3. Fila depois disto**, na mesma ordem de prioridade de antes (nada mudou aqui, só a numeração dos PRs à frente): médios confirmados ainda abertos — **C-05** (máscara de CPF de `A52`, medir com o gabarito antes), **C-07** (e-mail encaminhado como anexo / anexo-link do OneDrive somem sem registro), **C-08, C-09** (força bruta/sessão de gestor), **C-13/C-17** parcial (ver `§ AT-39` sobre o que já fechou); baixos e informativos confirmados (C-15…C-27, exceto os já fechados: C-10, C-12, C-22, C-23) e os `N-` ainda sem verificação (a lista completa está em `docs/auditoria/2026-09-17-achados-da-auditoria-por-agentes.md` — a coluna "Destino" também está atrasada: N-02, N-08, N-09, N-11, N-15, N-19, N-20 a N-25 e N-36 já foram corrigidos e a coluna ainda está vazia para eles; atualizá-la é trabalho de documentação puro, sem risco, bom para uma sessão curta).
+>
+> **4. Ambiente desta sessão (container efêmero, sem MySQL pronto):** não havia Docker utilizável (`dockerd` não sobe no sandbox) nem MySQL instalado. Resolvido com `apt-get install -y mysql-server` (ficou a versão `8.0.46`, não a `8.4` do CI, mas mesma família e mesma colação `utf8mb4_0900_as_cs`), `mysqld --user=mysql` em segundo plano, e `CREATE USER 'root'@'127.0.0.1'`/`'root'@'%'` com `mysql_native_password` e senha vazia — o pacote do Debian só libera root por socket (`auth_socket`), e a suíte precisa de TCP. `.env` local criado com os mesmos valores públicos do `ci.yml` (`SESSAO_SECRET`/`BUSCA_SECRET` sintéticos). Nada disto sobrevive ao fim do container; a próxima sessão remota provavelmente precisa repetir estes passos — vale considerar um script de setup se isto se repetir toda vez (`environment.setup_script`, fora do escopo desta sessão).
+>
+> ### 17/09/2026, noite — PR #75 MESCLADO (`88eb390`); o próximo é C-11/N-13 *(bloco antigo, mantido como registro — o "próximo" dele não foi seguido à risca: as sessões seguintes fizeram #77 e #82 antes)*
 >
 > **Comece por aqui:** o trabalho seguinte é **C-11/N-13** — hoje um e-mail que a IA nunca consegue estruturar fica `reprocessavel` para sempre e é pago de novo a cada sincronização; falha de forma não abre o disjuntor, então nada o contém por item. Falta contar tentativas por e-mail e, depois de K falhas, mandá-lo a uma pessoa. A revisão de segurança do #75 reforçou a prioridade (achado A1 lá).
 >

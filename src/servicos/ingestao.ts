@@ -1,6 +1,7 @@
 import {
   EmailBrutoSchema,
   TAMANHO_MAXIMO_ANEXO_BYTES,
+  TAMANHO_MAXIMO_CORPO,
   serializar,
   type EmailBruto,
   type Interpretacao,
@@ -9,7 +10,7 @@ import {
 import { CategoriaDesconhecidaError, ErroOperacional } from '../core/erros'
 import { chaveDaLiga } from '../core/ligas'
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
-import { validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
+import { prepararConteudoExterno, validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
 import type { ResumoIngestao } from '../core/tipos'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import { InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
@@ -65,8 +66,58 @@ export interface DependenciasIngestao {
  */
 export const JANELA_DE_RELEITURA_DIAS = 7
 
+/**
+ * Quantas vezes tentar interpretar o mesmo e-mail antes de desistir (achado
+ * C-11/N-13).
+ *
+ * A janela acima já garantia que a falha fosse tentada de novo — mas sem teto
+ * por e-mail, cada sincronização dentro da janela pagava a MESMA chamada de
+ * IA pela mesma mensagem, e depois da janela ela desaparecia da leitura sem
+ * que ninguém tivesse visto: nem a cobrança parava, nem uma pessoa chegava a
+ * saber. `ia-estruturada.ts` já tenta corrigir o formato uma vez sozinha
+ * (`FalhaDeInterpretacao` só sai depois disso); três sincronizações são três
+ * chances além dessa, e desistir cedo é o que impede a planilha de continuar
+ * cobrando por um e-mail que ela nunca vai conseguir ler.
+ *
+ * Hipótese provisória, não confirmada pelo dono — `DECISOES.md § C` e a
+ * pergunta em `§ H.4`.
+ */
+export const TENTATIVAS_MAXIMAS_DE_INTERPRETACAO = 3
+
 /** `IN` com milhares de valores pesa no MySQL; a janela cabe folgada em lotes. */
 const LOTE_DE_CONSULTA = 500
+
+/**
+ * Quantas vezes cada e-mail já falhou em sincronizações anteriores.
+ *
+ * Uma consulta agrupada para o lote inteiro, não uma por e-mail — mesma razão
+ * de `consultaDeProcessados` logo abaixo: um `IN` por mensagem seguraria a
+ * leitura em centenas de idas ao banco à toa.
+ */
+async function contarTentativasAnteriores(
+  banco: Banco,
+  messageIds: readonly string[],
+): Promise<ReadonlyMap<string, number>> {
+  if (messageIds.length === 0) return new Map()
+
+  const achados: (readonly [string, number])[] = []
+  for (let inicio = 0; inicio < messageIds.length; inicio += LOTE_DE_CONSULTA) {
+    const linhas = await banco.eventoProcessamento.groupBy({
+      by: ['referencia'],
+      where: {
+        etapa: 'ingestao',
+        situacao: 'reprocessavel',
+        referencia: { in: messageIds.slice(inicio, inicio + LOTE_DE_CONSULTA) as string[] },
+      },
+      _count: { _all: true },
+    })
+
+    for (const linha of linhas) {
+      if (linha.referencia !== null) achados.push([linha.referencia, linha._count._all])
+    }
+  }
+  return new Map(achados)
+}
 
 function consultaDeProcessados(banco: Banco) {
   return async (messageIds: string[]): Promise<ReadonlyMap<string, Date>> => {
@@ -188,6 +239,7 @@ export async function sincronizar(
     anexosRejeitados: 0,
     naoLidas: 0,
     repetidas: 0,
+    naoInterpretados: 0,
   }
 
   const avisos: AvisoDaBusca[] = []
@@ -199,6 +251,12 @@ export async function sincronizar(
   })
   resumo.recebidos = brutos.length
   resumo.naoLidas = await registrarAvisos(deps.banco, correlacaoId, avisos, colisoes)
+  const tentativas = await contarTentativasAnteriores(
+    deps.banco,
+    brutos
+      .map((candidato) => (candidato as { messageId?: unknown }).messageId)
+      .filter((messageId): messageId is string => typeof messageId === 'string'),
+  )
 
   await registrarEvento(deps.banco, {
     correlacaoId,
@@ -253,7 +311,8 @@ export async function sincronizar(
         continue
       }
 
-      const resultado = await processarUm(deps, email, correlacaoId, usuario)
+      const tentativasDoEmail = tentativas.get(email.messageId) ?? 0
+      const resultado = await processarUm(deps, email, correlacaoId, usuario, tentativasDoEmail)
 
       // A checagem de existência acima é só economia de chamada de IA. Duas
       // sincronizações concorrentes podem passar por ela antes de qualquer uma
@@ -269,6 +328,32 @@ export async function sincronizar(
       resumo.itensAprovados += resultado.aprovados
       resumo.itensParaRevisao += resultado.paraRevisao
       resumo.anexosRejeitados += resultado.anexosRejeitados
+
+      // Desistiu depois de `TENTATIVAS_MAXIMAS_DE_INTERPRETACAO` falhas — a IA
+      // nem foi chamada nesta execução (achado C-11/N-13). O e-mail já está
+      // marcado como processado: daqui em diante `jaExiste?.processadoEm`
+      // barra qualquer nova tentativa, e é isto que zera a cobrança. Vem ANTES
+      // do `emailsSemItem` de propósito: são desfechos diferentes por motivos
+      // diferentes, e a tela precisa dizer qual é qual.
+      if (resultado.naoInterpretado) {
+        resumo.naoInterpretados += 1
+        registrarLog('erro', 'e-mail não interpretado depois de tentativas repetidas — marcado como tratado', {
+          correlacaoId,
+          messageId: email.messageId,
+          tentativas: tentativasDoEmail,
+        })
+        await registrarEvento(deps.banco, {
+          correlacaoId,
+          etapa: 'ingestao',
+          situacao: 'falha',
+          referencia: email.messageId,
+          mensagem:
+            `depois de ${TENTATIVAS_MAXIMAS_DE_INTERPRETACAO} tentativas a IA não conseguiu estruturar este ` +
+            `e-mail — marcado como tratado, sem cobrar de novo; abra-o direto no Outlook`,
+          detalhe: { conteudoSuspeito: resultado.conteudoSuspeito },
+        })
+        continue
+      }
 
       // E-mail que entrou e não virou trabalho nenhum.
       //
@@ -384,6 +469,13 @@ interface ResultadoDeUm {
    * genérico, indistinguíveis para quem fosse investigar depois.
    */
   conteudoSuspeito: boolean
+  /**
+   * Desistiu de interpretar este e-mail sem chamar a IA nesta execução —
+   * achado C-11/N-13. `criados` vem sempre zero junto, mas o motivo é outro:
+   * não é "a IA leu e não achou trabalho", é "depois de
+   * `TENTATIVAS_MAXIMAS_DE_INTERPRETACAO` falhas, paramos de tentar".
+   */
+  naoInterpretado: boolean
 }
 
 /** `P2002` é o código do Prisma para violação de constraint única. */
@@ -402,10 +494,20 @@ async function processarUm(
   email: EmailBruto,
   correlacaoId: string,
   usuario: string,
+  tentativasAnteriores: number,
 ): Promise<ResultadoDeUm | null> {
+  // Depois do teto, a IA nem é chamada: é exatamente o que zera a cobrança do
+  // achado C-11/N-13. A análise LOCAL (sem rede, sem custo) ainda roda — ela
+  // não decide nada sozinha, só ajuda quem for abrir o e-mail no Outlook a
+  // saber se vale desconfiar antes de ler.
+  const desistir = tentativasAnteriores >= TENTATIVAS_MAXIMAS_DE_INTERPRETACAO
+
   // A interpretação roda FORA da transação: chamada de modelo é lenta e não
   // deve segurar lock de banco. Se falhar, nada foi gravado.
-  const interpretacao = await deps.ia.interpretar(email)
+  const interpretacao: Interpretacao | null = desistir ? null : await deps.ia.interpretar(email)
+  const suspeitoLocal = desistir
+    ? prepararConteudoExterno(`${email.assunto}\n${email.corpo}`, TAMANHO_MAXIMO_CORPO).analise.suspeito
+    : false
 
   const anexosAvaliados = await Promise.all(
     email.anexos.map(async (anexo) => {
@@ -501,6 +603,10 @@ async function processarUm(
       })
       if (jaProcessado?.processadoEm) return null
 
+      // Sem interpretação (desistiu), o suspeito vem só da análise local; com
+      // interpretação, o sinal duplo de sempre (regex OU modelo).
+      const conteudoSuspeito = interpretacao ? interpretacao.conteudoSuspeito : suspeitoLocal
+
       // Metadado e conteúdo nascem juntos, mas em linhas separadas: é o que
       // permite, depois, expurgar o conteúdo pela retenção sem levar junto o
       // histórico operacional que sustenta métrica, auditoria e conservação.
@@ -510,10 +616,10 @@ async function processarUm(
           messageId: email.messageId,
           origem: email.origem,
           recebidoEm: email.recebidoEm,
-          modeloIa: interpretacao.modelo,
-          versaoPrompt: interpretacao.versaoPrompt,
+          modeloIa: interpretacao?.modelo ?? null,
+          versaoPrompt: interpretacao?.versaoPrompt ?? null,
           processadoEm: new Date(),
-          conteudoSuspeito: interpretacao.conteudoSuspeito,
+          conteudoSuspeito,
           conteudo: {
             create: {
               remetente: email.remetente,
@@ -534,16 +640,14 @@ async function processarUm(
             })),
           },
         },
-        update: { processadoEm: new Date(), conteudoSuspeito: interpretacao.conteudoSuspeito },
+        update: { processadoEm: new Date(), conteudoSuspeito },
       })
 
-      const resultado = await criarItens(tx, {
-        emailId: registro.id,
-        interpretacao,
-        anexosRejeitados,
-        correlacaoId,
-        usuario,
-      })
+      // Sem interpretação não há `itens` para gravar — a desistência não
+      // inventa estrutura que a IA nunca produziu.
+      const resultado = interpretacao
+        ? await criarItens(tx, { emailId: registro.id, interpretacao, anexosRejeitados, correlacaoId, usuario })
+        : { criados: 0, aprovados: 0, paraRevisao: 0 }
 
       await auditar(tx, {
         entidade: 'Email',
@@ -552,13 +656,14 @@ async function processarUm(
         depois: {
           messageId: email.messageId,
           itens: resultado.criados,
-          conteudoSuspeito: interpretacao.conteudoSuspeito,
+          conteudoSuspeito,
+          naoInterpretado: desistir,
         },
         usuario,
         correlacaoId,
       })
 
-      return { ...resultado, anexosRejeitados, conteudoSuspeito: interpretacao.conteudoSuspeito }
+      return { ...resultado, anexosRejeitados, conteudoSuspeito, naoInterpretado: desistir }
     })
   } catch (erro) {
     await desfazerArquivos()
@@ -575,7 +680,7 @@ async function criarItens(
     correlacaoId: string
     usuario: string
   },
-): Promise<Omit<ResultadoDeUm, 'anexosRejeitados' | 'conteudoSuspeito'>> {
+): Promise<Omit<ResultadoDeUm, 'anexosRejeitados' | 'conteudoSuspeito' | 'naoInterpretado'>> {
   const { interpretacao } = contexto
   // Uma leitura de `Liga` por LOTE, não por item — ver `indiceDeLigas`.
   const ligas = await indiceDeLigas(tx)

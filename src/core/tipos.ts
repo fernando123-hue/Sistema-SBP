@@ -381,6 +381,19 @@ export interface ResumoIngestao {
    * este contador a sincronização ficaria verde e ninguém saberia.
    */
   repetidas: number
+  /**
+   * E-mails que a IA tentou repetidas vezes e NUNCA conseguiu estruturar
+   * (achado C-11/N-13) — desistiu depois de `TENTATIVAS_MAXIMAS_DE_INTERPRETACAO`
+   * falhas seguidas.
+   *
+   * Sem este contador, o e-mail voltava a `falhas` a cada sincronização, pago
+   * de novo em cada uma, pela janela inteira de `JANELA_DE_RELEITURA_DIAS`; e
+   * depois da janela ele simplesmente sumia da leitura seguinte, sem que
+   * ninguém tivesse visto. Ao desistir, o e-mail é marcado como tratado — não
+   * volta a cobrar IA — e este número é a única forma de uma pessoa saber que
+   * ele existe e precisa ser aberto direto no Outlook.
+   */
+  naoInterpretados: number
 }
 
 export interface ItemEmRevisao {
