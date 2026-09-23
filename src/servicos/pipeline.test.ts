@@ -1308,4 +1308,48 @@ describe('e-mail que a IA nunca consegue estruturar (C-11/N-13)', () => {
     expect(eventoFinal?.situacao).toBe('falha')
     expect(eventoFinal?.mensagem).toContain(String(TENTATIVAS_MAXIMAS_DE_INTERPRETACAO))
   })
+
+  it('só conta tentativa da IA para o teto — outro motivo de reprocessamento nunca desiste do e-mail (achado crítico da revisão)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const messageId = 'categoria-some-e-volta@teste.local'
+    const ingestao = new IngestaoDeUmEmail(messageId)
+    // A IA sempre interpreta CORRETAMENTE — o problema não é ela.
+    const ia = new IaCombinada([
+      {
+        categoriaCodigo: 'LIGANTE',
+        titulo: 'Ligante para cadastro',
+        confianca: 0.95,
+        campos: {},
+        camposAusentes: [],
+        ligaMencionada: null,
+        observacao: null,
+      },
+    ])
+
+    // Simula cadastro incompleto: a categoria que a IA (corretamente) extraiu
+    // ainda não existe no banco. Guarda a linha para recriar depois.
+    const categoria = await banco.categoria.findUniqueOrThrow({ where: { codigo: 'LIGANTE' } })
+    await banco.categoria.delete({ where: { codigo: 'LIGANTE' } })
+
+    // Falha pelo MESMO motivo, `TENTATIVAS_MAXIMAS_DE_INTERPRETACAO` vezes —
+    // não é falha de interpretação, então NUNCA deveria contar para o teto.
+    for (let tentativa = 1; tentativa <= TENTATIVAS_MAXIMAS_DE_INTERPRETACAO; tentativa += 1) {
+      const resumo = await sincronizar({ banco, ingestao, ia }, base.operador)
+      expect(resumo.falhas).toBe(1)
+      expect(resumo.naoInterpretados).toBe(0)
+    }
+
+    // O cadastro é corrigido — exatamente o que o operador faria na vida real.
+    const { id: _id, ...dadosDaCategoria } = categoria
+    await banco.categoria.create({ data: dadosDaCategoria })
+
+    // O trabalho VOLTA: se o teto tivesse contado o motivo errado, o e-mail já
+    // estaria marcado como tratado, e o item se perderia para sempre — o
+    // defeito exato que `CategoriaDesconhecidaError` existe para impedir.
+    const resumo = await sincronizar({ banco, ingestao, ia }, base.operador)
+    expect(resumo.naoInterpretados).toBe(0)
+    expect(resumo.novos).toBe(1)
+    expect(resumo.itensCriados).toBe(1)
+    expect(resumo.falhas).toBe(0)
+  })
 })

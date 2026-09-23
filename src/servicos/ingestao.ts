@@ -13,7 +13,7 @@ import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { prepararConteudoExterno, validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
 import type { ResumoIngestao } from '../core/tipos'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
-import { InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
+import { FalhaDeInterpretacao, InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { AvisoDaBusca, IngestaoPort } from '../ports/ingestao'
 import { ATOR_SISTEMA, exigirPapel, type Ator } from '../servidor/ator'
 import { chaveDeBusca } from '../servidor/cpf-protegido'
@@ -84,11 +84,32 @@ export const JANELA_DE_RELEITURA_DIAS = 7
  */
 export const TENTATIVAS_MAXIMAS_DE_INTERPRETACAO = 3
 
+/**
+ * Marca, em `EventoProcessamento.detalhe`, que um `reprocessavel` foi causado
+ * por `FalhaDeInterpretacao` — a IA respondeu, mas nunca num formato válido.
+ *
+ * SEM esta marca, `contarTentativasAnteriores` contaria QUALQUER motivo de
+ * reprocessamento (categoria ainda não cadastrada, e-mail fora do esquema,
+ * uma colisão de infraestrutura qualquer) para o mesmo teto — e cadastrar a
+ * categoria que faltava não devolveria o e-mail, porque ele já teria sido
+ * marcado como tratado por um motivo que nada tinha a ver com a IA. É
+ * exatamente o "trabalho perdido para sempre" que `CategoriaDesconhecidaError`
+ * existe para impedir, reaberto por um caminho novo (achado crítico da
+ * revisão técnica do PR que introduziu este arquivo).
+ *
+ * Vive no `detalhe` (texto livre) e não em `situacao` (enum fechado,
+ * `core/esquemas.ts`) de propósito: adicionar um valor ao enum classificaria
+ * este arquivo como nível 3 (`scripts/processo/nivel-de-risco.ts`) por tocar
+ * `esquemas.ts`, para uma mudança que é só de UM adapter de IA.
+ */
+const CAUSA_FALHA_DE_INTERPRETACAO = 'falha_de_interpretacao'
+
 /** `IN` com milhares de valores pesa no MySQL; a janela cabe folgada em lotes. */
 const LOTE_DE_CONSULTA = 500
 
 /**
- * Quantas vezes cada e-mail já falhou em sincronizações anteriores.
+ * Quantas vezes cada e-mail já falhou em sincronizações anteriores POR CAUSA
+ * DA IA — nunca por outro motivo de reprocessamento (ver `CAUSA_FALHA_DE_INTERPRETACAO`).
  *
  * Uma consulta agrupada para o lote inteiro, não uma por e-mail — mesma razão
  * de `consultaDeProcessados` logo abaixo: um `IN` por mensagem seguraria a
@@ -108,6 +129,12 @@ async function contarTentativasAnteriores(
         etapa: 'ingestao',
         situacao: 'reprocessavel',
         referencia: { in: messageIds.slice(inicio, inicio + LOTE_DE_CONSULTA) as string[] },
+        // Casamento por substring no texto serializado, não leitura de JSON:
+        // `detalhe` é `String @db.Text`, sem suporte a caminho JSON no MySQL
+        // via Prisma sem SQL cru. `serializar()` é `JSON.stringify` simples, e
+        // a chave nasce sempre primeiro no objeto (`registrarEvento` só
+        // acrescenta campos depois dela) — a substring é estável.
+        detalhe: { contains: `"causa":"${CAUSA_FALHA_DE_INTERPRETACAO}"` },
       },
       _count: { _all: true },
     })
@@ -418,6 +445,10 @@ export async function sincronizar(
           situacao: 'reprocessavel',
           referencia: candidato.messageId,
           mensagem: mensagemPersistivel(erro),
+          // A camada estava fora do ar — o e-mail em si está bem. Não é o que
+          // `TENTATIVAS_MAXIMAS_DE_INTERPRETACAO` existe para contar (achado
+          // crítico da revisão do PR: ver `CAUSA_FALHA_DE_INTERPRETACAO`).
+          detalhe: { causa: 'interpretacao_indisponivel' },
         })
         throw erro
       }
@@ -436,6 +467,16 @@ export async function sincronizar(
         situacao: 'reprocessavel',
         referencia: candidato.messageId,
         mensagem: mensagemPersistivel(erro),
+        // A CAUSA vai no `detalhe`, não só a mensagem — é o que
+        // `contarTentativasAnteriores` usa para separar "a IA nunca consegue
+        // estruturar este e-mail" (achado C-11/N-13) de qualquer outro motivo
+        // de reprocessamento (categoria ainda não cadastrada, e-mail fora do
+        // esquema, etc.). Achado crítico da revisão técnica do PR: antes,
+        // QUALQUER `reprocessavel` contava para o teto de desistência —
+        // cadastrar a categoria que faltava não devolvia o e-mail, porque ele
+        // já tinha sido marcado como tratado por um motivo que nada tinha a
+        // ver com a IA.
+        detalhe: { causa: erro instanceof FalhaDeInterpretacao ? CAUSA_FALHA_DE_INTERPRETACAO : 'outra' },
       })
     }
   }

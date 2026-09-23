@@ -924,6 +924,16 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 **Prova:** `pipeline.test.ts`, descrição *"e-mail que a IA nunca consegue estruturar (C-11/N-13)"` — uma IA que sempre falha, três sincronizações confirmando `resumo.falhas` e a chamada de IA a cada vez, a quarta confirmando `naoInterpretados`, zero chamada nova e `Email.processadoEm` preenchido, e a quinta confirmando que ele virou `duplicados` sem tocar a IA outra vez. `npm run verificar`: 106 arquivos, 1209 testes, verde. **Status:** ⏳ adotado — depende da resposta do dono ao item 32.
 
+**Achado CRÍTICO da revisão técnica do PR #83, corrigido com teste visto vermelho antes:** `contarTentativasAnteriores` contava QUALQUER `EventoProcessamento` com `situacao: 'reprocessavel'` daquele `messageId` — não só falha de formato da IA. Um e-mail cuja categoria ainda não estava cadastrada (`CategoriaDesconhecidaError`, causa completamente alheia à IA) acumulava o mesmo contador; depois de 3 sincronizações, o e-mail era marcado como tratado, e **cadastrar a categoria que faltava não devolvia o item** — exatamente o "trabalho perdido para sempre" que `CategoriaDesconhecidaError` existe para impedir, reaberto por um caminho novo. Teste visto vermelho: `expected 1 to be +0` (`naoInterpretados` valia 1 quando devia valer 0, depois de a categoria ser corrigida).
+
+**Correção:** `EventoProcessamento.detalhe` passa a marcar a causa (`{causa: "falha_de_interpretacao"}` só quando o erro é `FalhaDeInterpretacao`; `{causa: "outra"}` ou `{causa: "interpretacao_indisponivel"}` para os demais), e `contarTentativasAnteriores` filtra por essa marca (`contains` no texto serializado — sem tocar `core/esquemas.ts`, que classificaria o arquivo como nível 3 para uma mudança que é só de um adapter). Só falha de **formato da resposta do modelo** conta para o teto agora; categoria ausente, e-mail fora do esquema ou qualquer outra causa de reprocessamento seguem tentando para sempre, como antes deste PR. Prova nova: mesma categoria ausente do teste-irmão de `pipeline.test.ts:1173`, 3 falhas seguidas, categoria cadastrada de volta, e o item é criado normalmente na sincronização seguinte.
+
+**Achados médio e baixo da mesma revisão, aceitos por ora e registrados aqui:**
+- **Médio:** a garantia "no máximo 3 tentativas, sempre" só vale se a cadência real de sincronização couber 3 tentativas dentro dos 7 dias de `JANELA_DE_RELEITURA_DIAS` — não há trava no código que amarre as duas constantes.
+- **Baixo:** a contagem de tentativas é um retrato tirado antes da transação; sincronizações concorrentes sobre o mesmo e-mail podem inflar o contador e antecipar a desistência. Não quebra conservação (a checagem dentro da transação continua valendo) — é um limite da hipótese que já está em aberto com o dono (item 32).
+
+`npm run verificar` depois da correção: 106 arquivos, **1210** testes, verde.
+
 ---
 
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
