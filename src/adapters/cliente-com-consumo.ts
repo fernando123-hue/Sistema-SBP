@@ -7,6 +7,7 @@ import {
   type LimitesDeConsumo,
 } from '../core/ia/consumo'
 import { LimiteDeConsumoAtingido, type RegistroDeConsumo } from '../ports/consumo'
+import { codigoDoPrisma } from '../servidor/conflito'
 import { registrarLog } from '../servidor/observabilidade'
 import { especieDoErro, type ClienteDeModelo } from './fornecedor'
 
@@ -61,10 +62,20 @@ export function comControleDeConsumo(cliente: ClienteDeModelo, opcoes: OpcoesDeC
 
   return {
     async gerar(pedido) {
+      // A CONTAGEM VEM ANTES, E O ESTADO DO DISJUNTOR DEPOIS.
+      //
+      // A leitura da contagem agora pode DEMORAR em vez de abortar: quando o
+      // pool está saturado, ela espera o tempo do pool e só então devolve
+      // `null`. Ler o disjuntor antes desse `await` decidiria com um retrato
+      // de segundos atrás — outra chamada pode tê-lo aberto no meio. É o
+      // mesmo perigo que este arquivo já descreve e corrigiu na GRAVAÇÃO
+      // (`anotarNoDisjuntor`, abaixo); aqui a janela era pequena e passou a
+      // ser grande. Achado BAIXO da revisão de segurança do PR #86.
+      const chamadasHoje = await contarSemDerrubar(opcoes)
       const estado = disjuntores.get(opcoes.fornecedor) ?? DISJUNTOR_FECHADO
       const impedimento = impedimentoParaChamar({
         estado,
-        chamadasHoje: await opcoes.registro.chamadasDoDia(opcoes.fornecedor),
+        chamadasHoje,
         agora: new Date(),
         limites,
       })
@@ -117,6 +128,64 @@ export function comControleDeConsumo(cliente: ClienteDeModelo, opcoes: OpcoesDeC
 function anotarNoDisjuntor(fornecedor: string, resultado: 'ok' | 'falha', limites: LimitesDeConsumo): void {
   const atual = disjuntores.get(fornecedor) ?? DISJUNTOR_FECHADO
   disjuntores.set(fornecedor, aposChamada(atual, resultado, new Date(), limites))
+}
+
+/**
+ * A contagem do dia, ou `null` quando o banco não respondeu.
+ *
+ * ═══ POR QUE ISTO EXISTE ═══
+ *
+ * A regra "a contabilidade nunca derruba a chamada" estava escrita logo
+ * abaixo, no caminho de GRAVAÇÃO, e valia só lá. A LEITURA — que roda antes
+ * de falar com o fornecedor — era aguardada crua: bastava o banco piscar para
+ * o erro do Prisma subir inteiro e matar a chamada. O sistema ficava sem IA
+ * porque a contabilidade caiu, que é o contrário do que o teto existe para
+ * fazer.
+ *
+ * Medido, não suposto: com o MySQL fora, `npm run ia:avaliar` falhou nos 17
+ * casos do gabarito, e a planilha de notas imprimia um pedaço de stack do
+ * Prisma no lugar do motivo — quem lesse concluiria que o MODELO falhou, e
+ * escolheria modelo com base em ruído de infraestrutura.
+ *
+ * Em produção era pior: uma oscilação do banco durante a ingestão derrubaria
+ * e-mail por e-mail, cada um virando `reprocessavel` para a próxima
+ * sincronização tentar de novo.
+ *
+ * `null`, e não `0`: zero significaria "nenhuma chamada hoje" e desligaria o
+ * teto por baixo do pano. Quem decide o que fazer sem a contagem é a política
+ * pura em `core/ia/consumo.ts`, onde a escolha está escrita.
+ */
+async function contarSemDerrubar(opcoes: OpcoesDeConsumo): Promise<number | null> {
+  try {
+    return await opcoes.registro.chamadasDoDia(opcoes.fornecedor)
+  } catch (erro) {
+    registrarLog('erro', 'não foi possível contar o uso da IA de hoje — o teto diário fica sem valer nesta chamada', {
+      fornecedor: opcoes.fornecedor,
+      tarefa: opcoes.tarefa,
+      // O CÓDIGO DO PRISMA SEPARA PISCO DE CONFIGURAÇÃO ERRADA, e sem ele as
+      // duas coisas produzem a mesma linha. `P1001` (banco fora) volta
+      // sozinho; `P1010` (acesso negado) e `P2021` (tabela não existe) não —
+      // esses deixam o teto desligado INDEFINIDAMENTE e são justamente o
+      // sinal de privilégio mínimo mal configurado (`03-SPEC.md § 14`,
+      // `npm run db:privilegios`). Achado MÉDIO da revisão de segurança do
+      // PR #86.
+      codigo: codigoDoPrisma(erro),
+      // Truncado: erro de validação do Prisma chega a vários KB, e isto roda
+      // UMA VEZ POR CHAMADA — num lote de 200 e-mails seriam centenas de
+      // linhas gigantes no log, que não tem retenção (invariante 11). O
+      // começo basta para saber o que houve; o resto está no log do banco.
+      causa: primeirasLinhas(erro instanceof Error ? erro.message : String(erro)),
+    })
+    return null
+  }
+}
+
+/** Teto de texto de erro no log: o bastante para reconhecer, longe de inundar. */
+const LIMITE_DA_CAUSA = 300
+
+function primeirasLinhas(texto: string): string {
+  const limpo = texto.trim()
+  return limpo.length <= LIMITE_DA_CAUSA ? limpo : `${limpo.slice(0, LIMITE_DA_CAUSA)}… (${limpo.length} caracteres)`
 }
 
 /**

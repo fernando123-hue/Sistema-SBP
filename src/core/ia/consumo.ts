@@ -76,7 +76,16 @@ export interface ImpedimentoDeChamada {
 
 export function impedimentoParaChamar(entrada: {
   estado: EstadoDoDisjuntor
-  chamadasHoje: number
+  /**
+   * Quantas chamadas hoje — ou `null` quando **não foi possível contar**.
+   *
+   * `null` não é zero, e a distinção é o ponto. A contagem mora no banco; se
+   * ele estiver fora, passar `0` mentiria dizendo "nenhuma chamada hoje" e o
+   * teto nasceria zerado em silêncio, que é o defeito que `IA_TETO_DIARIO`
+   * vazio já causou uma vez (`AT-38`). Dizer "não sei" deixa a decisão
+   * explícita aqui embaixo, onde ela pode ser lida.
+   */
+  chamadasHoje: number | null
   agora: Date
   limites: LimitesDeConsumo
 }): ImpedimentoDeChamada | null {
@@ -85,7 +94,35 @@ export function impedimentoParaChamar(entrada: {
   // O teto vem primeiro porque dura o dia inteiro: dizer "o fornecedor caiu"
   // a quem estourou a conta mandaria a pessoa esperar por uma coisa que não
   // vai acontecer.
-  if (limites.tetoDiarioDeChamadas > 0 && chamadasHoje >= limites.tetoDiarioDeChamadas) {
+  //
+  // CONTAGEM DESCONHECIDA NÃO IMPEDE (decisão do dono, 23/09/2026 — `AT-42`):
+  // o teto protege a conta do mês; o banco fora protege nada e pararia o
+  // trabalho inteiro.
+  //
+  // ENQUANTO A CONTAGEM NÃO VOLTA, NADA LIMITA O GASTO — e é preciso dizer
+  // isso aqui, onde alguém lê. O disjuntor abaixo NÃO cobre este caso: ele só
+  // conta falha de TRANSPORTE, e `aposChamada` zera a contagem a cada
+  // sucesso. Fornecedor saudável respondendo normalmente com a contagem
+  // ilegível = chamadas sem teto, e o disjuntor nunca abre. O que limita nesse
+  // intervalo é o orçamento do próprio fornecedor (achado MÉDIO da revisão
+  // técnica do PR #86; risco aceito e escrito em `AT-42`).
+  //
+  // ═══ ESTA GUARDA É CLAREZA, NÃO COMPORTAMENTO — e é honesto dizer ═══
+  //
+  // `null >= 500` já é `false` em JavaScript (o `null` é coagido a zero), e
+  // `undefined >= 500` também. Ou seja: sem guarda nenhuma, o resultado seria
+  // o mesmo. O que ela compra é impedir que uma edição futura — um `?? 0`, um
+  // `Number(...)` — transforme "não sei" em "nenhuma chamada hoje" sem que
+  // ninguém perceba, que é exatamente a armadilha do `IA_TETO_DIARIO` vazio do
+  // `AT-38`. `typeof === 'number'` em vez de `!== null` pela mesma razão: pega
+  // `undefined` junto. A correção de COMPORTAMENTO deste PR está no adapter,
+  // não aqui (achado MÉDIO da revisão técnica do PR #86: o "teste visto
+  // vermelho" original alegava o contrário para estes dois casos).
+  if (
+    typeof chamadasHoje === 'number' &&
+    limites.tetoDiarioDeChamadas > 0 &&
+    chamadasHoje >= limites.tetoDiarioDeChamadas
+  ) {
     return {
       motivo: 'teto_diario',
       mensagem:

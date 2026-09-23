@@ -117,6 +117,67 @@ describe('teto diário', () => {
     chamadasHoje = 3
     await expect(envolver(OK).gerar(PEDIDO)).rejects.toThrow(/IA_TETO_DIARIO/)
   })
+
+  /**
+   * Banco fora NÃO é teto atingido.
+   *
+   * A contagem do dia mora no banco, e a leitura dela acontece ANTES de
+   * chamar o fornecedor. Quando essa leitura falhava, o erro do Prisma subia
+   * inteiro e matava a chamada — o sistema inteiro ficava sem IA porque a
+   * CONTABILIDADE caiu. É a regra que o caminho de gravação já seguia por
+   * escrito ("a contabilidade nunca derruba a chamada"), aplicada agora
+   * também à leitura. Medido de verdade: com o MySQL fora, `ia:avaliar`
+   * falhava nos 17 casos do gabarito, e a planilha de notas culpava o modelo.
+   */
+  it('contagem indisponível não derruba a chamada — o teto fica sem valer, alto no log', async () => {
+    const registroCego: RegistroDeConsumo = {
+      async chamadasDoDia() {
+        throw new Error('pool failed to retrieve a connection from pool')
+      },
+      async registrar(chamada) {
+        registradas.push(chamada)
+      },
+    }
+
+    const cliente = comControleDeConsumo(OK, {
+      fornecedor: 'fornecedor-teste',
+      tarefa: 'interpretacao',
+      registro: registroCego,
+      limites: LIMITES,
+    })
+
+    // A resposta do modelo chega mesmo assim: perder trabalho já pedido
+    // porque o banco piscou seria trocar trabalho por contagem.
+    await expect(cliente.gerar(PEDIDO)).resolves.toEqual({ objeto: { ok: true }, modeloUsado: 'modelo-datado' })
+  })
+
+  it('contagem indisponível não desliga o disjuntor', async () => {
+    const registroCego: RegistroDeConsumo = {
+      async chamadasDoDia() {
+        throw new Error('banco fora')
+      },
+      async registrar(chamada) {
+        registradas.push(chamada)
+      },
+    }
+    const envolverCego = (cliente: ClienteDeModelo): ClienteDeModelo =>
+      comControleDeConsumo(cliente, {
+        fornecedor: 'fornecedor-teste',
+        tarefa: 'interpretacao',
+        registro: registroCego,
+        limites: LIMITES,
+      })
+
+    const quebrado = clienteQue(async () => {
+      throw Object.assign(new Error('fornecedor fora'), { status: 503 })
+    })
+
+    // Duas falhas de transporte abrem o disjuntor (`falhasParaAbrir: 2`), e
+    // ele vive na memória — não depende do banco para continuar valendo.
+    await expect(envolverCego(quebrado).gerar(PEDIDO)).rejects.toThrow()
+    await expect(envolverCego(quebrado).gerar(PEDIDO)).rejects.toThrow()
+    await expect(envolverCego(OK).gerar(PEDIDO)).rejects.toBeInstanceOf(LimiteDeConsumoAtingido)
+  })
 })
 
 describe('disjuntor', () => {

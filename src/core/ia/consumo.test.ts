@@ -19,13 +19,15 @@ const AGORA = new Date('2026-09-18T14:00:00.000Z')
 
 function impedimento(parcial: {
   estado?: EstadoDoDisjuntor
-  chamadasHoje?: number
+  chamadasHoje?: number | null
   agora?: Date
   limites?: LimitesDeConsumo
 } = {}) {
   return impedimentoParaChamar({
     estado: parcial.estado ?? DISJUNTOR_FECHADO,
-    chamadasHoje: parcial.chamadasHoje ?? 0,
+    // `??` aqui transformaria o `null` do caso "não foi possível contar" em
+    // zero, apagando justamente a distinção que ele existe para provar.
+    chamadasHoje: parcial.chamadasHoje === undefined ? 0 : parcial.chamadasHoje,
     agora: parcial.agora ?? AGORA,
     limites: parcial.limites ?? LIMITES,
   })
@@ -50,6 +52,29 @@ describe('teto diário de chamadas', () => {
     // Zero como "nenhuma chamada permitida" deixaria o sistema mudo por causa
     // de uma variável esquecida — o oposto de falhar alto.
     expect(impedimento({ chamadasHoje: 9_999, limites: { ...LIMITES, tetoDiarioDeChamadas: 0 } })).toBeNull()
+  })
+
+  /**
+   * TRAVAS DE REGRESSÃO, não prova de correção — e a diferença importa.
+   *
+   * A revisão técnica do PR #86 mediu e mostrou: estes dois casos já passavam
+   * ANTES da guarda, porque `null >= 10` é `false` em JavaScript. Chamá-los de
+   * "teste visto vermelho" seria afirmação falsa, e este projeto trata
+   * comentário que mente como defeito.
+   *
+   * O que eles seguram é o futuro: no dia em que alguém escrever
+   * `chamadasHoje ?? 0` ou `Number(chamadasHoje)`, "não foi possível contar"
+   * viraria "nenhuma chamada hoje" e o teto nasceria desligado em silêncio —
+   * a armadilha do `IA_TETO_DIARIO` vazio do `AT-38`, de novo. Aí eles ficam
+   * vermelhos. A correção de comportamento deste PR está no adapter.
+   */
+  it('contagem desconhecida não impede pelo teto (`AT-42`)', () => {
+    expect(impedimento({ chamadasHoje: null })).toBeNull()
+  })
+
+  it('contagem desconhecida não atropela o disjuntor: quem está aberto continua aberto', () => {
+    const estado: EstadoDoDisjuntor = { falhasSeguidas: 3, abertoAte: new Date('2026-09-18T14:05:00.000Z') }
+    expect(impedimento({ estado, chamadasHoje: null })?.motivo).toBe('disjuntor_aberto')
   })
 })
 

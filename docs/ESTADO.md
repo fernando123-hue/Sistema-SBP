@@ -1,10 +1,32 @@
 # Estado do projeto — retomada
 
-Última atualização: **23/09/2026** — `main` em `583176d` (PR #83 mesclado, PR #84 antes dele). Suíte: **106 arquivos, 1210 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`), etapa 2 (corrigir).
+Última atualização: **23/09/2026, noite (antes de um `/clear`)** — PRs #83, #84, #85 e **#86** mesclados. Suíte: **106 arquivos, 1214 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`) **e** a chegada da máquina da IA local (`A56`).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 23/09/2026, fim — C-11/N-13 MESCLADO (`583176d`, PR #83); próximo é limpar a coluna "Destino" da auditoria
+> ### 23/09/2026, noite — a MÁQUINA DA IA LOCAL CHEGOU; `AT-42` corrigido pelo caminho
+>
+> **1. O PR #86 (`AT-42`) está mesclado.** Banco fora derrubava **toda** chamada de IA, porque a leitura da contagem do teto diário (`A54`/`AT-38`) era aguardada sem proteção em `cliente-com-consumo.ts`. Decisão do dono (23/09): com a contagem indisponível, a chamada acontece e o teto fica sem valer naquela chamada. As duas revisões por agente (nível 3) foram publicadas e **acharam coisa de verdade** — inclusive um comentário meu que afirmava, falsamente, que o disjuntor segurava o gasto nessa janela (não segura: ele zera a cada sucesso). Tudo corrigido antes de mesclar; ver `§ AT-42`.
+>
+> **1b. UMA DECISÃO FICOU ABERTA, e tem gatilho: antes de habilitar chave paga de IA.** Na janela em que a contagem não é legível, nada limita o número de chamadas além do orçamento do fornecedor — e, pior, as chamadas feitas às cegas não são contadas, então o teto segue afrouxado pelo resto do dia. Uma trava secundária que não dependa do banco (contador em memória por processo) fecharia isso, mas **o número é decisão do dono** — quanto se aceita gastar às cegas. Registrado em `§ AT-42`. Hoje o risco é tempo de máquina, não dinheiro (`IA_PARA_DADO_REAL.local = false`, chave da Anthropic fora de uso por `A49`).
+>
+> **2. A MÁQUINA DA IA LOCAL CHEGOU — e isto muda a fila.** O dono conseguiu a máquina prometida em `A56 (d)`. Estado real dela:
+> - **Debian** (kernel `6.1.187-1`, provavelmente Debian 12), acesso **só por terminal**, sem navegador nela.
+> - O **Claude Code foi instalado lá** e rodou numa sessão própria (Remote Control). *Esta* sessão, na nuvem, **não alcança aquela máquina** — são ambientes separados; a ponte é o dono levando texto de um lado para o outro.
+> - Aquela sessão chegou longe sozinha: **Ollama no ar, modelos pequenos baixados, o Sistema-SBP clonado e o gabarito (`npm run ia:avaliar`) rodando**. Ela parou no meio porque **a máquina ficou inalcançável** (`computer_unreachable`), não por erro de lógica.
+> - Último estado dela: *"repetindo 6 casos que falharam"*, de 17.
+>
+> **3. Aquelas 6 falhas provavelmente NÃO eram do modelo — eram o defeito do `AT-42`.** Isto foi medido aqui, não suposto: rodando o gabarito neste container contra um servidor falso compatível com OpenAI, **sem MySQL de pé**, deram **17 falhas de 17**, todas com `Invalid banco.usoDaIa.aggregate() invocation`. Pior: a planilha de notas imprime um pedaço de stack do Prisma no lugar do motivo, então quem lê conclui que o **modelo** falhou. Com a correção do #86, o mesmo cenário fecha com **0 falhas de 17**. **Consequência prática: nenhuma escolha de modelo pode ser feita com os números daquela rodada** — pela própria regra do script ("a nota geral não é comparável; rode de novo"), a medição precisa ser refeita **depois** de o #86 estar na `main`.
+>
+> **4. Quando a máquina voltar, a ordem é:** (a) #86 mesclado; (b) atualizar o clone do Sistema-SBP que está lá; (c) rodar `npm run ia:avaliar` de novo contra cada modelo baixado, com `IA_ADAPTER=local`, `IA_LOCAL_URL` apontando para o Ollama em loopback e `IA_MODELO` trocando por candidato; (d) só então registrar o modelo escolhido em `§ A56`. O Odysseus é **opcional** nesse caminho: `A56 (b)` diz que o SBP fala com qualquer servidor compatível com OpenAI, e o Ollama já é um. A interface do Odysseus é web e a máquina não tem navegador — precisaria de encaminhamento de porta pelo dono.
+>
+> **5. Uma coisa a vigiar na próxima medição, ainda NÃO verificada:** o prompt de sistema do interpretador tem ~9,6 KB (`INSTRUCOES` em `ia-estruturada.ts`) mais o JSON Schema em texto. Modelo pequeno servido com janela de contexto curta (o padrão de alguns servidores é 4096 tokens) pode truncar, e truncar aparece como `finish_reason: length` → *"resposta truncada"* → falha do caso. **Se as falhas persistirem depois do #86, investigar a janela de contexto do servidor antes de culpar o modelo.** É hipótese, não achado.
+>
+> **6. Aberto com o dono:** `DECISOES.md § H.4` item **32** (o teto de 3 tentativas do `AT-41` é hipótese; e se o contador na tela resolve "mandar a uma pessoa"). O `§ AT-42` também deixa escrito o risco aceito: queda longa de banco = gasto sem teto durante a queda.
+>
+> ---
+>
+> ### 23/09/2026, tarde — C-11/N-13 MESCLADO (`583176d`, PR #83) *(bloco anterior desta mesma sessão)*
 >
 > **1. PR #83 mesclado — C-11/N-13 corrigido.** E-mail que a IA nunca consegue estruturar: antes ficava `reprocessavel` para sempre, pago a cada sincronização, e depois de 7 dias (`JANELA_DE_RELEITURA_DIAS`) sumia sem que ninguém tivesse visto. Agora desiste depois de **3** tentativas (hipótese, `§ C`, pergunta no `§ H.4` item 32), marca o e-mail como tratado — não cobra mais — e mostra um contador novo em `/distribuicao` (`ingestao.naoInterpretados`). Revisão técnica por agente publicada e linkada no PR (veredicto inicial **Bloquear**: achado crítico — o contador estava contando qualquer motivo de reprocessamento, não só falha da IA, o que podia perder um item para sempre mesmo depois de corrigir o cadastro; corrigido com teste visto vermelho antes de mesclar). Detalhe completo em `DECISOES.md § AT-41`.
 >
@@ -13,7 +35,7 @@
 > **3. Aberto com o dono:** `DECISOES.md § H.4` item **32** — o teto de 3 tentativas é hipótese, e falta confirmar se o contador na tela resolve "mandar a uma pessoa" ou se o volume real vai pedir uma fila própria. Achados médio/baixo da revisão técnica do #83 (cadência de sincronização vs. janela de 7 dias; contagem de tentativas sob concorrência) ficam registrados em `§ AT-41` como limitação conhecida da mesma hipótese — não bloqueiam, mas valem revisitar quando houver uso real.
 >
 > **4. Fila depois disto:**
-> - **Tarefa de documentação pura, sem risco, boa para abrir a sessão:** a coluna "Destino" de `docs/auditoria/2026-09-17-achados-da-auditoria-por-agentes.md` está atrasada — **N-02, N-08, N-09, N-11, N-13, N-15, N-19, N-20 a N-25 e N-36** já foram corrigidos (PRs #62, #77, #82, #83) e a coluna continua vazia para eles. Preencher não muda código nenhum.
+> - ~~Coluna "Destino" da auditoria atrasada~~ **FEITA no PR #85**, ainda nesta sessão: N-02, N-08, N-09, N-11, N-13, N-15, N-19, N-20 a N-25, N-36 e C-11 preenchidos.
 > - Médios confirmados ainda abertos: **C-05** (máscara de CPF de `A52`, medir com o gabarito antes), **C-07** (e-mail encaminhado como anexo / anexo-link do OneDrive somem sem registro), **C-08, C-09** (força bruta/sessão de gestor), **C-13/C-17** parcial (ver `§ AT-39` sobre o que já fechou).
 > - Baixos e informativos confirmados (C-15…C-27, exceto os já fechados: C-10, C-12, C-22, C-23) e os `N-` ainda sem verificação (lista completa no mesmo arquivo de auditoria).
 >

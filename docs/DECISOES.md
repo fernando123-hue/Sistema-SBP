@@ -906,6 +906,41 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 ---
 
+### AT-42 — Contagem de uso indisponível não derruba a chamada de IA *(23/09/2026)*
+
+**Como apareceu:** medindo, não lendo código. Ao preparar a avaliação de modelo local na máquina do dono (`A56`), o gabarito (`npm run ia:avaliar`) foi rodado contra um servidor falso compatível com OpenAI, num ambiente **sem MySQL de pé**. Resultado: **17 falhas em 17 casos**, todas com a mesma causa, e nenhuma delas do modelo:
+
+```
+Invalid `banco.usoDaIa.aggregate()` invocation
+consumo-da-ia.ts:91  →  pool failed to retrieve a connection
+```
+
+**O defeito:** o teto diário (`A54`, `AT-38`) lê a contagem do dia no banco **antes** de falar com o fornecedor, e `cliente-com-consumo.ts` aguardava essa leitura crua, sem proteção. Banco fora = nenhuma chamada de IA acontece. O mesmo arquivo já declarava a regra contrária, por escrito, para o caminho de GRAVAÇÃO — *"A contabilidade nunca derruba a chamada. Perder uma resposta já paga porque o banco piscou seria trocar trabalho por contagem."* A leitura violava a regra que o próprio código enuncia: é a classe de defeito do `AT-39` (garantia declarada em comentário, sem nada que a segurasse), de novo.
+
+**Decisão do dono (23/09/2026):** com a contagem indisponível, **a chamada acontece** e o teto fica sem valer naquela chamada, com registro alto no log. Alternativa recusada: manter como estava (parar de chamar), que trocava um risco de gasto por uma parada total do trabalho.
+
+**Como ficou:**
+- A correção de **comportamento** está no adapter: `contarSemDerrubar` captura a falha da leitura, registra log de `erro` e devolve `null`.
+- `impedimentoParaChamar` (núcleo puro) passou a aceitar `chamadasHoje: number | null`, e `null` significa **"não foi possível contar"**. A decisão de não impedir mora lá, escrita, e não espalhada pelo adapter.
+- `null`, **nunca `0`**: zero diria "nenhuma chamada hoje" e desligaria o teto em silêncio — a mesma armadilha do `IA_TETO_DIARIO` vazio que o `AT-38` já corrigiu uma vez.
+- O log sobe como `erro`, dizendo exatamente que o teto não valeu nesta chamada.
+
+**O que NÃO é verdade, e a primeira versão deste registro dizia que era** (achados MÉDIOS da revisão técnica do PR #86, corrigidos antes de mesclar):
+
+- **O disjuntor NÃO segura o gasto enquanto a contagem está ilegível.** Ele conta só falha de *transporte*, e `aposChamada` zera a contagem a cada sucesso: com o fornecedor saudável respondendo normalmente, ele nunca abre. Na janela sem contagem, **nada limita o número de chamadas** além do orçamento do próprio fornecedor. O disjuntor continua valendo para o que ele sempre cobriu (fornecedor fora do ar), e só isso.
+- **A guarda no núcleo é clareza, não comportamento.** `null >= 500` já é `false` em JavaScript, então os dois testes do núcleo **passavam antes da mudança** — chamá-los de "teste visto vermelho" era afirmação falsa. Eles ficam como trava de regressão: seguram o dia em que alguém escrever `?? 0` e transformar "não sei" em "zero".
+- **A justificativa "em produção isto derrubaria a ingestão e-mail por e-mail" estava errada.** Em `servicos/ingestao.ts`, várias idas ao banco (`registrarAvisos`, `contarTentativasAnteriores`, `registrarEvento`, `email.findUnique`) acontecem **antes** de `processarUm`: com o banco totalmente fora, a sincronização morre antes de qualquer chamada de IA. O beneficiário verificado é o caminho que **não** depende do banco — `scripts/avaliar-ia.ts` via `criarAiPort()`, que é como o modelo local é medido (`A56`). A janela real em produção é a **falha parcial**: banco de pé, mas a consulta de contagem falhando (pool esgotado sob carga).
+
+**Impacto se a decisão estiver errada — e ele dura MAIS do que a queda** (achado MÉDIO da revisão de segurança do PR #86): na janela sem contagem o gasto fica sem teto, limitado só pelo fornecedor. Pior: nessa mesma janela a **gravação** também falha e é engolida (por desenho, ver acima), então as chamadas feitas às cegas **não são contadas**; quando o banco volta, `chamadasDoDia` devolve um número menor que o real e o teto segue afrouxado **pelo resto do dia**. Este PR **cria** esse caminho — antes, a leitura falhando abortava a chamada, então não havia gasto não contabilizado por aqui.
+
+**Ordem de grandeza medida pela revisão de segurança:** a rota de ingestão permite ~5 sincronizações por minuto × até 200 e-mails, ou seja ~1000 chamadas/minuto possíveis contra um teto de 500/**dia**. O cenário realista não é ataque (queda total do banco derruba a sincronização antes de qualquer chamada de IA, porque `ingestao.ts` lê o banco várias vezes antes do laço): é **saturação parcial do pool**, que se correlaciona justamente com volume alto — o controle desliga sozinho no pior momento.
+
+**Pendência aberta, antes da chave paga:** uma trava secundária que não dependa do banco (contador em memória por processo, por exemplo) fecharia os dois buracos acima. Ficou de fora deste PR de propósito — o número certo é decisão de quanto se aceita gastar às cegas, e inventá-lo aqui seria hipótese disfarçada de correção. **Enquanto o fornecedor em uso não for pago, o risco é de tempo de máquina, não de dinheiro** (`IA_PARA_DADO_REAL.local = false`; a chave da Anthropic ainda não está em uso, `A49`).
+
+**Prova:** dois testes no adapter (`cliente-com-consumo.test.ts`), **vistos vermelhos** antes com `promise rejected "pool failed to retrieve a connection"`: a resposta do modelo chega mesmo com a leitura falhando, e o disjuntor não é desligado junto. Dois no núcleo (`core/ia/consumo.test.ts`) como trava de regressão, honestamente rotulados como tal. Ponta a ponta: `npm run ia:avaliar` contra servidor falso com `DATABASE_URL` apontando para porta morta — **17 falhas de 17 antes, 0 de 17 depois**. **Status:** ⏳ adotado.
+
+---
+
 ### AT-41 — E-mail que a IA nunca estrutura para de ser cobrado, e vira número na tela (C-11/N-13) *(23/09/2026)*
 
 **O que motivou:** o achado deixado em aberto desde `AT-38` — "o teto limita o estrago, mas não conta tentativas por e-mail" — e a razão de existir do `JANELA_DE_RELEITURA_DIAS`: sem contador por e-mail, a janela de 7 dias significava até 7 (ou mais, com várias sincronizações por dia) chamadas de IA pagas pela MESMA mensagem que o modelo nunca vai conseguir estruturar; e, depois da janela, o e-mail simplesmente parava de aparecer na leitura seguinte — sem nunca ter sido visto por ninguém. É a combinação exata que o item 4 das *Regras que não se quebram* de `CLAUDE.md` existe para proibir: erro silencioso, e cobrança sem resultado.
