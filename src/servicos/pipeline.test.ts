@@ -9,7 +9,7 @@ import {
   type Interpretacao,
 } from '../core/esquemas'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
-import { InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
+import { FalhaDeInterpretacao, InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { fimDoDia, sequenciaDeDatas } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
@@ -17,7 +17,7 @@ import { DATA_BASE, aprovarTudoNoBanco, limparTudo, semearBase } from '../testes
 import { listarCaixa } from './caixa'
 import { confirmar, previa } from './distribuicao'
 import { concluir, devolver, minhaFila, transferir } from './fila'
-import { sincronizar } from './ingestao'
+import { sincronizar, TENTATIVAS_MAXIMAS_DE_INTERPRETACAO } from './ingestao'
 import { conferirConservacao, porCategoria } from './painel'
 import { aprovarTodosPendentes, listarPendentes, resolver } from './revisao'
 
@@ -1253,5 +1253,103 @@ describe('camada de IA fora do ar', () => {
     // E nada ficou marcado como processado: corrigida a chave, o lote inteiro
     // volta na próxima sincronização.
     expect(await banco.email.count({ where: { processadoEm: { not: null } } })).toBe(0)
+  })
+})
+
+/** Nunca devolve forma válida — como um e-mail cuja injeção quebra a validação em toda tentativa. */
+class IaQueNuncaEstrutura implements AiPort {
+  readonly nome = 'nunca-estrutura'
+  chamadas = 0
+
+  async interpretar(email: EmailBruto): Promise<Interpretacao> {
+    this.chamadas += 1
+    throw new FalhaDeInterpretacao(email.messageId, 'campo "itens" obrigatório ausente')
+  }
+}
+
+describe('e-mail que a IA nunca consegue estruturar (C-11/N-13)', () => {
+  it('para de cobrar a IA depois do teto de tentativas, e passa a marcar o e-mail como tratado', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const messageId = 'nunca-estrutura@teste.local'
+    const ingestao = new IngestaoDeUmEmail(messageId)
+    const ia = new IaQueNuncaEstrutura()
+
+    // Cada sincronização é uma tentativa: a IA falha, e o e-mail continua
+    // reprocessável — hoje ele voltaria assim para sempre, pago a cada vez.
+    for (let tentativa = 1; tentativa <= TENTATIVAS_MAXIMAS_DE_INTERPRETACAO; tentativa += 1) {
+      const resumo = await sincronizar({ banco, ingestao, ia }, base.operador)
+      expect(resumo.falhas).toBe(1)
+      expect(resumo.naoInterpretados).toBe(0)
+    }
+    expect(ia.chamadas).toBe(TENTATIVAS_MAXIMAS_DE_INTERPRETACAO)
+    // Ainda não marcado como processado: é assim que ele continua voltando.
+    expect(await banco.email.findUnique({ where: { messageId } })).toBeNull()
+
+    // A tentativa seguinte desiste ANTES de chamar a IA de novo.
+    const resumoFinal = await sincronizar({ banco, ingestao, ia }, base.operador)
+    expect(ia.chamadas).toBe(TENTATIVAS_MAXIMAS_DE_INTERPRETACAO)
+    expect(resumoFinal.falhas).toBe(0)
+    expect(resumoFinal.naoInterpretados).toBe(1)
+
+    // Marcado como processado: para de ser cobrado, e a próxima sincronização
+    // nem chega a olhar para ele de novo.
+    const email = await banco.email.findUnique({ where: { messageId } })
+    expect(email?.processadoEm).not.toBeNull()
+
+    const resumoSeguinte = await sincronizar({ banco, ingestao, ia }, base.operador)
+    expect(ia.chamadas).toBe(TENTATIVAS_MAXIMAS_DE_INTERPRETACAO)
+    expect(resumoSeguinte.duplicados).toBe(1)
+    expect(resumoSeguinte.naoInterpretados).toBe(0)
+
+    // A trilha guarda por que ele parou: quem investigar acha o motivo.
+    const eventoFinal = await banco.eventoProcessamento.findFirst({
+      where: { correlacaoId: resumoFinal.correlacaoId, referencia: messageId },
+    })
+    expect(eventoFinal?.situacao).toBe('falha')
+    expect(eventoFinal?.mensagem).toContain(String(TENTATIVAS_MAXIMAS_DE_INTERPRETACAO))
+  })
+
+  it('só conta tentativa da IA para o teto — outro motivo de reprocessamento nunca desiste do e-mail (achado crítico da revisão)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const messageId = 'categoria-some-e-volta@teste.local'
+    const ingestao = new IngestaoDeUmEmail(messageId)
+    // A IA sempre interpreta CORRETAMENTE — o problema não é ela.
+    const ia = new IaCombinada([
+      {
+        categoriaCodigo: 'LIGANTE',
+        titulo: 'Ligante para cadastro',
+        confianca: 0.95,
+        campos: {},
+        camposAusentes: [],
+        ligaMencionada: null,
+        observacao: null,
+      },
+    ])
+
+    // Simula cadastro incompleto: a categoria que a IA (corretamente) extraiu
+    // ainda não existe no banco. Guarda a linha para recriar depois.
+    const categoria = await banco.categoria.findUniqueOrThrow({ where: { codigo: 'LIGANTE' } })
+    await banco.categoria.delete({ where: { codigo: 'LIGANTE' } })
+
+    // Falha pelo MESMO motivo, `TENTATIVAS_MAXIMAS_DE_INTERPRETACAO` vezes —
+    // não é falha de interpretação, então NUNCA deveria contar para o teto.
+    for (let tentativa = 1; tentativa <= TENTATIVAS_MAXIMAS_DE_INTERPRETACAO; tentativa += 1) {
+      const resumo = await sincronizar({ banco, ingestao, ia }, base.operador)
+      expect(resumo.falhas).toBe(1)
+      expect(resumo.naoInterpretados).toBe(0)
+    }
+
+    // O cadastro é corrigido — exatamente o que o operador faria na vida real.
+    const { id: _id, ...dadosDaCategoria } = categoria
+    await banco.categoria.create({ data: dadosDaCategoria })
+
+    // O trabalho VOLTA: se o teto tivesse contado o motivo errado, o e-mail já
+    // estaria marcado como tratado, e o item se perderia para sempre — o
+    // defeito exato que `CategoriaDesconhecidaError` existe para impedir.
+    const resumo = await sincronizar({ banco, ingestao, ia }, base.operador)
+    expect(resumo.naoInterpretados).toBe(0)
+    expect(resumo.novos).toBe(1)
+    expect(resumo.itensCriados).toBe(1)
+    expect(resumo.falhas).toBe(0)
   })
 })
