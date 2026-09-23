@@ -1,8 +1,22 @@
 # Estado do projeto — retomada
 
-Última atualização: **23/09/2026, noite (antes de um `/clear`)** — PRs #83, #84, #85 e **#86** mesclados. Suíte: **106 arquivos, 1214 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`) **e** a chegada da máquina da IA local (`A56`).
+Última atualização: **23/09/2026, madrugada (depois de um `/clear`)** — PRs #83, #84, #85 e **#86** mesclados; a coluna "Destino" da auditoria reparada (dezesseis destinos estavam fora da tabela). Suíte: **106 arquivos, 1214 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`) **e** a chegada da máquina da IA local (`A56`).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### 23/09/2026, madrugada — A TABELA DE DESTINO DA AUDITORIA MENTIA; a fila era menor do que parecia
+>
+> **1. Dezesseis destinos estavam fora da tabela, e por isso este arquivo listava como aberto o que já estava corrigido.** Os PRs #59 a #70 escreveram a célula "Destino" de **C-05, C-07, C-08, C-09, C-10, C-13, C-14, C-17, C-22, C-23, N-07, N-14, N-17, N-18, N-27 e N-37** na **primeira linha do arquivo** de auditoria, coladas umas nas outras (5.910 bytes numa linha só), em vez de na linha do achado. Célula vazia quer dizer *pendente*, então a fila deste arquivo vinha repetindo C-07, C-08 e C-09 como médios em aberto desde 17/09. **As dezesseis foram reinseridas depois de conferir cada uma contra o código**, não por confiar no texto que estava lá — o C-07, por exemplo, foi reconferido no adapter (`ingestao-graph.ts`: todo anexo volta com `tipoNoGraph`, o que não é arquivo vira recusa) e na ponta (`anexos-da-origem.test.ts`: `anexosRejeitados = 1` e uma `Revisao` criada).
+>
+> **2. O PR #85 não causou isto** — ele editou linhas certas. A corrupção já estava lá desde o #66, e cada PR seguinte prependeu a sua célula na mesma linha 1.
+>
+> **3. A fila real de médios confirmados tem só dois itens, e os dois estão parados por motivo externo:**
+> - **C-05** — falta a máscara de CPF de `A52`. Exige **medir com o gabarito antes**, e medir depende da máquina da IA local.
+> - **C-08** — falta **decisão do dono** (`DECISOES.md § H.4` item **30**): pedir a senha do gestor para redefinir senha, desativar ou mudar papel. A parte que não dependia de decisão (gestor não redefine a própria senha) já fechou no #67.
+>
+> **4. O que pode andar agora, sem depender de ninguém:** os baixos e informativos confirmados ainda sem destino — **C-15, C-16, C-18, C-19, C-20, C-21, C-24, C-25, C-26, C-27** — e os **N- sem verificação** (N-03 a N-06, N-12, N-16, N-26, N-28 a N-35, N-38 a N-41). São 29 achados sem destino, de 68.
+>
+> **5. Lição, gravada também no arquivo de auditoria:** ao preencher a coluna, **confira no `git diff` que a linha do achado mudou** — não que o texto entrou no arquivo. Esta tabela é o único lugar que diz o que falta; quando ela mente, o trabalho é refeito ou esquecido, que são exatamente os dois defeitos que o sistema existe para curar.
 >
 > ### 23/09/2026, noite — a MÁQUINA DA IA LOCAL CHEGOU; `AT-42` corrigido pelo caminho
 >
@@ -36,7 +50,7 @@
 >
 > **4. Fila depois disto:**
 > - ~~Coluna "Destino" da auditoria atrasada~~ **FEITA no PR #85**, ainda nesta sessão: N-02, N-08, N-09, N-11, N-13, N-15, N-19, N-20 a N-25, N-36 e C-11 preenchidos.
-> - Médios confirmados ainda abertos: **C-05** (máscara de CPF de `A52`, medir com o gabarito antes), **C-07** (e-mail encaminhado como anexo / anexo-link do OneDrive somem sem registro), **C-08, C-09** (força bruta/sessão de gestor), **C-13/C-17** parcial (ver `§ AT-39` sobre o que já fechou).
+> - ~~Médios confirmados ainda abertos: C-05, C-07, C-08, C-09, C-13/C-17~~ **ERRADO — ver o bloco de 23/09 de madrugada, no topo.** C-07, C-09, C-10, C-13, C-17, C-22 e C-23 já estavam corrigidos; a célula "Destino" deles é que estava fora da tabela. Abertos de verdade: **C-05** (parcial) e **C-08** (parcial, decisão do dono).
 > - Baixos e informativos confirmados (C-15…C-27, exceto os já fechados: C-10, C-12, C-22, C-23) e os `N-` ainda sem verificação (lista completa no mesmo arquivo de auditoria).
 >
 > **5. Ambiente desta sessão (container efêmero, sem MySQL pronto):** não havia Docker utilizável (`dockerd` não sobe no sandbox) nem MySQL instalado. Resolvido com `apt-get install -y mysql-server` (ficou a versão `8.0.46`, não a `8.4` do CI, mas mesma família e mesma colação `utf8mb4_0900_as_cs`), `mysqld --user=mysql` em segundo plano, e `CREATE USER 'root'@'127.0.0.1'`/`'root'@'%'` com `mysql_native_password` e senha vazia — o pacote do Debian só libera root por socket (`auth_socket`), e a suíte precisa de TCP. `.env` local criado com os mesmos valores públicos do `ci.yml` (`SESSAO_SECRET`/`BUSCA_SECRET` sintéticos). Nada disto sobrevive ao fim do container; a próxima sessão remota provavelmente precisa repetir estes passos — vale considerar um script de setup se isto se repetir toda vez (`environment.setup_script`, fora do escopo desta sessão).
