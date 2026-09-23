@@ -1,12 +1,14 @@
 # Estado do projeto — retomada
 
-Última atualização: **23/09/2026, noite (antes de um `/clear`)** — `main` em `9a2ac96` (PRs #83, #84 e #85 mesclados). Suíte: **106 arquivos, 1214 testes** verde. **PR #86 aberto** (correção do `AT-42`). Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`) **e** a chegada da máquina da IA local (`A56`).
+Última atualização: **23/09/2026, noite (antes de um `/clear`)** — PRs #83, #84, #85 e **#86** mesclados. Suíte: **106 arquivos, 1214 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`) **e** a chegada da máquina da IA local (`A56`).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 23/09/2026, noite — a MÁQUINA DA IA LOCAL CHEGOU; PR #86 aberto e inacabado
+> ### 23/09/2026, noite — a MÁQUINA DA IA LOCAL CHEGOU; `AT-42` corrigido pelo caminho
 >
-> **1. FAÇA PRIMEIRO: terminar o PR #86.** Ele corrige o `AT-42` — banco fora derrubava **toda** chamada de IA, porque a leitura da contagem do teto diário (`A54`/`AT-38`) era aguardada sem proteção em `cliente-com-consumo.ts`. Código, testes e `DECISOES.md § AT-42` estão prontos e a suíte está verde (1214 testes). **Falta:** as duas revisões por agente (nível 3, porque toca `src/adapters/`) foram disparadas mas o resultado delas não chegou antes do `/clear` — confira no PR se os comentários foram publicados, preencha os links nas seções *Revisão técnica* e *Revisão de segurança* do corpo, corrija o que acharem, leia os checks um a um e mescle. **A correção é do dono**, decidida hoje: com a contagem indisponível, a chamada acontece e o teto fica sem valer naquela chamada (alternativa recusada: parar de chamar).
+> **1. O PR #86 (`AT-42`) está mesclado.** Banco fora derrubava **toda** chamada de IA, porque a leitura da contagem do teto diário (`A54`/`AT-38`) era aguardada sem proteção em `cliente-com-consumo.ts`. Decisão do dono (23/09): com a contagem indisponível, a chamada acontece e o teto fica sem valer naquela chamada. As duas revisões por agente (nível 3) foram publicadas e **acharam coisa de verdade** — inclusive um comentário meu que afirmava, falsamente, que o disjuntor segurava o gasto nessa janela (não segura: ele zera a cada sucesso). Tudo corrigido antes de mesclar; ver `§ AT-42`.
+>
+> **1b. UMA DECISÃO FICOU ABERTA, e tem gatilho: antes de habilitar chave paga de IA.** Na janela em que a contagem não é legível, nada limita o número de chamadas além do orçamento do fornecedor — e, pior, as chamadas feitas às cegas não são contadas, então o teto segue afrouxado pelo resto do dia. Uma trava secundária que não dependa do banco (contador em memória por processo) fecharia isso, mas **o número é decisão do dono** — quanto se aceita gastar às cegas. Registrado em `§ AT-42`. Hoje o risco é tempo de máquina, não dinheiro (`IA_PARA_DADO_REAL.local = false`, chave da Anthropic fora de uso por `A49`).
 >
 > **2. A MÁQUINA DA IA LOCAL CHEGOU — e isto muda a fila.** O dono conseguiu a máquina prometida em `A56 (d)`. Estado real dela:
 > - **Debian** (kernel `6.1.187-1`, provavelmente Debian 12), acesso **só por terminal**, sem navegador nela.
