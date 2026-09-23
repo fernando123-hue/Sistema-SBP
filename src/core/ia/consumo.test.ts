@@ -19,13 +19,15 @@ const AGORA = new Date('2026-09-18T14:00:00.000Z')
 
 function impedimento(parcial: {
   estado?: EstadoDoDisjuntor
-  chamadasHoje?: number
+  chamadasHoje?: number | null
   agora?: Date
   limites?: LimitesDeConsumo
 } = {}) {
   return impedimentoParaChamar({
     estado: parcial.estado ?? DISJUNTOR_FECHADO,
-    chamadasHoje: parcial.chamadasHoje ?? 0,
+    // `??` aqui transformaria o `null` do caso "não foi possível contar" em
+    // zero, apagando justamente a distinção que ele existe para provar.
+    chamadasHoje: parcial.chamadasHoje === undefined ? 0 : parcial.chamadasHoje,
     agora: parcial.agora ?? AGORA,
     limites: parcial.limites ?? LIMITES,
   })
@@ -50,6 +52,21 @@ describe('teto diário de chamadas', () => {
     // Zero como "nenhuma chamada permitida" deixaria o sistema mudo por causa
     // de uma variável esquecida — o oposto de falhar alto.
     expect(impedimento({ chamadasHoje: 9_999, limites: { ...LIMITES, tetoDiarioDeChamadas: 0 } })).toBeNull()
+  })
+
+  it('contagem desconhecida não impede: banco fora não é conta estourada (`AT-42`)', () => {
+    // `null` chega quando a leitura da contagem falhou. Impedir aqui deixaria
+    // o sistema inteiro sem IA por causa de uma oscilação do banco — e foi
+    // exatamente o que aconteceu ao rodar o gabarito com o MySQL fora.
+    expect(impedimento({ chamadasHoje: null })).toBeNull()
+  })
+
+  it('contagem desconhecida NÃO é zero: o disjuntor continua valendo', () => {
+    // A decisão do dono foi "não impedir pelo teto", não "liberar tudo". O
+    // disjuntor mora na memória e não depende do banco, então ele é o que
+    // segura o estrago enquanto a contagem não volta.
+    const estado: EstadoDoDisjuntor = { falhasSeguidas: 3, abertoAte: new Date('2026-09-18T14:05:00.000Z') }
+    expect(impedimento({ estado, chamadasHoje: null })?.motivo).toBe('disjuntor_aberto')
   })
 })
 

@@ -76,7 +76,16 @@ export interface ImpedimentoDeChamada {
 
 export function impedimentoParaChamar(entrada: {
   estado: EstadoDoDisjuntor
-  chamadasHoje: number
+  /**
+   * Quantas chamadas hoje — ou `null` quando **não foi possível contar**.
+   *
+   * `null` não é zero, e a distinção é o ponto. A contagem mora no banco; se
+   * ele estiver fora, passar `0` mentiria dizendo "nenhuma chamada hoje" e o
+   * teto nasceria zerado em silêncio, que é o defeito que `IA_TETO_DIARIO`
+   * vazio já causou uma vez (`AT-38`). Dizer "não sei" deixa a decisão
+   * explícita aqui embaixo, onde ela pode ser lida.
+   */
+  chamadasHoje: number | null
   agora: Date
   limites: LimitesDeConsumo
 }): ImpedimentoDeChamada | null {
@@ -85,7 +94,12 @@ export function impedimentoParaChamar(entrada: {
   // O teto vem primeiro porque dura o dia inteiro: dizer "o fornecedor caiu"
   // a quem estourou a conta mandaria a pessoa esperar por uma coisa que não
   // vai acontecer.
-  if (limites.tetoDiarioDeChamadas > 0 && chamadasHoje >= limites.tetoDiarioDeChamadas) {
+  //
+  // CONTAGEM DESCONHECIDA NÃO IMPEDE (decisão do dono, 23/09/2026 — `AT-42`):
+  // o teto protege a conta do mês; o banco fora protege nada e pararia o
+  // trabalho inteiro. Quem segura o estrago enquanto a contagem não volta é o
+  // disjuntor logo abaixo, que vive na memória e não depende do banco.
+  if (chamadasHoje !== null && limites.tetoDiarioDeChamadas > 0 && chamadasHoje >= limites.tetoDiarioDeChamadas) {
     return {
       motivo: 'teto_diario',
       mensagem:

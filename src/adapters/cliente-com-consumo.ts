@@ -64,7 +64,7 @@ export function comControleDeConsumo(cliente: ClienteDeModelo, opcoes: OpcoesDeC
       const estado = disjuntores.get(opcoes.fornecedor) ?? DISJUNTOR_FECHADO
       const impedimento = impedimentoParaChamar({
         estado,
-        chamadasHoje: await opcoes.registro.chamadasDoDia(opcoes.fornecedor),
+        chamadasHoje: await contarSemDerrubar(opcoes),
         agora: new Date(),
         limites,
       })
@@ -117,6 +117,44 @@ export function comControleDeConsumo(cliente: ClienteDeModelo, opcoes: OpcoesDeC
 function anotarNoDisjuntor(fornecedor: string, resultado: 'ok' | 'falha', limites: LimitesDeConsumo): void {
   const atual = disjuntores.get(fornecedor) ?? DISJUNTOR_FECHADO
   disjuntores.set(fornecedor, aposChamada(atual, resultado, new Date(), limites))
+}
+
+/**
+ * A contagem do dia, ou `null` quando o banco não respondeu.
+ *
+ * ═══ POR QUE ISTO EXISTE ═══
+ *
+ * A regra "a contabilidade nunca derruba a chamada" estava escrita logo
+ * abaixo, no caminho de GRAVAÇÃO, e valia só lá. A LEITURA — que roda antes
+ * de falar com o fornecedor — era aguardada crua: bastava o banco piscar para
+ * o erro do Prisma subir inteiro e matar a chamada. O sistema ficava sem IA
+ * porque a contabilidade caiu, que é o contrário do que o teto existe para
+ * fazer.
+ *
+ * Medido, não suposto: com o MySQL fora, `npm run ia:avaliar` falhou nos 17
+ * casos do gabarito, e a planilha de notas imprimia um pedaço de stack do
+ * Prisma no lugar do motivo — quem lesse concluiria que o MODELO falhou, e
+ * escolheria modelo com base em ruído de infraestrutura.
+ *
+ * Em produção era pior: uma oscilação do banco durante a ingestão derrubaria
+ * e-mail por e-mail, cada um virando `reprocessavel` para a próxima
+ * sincronização tentar de novo.
+ *
+ * `null`, e não `0`: zero significaria "nenhuma chamada hoje" e desligaria o
+ * teto por baixo do pano. Quem decide o que fazer sem a contagem é a política
+ * pura em `core/ia/consumo.ts`, onde a escolha está escrita.
+ */
+async function contarSemDerrubar(opcoes: OpcoesDeConsumo): Promise<number | null> {
+  try {
+    return await opcoes.registro.chamadasDoDia(opcoes.fornecedor)
+  } catch (erro) {
+    registrarLog('erro', 'não foi possível contar o uso da IA de hoje — o teto diário fica sem valer nesta chamada', {
+      fornecedor: opcoes.fornecedor,
+      tarefa: opcoes.tarefa,
+      causa: erro instanceof Error ? erro.message : String(erro),
+    })
+    return null
+  }
 }
 
 /**

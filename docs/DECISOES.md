@@ -906,6 +906,31 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 ---
 
+### AT-42 — Contagem de uso indisponível não derruba a chamada de IA *(23/09/2026)*
+
+**Como apareceu:** medindo, não lendo código. Ao preparar a avaliação de modelo local na máquina do dono (`A56`), o gabarito (`npm run ia:avaliar`) foi rodado contra um servidor falso compatível com OpenAI, num ambiente **sem MySQL de pé**. Resultado: **17 falhas em 17 casos**, todas com a mesma causa, e nenhuma delas do modelo:
+
+```
+Invalid `banco.usoDaIa.aggregate()` invocation
+consumo-da-ia.ts:91  →  pool failed to retrieve a connection
+```
+
+**O defeito:** o teto diário (`A54`, `AT-38`) lê a contagem do dia no banco **antes** de falar com o fornecedor, e `cliente-com-consumo.ts` aguardava essa leitura crua, sem proteção. Banco fora = nenhuma chamada de IA acontece. O mesmo arquivo já declarava a regra contrária, por escrito, para o caminho de GRAVAÇÃO — *"A contabilidade nunca derruba a chamada. Perder uma resposta já paga porque o banco piscou seria trocar trabalho por contagem."* A leitura violava a regra que o próprio código enuncia: é a classe de defeito do `AT-39` (garantia declarada em comentário, sem nada que a segurasse), de novo.
+
+**Decisão do dono (23/09/2026):** com a contagem indisponível, **a chamada acontece** e o teto fica sem valer naquela chamada, com registro alto no log. Alternativa recusada: manter como estava (parar de chamar), que trocava um risco de gasto por uma parada total do trabalho.
+
+**Como ficou:**
+- `impedimentoParaChamar` (núcleo puro) passou a aceitar `chamadasHoje: number | null`, e `null` significa **"não foi possível contar"**. A decisão de não impedir mora lá, escrita, e não espalhada pelo adapter.
+- `null`, **nunca `0`**: zero diria "nenhuma chamada hoje" e desligaria o teto em silêncio — a mesma armadilha do `IA_TETO_DIARIO` vazio que o `AT-38` já corrigiu uma vez.
+- O **disjuntor continua valendo**: ele mora na memória, não depende do banco, e é o que segura o estrago enquanto a contagem não volta. Isto é teste, não promessa.
+- O log sobe como `erro`, dizendo exatamente que o teto não valeu nesta chamada.
+
+**Impacto se estiver errada:** uma queda longa do banco deixa o gasto sem teto pelo tempo da queda. O limite real nesse intervalo passa a ser o disjuntor (5 falhas seguidas) e o orçamento do fornecedor. Reavaliar se a IA paga entrar em uso pesado.
+
+**Prova:** dois testes no núcleo (`core/ia/consumo.test.ts`: contagem desconhecida não impede; e continua respeitando o disjuntor) e dois no adapter (`cliente-com-consumo.test.ts`: a resposta do modelo chega mesmo com a leitura falhando; e o disjuntor não é desligado junto), todos vistos **vermelhos** antes — o adapter falhava com `promise rejected "pool failed to retrieve a connection"`. **Status:** ⏳ adotado.
+
+---
+
 ### AT-41 — E-mail que a IA nunca estrutura para de ser cobrado, e vira número na tela (C-11/N-13) *(23/09/2026)*
 
 **O que motivou:** o achado deixado em aberto desde `AT-38` — "o teto limita o estrago, mas não conta tentativas por e-mail" — e a razão de existir do `JANELA_DE_RELEITURA_DIAS`: sem contador por e-mail, a janela de 7 dias significava até 7 (ou mais, com várias sincronizações por dia) chamadas de IA pagas pela MESMA mensagem que o modelo nunca vai conseguir estruturar; e, depois da janela, o e-mail simplesmente parava de aparecer na leitura seguinte — sem nunca ter sido visto por ninguém. É a combinação exata que o item 4 das *Regras que não se quebram* de `CLAUDE.md` existe para proibir: erro silencioso, e cobrança sem resultado.
