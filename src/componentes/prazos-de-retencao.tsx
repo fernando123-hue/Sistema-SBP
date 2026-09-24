@@ -182,7 +182,9 @@ export function PrazosDeRetencao({
 
                   {aguardandoConfirmacao ? (
                     <div className="mt-3">
-                      <Aviso tom="atencao">
+                      {/* Alerta, não atenção: é a confirmação de uma perda sem volta, e o
+                          leitor de tela precisa interromper (revisão do PR #110, N-32). */}
+                      <Aviso tom="alerta">
                         Encurtar de <strong>{prazo.dias}</strong> para <strong>{dias}</strong> dias
                         apaga, na próxima limpeza diária, {sobre.oQueApaga} — <strong>sem volta</strong>.
                       </Aviso>

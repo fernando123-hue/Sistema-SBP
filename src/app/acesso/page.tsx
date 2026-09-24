@@ -50,6 +50,12 @@ export default function Acesso() {
   /** Senha recém-sorteada, exibida UMA vez. Nunca volta do servidor depois disto. */
   const [senhaGerada, setSenhaGerada] = useState<{ nome: string; senha: string } | null>(null)
   /**
+   * Com uma senha na tela, nenhuma outra é gerada (achado N-29): o cartão
+   * guarda uma só, e a segunda trocava a primeira sem aviso — a senha que
+   * "aparece uma única vez" se perdia antes de ser anotada.
+   */
+  const senhaAberta = senhaGerada !== null
+  /**
    * Quem está esperando o segundo clique para ter a senha trocada.
    *
    * Gerar uma senha nova invalida a atual na hora, não tem desfazer, e o botão
@@ -57,6 +63,14 @@ export default function Acesso() {
    * PRIMEIRA senha não precisa disso: não há o que invalidar.
    */
   const [confirmandoSenha, definirConfirmandoSenha] = useState<string | null>(null)
+  /**
+   * Qual "Desligar acesso" está esperando o segundo clique (achado N-29).
+   *
+   * Desligar derruba na hora a sessão de quem está trabalhando, e o botão fica
+   * ao lado de "Nova senha provisória", que já pedia confirmação. Religar não
+   * pede: devolve acesso, não tira.
+   */
+  const [confirmandoDesligar, definirConfirmandoDesligar] = useState<string | null>(null)
   /** Cartão da senha recém-gerada, para levar a vista até ele. */
   const cartaoDaSenha = useRef<HTMLDivElement>(null)
   const [cadastrando, setCadastrando] = useState(false)
@@ -222,6 +236,9 @@ export default function Acesso() {
             Aparece uma única vez e não fica gravada em lugar nenhum. Entregue pessoalmente — o
             sistema exige a troca no primeiro acesso, e a partir daí nem você conhece a senha.
           </p>
+          <p className="mt-1 text-xs text-atencao">
+            Para gerar outra senha ou cadastrar outra pessoa, clique em &ldquo;já anotei&rdquo;.
+          </p>
           <div className="mt-3">
             <Botao variante="secundario" tamanho="pequeno" onClick={() => setSenhaGerada(null)}>
               já anotei
@@ -305,7 +322,12 @@ export default function Acesso() {
           <div className="mt-4 flex justify-end gap-2">
             <Botao
               onClick={cadastrar}
-              desabilitado={ocupado !== null || novo.nome.trim() === '' || novo.email.trim() === ''}
+              desabilitado={
+                ocupado !== null ||
+                senhaAberta ||
+                novo.nome.trim() === '' ||
+                novo.email.trim() === ''
+              }
             >
               {ocupado === 'novo' ? 'cadastrando…' : 'Cadastrar e gerar senha'}
             </Botao>
@@ -440,7 +462,7 @@ export default function Acesso() {
                       <Botao
                         variante={confirmandoSenha === pessoa.id ? 'perigo' : 'secundario'}
                         tamanho="pequeno"
-                        desabilitado={ocupado !== null}
+                        desabilitado={ocupado !== null || senhaAberta}
                         onClick={() =>
                           !pessoa.senhaDefinidaEm || confirmandoSenha === pessoa.id
                             ? void gerarSenha(pessoa)
@@ -460,15 +482,22 @@ export default function Acesso() {
                       tamanho="pequeno"
                       desabilitado={ocupado !== null}
                       onClick={() =>
-                        agir(pessoa.id, async () => {
-                          await api.enviar('/colaboradores/ativacao', {
-                            colaboradorId: pessoa.id,
-                            ativo: !pessoa.ativo,
-                          })
-                        })
+                        pessoa.ativo && confirmandoDesligar !== pessoa.id
+                          ? definirConfirmandoDesligar(pessoa.id)
+                          : void agir(pessoa.id, async () => {
+                              await api.enviar('/colaboradores/ativacao', {
+                                colaboradorId: pessoa.id,
+                                ativo: !pessoa.ativo,
+                              })
+                              definirConfirmandoDesligar(null)
+                            })
                       }
                     >
-                      {pessoa.ativo ? 'Desligar acesso' : 'Religar acesso'}
+                      {!pessoa.ativo
+                        ? 'Religar acesso'
+                        : confirmandoDesligar === pessoa.id
+                          ? `Confirmar: ${pessoa.nome.split(' ')[0]} sai do sistema agora`
+                          : 'Desligar acesso'}
                     </Botao>
                   </div>
                 </Cartao>

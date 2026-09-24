@@ -226,10 +226,18 @@ export function Aviso({ children, tom = 'alerta' }: { children: ReactNode; tom?:
       ? 'border-alerta/40 bg-alerta-claro text-alerta'
       : tom === 'atencao'
         ? 'border-atencao/40 bg-atencao-claro text-atencao'
-        : 'border-ok/40 bg-ok-claro text-ok'
+        : tom === 'ok'
+          ? 'border-ok/40 bg-ok-claro text-ok'
+          : 'border-borda bg-papel-fundo text-tinta-suave'
 
+  // Só o alerta interrompe o leitor de tela (achado N-32). Com `alert` em todo
+  // tom, cada item suspeito da Revisão era anunciado como urgente ao carregar,
+  // e o neutro caía no verde de sucesso.
   return (
-    <div role="alert" className={juntar('rounded-md border px-3 py-2 text-sm', fundo)}>
+    <div
+      role={tom === 'alerta' ? 'alert' : 'status'}
+      className={juntar('rounded-md border px-3 py-2 text-sm', fundo)}
+    >
       {children}
     </div>
   )
