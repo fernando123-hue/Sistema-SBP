@@ -59,6 +59,10 @@ export const ATOR_SISTEMA: Ator = construir('sistema', 'operador')
 
 export class PermissaoNegadaError extends Error {
   readonly codigo = 'PERMISSAO_NEGADA'
+  /** Quem tentou e o quê — para `rota()` registrar a negação (achado C-24). */
+  readonly colaboradorId: string
+  readonly papel: Papel
+  readonly operacao: Operacao
 
   constructor(ator: Ator, operacao: Operacao, permitidos: readonly Papel[]) {
     super(
@@ -66,6 +70,9 @@ export class PermissaoNegadaError extends Error {
         `Permitidos: ${permitidos.join(', ')}.`,
     )
     this.name = 'PermissaoNegadaError'
+    this.colaboradorId = ator.colaboradorId
+    this.papel = ator.papel
+    this.operacao = operacao
   }
 }
 
