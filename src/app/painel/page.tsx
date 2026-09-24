@@ -111,8 +111,13 @@ function percentual(fracao: number | null): string {
  */
 function periodo(desde: string | null): string {
   if (desde === null) return 'Desde o início'
-  const [ano, mes, dia] = desde.split('-')
-  return `Desde ${dia}/${mes}/${ano}`
+  return `Desde ${dataCurta(desde)}`
+}
+
+/** `AAAA-MM-DD` → `DD/MM/AAAA`, sem passar por `Date` (e pelo fuso). */
+function dataCurta(iso: string): string {
+  const [ano, mes, dia] = iso.split('-')
+  return `${dia}/${mes}/${ano}`
 }
 
 /**
@@ -485,12 +490,22 @@ export default function PainelPagina() {
           chamada a mais só para escolher entre dois textos seria custo sem
           ganho. Quem vê uma linha só entende por quê; quem vê a equipe também.
         */}
+        {/*
+          DOIS TEMPOS NA MESMA TABELA, e cada coluna diz o seu (N-06).
+          Concluídos obedece ao período escolhido no topo; Atribuídos e
+          Pendentes são o que está com cada pessoa agora. Antes nenhuma dizia,
+          e Concluídos contava desde sempre — a comparação mês a mês com a
+          planilha saía errada por pessoa.
+        */}
         <CabecalhoDeSecao
           titulo="Por pessoa"
-          descricao="Cada pessoa vê os próprios números; quem coordena vê os de todos. Crédito próximo de zero significa carga equilibrada — é o livro-razão que a planilha não tem."
+          descricao={`Concluídos: de ${dataCurta(dados.periodo.de)} a ${dataCurta(dados.periodo.ate)}. Atribuídos (hoje) e pendentes (hoje): o que está com cada pessoa agora, fora do período. Cada pessoa vê os próprios números; quem coordena vê os de todos. Crédito próximo de zero significa carga equilibrada — é o livro-razão que a planilha não tem.`}
         />
         <ListaResponsiva
-          linhas={dados.pessoas.filter((pessoa) => pessoa.atribuidos > 0)}
+          // Sem filtro aqui: quais linhas saem é decisão do servidor, que sabe
+          // o papel de quem pede (`porPessoa`). O filtro `atribuidos > 0` desta
+          // tela escondia quem só concluiu no período (N-06).
+          linhas={dados.pessoas}
           chaveDaLinha={(pessoa) => pessoa.colaboradorId}
           tituloDoCartao={(pessoa) => pessoa.nome}
           colunas={[
@@ -502,7 +517,7 @@ export default function PainelPagina() {
             },
             {
               chave: 'atribuidos',
-              cabecalho: 'Atribuídos',
+              cabecalho: 'Atribuídos (hoje)',
               alinhamento: 'direita',
               conteudo: (pessoa) => <span className="numerico">{pessoa.atribuidos}</span>,
             },
@@ -514,7 +529,7 @@ export default function PainelPagina() {
             },
             {
               chave: 'pendentes',
-              cabecalho: 'Pendentes',
+              cabecalho: 'Pendentes (hoje)',
               alinhamento: 'direita',
               conteudo: (pessoa) => <span className="numerico">{pessoa.pendentes}</span>,
             },

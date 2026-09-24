@@ -293,13 +293,36 @@ export async function conferirPendencia(
  * A tabela POR CATEGORIA (`porCategoria`) continua aberta a todos de propósito:
  * ali não há pessoa nenhuma, só o volume do setor — esconder de quem trabalha
  * nele não protegeria ninguém.
+ *
+ * Dois tempos na mesma linha, e a tela diz qual é qual: `concluidos` é DO
+ * PERÍODO — sem o recorte, contava desde sempre e a comparação mês a mês com
+ * a planilha saía errada por pessoa (N-06). `atribuidos` e `pendentes` são o
+ * estado de AGORA: é com eles que se vê quem está carregado hoje.
  */
-export async function porPessoa(banco: Banco, ator: Ator): Promise<LinhaPorPessoa[]> {
+export async function porPessoa(
+  banco: Banco,
+  ator: Ator,
+  periodo = periodoPadrao(),
+): Promise<LinhaPorPessoa[]> {
+  const abertura = inicioDoDia(periodo.de)
+  const fechamento = fimDoDia(periodo.ate)
+  const soAPropria = ator.papel === 'colaborador'
   const colaboradores = await banco.colaborador.findMany({
-    where: {
-      ativo: true,
-      ...(ator.papel === 'colaborador' ? { id: ator.colaboradorId } : {}),
-    },
+    where: soAPropria
+      ? { ativo: true, id: ator.colaboradorId }
+      : {
+          // Quem foi desativado depois de concluir no período continua na
+          // tabela: "Por categoria" conta essas conclusões, e as duas tabelas
+          // do mesmo período têm de fechar (revisão do PR #104).
+          OR: [
+            { ativo: true },
+            {
+              execucoes: {
+                some: { resultado: 'concluido', concluidoEm: { gte: abertura, lte: fechamento } },
+              },
+            },
+          ],
+        },
     orderBy: { nome: 'asc' },
   })
 
@@ -309,7 +332,11 @@ export async function porPessoa(banco: Banco, ator: Ator): Promise<LinhaPorPesso
     const [atribuidos, concluidos, pendentes, saldo] = await Promise.all([
       banco.atribuicao.count({ where: { colaboradorId: colaborador.id, ativa: true } }),
       banco.execucao.count({
-        where: { colaboradorId: colaborador.id, resultado: 'concluido' },
+        where: {
+          colaboradorId: colaborador.id,
+          resultado: 'concluido',
+          concluidoEm: { gte: abertura, lte: fechamento },
+        },
       }),
       // Pendente é CONTADO, não subtraído.
       //
@@ -337,13 +364,23 @@ export async function porPessoa(banco: Banco, ator: Ator): Promise<LinhaPorPesso
       }),
     ])
 
+    const creditoGlobal = saldo?.creditoGlobal ?? 0
+
+    // QUEM APARECE É DECIDIDO AQUI, onde o papel é conhecido. A tela filtrava
+    // e adivinhava "sou colaborador" por "veio uma linha só" — um gestor com
+    // equipe de uma pessoa caía no mesmo caso (revisão do PR #104). Para quem
+    // coordena, linha sem nada a dizer é ruído; para o colaborador, a própria
+    // linha zerada é resposta ("você não tem nada"), e tabela vazia não é.
+    const temAlgoADizer = atribuidos > 0 || concluidos > 0 || creditoGlobal !== 0
+    if (!soAPropria && !temAlgoADizer) continue
+
     linhas.push({
       colaboradorId: colaborador.id,
       nome: colaborador.nome,
       atribuidos,
       concluidos,
       pendentes,
-      creditoGlobal: saldo?.creditoGlobal ?? 0,
+      creditoGlobal,
     })
   }
 
