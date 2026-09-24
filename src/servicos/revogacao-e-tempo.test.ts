@@ -93,6 +93,22 @@ describe('tempo de resposta da recusa de entrada', () => {
     expect(senhaErrada).toBeGreaterThanOrEqual(PISO_DE_RESPOSTA_DE_ENTRADA_MS - 20)
   })
 
+  it('a conta bloqueada também espera o piso (achado C-18)', async () => {
+    // O ramo do bloqueio respondia sem esperar: em poucos milissegundos, contra
+    // os 250 de um e-mail inexistente. Mesmo que a mensagem um dia fique igual
+    // para os dois (decisão do dono, `§ H.4`), o relógio contaria qual conta
+    // existe — é justamente o bloqueio que só uma conta real atinge.
+    const { pessoaId } = await semearPessoa()
+    await banco.colaborador.update({
+      where: { id: pessoaId },
+      data: { bloqueadoAte: new Date(Date.now() + 60_000), tentativasFalhas: 5 },
+    })
+
+    const bloqueada = await medir('pessoa@teste.local')
+
+    expect(bloqueada).toBeGreaterThanOrEqual(PISO_DE_RESPOSTA_DE_ENTRADA_MS - 20)
+  })
+
   it('a diferença entre os dois caminhos fica bem abaixo do que era medível', async () => {
     await semearPessoa()
 
