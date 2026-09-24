@@ -3,6 +3,7 @@ import { CredencialIlegivelError, ErroDeNegocio } from '../core/erros'
 import {
   AtivacaoSchema,
   CredenciaisSchema,
+  DOMINIO_ATUAL,
   DefinicaoDeSenhaSchema,
   DestravamentoSchema,
   PapelSchema,
@@ -57,6 +58,7 @@ async function avisarCredencialIlegivel(
 
   const jaAvisado = await banco.eventoProcessamento.findFirst({
     where: {
+      dominio: DOMINIO_ATUAL,
       etapa: 'autenticacao',
       situacao: 'falha',
       referencia: colaboradorId,
@@ -124,6 +126,7 @@ async function auditarRecusa(
 ): Promise<void> {
   const recente = await banco.logAuditoria.findFirst({
     where: {
+      dominio: DOMINIO_ATUAL,
       entidade: 'Colaborador',
       entidadeId: colaboradorId,
       acao,
@@ -172,6 +175,7 @@ async function registrarRecusaSemAcesso(
 
   const recente = await banco.eventoProcessamento.findFirst({
     where: {
+      dominio: DOMINIO_ATUAL,
       etapa: 'autenticacao',
       situacao: 'falha',
       referencia: null,

@@ -1,6 +1,7 @@
 import { ZodError } from 'zod'
 
 import { ErroDominio, ErroOperacional } from '../core/erros'
+import { DOMINIO_ATUAL } from '../core/esquemas'
 import { ambiente } from './ambiente'
 import { PermissaoNegadaError } from './ator'
 import { verificarLimite } from './limite-de-taxa'
@@ -98,6 +99,9 @@ async function registrarNegacao(erro: PermissaoNegadaError): Promise<void> {
         // que só cresce. Sem ela, cada 403 viraria varredura (revisão do #97).
         situacao: 'falha',
         etapa: 'autorizacao',
+        // O domínio também: a tabela é compartilhada (invariante 14), e a linha
+        // de outro sistema não pode calar a deste (revisão de segurança do #97).
+        dominio: DOMINIO_ATUAL,
         referencia: erro.colaboradorId,
         mensagem,
         criadoEm: { gte: new Date(Date.now() - JANELA_DO_RASTRO_DE_NEGACAO_MS) },

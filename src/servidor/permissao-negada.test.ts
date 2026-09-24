@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { DOMINIO_ATUAL } from '../core/esquemas'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
 import { exigirPapel } from './ator'
 import { rota } from './http'
@@ -53,5 +54,29 @@ describe('permissão negada', () => {
     }
 
     expect(await banco.eventoProcessamento.count({ where: { etapa: 'autorizacao' } })).toBe(1)
+  })
+
+  it('uma linha igual de OUTRO domínio não cala o registro deste (revisão de segurança do #97)', async () => {
+    // A tabela é compartilhada por desenho (invariante 14). Sem o domínio no
+    // filtro do teto, a linha de outro sistema com a mesma pessoa e operação
+    // suprimiria a deste — em silêncio.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const colega = base.colaboradores[1]!.id
+    await banco.eventoProcessamento.create({
+      data: {
+        dominio: 'documentos',
+        correlacaoId: 'corr-de-outro-sistema',
+        etapa: 'autorizacao',
+        situacao: 'falha',
+        referencia: colega,
+        mensagem: 'papel "colaborador" tentou "listar colaboradores"',
+      },
+    })
+
+    await tentarComoColaborador(colega)
+
+    expect(
+      await banco.eventoProcessamento.count({ where: { etapa: 'autorizacao', dominio: DOMINIO_ATUAL } }),
+    ).toBe(1)
   })
 })
