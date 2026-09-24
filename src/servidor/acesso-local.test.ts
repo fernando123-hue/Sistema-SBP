@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -77,7 +78,7 @@ describe('ligar e desligar', () => {
     process.env['SESSAO_SECRET'] = 'q8Zr2vN6pW1xT4kL9mB3cF7hJ0sD5gYa'
     process.env['BUSCA_SECRET'] = 'k3Lm9Pq2Rs7Tv1Wx5Yz8Ab4Cd6Ef0Gh'
     // E exige o segredo próprio dos anexos (C-25).
-    process.env['ANEXOS_SECRET'] = 'w4Xy7Zb1Nc5Vd9Fg2Hj6Kl0Mn3Pq8Rt'
+    process.env['ANEXOS_SECRET'] = randomUUID()
     configurar('0', 'production')
     expect(() => ambiente()).not.toThrow()
     expect(acessoLocalHabilitado()).toBe(false)

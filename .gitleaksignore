@@ -5,3 +5,8 @@
 # chave pela regra genérica. O literal foi removido no commit seguinte; o commit antigo
 # fica no PR porque push forçado é bloqueado.
 09918508ee1a219e650f923e4f28a69330af4a29:src/servidor/ambiente-seguro.test.ts:generic-api-key:78
+#
+# 24/09/2026, PR #98 — valor sintético de ANEXOS_SECRET num teste (não é segredo de nada),
+# confundido com chave pela regra genérica. Trocado por randomUUID() no commit seguinte;
+# o commit antigo fica no PR porque push forçado é bloqueado.
+2ad11aad7ee09ff759cbe6cdecae6264ad447793:src/servidor/ambiente-seguro.test.ts:generic-api-key:25

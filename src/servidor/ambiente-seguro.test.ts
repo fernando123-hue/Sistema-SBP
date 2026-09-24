@@ -21,8 +21,9 @@ beforeEach(() => {
   vi.stubEnv('SESSAO_SECRET', FORTE)
   vi.stubEnv('BUSCA_SECRET', `${FORTE}-busca`)
   // Independente do de sessão: `${FORTE}-anexos` seria exatamente a derivação
-  // que a trava do C-25 recusa (revisão de segurança do #98).
-  vi.stubEnv('ANEXOS_SECRET', 'w4Xy7Zb1Nc5Vd9Fg2Hj6Kl0Mn3Pq8Rt')
+  // que a trava do C-25 recusa (revisão de segurança do #98). Gerado na hora:
+  // um literal com cara de chave é confundido com segredo pelo gitleaks.
+  vi.stubEnv('ANEXOS_SECRET', randomUUID())
   vi.stubEnv('INGESTAO_ADAPTER', 'mock')
   vi.stubEnv('IA_ADAPTER', 'mock')
   vi.stubEnv('ACESSO_LOCAL_SEM_SENHA', '')
