@@ -3,7 +3,6 @@ import {
   PayloadDoItemSchema,
   ResolucaoRevisaoSchema,
   SugestaoIaGravadaSchema,
-  desserializar,
   serializar,
 } from '../core/esquemas'
 import { camposAlterados, compararRevisao, type DecisaoHumana } from '../core/qualidade-ia'
@@ -31,6 +30,35 @@ async function exigirColaborador(tx: Transacao, colaboradorId: string): Promise<
       `Colaborador "${colaboradorId}" não existe. A resolução de revisão precisa de um usuário real.`,
     )
   }
+}
+
+/**
+ * O payload do item, lido para ser MESCLADO e gravado de volta (achado N-35).
+ *
+ * Aqui não cabe valor padrão: a leitura é o ponto de partida de uma escrita.
+ * `desserializar` devolvia `{ campos: {} }` para payload ilegível, e a mescla
+ * gravava isso por cima — CPF, CRM, liga mencionada e observação da IA sumiam,
+ * a chave de busca era refeita só com o que a pessoa digitou, e nada ficava
+ * registrado. Ilegível falha alto: a transação aborta, o item continua em
+ * revisão com o payload como estava, e a rota responde 500 com correlação.
+ *
+ * A mensagem leva o id do item, NUNCA o conteúdo: ela vai para o log, e o
+ * payload tem nome e CPF de associado.
+ */
+function payloadGravado(itemId: string, texto: string) {
+  let bruto: unknown
+  try {
+    bruto = JSON.parse(texto)
+  } catch {
+    bruto = undefined
+  }
+  const lido = PayloadDoItemSchema.safeParse(bruto)
+  if (!lido.success) {
+    throw new Error(
+      `Item.payload ilegível no item "${itemId}". A revisão não foi gravada para não apagar o que a IA extraiu — corrija a linha, não o leitor.`,
+    )
+  }
+  return lido.data
 }
 
 /**
@@ -109,7 +137,10 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaD
       item: {
         include: {
           categoria: { select: { codigo: true, limiarConfianca: true } },
-          email: { include: { conteudo: true } },
+          // Só o que a lista mostra (achado N-34). `include` trazia o `corpo`
+          // (LongText, até 200 mil caracteres) de cada pendente a cada
+          // abertura — e quem enche a revisão é justamente e-mail suspeito.
+          email: { select: { conteudo: { select: { remetente: true, assunto: true } } } },
         },
       },
     },
@@ -185,13 +216,7 @@ export async function resolver(
     // vazios quando o operador não mexe neles, aprovar uma revisão deixava o
     // item com MENOS informação do que antes de ser revisado, e o dataset de
     // melhoria nascia vazio justamente na dimensão que mais importa.
-    const payloadAnterior = desserializar(revisao.item.payload, PayloadDoItemSchema, {
-      campos: {},
-      camposAusentes: [],
-      ligaMencionada: null,
-      observacao: null,
-      revisadoPorHumano: false,
-    })
+    const payloadAnterior = payloadGravado(revisao.item.id, revisao.item.payload)
     const payloadFinal = {
       ...payloadAnterior,
       campos: { ...payloadAnterior.campos, ...dados.campos },
