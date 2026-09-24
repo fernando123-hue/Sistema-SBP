@@ -679,6 +679,40 @@ describe('invariantes de atribuição', () => {
     ).rejects.toThrow(/não pode executar/i)
   })
 
+  // N-05 da auditoria: transferir para quem já é o dono respondia
+  // sucesso sem fazer nada, e a tela tirava o item da lista como se ele tivesse
+  // passado adiante. Ele continuava na fila de quem achou que se livrou dele.
+  it('transferir para quem já está com o item é recusado, não um sucesso vazio', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
+    const datas = sequenciaDeDatas(DATA_BASE, 1)
+
+    await sincronizar(deps(datas), base.operador)
+    await aprovarTudoNoBanco(banco)
+    await confirmar(banco, { data: datas[0]!, categorias: [] }, base.operador)
+
+    const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
+    const dono = base.colaboradores.find((pessoa) => pessoa.id === atribuicao.colaboradorId)!
+
+    for (const ator of [dono.ator, base.operador]) {
+      await expect(
+        transferir(
+          banco,
+          {
+            itemId: atribuicao.itemId,
+            paraColaboradorId: dono.id,
+            justificativa: 'Passando para frente.',
+          },
+          ator,
+        ),
+      ).rejects.toThrow(/já está com essa pessoa/i)
+    }
+
+    const vigente = await banco.atribuicao.findFirstOrThrow({
+      where: { itemId: atribuicao.itemId, ativa: true },
+    })
+    expect(vigente.id).toBe(atribuicao.id)
+  })
+
   it('a identidade do autor vem do ator, não do chamador — auditoria não é forjável', async () => {
     const base = await semearBase(banco, { totalDeDias: 1, pessoasDePlantao: 2 })
     const datas = sequenciaDeDatas(DATA_BASE, 1)

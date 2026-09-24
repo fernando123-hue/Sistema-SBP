@@ -13,6 +13,7 @@ import {
   Vazio,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
+import { hojeIso } from '../../core/util/datas'
 
 interface ItemDaFila {
   itemId: string
@@ -42,6 +43,24 @@ function quando(valor: string | null): string {
 interface PessoaDaEscala {
   colaboradorId: string
   nome: string
+  /** Já redigido pelo servidor conforme o papel de quem pergunta (`'ferias'` ou outro rótulo). */
+  afastamento: string | null
+}
+
+interface PerfilDaSessao {
+  colaborador: { id: string } | null
+}
+
+/**
+ * O nome na lista "Transferir para", com a ausência do dia à vista.
+ *
+ * Marca, não bloqueia: transferir para quem está fora pode ser deliberado
+ * ("ela volta amanhã e o caso é dela"), e essa resposta é do dono do
+ * processo, não da tela — ver o comentário de `transferir` em `servicos/fila.ts`.
+ */
+function rotuloDoDestino(pessoa: PessoaDaEscala): string {
+  if (pessoa.afastamento === null) return pessoa.nome
+  return `${pessoa.nome} — ${pessoa.afastamento === 'ferias' ? 'de férias' : 'ausente hoje'}`
 }
 
 type AcaoEmCurso = { itemId: string; acao: 'concluir' | 'devolver' | 'transferir' } | null
@@ -103,8 +122,19 @@ export default function Fila() {
     setErro(null)
     if (equipe.length > 0) return
     try {
-      const hoje = new Date().toISOString().slice(0, 10)
-      setEquipe(await api.buscar<PessoaDaEscala[]>(`/escala?data=${hoje}`))
+      // `hojeIso()`, no fuso da operação: `toISOString()` é UTC, e depois das
+      // 21h de Brasília pedia a escala — e os afastamentos — de amanhã (N-05).
+      const [escala, sessao] = await Promise.all([
+        api.buscar<PessoaDaEscala[]>(`/escala?data=${hojeIso()}`),
+        // Sem a sessão, a lista sai com o próprio nome — e o servidor recusa a
+        // transferência para si com mensagem clara. Perder a lista inteira
+        // por isso seria trocar um incômodo por uma saída a menos.
+        api.buscar<PerfilDaSessao>('/sessao').catch(() => null),
+      ])
+      // A própria pessoa sai da lista: transferir para si não é transferir.
+      // O servidor também recusa, mas a opção nem deve ser oferecida.
+      const eu = sessao?.colaborador?.id
+      setEquipe(escala.filter((pessoa) => pessoa.colaboradorId !== eu))
     } catch {
       // Sem a lista, transferir fica indisponível e devolver continua valendo.
       // Uma das duas saídas some; a tela não. Por isso não vira erro de tela.
@@ -297,7 +327,7 @@ export default function Fila() {
                                   <option value="">Transferir para…</option>
                                   {equipe.map((pessoa) => (
                                     <option key={pessoa.colaboradorId} value={pessoa.colaboradorId}>
-                                      {pessoa.nome}
+                                      {rotuloDoDestino(pessoa)}
                                     </option>
                                   ))}
                                 </select>

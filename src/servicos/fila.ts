@@ -266,7 +266,14 @@ export async function transferir(
       throw new ErroDeNegocio('Item já concluído não pode ser transferido.')
     }
 
-    if (atual.colaboradorId === entrada.paraColaboradorId) return
+    // Transferir para quem já é o dono era um `return` — sucesso sem efeito. A
+    // tela lê sucesso como "saiu de mim" e tira o item da lista, e ele fica
+    // parado na fila de quem acha que o passou adiante (N-05).
+    if (atual.colaboradorId === entrada.paraColaboradorId) {
+      throw new ErroDeNegocio(
+        'O item já está com essa pessoa. Para passá-lo adiante, escolha outra.',
+      )
+    }
 
     // O DESTINO PRECISA PODER ABRIR A FILA DELE.
     //
