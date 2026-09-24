@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -27,6 +28,7 @@ const ORIGINAL = {
   acesso: process.env['ACESSO_LOCAL_SEM_SENHA'],
   nodeEnv: process.env['NODE_ENV'],
   busca: process.env['BUSCA_SECRET'],
+  anexos: process.env['ANEXOS_SECRET'],
 }
 
 function configurar(acesso: string | undefined, nodeEnv: 'development' | 'test' | 'production'): void {
@@ -47,6 +49,8 @@ afterEach(() => {
   Object.assign(process.env, { NODE_ENV: ORIGINAL.nodeEnv })
   if (ORIGINAL.busca === undefined) delete process.env['BUSCA_SECRET']
   else process.env['BUSCA_SECRET'] = ORIGINAL.busca
+  if (ORIGINAL.anexos === undefined) delete process.env['ANEXOS_SECRET']
+  else process.env['ANEXOS_SECRET'] = ORIGINAL.anexos
   limparCacheDeAmbiente()
 })
 
@@ -73,6 +77,8 @@ describe('ligar e desligar', () => {
     // Produção recusa os segredos públicos da suíte (N-18).
     process.env['SESSAO_SECRET'] = 'q8Zr2vN6pW1xT4kL9mB3cF7hJ0sD5gYa'
     process.env['BUSCA_SECRET'] = 'k3Lm9Pq2Rs7Tv1Wx5Yz8Ab4Cd6Ef0Gh'
+    // E exige o segredo próprio dos anexos (C-25).
+    process.env['ANEXOS_SECRET'] = randomUUID()
     configurar('0', 'production')
     expect(() => ambiente()).not.toThrow()
     expect(acessoLocalHabilitado()).toBe(false)
