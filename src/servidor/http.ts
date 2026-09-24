@@ -1,6 +1,7 @@
 import { ZodError } from 'zod'
 
 import { ErroDominio, ErroOperacional } from '../core/erros'
+import { DOMINIO_ATUAL } from '../core/esquemas'
 import { ambiente } from './ambiente'
 import { PermissaoNegadaError } from './ator'
 import { verificarLimite } from './limite-de-taxa'
@@ -67,6 +68,64 @@ function mensagemDeValidacao(erro: ZodError): string {
 }
 
 /**
+ * Uma linha de negação por pessoa e operação a cada janela (achado C-24).
+ *
+ * `EventoProcessamento` nunca é apagado, e quem sonda escolhe quantas vezes
+ * tenta: uma linha por 403 seria torneira de escrita. O que a investigação
+ * precisa é saber que houve, quem, com que papel e em que operação — e a
+ * sondagem sustentada aparece como uma linha a cada janela. Mesmo desenho do
+ * rastro de recusa de entrada (`servicos/autenticacao.ts`, C-19).
+ */
+const JANELA_DO_RASTRO_DE_NEGACAO_MS = 10 * 60 * 1000
+
+/**
+ * Registra a permissão negada: log sempre, evento no máximo uma vez por janela.
+ *
+ * NUNCA o corpo da requisição nem o caminho com ids — só quem, papel e a
+ * operação, que é vocabulário fechado (`OperacaoSchema`). E a falha ao gravar
+ * não troca o 403 por outra coisa: quem recebe a recusa continua recebendo a
+ * recusa; o defeito do registro vai para o log, como no ramo dos 500.
+ */
+async function registrarNegacao(erro: PermissaoNegadaError): Promise<void> {
+  const contexto = { colaboradorId: erro.colaboradorId, papel: erro.papel, operacao: erro.operacao }
+  registrarLog('aviso', 'permissão negada', contexto)
+
+  try {
+    const banco = obterPrisma()
+    const mensagem = `papel "${erro.papel}" tentou "${erro.operacao}"`
+    const recente = await banco.eventoProcessamento.findFirst({
+      where: {
+        // `situacao` junto de `etapa`: é o índice [situacao, etapa] da tabela,
+        // que só cresce. Sem ela, cada 403 viraria varredura (revisão do #97).
+        situacao: 'falha',
+        etapa: 'autorizacao',
+        // O domínio também: a tabela é compartilhada (invariante 14), e a linha
+        // de outro sistema não pode calar a deste (revisão de segurança do #97).
+        dominio: DOMINIO_ATUAL,
+        referencia: erro.colaboradorId,
+        mensagem,
+        criadoEm: { gte: new Date(Date.now() - JANELA_DO_RASTRO_DE_NEGACAO_MS) },
+      },
+      select: { id: true },
+    })
+    if (recente) return
+
+    await registrarEvento(banco, {
+      correlacaoId: novaCorrelacao(),
+      etapa: 'autorizacao',
+      situacao: 'falha',
+      referencia: erro.colaboradorId,
+      mensagem,
+    })
+  } catch (aoGravar) {
+    registrarLog('erro', 'falha ao registrar a permissão negada', {
+      ...contexto,
+      erro: mensagemDoErro(aoGravar),
+    })
+  }
+}
+
+/**
  * Envolve um handler de rota.
  *
  * Todo `route.ts` passa por aqui — assim nenhuma rota esquece de tratar erro,
@@ -95,6 +154,10 @@ export async function rota(handler: () => Promise<Response>): Promise<Response> 
       })
       return responderErro(erro.mensagemPublica, erro.statusHttp)
     }
+
+    // Negação de permissão é tentativa, não engano de digitação: deixa rastro
+    // antes de virar 403 (C-24).
+    if (erro instanceof PermissaoNegadaError) await registrarNegacao(erro)
 
     const status = statusDoErro(erro)
 

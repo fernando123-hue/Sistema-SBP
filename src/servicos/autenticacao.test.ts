@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { TENTATIVAS_ANTES_DE_TRAVAR, segundosDeBloqueio } from '../core/autenticacao'
+import { DOMINIO_ATUAL } from '../core/esquemas'
 import { conferirSenha, gerarHash, precisaRehash } from '../servidor/credenciais'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo } from '../testes/apoio'
@@ -979,6 +980,25 @@ describe('toda recusa deixa rastro (achado C-19)', () => {
       }),
     ).toBe(1)
     expect(await banco.eventoProcessamento.count({ where: { etapa: 'autenticacao' } })).toBe(1)
+  })
+
+  it('o teto do rastro não é calado por linha de outro domínio (revisão de segurança do #97)', async () => {
+    await semearPessoa()
+    await banco.eventoProcessamento.create({
+      data: {
+        dominio: 'documentos',
+        correlacaoId: 'corr-de-outro-sistema',
+        etapa: 'autenticacao',
+        situacao: 'falha',
+        mensagem: 'entrada recusada: e-mail sem conta',
+      },
+    })
+
+    await recusar(autenticar(banco, { email: 'ninguem-aqui@teste.local', senha: 'chute-sintetico' }))
+
+    expect(
+      await banco.eventoProcessamento.count({ where: { etapa: 'autenticacao', dominio: DOMINIO_ATUAL } }),
+    ).toBe(1)
   })
 
   it('troca de senha com a senha atual errada entra na trilha', async () => {
