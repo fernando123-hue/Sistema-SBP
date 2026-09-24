@@ -224,7 +224,12 @@ export async function porCorrelacao(
   // mais barata de saber, e sem ela o corte seria invisível.
   const [auditoria, eventos] = await Promise.all([
     banco.logAuditoria.findMany({
-      where: { correlacaoId, dominio },
+      // A MESMA lista fechada de `porEntidade` (achado C-20). Valia numa porta
+      // só: a limpeza diária grava com um correlacaoId o motivo de afastamento
+      // expurgado (entidade Colaborador) e o e-mail expurgado (Email), e o
+      // operador lia a correlação na linha do e-mail e puxava por aqui a linha
+      // da colega. Uma política, duas portas.
+      where: { correlacaoId, dominio, entidade: { in: [...ENTIDADES_CONSULTAVEIS] } },
       orderBy: { timestamp: 'asc' },
       take: LIMITE_POR_TABELA + 1,
     }),
