@@ -421,8 +421,11 @@ export async function sincronizar(
         // distinguíveis por quem investiga, e não eram.
         //
         // A separação é de VISIBILIDADE, não de fluxo: nada muda para a
-        // operação, e a decisão de criar uma fila para estes casos é do dono do
-        // processo (`DECISOES.md § C`).
+        // operação AINDA. O dono já decidiu a fila para estes casos
+        // (`DECISOES.md § A34`: lista na Revisão, só operador e gestor, e o
+        // relógio da limpeza só corre depois da decisão); ela é da fase 4 e não
+        // existe. Até lá, o e-mail suspeito sem item fica fora da limpeza
+        // (`§ AT-24`), para a manipulação não sumir sozinha (achado C-27).
         const suspeito = resultado.conteudoSuspeito
         registrarLog(suspeito ? 'erro' : 'aviso', 'e-mail interpretado sem nenhum item', {
           correlacaoId,
