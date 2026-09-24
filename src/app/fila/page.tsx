@@ -126,11 +126,14 @@ export default function Fila() {
       // 21h de Brasília pedia a escala — e os afastamentos — de amanhã (N-05).
       const [escala, sessao] = await Promise.all([
         api.buscar<PessoaDaEscala[]>(`/escala?data=${hojeIso()}`),
-        api.buscar<PerfilDaSessao>('/sessao'),
+        // Sem a sessão, a lista sai com o próprio nome — e o servidor recusa a
+        // transferência para si com mensagem clara. Perder a lista inteira
+        // por isso seria trocar um incômodo por uma saída a menos.
+        api.buscar<PerfilDaSessao>('/sessao').catch(() => null),
       ])
       // A própria pessoa sai da lista: transferir para si não é transferir.
       // O servidor também recusa, mas a opção nem deve ser oferecida.
-      const eu = sessao.colaborador?.id
+      const eu = sessao?.colaborador?.id
       setEquipe(escala.filter((pessoa) => pessoa.colaboradorId !== eu))
     } catch {
       // Sem a lista, transferir fica indisponível e devolver continua valendo.
