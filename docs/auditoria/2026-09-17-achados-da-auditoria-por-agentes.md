@@ -102,7 +102,7 @@ a linha certa), nunca só que o texto entrou no arquivo.
 | N-27 | BAIXO | `src/adapters/ingestao-graph.ts:151` | O teto do anexo decide pelo tamanho declarado e não evita baixar os bytes grandes | **Confirmado e corrigido** (17/09): a listagem vem sem bytes, só o arquivo que cabe é baixado, e o tamanho que vale é o dos bytes |
 | N-28 | BAIXO | `src/app/acesso/page.tsx:133` | Mensagens em inglês, com ids internos e com notas de desenvolvimento na tela | |
 | N-29 | BAIXO | `src/app/acesso/page.tsx:147` | Senha provisória ainda não anotada é sobrescrita pela próxima, e "Desligar acesso" age com um clique | |
-| N-30 | BAIXO | `src/app/revisao/page.tsx:194` | Revisão diz "Nada aguardando" e "fila vazia" com revisões ainda pendentes além do corte | |
+| N-30 | BAIXO | `src/app/revisao/page.tsx:194` | Revisão diz "Nada aguardando" e "fila vazia" com revisões ainda pendentes além do corte | **Confirmado e corrigido** (PR #107): cada decisão desconta do total; lista local zerada com total > 0 pede a próxima leva e mostra "Carregando…", nunca "Nada aguardando" |
 | N-31 | BAIXO | `src/app/senha/page.tsx:59` | Colaborador cai na Distribuição depois de trocar a senha e ao clicar no logotipo | **Confirmado e corrigido** (PR #108): regra única `telaInicial` em `core/telas.ts` para entrada, raiz e logotipo; a troca de senha vai para `/`, que escolhe pelo papel da sessão |
 | N-32 | BAIXO | `src/componentes/matrizes.tsx:228` | Aviso sempre com role="alert", campos sem rótulo e alvos de 36 px no celular | |
 | N-33 | BAIXO | `src/servicos/distribuicao.ts:835` | Distribuição concorrente com a desativação de uma pessoa pode entregar itens a quem acabou de ser desligado, e eles ficam invisíveis | |

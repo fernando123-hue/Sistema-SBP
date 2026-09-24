@@ -14,6 +14,7 @@ import {
   Vazio,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
+import { depoisDeResolver, estadoDaFila, filaDaResposta } from './fila-na-tela'
 import type { ItemEmRevisao, NaRede } from '../../core/tipos'
 
 /** A forma vem do núcleo; a tela lê o que sobrevive ao JSON (`H-D7`). */
@@ -57,9 +58,19 @@ const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutr
  * medida de acerto do modelo — e é ela que autoriza afrouxar o limiar depois.
  */
 export default function Revisao() {
-  const [pendentes, setPendentes] = useState<ItemNaTela[] | null>(null)
+  /**
+   * Lista e total num estado só (achado N-30): cada decisão desconta dos dois
+   * juntos, sobre o estado de agora — duas decisões seguidas não trabalham
+   * sobre uma lista velha. `pedirMais` marca que a lista local acabou com
+   * pendentes além do corte.
+   */
+  const [fila, setFila] = useState<{ itens: ItemNaTela[]; total: number; pedirMais: boolean } | null>(
+    null,
+  )
+  const pendentes = fila?.itens ?? null
   /** Quantas existem de verdade. Maior que a lista = a fila está truncada. */
-  const [totalPendentes, setTotalPendentes] = useState(0)
+  const totalPendentes = fila?.total ?? 0
+  const estado = estadoDaFila(pendentes, totalPendentes)
   const [erro, setErro] = useState<string | null>(null)
   const [ocupado, setOcupado] = useState<{ revisaoId: string; aprovar: boolean } | null>(null)
   /** Qual descarte está esperando o segundo clique. */
@@ -68,10 +79,11 @@ export default function Revisao() {
 
   const carregar = useCallback(async () => {
     try {
-      const fila = await api.buscar<{ itens: ItemNaTela[]; total: number }>('/revisao')
-      const lista = fila.itens
-      setTotalPendentes(fila.total)
-      setPendentes(lista)
+      const resposta = filaDaResposta(
+        await api.buscar<{ itens: ItemNaTela[]; total: number }>('/revisao'),
+      )
+      const lista = resposta.itens
+      setFila({ itens: lista, total: resposta.total, pedirMais: false })
       setEdicao(
         Object.fromEntries(
           lista.map((item) => [
@@ -90,7 +102,9 @@ export default function Revisao() {
       // "Carregando…", então uma falha de rede deixava erro E carregando na
       // tela ao mesmo tempo, para sempre. Quem olha conclui "hoje está lento",
       // espera, e nunca tenta de novo.
-      setPendentes([])
+      // Total zero junto: com o total antigo, lista vazia seria lida como
+      // "próxima leva a caminho" e a tela mostraria "Carregando…" para sempre.
+      setFila({ itens: [], total: 0, pedirMais: false })
       setErro(mensagemDoErro(causa))
     }
   }, [])
@@ -98,6 +112,13 @@ export default function Revisao() {
   useEffect(() => {
     void carregar()
   }, [carregar])
+
+  // Só a decisão que zerou a lista local pede a próxima leva — nunca a própria
+  // carga, então uma resposta vazia não vira laço de recarga.
+  const pedirMais = fila?.pedirMais ?? false
+  useEffect(() => {
+    if (pedirMais) void carregar()
+  }, [pedirMais, carregar])
 
   function mudarEdicao(revisaoId: string, parcial: Partial<Edicao>) {
     setEdicao((mapa) => ({ ...mapa, [revisaoId]: { ...mapa[revisaoId]!, ...parcial } }))
@@ -165,7 +186,11 @@ export default function Revisao() {
         // existir, então não há o que criar.
         itensExtras: aprovar ? extras : [],
       })
-      setPendentes((lista) => (lista ?? []).filter((linha) => linha.revisaoId !== item.revisaoId))
+      setFila((anterior) => {
+        if (!anterior) return anterior
+        const depois = depoisDeResolver(anterior.itens, anterior.total, item.revisaoId)
+        return { itens: depois.itens, total: depois.total, pedirMais: depois.recarregar }
+      })
       definirConfirmando(null)
     } catch (causa) {
       setErro(mensagemDoErro(causa))
@@ -188,15 +213,15 @@ export default function Revisao() {
       <CabecalhoDeSecao
         titulo="Revisão"
         descricao={
-          pendentes === null
+          estado === 'carregando'
             ? 'Carregando…'
-            : pendentes.length === 0
+            : estado === 'vazia'
               ? 'Nada aguardando decisão humana.'
               : `${totalPendentes} itens em que a IA não teve certeza suficiente.`
         }
       />
 
-      {pendentes !== null && totalPendentes > pendentes.length ? (
+      {estado === 'lista' && pendentes !== null && totalPendentes > pendentes.length ? (
         <Aviso tom="atencao">
           <strong>
             {totalPendentes} revisões pendentes, e esta tela mostra {pendentes.length}.
@@ -209,9 +234,9 @@ export default function Revisao() {
 
       {erro ? <Aviso>{erro}</Aviso> : null}
 
-      {pendentes === null ? (
+      {estado === 'carregando' || pendentes === null ? (
         <Carregando />
-      ) : pendentes.length === 0 ? (
+      ) : estado === 'vazia' ? (
         <Vazio
           titulo="Fila de revisão vazia"
           descricao="Todos os itens passaram do limiar de confiança das suas categorias."
