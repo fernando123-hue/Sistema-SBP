@@ -53,6 +53,20 @@ export interface DependenciasIngestao {
 }
 
 /**
+ * Quantas ligas NOVAS um único e-mail pode criar (achado N-12).
+ *
+ * `Liga` nasce de conteúdo externo — o nome vem do corpo da mensagem. Três é
+ * folgado para o caso real: um e-mail de liga menciona uma, e uma lista com
+ * ligantes de instituições diferentes chega a duas ou três. Acima disso, a
+ * hipótese mais provável deixa de ser "o setor recebeu muitas ligas novas de
+ * uma vez" e passa a ser "a interpretação se perdeu" — e o item vai para a
+ * revisão, com a menção preservada, em vez de plantar linha na tabela.
+ *
+ * Exportado para o teste afirmar o comportamento sem repetir o número.
+ */
+export const TETO_DE_LIGAS_NOVAS_POR_EMAIL = 3
+
+/**
  * Quantos dias para trás cada sincronização relê (achado C-03, `AT-35`).
  *
  * Antes não havia janela: a caixa inteira era lida a cada vez, e como ela só
@@ -687,7 +701,14 @@ async function processarUm(
       // Sem interpretação não há `itens` para gravar — a desistência não
       // inventa estrutura que a IA nunca produziu.
       const resultado = interpretacao
-        ? await criarItens(tx, { emailId: registro.id, interpretacao, anexosRejeitados, correlacaoId, usuario })
+        ? await criarItens(tx, {
+            emailId: registro.id,
+            messageId: email.messageId,
+            interpretacao,
+            anexosRejeitados,
+            correlacaoId,
+            usuario,
+          })
         : { criados: 0, aprovados: 0, paraRevisao: 0 }
 
       await auditar(tx, {
@@ -716,6 +737,7 @@ async function criarItens(
   tx: Transacao,
   contexto: {
     emailId: string
+    messageId: string
     interpretacao: Interpretacao
     anexosRejeitados: number
     correlacaoId: string
@@ -725,6 +747,11 @@ async function criarItens(
   const { interpretacao } = contexto
   // Uma leitura de `Liga` por LOTE, não por item — ver `indiceDeLigas`.
   const ligas = await indiceDeLigas(tx)
+  // Quantas ligas NOVAS este e-mail ainda pode criar (achado N-12). Por e-mail,
+  // e não global: um teto global pararia a operação no dia em que a associação
+  // realmente cadastrasse muitas ligas, e a pergunta que separa o legítimo do
+  // absurdo é "este e-mail sozinho deveria inventar tantas?".
+  const orcamentoDeLigas = { novas: 0 }
   let criados = 0
   let aprovados = 0
   let paraRevisao = 0
@@ -750,7 +777,7 @@ async function criarItens(
     // perdido para sempre. É o defeito da planilha reconstruído aqui dentro.
     if (!categoria) throw new CategoriaDesconhecidaError(extraido.categoriaCodigo)
 
-    const motivo = decidirRevisao(
+    const motivoBase = decidirRevisao(
       extraido.confianca,
       categoria.limiarConfianca,
       extraido.camposAusentes.length > 0,
@@ -772,7 +799,20 @@ async function criarItens(
     // e `Ligante` existiam no schema desde a fundação e nunca tiveram um
     // escritor. O motor precisa saber QUAL liga é para não separar o lote
     // dela, e `ligaMencionada` sozinho é texto, não identidade.
-    const ligaId = await resolverLiga(tx, ligas, extraido.ligaMencionada)
+    const ligaId = await resolverLiga(tx, ligas, extraido.ligaMencionada, orcamentoDeLigas)
+    // A menção era um nome de verdade e ficou sem liga: só o teto faz isso. É
+    // gente que resolve, não o sistema — o item vai para a revisão com a
+    // menção preservada no payload.
+    //
+    // Pela CHAVE, e não por `ligaMencionada !== null`: um modelo que devolve
+    // `""` ou `"-"` em vez de `null` (os pequenos fazem) mandaria para a
+    // revisão todo item sem liga, e a revisão viraria a fila principal.
+    const ligaNaoResolvida = chaveDaLiga(extraido.ligaMencionada) !== null && ligaId === null
+    // `anomalia` e não um motivo novo: a tela de revisão, os painéis e a
+    // medição de qualidade da IA já sabem lidar com ele, e inventar um sexto
+    // motivo para um caso raro custaria mais do que explica. A menção que não
+    // virou liga continua no payload, então quem revisa vê o nome.
+    const motivo = motivoBase ?? (ligaNaoResolvida ? ('anomalia' as const) : null)
 
     const item = await tx.item.create({
       data: {
@@ -816,6 +856,21 @@ async function criarItens(
     }
   }
 
+  // O teto batido vira registro: sem isto, a diferença entre "este e-mail não
+  // mencionava mais ligas" e "o sistema parou de criar" some, e ninguém teria
+  // como investigar depois por que uma liga esperada não apareceu.
+  if (orcamentoDeLigas.novas >= TETO_DE_LIGAS_NOVAS_POR_EMAIL) {
+    await registrarEvento(tx, {
+      correlacaoId: contexto.correlacaoId,
+      etapa: 'ingestao',
+      situacao: 'reprocessavel',
+      referencia: contexto.messageId,
+      mensagem:
+        `o e-mail atingiu o teto de ${TETO_DE_LIGAS_NOVAS_POR_EMAIL} ligas novas; ` +
+        `menções além disso ficaram sem liga e foram para a revisão`,
+    })
+  }
+
   return { criados, aprovados, paraRevisao }
 }
 
@@ -834,6 +889,7 @@ async function resolverLiga(
   tx: Transacao,
   indice: Map<string, string>,
   mencionada: string | null,
+  orcamento: { novas: number },
 ): Promise<string | null> {
   const chave = chaveDaLiga(mencionada)
   if (chave === null) return null
@@ -841,6 +897,23 @@ async function resolverLiga(
   const achada = indice.get(chave)
   if (achada) return achada
 
+  // ═══ TETO DE LIGAS NOVAS POR E-MAIL (achado N-12) ═══
+  //
+  // `Liga` nasce de conteúdo externo: o nome vem do corpo do e-mail e vira
+  // linha sempre que a grafia normalizada ainda não existe. Sem teto, um
+  // e-mail com trinta nomes inventados criava trinta ligas — e como
+  // `indiceDeLigas` lê a tabela INTEIRA a cada lote, cada linha plantada
+  // encarece toda sincronização seguinte, para sempre. Não precisa de má
+  // intenção: basta uma lista com assinaturas variadas e uma interpretação
+  // ruim.
+  //
+  // Passando do teto, o item NÃO é descartado: ele fica sem liga e cai na
+  // revisão humana, que é onde a menção pode virar liga de verdade. Descartar
+  // seria perder trabalho em silêncio, que é a doença que este sistema existe
+  // para curar.
+  if (orcamento.novas >= TETO_DE_LIGAS_NOVAS_POR_EMAIL) return null
+
+  orcamento.novas += 1
   const criada = await tx.liga.create({ data: { nome: mencionada!.trim() } })
   // A liga nova entra no índice: o mesmo e-mail pode mencioná-la de novo nos
   // itens seguintes, e sem isto cada menção criaria uma linha.

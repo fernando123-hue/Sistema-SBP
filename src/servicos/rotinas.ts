@@ -128,46 +128,115 @@ export async function rodarLimpezaDiaria(
 
   const vez = await reivindicar(banco, rotina, hoje, correlacaoId, agora)
   if ('motivo' in vez) return { executou: false, motivo: vez.motivo }
+  // Numa constante: o estreitamento de `vez` não atravessa `registrarFalha`.
+  const execucaoId = vez.id
+
+  // ═══ UMA ETAPA QUEBRADA NÃO LEVA AS OUTRAS (achado N-16) ═══
+  //
+  // As quatro limpezas rodavam em sequência, sem rede: uma única linha de
+  // `Afastamento` com tipo inválido derrubava a primeira, e as outras três nem
+  // começavam — todo dia, até alguém achar a linha. O texto de e-mail vencido
+  // continuava guardado e a contagem de buscas continuava crescendo, por causa
+  // de um defeito que não tinha nada a ver com eles.
+  //
+  // Prazo é promessa a quem teve dado coletado, e promessa que depende de
+  // nenhuma outra linha estar torta é promessa fraca. Cada etapa agora corre
+  // por si; a rotina ainda termina em FALHA se alguma quebrar — o defeito não
+  // é abafado —, e a mensagem diz qual delas foi.
+  const falhas: string[] = []
+  async function etapa<T>(nome: string, executar: () => Promise<T>): Promise<T | null> {
+    try {
+      return await executar()
+    } catch (erro) {
+      falhas.push(`${nome}: ${mensagemPersistivel(erro)}`)
+      registrarLog('erro', 'etapa da limpeza diária falhou', {
+        correlacaoId,
+        data: hoje,
+        etapa: nome,
+        erro: mensagemDoErro(erro),
+      })
+      return null
+    }
+  }
+
+  // Um só lugar grava a falha: a de uma etapa (abaixo, sem relançar) e a que
+  // escapa do `try` inteiro. Antes do `try` porque o `try` a chama.
+  async function registrarFalha(mensagem: string): Promise<ResultadoDaRotina> {
+    await banco.execucaoDeRotina.update({
+      where: { id: execucaoId },
+      data: { situacao: 'falha', concluidaEm: new Date(), mensagem },
+    })
+    await registrarEvento(banco, {
+      correlacaoId,
+      etapa: rotina,
+      situacao: 'falha',
+      referencia: hoje,
+      mensagem,
+    })
+
+    return { executou: true, situacao: 'falha', correlacaoId, mensagem }
+  }
 
   try {
     const prazoEmDias = await prazoEmVigor(banco, 'motivo_de_afastamento')
-    const motivos = await expurgarMotivosDeAfastamento(banco, {
-      diasDeRetencao: prazoEmDias,
-      hoje,
-      correlacaoId,
-    })
+    const motivos = await etapa('motivo de afastamento', () =>
+      expurgarMotivosDeAfastamento(banco, {
+        diasDeRetencao: prazoEmDias,
+        hoje,
+        correlacaoId,
+      }),
+    )
     // Depois dos motivos, e não junto: se o armazenamento falhar, o motivo de
     // afastamento — dado de saúde — já saiu, e a execução seguinte só tenta de
     // novo o que ficou (as duas limpezas são idempotentes).
     const prazoDoConteudo = await prazoEmVigor(banco, 'conteudo_do_email')
-    const conteudo = await expurgarConteudoDosEmails(banco, {
-      diasDeRetencao: prazoDoConteudo,
-      armazenamento: opcoes.armazenamento ?? null,
-      hoje,
-      correlacaoId,
-    })
+    const conteudo = await etapa('texto do e-mail', () =>
+      expurgarConteudoDosEmails(banco, {
+        diasDeRetencao: prazoDoConteudo,
+        armazenamento: opcoes.armazenamento ?? null,
+        hoje,
+        correlacaoId,
+      }),
+    )
 
     // Depois do conteúdo, e com o MESMO prazo: os itens de um e-mail que acabou
     // de ter o texto apagado perdem título e campos já nesta execução (`A23(a)`).
-    const dadosDosItens = await expurgarDadosDosItens(banco, {
-      diasDeRetencao: prazoDoConteudo,
-      hoje,
-      correlacaoId,
-    })
+    const dadosDosItens = await etapa('dados do item', () =>
+      expurgarDadosDosItens(banco, {
+        diasDeRetencao: prazoDoConteudo,
+        hoje,
+        correlacaoId,
+      }),
+    )
 
     // Por último e à parte: não depende de nenhuma das anteriores (`A48`).
     const prazoDaContagem = await prazoEmVigor(banco, 'contagem_de_buscas')
-    const contagem = await expurgarContagemDeBuscas(banco, { diasDeRetencao: prazoDaContagem, hoje })
+    const contagem = await etapa('contagem de buscas', () =>
+      expurgarContagemDeBuscas(banco, { diasDeRetencao: prazoDaContagem, hoje }),
+    )
 
+    // Alguma etapa quebrou: a rotina é FALHA, mesmo tendo feito o resto — o
+    // defeito não pode ser abafado por três sucessos. A tentativa seguinte do
+    // dia repete tudo, e repetir não custa: as quatro limpezas são
+    // idempotentes, e é por isso que as que deram certo podem rodar de novo.
+    //
+    // Grava direto, sem relançar: cada linha de `falhas` já passou por
+    // `mensagemPersistivel`, e um `throw new Error(...)` aqui cairia no `catch`
+    // de baixo, que reduz `Error` comum ao nome da classe — a mensagem gravada
+    // voltava a ser só "Error", e o "qual etapa" se perdia.
+    if (falhas.length > 0) return await registrarFalha(falhas.join(' | '))
+
+    // Daqui para baixo, as quatro etapas terminaram: `falhas` vazio significa
+    // que nenhuma devolveu `null`.
     const resumo: ResumoDaLimpeza = {
-      motivosDeAfastamento: { ...motivos, prazoEmDias },
-      conteudoDosEmails: { ...conteudo, prazoEmDias: prazoDoConteudo },
-      dadosDosItens: { ...dadosDosItens, prazoEmDias: prazoDoConteudo },
-      contagemDeBuscas: { ...contagem, prazoEmDias: prazoDaContagem },
+      motivosDeAfastamento: { ...motivos!, prazoEmDias },
+      conteudoDosEmails: { ...conteudo!, prazoEmDias: prazoDoConteudo },
+      dadosDosItens: { ...dadosDosItens!, prazoEmDias: prazoDoConteudo },
+      contagemDeBuscas: { ...contagem!, prazoEmDias: prazoDaContagem },
     }
 
     await banco.execucaoDeRotina.update({
-      where: { id: vez.id },
+      where: { id: execucaoId },
       data: { situacao: 'sucesso', concluidaEm: new Date(), resumo: serializar(resumo) },
     })
     await registrarEvento(banco, {
@@ -180,21 +249,7 @@ export async function rodarLimpezaDiaria(
 
     return { executou: true, situacao: 'sucesso', correlacaoId, resumo }
   } catch (erro) {
-    const mensagem = mensagemPersistivel(erro)
     registrarLog('erro', 'limpeza diária falhou', { correlacaoId, data: hoje, erro: mensagemDoErro(erro) })
-
-    await banco.execucaoDeRotina.update({
-      where: { id: vez.id },
-      data: { situacao: 'falha', concluidaEm: new Date(), mensagem },
-    })
-    await registrarEvento(banco, {
-      correlacaoId,
-      etapa: rotina,
-      situacao: 'falha',
-      referencia: hoje,
-      mensagem,
-    })
-
-    return { executou: true, situacao: 'falha', correlacaoId, mensagem }
+    return await registrarFalha(mensagemPersistivel(erro))
   }
 }

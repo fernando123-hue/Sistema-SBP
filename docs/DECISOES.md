@@ -971,6 +971,27 @@ consumo-da-ia.ts:91  →  pool failed to retrieve a connection
 
 ---
 
+### AT-43 — Um e-mail cria no máximo 3 ligas novas; e a limpeza diária não para inteira por uma etapa (N-12, N-16) *(24/09/2026)*
+
+**Origem:** o código foi escrito numa sessão de 22/09 que perdeu o acesso ao computador antes de commitar (a branch `fix/auditoria-conteudo-externo` nunca chegou ao GitHub). Achado em 24/09 como alteração solta nesta máquina, levado para branch nova a partir da `main` e **terminado** — estava incompleto (ver abaixo).
+
+**N-12 — liga nova nasce de conteúdo externo, sem teto.** O nome de `Liga` vem do corpo do e-mail, passa pela IA e vira linha sempre que a grafia normalizada ainda não existe. Um e-mail com trinta nomes criava trinta ligas, e `indiceDeLigas` lê a tabela inteira a cada lote — cada linha plantada encarece toda sincronização seguinte.
+
+- **Hipótese:** `TETO_DE_LIGAS_NOVAS_POR_EMAIL = 3` (`servicos/ingestao.ts`). Por e-mail, não global: um teto global pararia a operação no dia em que a associação cadastrasse muitas ligas de verdade.
+- **Motivo:** um e-mail de liga menciona uma; uma lista com ligantes de instituições diferentes chega a duas ou três. Nenhum número real medido — é folga sobre o caso imaginado.
+- **O que acontece acima do teto:** o item **não some**. Fica sem liga e vai para a revisão com motivo `anomalia` (a menção fica no payload, quem revisa vê o nome); um evento `reprocessavel` registra que o teto bateu, com o `messageId`. Esse evento **não** conta para o teto de desistência do `AT-41` (lá só conta evento com a causa `falha_de_interpretacao`).
+- **Estreitado ao terminar:** a versão de 22/09 mandava para a revisão todo item cuja menção não virasse liga — inclusive `""` ou `"-"`, que modelo pequeno devolve no lugar de `null`. Com o modelo local (`A56`), a revisão viraria a fila principal. Agora só conta a menção que é um nome de verdade (`chaveDaLiga` não nula). Teste: `menção vazia ou só pontuação não manda o item para a revisão`, visto vermelho contra a versão de 22/09.
+- **Impacto se estiver errado:** número baixo demais manda para a revisão e-mails legítimos com muitas ligas; alto demais deixa plantar mais linhas. Os dois aparecem: o primeiro na fila de revisão, o segundo no evento.
+- **Status:** 🟡 provisória — conferir com e-mails reais de liga quando a caixa real ligar.
+
+**N-16 — uma linha torta parava a limpeza diária inteira.** As quatro limpezas (motivo de afastamento, texto do e-mail, dados do item, contagem de buscas) rodavam em sequência, sem rede: uma linha de `Afastamento` com tipo inválido derrubava a primeira e as outras três nem começavam, todo dia. E a falha gravada dizia só `Error`.
+
+- **Como ficou:** cada etapa corre por si; a rotina ainda termina em **falha** se alguma quebrar (o defeito não é abafado por três sucessos), e a mensagem gravada diz **qual** etapa: `motivo de afastamento: <mensagem>`. Repetir no mesmo dia não custa — as quatro são idempotentes.
+- **Estava incompleto em 22/09:** a falha agregada era relançada como `Error` comum e passava de novo por `mensagemPersistivel`, que reduz `Error` ao nome da classe — a mensagem voltava a ser `Error`. O próprio teste de 22/09 pegou isso ao rodar a suíte. Agora a falha é gravada direto, sem relançar.
+- **Não mudou:** o texto de cada etapa passa por `mensagemPersistivel` (erro de domínio vai inteiro, outro vira o nome da classe); o detalhe fica no log do servidor.
+
+**Prova:** `src/servicos/teto-de-ligas-novas.test.ts` (4 testes) e `rotinas.test.ts` (`uma etapa quebrada não leva as outras três junto`), vistos vermelhos com a trava removida e com `rotinas.ts` da `main`.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
