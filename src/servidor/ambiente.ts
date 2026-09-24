@@ -126,8 +126,10 @@ const AmbienteSchema = z.object({
    * por pessoa e nada mais. Rotacionar a chave dos anexos torna ILEGÍVEL todo
    * documento já gravado, porque não existe rotina de recifragem.
    *
-   * Vazio significa "usa `SESSAO_SECRET`", que é o que mantém a instalação
-   * atual funcionando sem migração. Quem for rotacionar o segredo de sessão
+   * Vazio significa "usa `SESSAO_SECRET`" — mas SÓ fora de produção: em
+   * `NODE_ENV=production` ele é obrigatório e diferente do de sessão (achado
+   * C-25, conferido mais abaixo). Fora de produção, cair na sessão é o que
+   * mantém a instalação de desenvolvimento funcionando sem migração. Quem for rotacionar o segredo de sessão
    * precisa ANTES fixar esta variável com o valor antigo — senão os anexos
    * param de abrir, e a mensagem de erro em `armazenamento-disco.ts` é a única
    * pista de por quê.
@@ -352,6 +354,26 @@ export function ambiente(): Ambiente {
       throw new Error(
         `${publicos.join(', ')} com valor de teste público ou previsível em NODE_ENV=production. ` +
           'Gere um segredo novo para cada variável antes de subir o sistema.',
+      )
+    }
+
+    // Segredo próprio dos anexos (achado C-25). Sem ele, a chave dos anexos é
+    // derivada de `SESSAO_SECRET`: um vazamento entrega de uma vez a sessão de
+    // gestor e os documentos, e a resposta normal a ele — trocar o segredo de
+    // sessão — torna todo anexo ilegível. Fora de produção o recurso de cair na
+    // sessão continua (desenvolvimento e suíte dependem dele); aqui, antes de
+    // existir dado real, os dois têm de ser separados de verdade.
+    if (resultado.data.ANEXOS_SECRET === undefined) {
+      throw new Error(
+        'ANEXOS_SECRET é obrigatório em NODE_ENV=production: sem ele, a chave dos anexos sai de ' +
+          'SESSAO_SECRET, e trocar a sessão depois de um vazamento tornaria os documentos ilegíveis. ' +
+          'Gere um segredo próprio para ele antes de subir o sistema.',
+      )
+    }
+    if (resultado.data.ANEXOS_SECRET === resultado.data.SESSAO_SECRET) {
+      throw new Error(
+        'ANEXOS_SECRET igual a SESSAO_SECRET em NODE_ENV=production: separados só no nome, os dois ' +
+          'caem juntos num vazamento. Gere um segredo diferente para cada um.',
       )
     }
   }

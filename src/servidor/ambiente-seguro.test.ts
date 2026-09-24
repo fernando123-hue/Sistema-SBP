@@ -20,6 +20,7 @@ const FORTE = 'q8Zr2vN6pW1xT4kL9mB3cF7hJ0sD5gYa'
 beforeEach(() => {
   vi.stubEnv('SESSAO_SECRET', FORTE)
   vi.stubEnv('BUSCA_SECRET', `${FORTE}-busca`)
+  vi.stubEnv('ANEXOS_SECRET', `${FORTE}-anexos`)
   vi.stubEnv('INGESTAO_ADAPTER', 'mock')
   vi.stubEnv('IA_ADAPTER', 'mock')
   vi.stubEnv('ACESSO_LOCAL_SEM_SENHA', '')
@@ -96,6 +97,34 @@ describe('produção recusa segredo público (N-18)', () => {
 
   it('segredos fortes sobem em produção', () => {
     vi.stubEnv('NODE_ENV', 'production')
+    expect(() => ambiente()).not.toThrow()
+  })
+})
+
+describe('produção exige segredo próprio para os anexos (C-25)', () => {
+  /**
+   * Sem `ANEXOS_SECRET`, a chave dos anexos era derivada de `SESSAO_SECRET`:
+   * um vazamento entregava de uma vez a sessão de gestor e os documentos, e a
+   * resposta normal ao vazamento — trocar o segredo de sessão — tornava todo
+   * anexo ilegível. Antes de existir dado real, produção passa a exigir os dois
+   * separados. Fora de produção nada muda: a instalação de desenvolvimento e a
+   * suíte seguem com o recurso de cair na sessão.
+   */
+  it('produção sem ANEXOS_SECRET recusa subir, dizendo o que falta', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('ANEXOS_SECRET', '')
+    expect(() => ambiente()).toThrow(/ANEXOS_SECRET/)
+  })
+
+  it('produção com ANEXOS_SECRET igual ao de sessão recusa — separado só no nome não é separado', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('ANEXOS_SECRET', FORTE)
+    expect(() => ambiente()).toThrow(/ANEXOS_SECRET/)
+  })
+
+  it('fora de produção, sem ANEXOS_SECRET, continua subindo', () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    vi.stubEnv('ANEXOS_SECRET', '')
     expect(() => ambiente()).not.toThrow()
   })
 })
