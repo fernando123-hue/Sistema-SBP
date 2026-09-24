@@ -363,6 +363,13 @@ export function ambiente(): Ambiente {
     // sessão — torna todo anexo ilegível. Fora de produção o recurso de cair na
     // sessão continua (desenvolvimento e suíte dependem dele); aqui, antes de
     // existir dado real, os dois têm de ser separados de verdade.
+    //
+    // O QUE ISTO NÃO GARANTE: recusa o reuso idêntico e a concatenação (um
+    // contém o outro, como "<sessão>-anexos"), mas nenhuma regra de texto prova
+    // que os dois foram gerados independentes. Isso é da implantação: cada um
+    // sai do seu próprio `crypto.randomUUID()`, como diz o `.env.example`.
+    // E "produção" aqui é só `NODE_ENV` — o mesmo LIMITE CONHECIDO da trava de
+    // cima (C-12): sem `NODE_ENV=production`, esta trava não roda.
     if (resultado.data.ANEXOS_SECRET === undefined) {
       throw new Error(
         'ANEXOS_SECRET é obrigatório em NODE_ENV=production: sem ele, a chave dos anexos sai de ' +
@@ -370,10 +377,13 @@ export function ambiente(): Ambiente {
           'Gere um segredo próprio para ele antes de subir o sistema.',
       )
     }
-    if (resultado.data.ANEXOS_SECRET === resultado.data.SESSAO_SECRET) {
+    const anexos = resultado.data.ANEXOS_SECRET
+    const sessao = resultado.data.SESSAO_SECRET
+    if (anexos.includes(sessao) || sessao.includes(anexos)) {
       throw new Error(
-        'ANEXOS_SECRET igual a SESSAO_SECRET em NODE_ENV=production: separados só no nome, os dois ' +
-          'caem juntos num vazamento. Gere um segredo diferente para cada um.',
+        'ANEXOS_SECRET igual a SESSAO_SECRET, ou um contido no outro, em NODE_ENV=production: ' +
+          'derivado de um, o outro cai junto num vazamento. Gere cada um com o seu próprio ' +
+          'crypto.randomUUID(), nunca por concatenação.',
       )
     }
   }

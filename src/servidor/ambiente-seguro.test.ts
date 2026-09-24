@@ -20,7 +20,9 @@ const FORTE = 'q8Zr2vN6pW1xT4kL9mB3cF7hJ0sD5gYa'
 beforeEach(() => {
   vi.stubEnv('SESSAO_SECRET', FORTE)
   vi.stubEnv('BUSCA_SECRET', `${FORTE}-busca`)
-  vi.stubEnv('ANEXOS_SECRET', `${FORTE}-anexos`)
+  // Independente do de sessão: `${FORTE}-anexos` seria exatamente a derivação
+  // que a trava do C-25 recusa (revisão de segurança do #98).
+  vi.stubEnv('ANEXOS_SECRET', 'w4Xy7Zb1Nc5Vd9Fg2Hj6Kl0Mn3Pq8Rt')
   vi.stubEnv('INGESTAO_ADAPTER', 'mock')
   vi.stubEnv('IA_ADAPTER', 'mock')
   vi.stubEnv('ACESSO_LOCAL_SEM_SENHA', '')
@@ -119,6 +121,12 @@ describe('produção exige segredo próprio para os anexos (C-25)', () => {
   it('produção com ANEXOS_SECRET igual ao de sessão recusa — separado só no nome não é separado', () => {
     vi.stubEnv('NODE_ENV', 'production')
     vi.stubEnv('ANEXOS_SECRET', FORTE)
+    expect(() => ambiente()).toThrow(/ANEXOS_SECRET/)
+  })
+
+  it('produção com ANEXOS_SECRET que contém o de sessão recusa — concatenar não é gerar (revisão do #98)', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('ANEXOS_SECRET', `${FORTE}-anexos`)
     expect(() => ambiente()).toThrow(/ANEXOS_SECRET/)
   })
 
