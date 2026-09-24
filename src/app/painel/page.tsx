@@ -502,15 +502,10 @@ export default function PainelPagina() {
           descricao={`Concluídos: de ${dataCurta(dados.periodo.de)} a ${dataCurta(dados.periodo.ate)}. Atribuídos (hoje) e pendentes (hoje): o que está com cada pessoa agora, fora do período. Cada pessoa vê os próprios números; quem coordena vê os de todos. Crédito próximo de zero significa carga equilibrada — é o livro-razão que a planilha não tem.`}
         />
         <ListaResponsiva
-          // Quem concluiu no período e não tem nada em aberto hoje também
-          // aparece — antes sumia da tabela. E a linha única de quem é
-          // colaborador (`A24`) aparece sempre, mesmo zerada: "você não tem
-          // nada" é resposta, tabela vazia não é.
-          linhas={
-            dados.pessoas.length === 1
-              ? dados.pessoas
-              : dados.pessoas.filter((pessoa) => pessoa.atribuidos > 0 || pessoa.concluidos > 0)
-          }
+          // Sem filtro aqui: quais linhas saem é decisão do servidor, que sabe
+          // o papel de quem pede (`porPessoa`). O filtro `atribuidos > 0` desta
+          // tela escondia quem só concluiu no período (N-06).
+          linhas={dados.pessoas}
           chaveDaLinha={(pessoa) => pessoa.colaboradorId}
           tituloDoCartao={(pessoa) => pessoa.nome}
           colunas={[

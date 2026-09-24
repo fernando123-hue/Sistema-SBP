@@ -306,11 +306,23 @@ export async function porPessoa(
 ): Promise<LinhaPorPessoa[]> {
   const abertura = inicioDoDia(periodo.de)
   const fechamento = fimDoDia(periodo.ate)
+  const soAPropria = ator.papel === 'colaborador'
   const colaboradores = await banco.colaborador.findMany({
-    where: {
-      ativo: true,
-      ...(ator.papel === 'colaborador' ? { id: ator.colaboradorId } : {}),
-    },
+    where: soAPropria
+      ? { ativo: true, id: ator.colaboradorId }
+      : {
+          // Quem foi desativado depois de concluir no período continua na
+          // tabela: "Por categoria" conta essas conclusões, e as duas tabelas
+          // do mesmo período têm de fechar (revisão do PR #104).
+          OR: [
+            { ativo: true },
+            {
+              execucoes: {
+                some: { resultado: 'concluido', concluidoEm: { gte: abertura, lte: fechamento } },
+              },
+            },
+          ],
+        },
     orderBy: { nome: 'asc' },
   })
 
@@ -352,13 +364,23 @@ export async function porPessoa(
       }),
     ])
 
+    const creditoGlobal = saldo?.creditoGlobal ?? 0
+
+    // QUEM APARECE É DECIDIDO AQUI, onde o papel é conhecido. A tela filtrava
+    // e adivinhava "sou colaborador" por "veio uma linha só" — um gestor com
+    // equipe de uma pessoa caía no mesmo caso (revisão do PR #104). Para quem
+    // coordena, linha sem nada a dizer é ruído; para o colaborador, a própria
+    // linha zerada é resposta ("você não tem nada"), e tabela vazia não é.
+    const temAlgoADizer = atribuidos > 0 || concluidos > 0 || creditoGlobal !== 0
+    if (!soAPropria && !temAlgoADizer) continue
+
     linhas.push({
       colaboradorId: colaborador.id,
       nome: colaborador.nome,
       atribuidos,
       concluidos,
       pendentes,
-      creditoGlobal: saldo?.creditoGlobal ?? 0,
+      creditoGlobal,
     })
   }
 
