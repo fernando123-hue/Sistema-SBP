@@ -355,7 +355,9 @@ describe('entrada com senha', () => {
     // Senha CERTA agora: tem de bater na trava, senão o bloqueio não existe.
     await expect(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
-    ).rejects.toThrow(/tentativas/i)
+      // A mesma resposta de qualquer recusa (C-18, `A57`): o bloqueio se prova
+      // pela senha CERTA recusada, não por uma mensagem que só conta real recebe.
+    ).rejects.toThrow('E-mail ou senha incorretos.')
 
     // Sem intervenção humana: o bloqueio é temporal e passa por si.
     await banco.colaborador.update({
@@ -397,6 +399,37 @@ describe('entrada com senha', () => {
     expect(await banco.logAuditoria.count({ where: { acao: 'entrada_recusada' } })).toBe(5)
   })
 
+  it('C-18: a conta travada responde igual a um e-mail que não existe (decisão do dono, A57)', async () => {
+    // Seis tentativas bastavam para saber quem tem conta: a conta real chegava
+    // ao bloqueio e respondia "Muitas tentativas… em 30s"; o e-mail inventado
+    // respondia sempre "E-mail ou senha incorretos.". O dono escolheu a opção
+    // (b) do `§ H.4` item 33: resposta igual para todos, e a orientação de
+    // esperar fica na tela, fixa, sem depender da conta.
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(banco, { colaboradorId: base.pessoaId }, base.gestor, SENHA_PROVISORIA)
+
+    async function sextaResposta(email: string): Promise<string> {
+      let ultima = ''
+      for (let vez = 0; vez < 6; vez += 1) {
+        try {
+          await autenticar(banco, { email, senha: 'senha-errada-qualquer' })
+        } catch (erro) {
+          ultima = erro instanceof Error ? erro.message : String(erro)
+        }
+      }
+      return ultima
+    }
+
+    const daContaReal = await sextaResposta('pessoa@teste.local')
+    const doInventado = await sextaResposta('ninguem-com-este-nome@teste.local')
+
+    // A conta real ESTÁ travada — o bloqueio continua valendo, só não se anuncia.
+    const depois = await banco.colaborador.findUniqueOrThrow({ where: { id: base.pessoaId } })
+    expect(depois.bloqueadoAte).not.toBeNull()
+    expect(daContaReal).toBe(doInventado)
+    expect(daContaReal).toBe('E-mail ou senha incorretos.')
+  })
+
   it('C-09: com a conta a uma falha do bloqueio, vinte tentativas simultâneas conferem UMA senha', async () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(banco, { colaboradorId: base.pessoaId }, base.gestor, SENHA_PROVISORIA)
@@ -410,10 +443,10 @@ describe('entrada com senha', () => {
     )
 
     expect(await banco.logAuditoria.count({ where: { acao: 'entrada_recusada' } })).toBe(1)
-    const bloqueadas = resultados.filter(
-      (resultado) => resultado.status === 'rejected' && /Muitas tentativas/.test(String(resultado.reason)),
-    )
-    expect(bloqueadas).toHaveLength(19)
+    // As outras dezenove foram recusadas pelo bloqueio, sem conferir senha. A
+    // mensagem não distingue mais as duas recusas (C-18, `A57`); quem prova que
+    // só UMA senha foi conferida é a trilha, logo acima.
+    expect(resultados.every((resultado) => resultado.status === 'rejected')).toBe(true)
   })
 
   it('C-09: acertar a senha na tentativa que chegaria ao limite entra e zera o contador', async () => {
@@ -697,7 +730,9 @@ describe('destravar conta', () => {
     }
     await expect(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
-    ).rejects.toThrow(/tentativas/i)
+      // A mesma resposta de qualquer recusa (C-18, `A57`): o bloqueio se prova
+      // pela senha CERTA recusada, não por uma mensagem que só conta real recebe.
+    ).rejects.toThrow('E-mail ou senha incorretos.')
 
     await destravarConta(banco, { colaboradorId: base.pessoaId }, base.gestor)
 
