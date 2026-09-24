@@ -43,6 +43,15 @@ import type { Banco } from '../servidor/prisma'
 /** Janela padrão. O critério nº 5 fala em "após 2 semanas"; 30 dias dá margem. */
 export const JANELA_PADRAO_DE_DIAS = 30
 
+/**
+ * Quantas vezes uma pessoa consulta a qualidade por minuto (achado C-21).
+ *
+ * Com `?dias=tudo` a medição carrega todas as revisões resolvidas desde a
+ * fundação. O painel pede uma vez ao abrir; doze por minuto é folga larga para
+ * quem recarrega a tela, e barra chamadas em paralelo multiplicando o custo.
+ */
+export const CONSULTAS_DE_QUALIDADE_POR_MINUTO = 12
+
 export interface Cobertura {
   /** Itens que a IA classificou (têm `modeloIa`). Itens criados à mão ficam de fora. */
   itensDeIa: number

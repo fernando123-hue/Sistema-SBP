@@ -1,5 +1,9 @@
-import { medirQualidadeDaIa, JANELA_PADRAO_DE_DIAS } from '../../../servicos/qualidade'
-import { responder, rota } from '../../../servidor/http'
+import {
+  CONSULTAS_DE_QUALIDADE_POR_MINUTO,
+  medirQualidadeDaIa,
+  JANELA_PADRAO_DE_DIAS,
+} from '../../../servicos/qualidade'
+import { limitar, responder, rota } from '../../../servidor/http'
 import { obterPrisma } from '../../../servidor/prisma'
 import { exigirAtor } from '../../../servidor/sessao'
 
@@ -15,7 +19,12 @@ import { exigirAtor } from '../../../servidor/sessao'
  */
 export async function GET(requisicao: Request): Promise<Response> {
   return rota(async () => {
-    await exigirAtor()
+    const ator = await exigirAtor()
+
+    // Antes de medir: com `?dias=tudo` a leitura cresce com a vida do sistema,
+    // e sem limite qualquer sessão a multiplicava em paralelo (C-21).
+    const recusa = limitar(`qualidade:${ator.colaboradorId}`, CONSULTAS_DE_QUALIDADE_POR_MINUTO, 60)
+    if (recusa) return recusa
 
     const pedido = new URL(requisicao.url).searchParams.get('dias')
     const dias = interpretarJanela(pedido)
