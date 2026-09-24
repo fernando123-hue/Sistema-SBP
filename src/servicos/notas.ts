@@ -301,13 +301,16 @@ export interface ContextoPedido extends ContextoDeTrabalho {
  * por fora a única garantia que `selecionarNotas` existe para dar. O modo
  * perigoso é o que precisa ser pedido por escrito.
  *
- * **A leitura não tem teto, e é escolha registrada.** Com o recorte do `where`,
- * as candidatas são só as gerais mais as do vínculo pedido — dezenas, na escala
- * de 4 a 7 pessoas. Um `take` aqui pareceria prudente e seria pior: ordenado
- * por data, ele descartaria em silêncio a nota de liga mais antiga em favor de
- * notas gerais recentes, trocando um custo irrelevante por uma degradação
- * invisível. Mesma classe de `H-D8`: vira assunto na migração para PostgreSQL,
- * e lá a saída é paginar informando o corte, como `servicos/memoria.ts` faz.
+ * **A leitura tem teto POR FAIXA de relevância** (achado C-16). A versão
+ * anterior lia todas as candidatas e registrava a falta de teto como escolha:
+ * "dezenas, na escala de 4 a 7 pessoas" — mas nada no servidor garantia a
+ * escala, e qualquer sessão escreve nota. Um `take` único, ordenado por data,
+ * seria pior: descartaria em silêncio a nota de liga mais antiga em favor de
+ * notas gerais recentes. Por isso são três consultas, uma por peso (liga,
+ * categoria, geral), cada uma com `take: limite` na MESMA ordem de desempate
+ * de `selecionarNotas`. O topo exato do resultado está sempre dentro da união
+ * — o que a tela recebe é idêntico ao da leitura inteira, e o custo deixa de
+ * crescer com o volume.
  */
 export async function paraContexto(
   banco: Banco,
@@ -329,21 +332,31 @@ export async function paraContexto(
 
   const contexto: ContextoDeTrabalho = { categoriaId, ligaId: pedido.ligaId ?? null }
 
-  const candidatas = await banco.nota.findMany({
-    where: {
-      arquivadaEm: null,
-      // Só o que pode importar: o vínculo do contexto, ou nenhum vínculo. Sem
-      // este recorte, a consulta traria a memória inteira do setor a cada
-      // carregamento de tela para descartar quase tudo em memória.
-      OR: [
-        { categoriaId: null, ligaId: null },
-        ...(contexto.categoriaId ? [{ categoriaId: contexto.categoriaId }] : []),
-        ...(contexto.ligaId ? [{ ligaId: contexto.ligaId }] : []),
-      ],
-    },
-    select: CAMPOS,
-    orderBy: { criadoEm: 'desc' },
-  })
+  // As faixas espelham `relevancia` em `core/notas.ts`: vínculo que existe
+  // precisa bater com o contexto. Precisas, e não um `OR` largo: uma faixa que
+  // trouxesse também notas que a seleção vai eliminar (a da liga certa presa a
+  // outra categoria) gastaria o `take` com elas e deixaria de fora uma válida.
+  const faixas = [
+    ...(contexto.ligaId
+      ? [{ ligaId: contexto.ligaId, OR: [{ categoriaId: null }, { categoriaId: contexto.categoriaId ?? null }] }]
+      : []),
+    ...(contexto.categoriaId ? [{ ligaId: null, categoriaId: contexto.categoriaId }] : []),
+    { ligaId: null, categoriaId: null },
+  ]
+
+  const teto = Math.max(0, limite)
+  const candidatas = (
+    await Promise.all(
+      faixas.map((faixa) =>
+        banco.nota.findMany({
+          where: { arquivadaEm: null, ...faixa },
+          select: CAMPOS,
+          orderBy: [{ criadoEm: 'desc' }, { id: 'asc' }],
+          take: teto,
+        }),
+      ),
+    )
+  ).flat()
 
   const escolhidas = selecionarNotas(candidatas.map(paraSelecao), contexto, limite)
   const porId = new Map(candidatas.map((linha) => [linha.id, linha]))
@@ -358,8 +371,30 @@ export interface FiltroDeNotas {
   incluirArquivadas?: boolean
 }
 
-/** Listagem plana, para a tela que administra a memória do setor. */
-export async function listar(banco: Banco, filtro: FiltroDeNotas = {}): Promise<NotaDoSetor[]> {
+/**
+ * Quantas notas a listagem plana devolve de uma vez (achado C-16).
+ *
+ * Folgado para a memória de um setor de 4 a 7 pessoas; o que importa é que
+ * exista, e que o corte seja DITO (`truncado`), como em `servicos/memoria.ts`
+ * — cortar em silêncio seria esconder nota de quem administra a memória.
+ */
+export const LIMITE_DA_LISTAGEM = 200
+
+/**
+ * Quantas notas uma pessoa grava por minuto (achado C-16). Hipótese
+ * (`DECISOES.md § AT-44`): quem escreve à mão não passa de umas poucas; vinte
+ * é folga larga para colar uma lista de avisos, e barra um laço.
+ */
+export const NOTAS_POR_MINUTO = 20
+
+export interface ListagemDeNotas {
+  notas: NotaDoSetor[]
+  /** Havia mais notas do que `LIMITE_DA_LISTAGEM`; as mais antigas ficaram de fora. */
+  truncado: boolean
+}
+
+/** Listagem plana, para administrar a memória do setor. */
+export async function listar(banco: Banco, filtro: FiltroDeNotas = {}): Promise<ListagemDeNotas> {
   const linhas = await banco.nota.findMany({
     where: {
       ...(filtro.incluirArquivadas ? {} : { arquivadaEm: null }),
@@ -367,8 +402,13 @@ export async function listar(banco: Banco, filtro: FiltroDeNotas = {}): Promise<
       ...(filtro.ligaId ? { ligaId: filtro.ligaId } : {}),
     },
     select: CAMPOS,
-    orderBy: { criadoEm: 'desc' },
+    orderBy: [{ criadoEm: 'desc' }, { id: 'asc' }],
+    // Uma a mais só para saber se houve corte.
+    take: LIMITE_DA_LISTAGEM + 1,
   })
 
-  return linhas.map(paraSaida)
+  return {
+    notas: linhas.slice(0, LIMITE_DA_LISTAGEM).map(paraSaida),
+    truncado: linhas.length > LIMITE_DA_LISTAGEM,
+  }
 }

@@ -1,5 +1,5 @@
-import { listar, paraContexto, registrar } from '../../../servicos/notas'
-import { corpoJson, responder, rota } from '../../../servidor/http'
+import { NOTAS_POR_MINUTO, listar, paraContexto, registrar } from '../../../servicos/notas'
+import { corpoJson, limitar, responder, rota } from '../../../servidor/http'
 import { obterPrisma } from '../../../servidor/prisma'
 import { exigirAtor } from '../../../servidor/sessao'
 
@@ -65,6 +65,12 @@ export async function GET(requisicao: Request): Promise<Response> {
 export async function POST(requisicao: Request): Promise<Response> {
   return rota(async () => {
     const ator = await exigirAtor()
+
+    // Antes de ler o corpo e de gravar: cada nota é uma linha que toda tela
+    // considera e uma linha em `LogAuditoria`, que nunca é apagada (C-16).
+    const recusa = limitar(`nota:${ator.colaboradorId}`, NOTAS_POR_MINUTO, 60)
+    if (recusa) return recusa
+
     return responder(await registrar(obterPrisma(), await corpoJson(requisicao), ator))
   })
 }

@@ -992,6 +992,21 @@ consumo-da-ia.ts:91  →  pool failed to retrieve a connection
 
 **Prova:** `src/servicos/teto-de-ligas-novas.test.ts` (4 testes) e `rotinas.test.ts` (`uma etapa quebrada não leva as outras três junto`), vistos vermelhos com a trava removida e com `rotinas.ts` da `main`.
 
+### AT-44 — Notas do setor: limite para escrever e teto para ler (C-16) *(24/09/2026)*
+
+**O defeito:** qualquer sessão grava nota, sem limite de taxa; e a leitura que toda tela de trabalho faz (`paraContexto`) trazia do banco **todas** as notas gerais vivas, cortando em 5 só em memória. Um laço de POST de uma sessão qualquer faria cada carregamento de tela, da equipe inteira, ler dezenas de milhares de linhas — e cada nota deixa uma linha em `LogAuditoria`, que nunca é apagada. A listagem plana (`?todas=1`) também não tinha teto.
+
+**Como ficou:**
+- **Escrita:** `NOTAS_POR_MINUTO = 20` por pessoa, na rota, antes de ler o corpo e de gravar.
+- **Leitura da tela:** uma consulta por faixa de relevância (liga, categoria, geral), cada uma com `take` igual ao limite exibido e a mesma ordem de desempate de `selecionarNotas`. O resultado é **idêntico** ao da leitura inteira — o topo exato está sempre dentro da união —, e o custo deixa de crescer com o volume. Isto reverte uma escolha registrada no próprio código ("a leitura não tem teto"): ela supunha "dezenas" de notas, e nada no servidor garantia isso. O motivo daquela escolha continua certo — um `take` único, ordenado por data, descartaria em silêncio a nota de liga antiga —, e é por isso que o teto é por faixa. O teste prova as duas coisas: sabotado para uma consulta só com `take`, a nota da categoria some.
+- **Listagem plana:** `LIMITE_DA_LISTAGEM = 200`, e o corte é dito (`truncado`), como em `servicos/memoria.ts`. A resposta de `?todas=1` passou de lista para `{ notas, truncado }`; nenhuma tela usa esse modo hoje.
+
+**Hipóteses:** 20 notas por minuto por pessoa e 200 na listagem são folga sobre o uso imaginado de um setor de 4 a 7 pessoas, não números medidos. **Impacto se estiverem errados:** a pessoa que colar muitas notas de uma vez recebe "Muitas requisições. Tente de novo em Ns." e espera um minuto; a listagem avisa que cortou. Nenhum dos dois perde dado.
+
+**Aceito na revisão de segurança do PR #91:** (a) a leitura (`GET`, os dois modos) segue sem limite de taxa — o custo por requisição agora é fixo (até 15 linhas na tela, 200 na listagem), e o que o C-16 temia era o crescimento com o volume; (b) o limitador é em memória, **por processo** — os 20/min valem enquanto houver uma instância só, e zeram num reinício (mesma premissa das outras rotas, `servidor/limite-de-taxa.ts`). **Refutado:** arquivar em laço não enche a trilha — arquivar nota já arquivada volta sem gravar, então cada nota rende no máximo uma linha de arquivamento, e criar nota já tem limite.
+
+**Status:** 🟡 provisória — conferir com uso real.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
