@@ -14,7 +14,7 @@
 >
 > **4. O próximo passo** continua o do bloco abaixo (item 4), sem N-12 e N-16. Hipótese nova: o teto de 3 ligas por e-mail (`§ AT-43`, provisória). **#89 mesclado** (`12e183a`) e a branch velha apagada, com ok do dono.
 >
-> **5. C-15 corrigido e mesclado** (#90, `ab7c9ac`): o aviso de citação inventada do assistente grava só a contagem, não o texto que o modelo escreveu. **C-16 corrigido** (branch `fix/c16-teto-das-notas`, `§ AT-44`): limite para escrever nota e teto para ler. Baixos restantes: C-18, C-19, C-20, C-21, C-24; informativos C-25 a C-27. **Novo, da revisão de segurança do #90, ainda sem verificar (BAIXO sugerido):** em `assistente-modelo.ts` (≈170-177) e `ia-estruturada.ts`, erro de *transporte* grava a mensagem crua do fornecedor no log — seguro só se nenhum SDK ecoar o pedido (pergunta, e-mail) na mensagem de erro. Conferir fornecedor por fornecedor antes de decidir.
+> **5. C-15 corrigido e mesclado** (#90, `ab7c9ac`): o aviso de citação inventada do assistente grava só a contagem, não o texto que o modelo escreveu. **C-16 corrigido e mesclado** (#91, `48a6496`, `§ AT-44`): limite para escrever nota e teto para ler. **C-18 parcial** (branch `fix/c18-bloqueio-e-relogio`): a conta travada espera o mesmo piso de tempo das outras recusas; a mensagem virou **pergunta nova ao dono, `§ H.4` item 33**. Baixos restantes: C-19, C-20, C-21, C-24; informativos C-25 a C-27. **Novo, da revisão de segurança do #90, ainda sem verificar (BAIXO sugerido):** em `assistente-modelo.ts` (≈170-177) e `ia-estruturada.ts`, erro de *transporte* grava a mensagem crua do fornecedor no log — seguro só se nenhum SDK ecoar o pedido (pergunta, e-mail) na mensagem de erro. Conferir fornecedor por fornecedor antes de decidir.
 >
 > ### 24/09/2026 — RECOMEÇO DO ZERO: o dono apagou as conversas. Tudo o que importa está no repositório.
 >
@@ -47,6 +47,7 @@
 > **5. Decisões abertas com o dono** (não invente a resposta; pergunte com opções e recomendação):
 > - `DECISOES.md § H.4` item **32** — o teto de 3 tentativas do `AT-41` é hipótese; e se o contador na tela basta ou se precisa de fila própria.
 > - `§ H.4` item **30** (C-08) — pedir a senha do gestor de novo para redefinir senha, desativar ou mudar papel.
+> - `§ H.4` item **33** (C-18, novo em 24/09) — conta travada: a tela diz "espere 30s" (hoje; revela quem tem conta) ou mensagem igual para todos com orientação fixa (recomendado).
 > - `§ AT-42`, **antes de ligar chave paga de IA** — trava secundária de gasto que não dependa do banco (quanto se aceita gastar às cegas).
 > - Os itens antigos continuam: `§ H.4` 29 e 31, TI da associação, `A46`, `A21`, `A32`, `A44(i)`.
 >

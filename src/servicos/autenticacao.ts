@@ -184,10 +184,17 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
   const reserva = await reservarTentativa(banco, colaborador.id)
   const restante = reserva.restante
   if (restante > 0) {
-    // Aqui a mensagem PRECISA ser específica, e isso é decisão consciente: a
-    // pessoa legítima tem de saber que a conta destrava sozinha, senão liga
-    // para o suporte. Só chega neste ponto quem já provou conhecer um e-mail
-    // válido e errou a senha cinco vezes — o sigilo já custou caro ao atacante.
+    // A mensagem é específica para a pessoa legítima saber que a conta destrava
+    // sozinha, em vez de ligar para o suporte. O preço é que ela confirma que a
+    // conta existe e está ativa (achado C-18). O comentário anterior dizia que
+    // só chega aqui quem já conhece um e-mail válido — falso: quem sonda não
+    // precisa saber antes, seis tentativas bastam, porque só conta real chega
+    // ao bloqueio. Trocar pela genérica é decisão do dono: `DECISOES.md § H.4`, 33.
+    //
+    // O piso de tempo vale aqui também: sem ele, o relógio entregava o mesmo
+    // segredo em poucos milissegundos, e continuaria entregando mesmo com a
+    // mensagem igualada.
+    await esperarAtePisoDeEntrada(inicio)
     throw new ErroDeNegocio(
       `Muitas tentativas. Esta conta volta a aceitar entrada em ${restante}s.`,
       'CONTA_BLOQUEADA',
