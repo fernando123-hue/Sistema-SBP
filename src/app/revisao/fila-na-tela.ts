@@ -34,3 +34,16 @@ export function estadoDaFila(
   if (itens.length > 0) return 'lista'
   return total > 0 ? 'carregando' : 'vazia'
 }
+
+/**
+ * A resposta da rota, pronta para a tela.
+ *
+ * O total e a lista saem de duas consultas (`listarPendentes`): quem resolve a
+ * última revisão entre as duas deixa `total: 1` com `itens: []`. Lida como
+ * veio, a tela ficaria em "Carregando…" para sempre (revisão do PR #107). A
+ * lista é a leitura mais nova — vazia, não há nada pendente agora.
+ */
+export function filaDaResposta<T>(resposta: { itens: T[]; total: number }): { itens: T[]; total: number } {
+  if (resposta.itens.length === 0) return { itens: [], total: 0 }
+  return { itens: resposta.itens, total: Math.max(resposta.total, resposta.itens.length) }
+}

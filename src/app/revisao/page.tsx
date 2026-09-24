@@ -14,7 +14,7 @@ import {
   Vazio,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
-import { depoisDeResolver, estadoDaFila } from './fila-na-tela'
+import { depoisDeResolver, estadoDaFila, filaDaResposta } from './fila-na-tela'
 import type { ItemEmRevisao, NaRede } from '../../core/tipos'
 
 /** A forma vem do núcleo; a tela lê o que sobrevive ao JSON (`H-D7`). */
@@ -79,7 +79,9 @@ export default function Revisao() {
 
   const carregar = useCallback(async () => {
     try {
-      const resposta = await api.buscar<{ itens: ItemNaTela[]; total: number }>('/revisao')
+      const resposta = filaDaResposta(
+        await api.buscar<{ itens: ItemNaTela[]; total: number }>('/revisao'),
+      )
       const lista = resposta.itens
       setFila({ itens: lista, total: resposta.total, pedirMais: false })
       setEdicao(

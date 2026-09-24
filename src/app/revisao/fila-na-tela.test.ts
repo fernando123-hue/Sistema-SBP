@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { depoisDeResolver, estadoDaFila } from './fila-na-tela'
+import { depoisDeResolver, estadoDaFila, filaDaResposta } from './fila-na-tela'
 
 /**
  * A fila de revisão na tela, depois de cada decisão (achado N-30).
@@ -36,6 +36,24 @@ describe('depoisDeResolver', () => {
   it('revisão que não está na lista não mexe em nada', () => {
     const depois = depoisDeResolver([item('a')], 3, 'x')
     expect(depois).toEqual({ itens: [item('a')], total: 3, recarregar: false })
+  })
+})
+
+describe('filaDaResposta', () => {
+  it('lista vazia com total maior que zero vira total zero — nunca "Carregando…" preso', () => {
+    // O total e a lista saem de duas consultas: quem resolve a última revisão
+    // entre as duas deixa `total: 1` com `itens: []` (revisão do PR #107).
+    const fila = filaDaResposta({ itens: [], total: 1 })
+    expect(fila).toEqual({ itens: [], total: 0 })
+    expect(estadoDaFila(fila.itens, fila.total)).toBe('vazia')
+  })
+
+  it('total nunca menor que a lista', () => {
+    expect(filaDaResposta({ itens: [item('a'), item('b')], total: 1 }).total).toBe(2)
+  })
+
+  it('resposta coerente passa como veio', () => {
+    expect(filaDaResposta({ itens: [item('a')], total: 300 })).toEqual({ itens: [item('a')], total: 300 })
   })
 })
 
