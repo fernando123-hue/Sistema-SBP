@@ -392,6 +392,17 @@ export async function tomarTravaDoDia(tx: Transacao, data: string): Promise<void
   `
 }
 
+/**
+ * Quantas confirmações de distribuição uma pessoa faz por minuto, somando
+ * todas as datas (achado C-26).
+ *
+ * O limite antigo era por pessoa E por data, e a data vem do corpo: cada data
+ * nova abria um balde novo. Um dia normal confirma poucas vezes; trinta é
+ * folga larga para quem distribui categoria por categoria, e barra um laço
+ * de datas. O limite por data continua, na rota, contra o clique repetido.
+ */
+export const CONFIRMACOES_POR_MINUTO = 30
+
 export async function confirmar(
   banco: Banco,
   pedido: PedidoDistribuicao,

@@ -1,5 +1,5 @@
 import { PedidoDistribuicaoSchema } from '../../../../core/esquemas'
-import { confirmar } from '../../../../servicos/distribuicao'
+import { CONFIRMACOES_POR_MINUTO, confirmar } from '../../../../servicos/distribuicao'
 import { corpoJson, limitar, responder, rota } from '../../../../servidor/http'
 import { obterPrisma } from '../../../../servidor/prisma'
 import { exigirAtor } from '../../../../servidor/sessao'
@@ -16,6 +16,11 @@ export async function POST(requisicao: Request): Promise<Response> {
   return rota(async () => {
     const ator = await exigirAtor()
     const pedido = PedidoDistribuicaoSchema.parse(await corpoJson(requisicao))
+
+    // Dois baldes. Este, sem a data, é o que contém volume: a data vem do
+    // corpo, e com ela na chave cada data nova abria um balde novo (C-26).
+    const porPessoa = limitar(`distribuir:${ator.colaboradorId}`, CONFIRMACOES_POR_MINUTO, 60)
+    if (porPessoa) return porPessoa
 
     const recusa = limitar(`distribuir:${ator.colaboradorId}:${pedido.data}`, 10, 60)
     if (recusa) return recusa
