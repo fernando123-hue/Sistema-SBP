@@ -293,8 +293,19 @@ export async function conferirPendencia(
  * A tabela POR CATEGORIA (`porCategoria`) continua aberta a todos de propósito:
  * ali não há pessoa nenhuma, só o volume do setor — esconder de quem trabalha
  * nele não protegeria ninguém.
+ *
+ * Dois tempos na mesma linha, e a tela diz qual é qual: `concluidos` é DO
+ * PERÍODO — sem o recorte, contava desde sempre e a comparação mês a mês com
+ * a planilha saía errada por pessoa (N-06). `atribuidos` e `pendentes` são o
+ * estado de AGORA: é com eles que se vê quem está carregado hoje.
  */
-export async function porPessoa(banco: Banco, ator: Ator): Promise<LinhaPorPessoa[]> {
+export async function porPessoa(
+  banco: Banco,
+  ator: Ator,
+  periodo = periodoPadrao(),
+): Promise<LinhaPorPessoa[]> {
+  const abertura = inicioDoDia(periodo.de)
+  const fechamento = fimDoDia(periodo.ate)
   const colaboradores = await banco.colaborador.findMany({
     where: {
       ativo: true,
@@ -309,7 +320,11 @@ export async function porPessoa(banco: Banco, ator: Ator): Promise<LinhaPorPesso
     const [atribuidos, concluidos, pendentes, saldo] = await Promise.all([
       banco.atribuicao.count({ where: { colaboradorId: colaborador.id, ativa: true } }),
       banco.execucao.count({
-        where: { colaboradorId: colaborador.id, resultado: 'concluido' },
+        where: {
+          colaboradorId: colaborador.id,
+          resultado: 'concluido',
+          concluidoEm: { gte: abertura, lte: fechamento },
+        },
       }),
       // Pendente é CONTADO, não subtraído.
       //

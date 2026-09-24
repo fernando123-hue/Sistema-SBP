@@ -31,7 +31,7 @@ export async function GET(requisicao: Request): Promise<Response> {
 
     const [categorias, pessoas, conservacao] = await Promise.all([
       porCategoria(banco, periodo),
-      porPessoa(banco, ator),
+      porPessoa(banco, ator, periodo),
       conferirConservacao(banco),
     ])
 
