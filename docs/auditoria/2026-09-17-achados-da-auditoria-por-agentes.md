@@ -111,7 +111,7 @@ a linha certa), nunca só que o texto entrou no arquivo.
 | N-36 | BAIXO | `src/servidor/credenciais.ts:115` | Hash de senha corrompido é tratado como 'senha errada' em silêncio e acaba bloqueando a conta | **Corrigido** (PR #77, `§ AT-39`): `conferirSenha` distingue `hash_ilegivel`, não gasta tentativa nem tranca a conta |
 | N-37 | BAIXO | `src/servidor/limite-de-taxa.ts:46` | O teto de chaves do limitador não limita: com mais de 1000 janelas ativas o mapa cresce sem fim, e não há teste | **Confirmado e corrigido** (17/09): acima do teto, depois das vencidas, saem as chaves mais antigas; primeiro teste do limitador |
 | N-38 | INFORMATIVO | `src/adapters/ingestao-graph.ts:176` | O token de aplicativo `.default` alcança toda caixa que a permissão permitir, e o código não tem como limitar | |
-| N-39 | INFORMATIVO | `src/app/api/painel/route.ts:33` | Colaborador recebe números da equipe inteira por categoria, a qualidade da IA e a contagem de itens por liga | |
+| N-39 | INFORMATIVO | `src/app/api/painel/route.ts:33` | Colaborador recebe números da equipe inteira por categoria, a qualidade da IA e a contagem de itens por liga | **Confirmado; corrigido em parte e perguntado** (PR #112): a contagem por liga do seletor da Caixa segue o recorte de `A24` (bate com a lista); se o colaborador vê os totais do setor no Painel é decisão do dono — `DECISOES.md § H.4` item 34 |
 | N-40 | INFORMATIVO | `src/core/seguranca/assinatura-de-arquivo.ts:43` | A assinatura de .docx/.xlsx aceita qualquer ZIP, .txt/.csv não têm verificação e `hash` nunca é preenchido | |
 | N-41 | INFORMATIVO | `src/servidor/cpf-protegido.ts:36` | O CPF protegido é um HMAC correto, mas um dump do banco junto com o BUSCA_SECRET revela todos os CPFs | |
 

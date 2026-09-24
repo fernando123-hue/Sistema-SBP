@@ -12,11 +12,11 @@ import { exigirAtor } from '../../../servidor/sessao'
  *
  * Exige sessão, não exige papel — a lista é o vocabulário da operação, e quem
  * opera precisa dele para filtrar a caixa e para dizer de que liga é a nota que
- * está escrevendo.
+ * está escrevendo. A CONTAGEM de itens segue o recorte da Caixa (N-39).
  */
 export async function GET(): Promise<Response> {
   return rota(async () => {
-    await exigirAtor()
-    return responder(await listar(obterPrisma()))
+    const ator = await exigirAtor()
+    return responder(await listar(obterPrisma(), ator))
   })
 }

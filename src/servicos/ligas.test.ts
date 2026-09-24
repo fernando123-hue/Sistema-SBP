@@ -4,7 +4,7 @@ import { EmailBrutoSchema } from '../core/esquemas'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { obterPrisma } from '../servidor/prisma'
-import { limparTudo, semearBase } from '../testes/apoio'
+import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
 import { listarCaixa } from './caixa'
 import { sincronizar } from './ingestao'
 import { listar } from './ligas'
@@ -22,6 +22,9 @@ import { arquivar, registrar } from './notas'
 
 const banco = obterPrisma()
 
+/** Quem vê o setor inteiro; o recorte do colaborador tem teste próprio abaixo. */
+const OPERADORA = atorDeTeste('operadora-sintetica', 'operador')
+
 beforeEach(async () => {
   await limparTudo(banco)
 })
@@ -38,7 +41,7 @@ describe('listagem', () => {
     await ligaDeTeste('Liga Zeta Sintética')
     await ligaDeTeste('Liga Alfa Sintética')
 
-    const listadas = await listar(banco)
+    const listadas = await listar(banco, OPERADORA)
     const nomes = listadas.map((liga) => liga.nome)
 
     expect(nomes.indexOf('Liga Alfa Sintética')).toBeLessThan(nomes.indexOf('Liga Zeta Sintética'))
@@ -48,7 +51,7 @@ describe('listagem', () => {
     const liga = await ligaDeTeste('Liga Encerrada Sintética')
     await banco.liga.update({ where: { id: liga.id }, data: { status: 'encerrada' } })
 
-    expect((await listar(banco)).map((linha) => linha.id)).not.toContain(liga.id)
+    expect((await listar(banco, OPERADORA)).map((linha) => linha.id)).not.toContain(liga.id)
   })
 
   it('conta os itens da liga', async () => {
@@ -69,9 +72,51 @@ describe('listagem', () => {
       })
     }
 
-    const encontrada = (await listar(banco)).find((linha) => linha.id === liga.id)
+    const encontrada = (await listar(banco, base.operador)).find((linha) => linha.id === liga.id)
     expect(encontrada?.itens).toBe(3)
     expect(base.operadorId).toBeTruthy()
+  })
+
+  it('para o colaborador, conta só os itens que ele vê na Caixa (N-39)', async () => {
+    // O seletor dizia "· 3" e a lista embaixo mostrava 1: a contagem era do
+    // setor inteiro, a lista é recortada por `A24`. O número tem de bater com
+    // o que a pessoa vai ver ao escolher a liga.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const liga = await ligaDeTeste('Liga Recortada Sintética')
+    const categoria = await banco.categoria.findFirstOrThrow({ where: { codigo: 'LIGANTE' } })
+    const pessoa = base.colaboradores[0]!
+
+    for (let indice = 0; indice < 3; indice += 1) {
+      const item = await banco.item.create({
+        data: {
+          categoriaId: categoria.id,
+          ligaId: liga.id,
+          titulo: `Ligante sintético ${indice + 1}`,
+          status: indice === 0 ? 'distribuido' : 'aprovado',
+          confianca: 1,
+          payload: '{}',
+        },
+      })
+      if (indice === 0) {
+        await banco.atribuicao.create({
+          data: {
+            itemId: item.id,
+            colaboradorId: pessoa.id,
+            motivo: 'algoritmo',
+            atribuidoPor: base.operadorId,
+            ativa: true,
+          },
+        })
+      }
+    }
+
+    const vistaDaPessoa = (await listar(banco, pessoa.ator)).find((linha) => linha.id === liga.id)
+    const naCaixaDela = await listarCaixa(banco, { ligaId: liga.id }, pessoa.ator)
+    expect(vistaDaPessoa?.itens).toBe(1)
+    expect(vistaDaPessoa?.itens).toBe(naCaixaDela.length)
+
+    const vistaDoOperador = (await listar(banco, base.operador)).find((linha) => linha.id === liga.id)
+    expect(vistaDoOperador?.itens).toBe(3)
   })
 
   it('conta só as notas VIVAS — arquivada não orienta ninguém', async () => {
@@ -83,7 +128,7 @@ describe('listagem', () => {
     const morta = await registrar(banco, { texto: 'Regra antiga.', ligaId: liga.id }, pessoa.ator)
     await arquivar(banco, morta.id, {}, pessoa.ator)
 
-    const encontrada = (await listar(banco)).find((linha) => linha.id === liga.id)
+    const encontrada = (await listar(banco, OPERADORA)).find((linha) => linha.id === liga.id)
 
     // Um número que incluísse arquivadas prometeria, no seletor, memória que a
     // tela não vai mostrar quando a pessoa escolher a liga.

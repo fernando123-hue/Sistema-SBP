@@ -46,7 +46,7 @@ export type { ItemDaCaixa }
  * modelo que a sustenta não existe. Quando existir, é este filtro que ganha o
  * segundo caminho — em um lugar só.
  */
-function recorteDaCaixa(ator: Ator): { atribuicoes?: { some: { colaboradorId: string; ativa: true } } } {
+export function recorteDaCaixa(ator: Ator): { atribuicoes?: { some: { colaboradorId: string; ativa: true } } } {
   if (ator.papel !== 'colaborador') return {}
   return { atribuicoes: { some: { colaboradorId: ator.colaboradorId, ativa: true } } }
 }
