@@ -292,7 +292,7 @@ export default function Fila() {
                                   aria-label="Transferir para"
                                   value={destino}
                                   onChange={(evento) => setDestino(evento.target.value)}
-                                  className="min-h-9 rounded-md border border-borda-forte bg-papel px-2 text-xs"
+                                  className="min-h-11 rounded-md border border-borda-forte bg-papel px-2 text-xs sm:min-h-9"
                                 >
                                   <option value="">Transferir para…</option>
                                   {equipe.map((pessoa) => (
