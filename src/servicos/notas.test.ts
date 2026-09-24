@@ -377,6 +377,36 @@ describe('a leitura tem teto, e o teto não troca a nota certa por outra (achado
     }
   })
 
+  it('notas da liga certa presas a outra categoria não gastam o teto da faixa da liga', async () => {
+    // A faixa da liga é PRECISA (liga do contexto E categoria nula ou a do
+    // contexto) por causa deste caso: com um filtro largo por liga, as notas
+    // presas a outra categoria — que a seleção elimina — ocupariam o `take`, e
+    // a nota válida, mais antiga, ficaria de fora sem ninguém saber.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const pessoa = base.colaboradores[0]!
+    const liga = await ligaDeTeste()
+    const doc = await banco.categoria.findUniqueOrThrow({ where: { codigo: 'DOC_CADASTRO' } })
+    const outra = await banco.categoria.findUniqueOrThrow({ where: { codigo: 'EMAIL_CADASTRO' } })
+    const antes = new Date('2026-01-01T00:00:00Z')
+
+    await banco.nota.create({
+      data: { texto: 'Vale para esta liga.', ligaId: liga.id, autorId: pessoa.id, criadoEm: antes },
+    })
+    await banco.nota.createMany({
+      data: Array.from({ length: LIMITE_DE_NOTAS_EXIBIDAS + 5 }, (_, indice) => ({
+        texto: `Da liga, mas de outra categoria ${indice}`,
+        ligaId: liga.id,
+        categoriaId: outra.id,
+        autorId: pessoa.id,
+        criadoEm: new Date(antes.getTime() + (indice + 1) * 1000),
+      })),
+    })
+
+    const notas = await paraContexto(banco, { categoriaId: doc.id, ligaId: liga.id })
+
+    expect(notas.map((linha) => linha.texto)).toEqual(['Vale para esta liga.'])
+  })
+
   it('a listagem plana corta no teto e AVISA que cortou', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     const pessoa = base.colaboradores[0]!
