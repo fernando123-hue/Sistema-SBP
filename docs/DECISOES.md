@@ -1018,6 +1018,8 @@ consumo-da-ia.ts:91  →  pool failed to retrieve a connection
 
 **Por que sem o endereço (hipótese):** guardá-lo seria gravar dado pessoal de terceiro — ou o lixo de quem pulveriza — numa tabela sem retenção (invariante 11). O volume por janela responde "está havendo ataque?". **Impacto se estiver errado:** a investigação não sabe *quais* endereços foram tentados; se isso fizer falta, a saída é gravar uma chave derivada com segredo (como a do CPF em `servidor/cpf-protegido.ts`), nunca o texto.
 
+**Teto do rastro (revisão de segurança do PR #94):** as duas tabelas nunca são apagadas e quem ataca não precisa de sessão, então uma linha por tentativa seria uma torneira de escrita (até 600 por minuto com a origem indistinguível). Por isso: **uma linha por conta e ação a cada 10 minutos**, e **um evento de e-mail inexistente por minuto**, no máximo — mesmo desenho de `avisarCredencialIlegivel`. Ataque sustentado aparece como uma linha a cada janela.
+
 **Fica de fora, anotado:** o **alerta por volume** que a auditoria sugere. Hoje o rastro existe, mas ninguém é avisado; o número de corte depende de uso real.
 
 **Status:** 🟡 provisória.

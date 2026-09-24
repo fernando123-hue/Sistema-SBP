@@ -962,6 +962,25 @@ describe('toda recusa deixa rastro (achado C-19)', () => {
     expect(await banco.logAuditoria.count()).toBe(0)
   })
 
+  it('o rastro tem teto: insistir não enche a trilha nem os eventos (revisão de segurança do #94)', async () => {
+    // As duas tabelas nunca são apagadas, e quem ataca não precisa de sessão.
+    // Uma linha por tentativa daria a qualquer um uma torneira de escrita; uma
+    // por janela preserva o que importa — houve tentativa, contra quem, quando.
+    const base = await semearPessoa({ ativo: false })
+
+    for (let vez = 0; vez < 4; vez += 1) {
+      await recusar(autenticar(banco, { email: 'pessoa@teste.local', senha: `chute-${vez}` }))
+      await recusar(autenticar(banco, { email: `inventado-${vez}@teste.local`, senha: `chute-${vez}` }))
+    }
+
+    expect(
+      await banco.logAuditoria.count({
+        where: { acao: 'entrada_recusada_sem_acesso', entidadeId: base.pessoaId },
+      }),
+    ).toBe(1)
+    expect(await banco.eventoProcessamento.count({ where: { etapa: 'autenticacao' } })).toBe(1)
+  })
+
   it('troca de senha com a senha atual errada entra na trilha', async () => {
     const base = await semearPessoa()
     await definirSenhaProvisoria(banco, { colaboradorId: base.pessoaId }, base.gestor, SENHA_PROVISORIA)
