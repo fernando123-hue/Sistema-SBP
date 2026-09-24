@@ -1003,6 +1003,8 @@ consumo-da-ia.ts:91  →  pool failed to retrieve a connection
 
 **Hipóteses:** 20 notas por minuto por pessoa e 200 na listagem são folga sobre o uso imaginado de um setor de 4 a 7 pessoas, não números medidos. **Impacto se estiverem errados:** a pessoa que colar muitas notas de uma vez recebe "Muitas requisições. Tente de novo em Ns." e espera um minuto; a listagem avisa que cortou. Nenhum dos dois perde dado.
 
+**Aceito na revisão de segurança do PR #91:** (a) a leitura (`GET`, os dois modos) segue sem limite de taxa — o custo por requisição agora é fixo (até 15 linhas na tela, 200 na listagem), e o que o C-16 temia era o crescimento com o volume; (b) o limitador é em memória, **por processo** — os 20/min valem enquanto houver uma instância só, e zeram num reinício (mesma premissa das outras rotas, `servidor/limite-de-taxa.ts`). **Refutado:** arquivar em laço não enche a trilha — arquivar nota já arquivada volta sem gravar, então cada nota rende no máximo uma linha de arquivamento, e criar nota já tem limite.
+
 **Status:** 🟡 provisória — conferir com uso real.
 
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
