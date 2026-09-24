@@ -1,8 +1,51 @@
 # Estado do projeto — retomada
 
-Última atualização: **23/09/2026, madrugada (depois de um `/clear`)** — PRs #83, #84, #85 e **#86** mesclados; a coluna "Destino" da auditoria reparada (dezesseis destinos estavam fora da tabela). Suíte: **106 arquivos, 1214 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`) **e** a chegada da máquina da IA local (`A56`).
+Última atualização: **24/09/2026 — preparado para o dono apagar TODAS as conversas e recomeçar do zero.** PRs #83 a **#87** mesclados; nenhum PR nosso aberto. Suíte: **106 arquivos, 1214 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`) **e** a medição da IA local na máquina que chegou (`A56`).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### 24/09/2026 — RECOMEÇO DO ZERO: o dono apagou as conversas. Tudo o que importa está no repositório.
+>
+> **Você não tem memória de nada. Isto basta.** Leia este bloco inteiro, depois `CLAUDE.md`, `docs/PROCESSO.md` e *Como o dono prefere trabalhar* (mais abaixo, neste arquivo). Os blocos datados logo abaixo deste são o histórico recente e continuam valendo como registro; **se algum deles contradisser este, este vence; se este contradisser `git log`, o `git log` vence.**
+>
+> **1. Onde as coisas estão (conferido em 24/09, no fim da sessão):**
+> - `main` em `6f0685d` ou mais novo (último: #87). Branch de trabalho das sessões na nuvem: `claude/beautiful-feynman-bcfv0l`, **igual à `main`** depois deste PR — pode ser recriada a partir da `main` sem perder nada.
+> - **Nenhum PR nosso aberto.** Abertos só os do dependabot: #78 (`@anthropic-ai/sdk`), #79 (`react-dom`), #80 (`@google/genai`), #81 (`react`). Não foram avaliados; cada um é uma atualização de dependência que precisa de CI verde lido check a check antes de mesclar, e `react`/`react-dom` devem andar juntos.
+> - Nada rodando: nenhum agente, nenhuma rotina agendada, nenhuma assinatura de PR.
+>
+> **2. O que esta sessão (23–24/09) fez, em uma linha cada:**
+> - **#83** — C-11/N-13: e-mail que a IA nunca estrutura para de ser cobrado depois de 3 tentativas e aparece num contador em `/distribuicao` (`§ AT-41`).
+> - **#84** — `.claude/worktrees/` no `.gitignore`.
+> - **#85** — coluna Destino da auditoria em dia.
+> - **#86** — `AT-42`: banco fora derrubava toda chamada de IA; achado **medindo** o gabarito sem banco. Decisão do dono: sem contagem legível, a chamada acontece e o teto fica sem valer naquela chamada.
+> - **#87** (feito por outra conversa, revisado e mesclado aqui) — dezesseis destinos da auditoria estavam colados na linha 1 do arquivo; a fila de médios abertos era menor do que este arquivo dizia.
+> - Ajudou o dono a instalar o Claude Code na **máquina da IA local** (Debian, só terminal) e escreveu o direcionamento para a conversa de lá. **Tudo sobre essa máquina agora mora em `docs/maquina-da-ia-local.md`** — estado, o que foi feito lá, o texto pronto para o dono colar na conversa da máquina, o que se sabe do Odysseus, e como reproduzir a medição na nuvem.
+>
+> **3. Três regras novas do dono (23/09), além das de sempre:**
+> - **Nunca escrever, repetir ou guardar o link do Remote Control** da máquina. Em lugar nenhum.
+> - **Para a máquina, não dar comando de terminal ao dono:** escrever direcionamento em linguagem natural para a conversa que roda lá; ela tem acesso real e escolhe os comandos.
+> - **Quando ele disser que vai limpar ou apagar conversas: parar e preparar a retomada** — é o que este bloco é.
+>
+> **4. O próximo passo, por ordem de valor:**
+> 1. **Medir os modelos na máquina da IA local**, com a `main` atual. Depende do dono: ele cola o texto da seção 3 de `docs/maquina-da-ia-local.md` na conversa da máquina e traz o resumo. Com o resumo, registrar o modelo em `DECISOES.md § A56`. Isto destrava o **C-05** (máscara de CPF, medir antes e depois).
+> 2. **Sem depender de ninguém:** os achados da auditoria ainda sem destino — confirmados baixos e informativos **C-15, C-16, C-18, C-19, C-20, C-21, C-24, C-25, C-26, C-27**, e os **N- sem verificação** (N-03 a N-06, N-12, N-16, N-26, N-28 a N-35, N-38 a N-41). Um por vez: ler o código, confirmar ou refutar, teste vermelho, correção, PR. Tabela em `docs/auditoria/2026-09-17-achados-da-auditoria-por-agentes.md` — **ao preencher, confira no `git diff` que a linha do achado mudou.**
+> 3. **Isolar a base de teste entre execuções simultâneas.** Duas conversas no mesmo container rodaram a suíte ao mesmo tempo e uma apagou a base da outra (o `globalSetup` faz `prisma migrate reset --force` em `sbp_teste`). Ideia: nome de base por execução (sufixo aleatório terminado em `_teste`, que `conferirBaseDeTeste` já exige) ou uma trava de arquivo. Não começado.
+> 4. Os PRs do dependabot (item 1 acima).
+>
+> **5. Decisões abertas com o dono** (não invente a resposta; pergunte com opções e recomendação):
+> - `DECISOES.md § H.4` item **32** — o teto de 3 tentativas do `AT-41` é hipótese; e se o contador na tela basta ou se precisa de fila própria.
+> - `§ H.4` item **30** (C-08) — pedir a senha do gestor de novo para redefinir senha, desativar ou mudar papel.
+> - `§ AT-42`, **antes de ligar chave paga de IA** — trava secundária de gasto que não dependa do banco (quanto se aceita gastar às cegas).
+> - Os itens antigos continuam: `§ H.4` 29 e 31, TI da associação, `A46`, `A21`, `A32`, `A44(i)`.
+>
+> **6. Ligar o ambiente numa sessão na nuvem (container novo, sem nada):** repita o passo 5 do bloco *23/09, tarde* (mais abaixo): `apt-get install -y mysql-server`, `mysqld --user=mysql` em segundo plano, root por TCP com senha vazia (`mysql_native_password`), bases `sbp` e `sbp_teste` com `utf8mb4_0900_as_cs`, `.env` com os valores públicos do `ci.yml`. A suíte procura a porta **3307** por padrão (`vitest.config.ts`); com o MySQL na 3306, exporte `DATABASE_URL` e `SHADOW_DATABASE_URL` antes de `npm run verificar`. Se o MySQL morrer entre um turno e outro, suba de novo e espere a porta responder antes de rodar testes.
+>
+> **7. Lições desta sessão, para não repetir:**
+> - **Duas conversas no mesmo container compartilham a mesma pasta e o mesmo banco** — elas se atropelam (arquivo alterado por uma aparece no `git status` da outra; suíte de uma apaga a base da outra). Uma conversa por container, ou combinar antes.
+> - **Medir acha o que ler não acha.** O `AT-42` estava num caminho revisado duas vezes; apareceu ao rodar o gabarito num ambiente sem banco.
+> - **A revisão por agente acha coisa de verdade, inclusive comentário que mente.** No #86 ela pegou um comentário meu dizendo que o disjuntor segurava o gasto — falso. Comentário é código: vale o mesmo rigor.
+> - Depois de mesclar com squash, a branch remota pode ter sido apagada; `--force-with-lease` falha com "stale info" — conferir e usar push simples.
+> - O tipo do resultado de `groupBy` do Prisma quebra com anotação ou `as`; deixar inferir.
 >
 > ### 23/09/2026, madrugada — A TABELA DE DESTINO DA AUDITORIA MENTIA; a fila era menor do que parecia
 >
@@ -1296,6 +1339,9 @@ docs/
   03-SPEC.md        como — camadas, dados, motor, API, telas
   DECISOES.md       decisões, correções, hipóteses, achados da auditoria
   ESTADO.md         este arquivo
+  PROCESSO.md       níveis de risco e a evidência que cada PR precisa
+  maquina-da-ia-local.md  a máquina Debian da IA local: estado, direção, Odysseus, como medir
+  auditoria/        rodada de segurança; a tabela de achados diz o que falta
 
 src/
   core/             domínio puro — não importa Prisma, React nem Next
