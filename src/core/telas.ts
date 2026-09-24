@@ -44,3 +44,15 @@ export const PAPEIS_DA_TELA: Readonly<Record<Tela, readonly Papel[]>> = {
   '/painel': ['operador', 'gestor', 'colaborador'],
   '/acesso': ['gestor'],
 }
+
+/**
+ * Onde cada papel começa: depois de entrar, depois de trocar a senha, na raiz
+ * e no logotipo — uma regra só (achado N-31).
+ *
+ * Eram três cópias e um destino fixo: a troca de senha e o logotipo mandavam
+ * todo mundo para a Distribuição, e o colaborador novo tinha como primeira
+ * tela uma que não é dele, com controles que falham em 403.
+ */
+export function telaInicial(papel: string): Tela {
+  return papel === 'colaborador' ? '/fila' : '/distribuicao'
+}

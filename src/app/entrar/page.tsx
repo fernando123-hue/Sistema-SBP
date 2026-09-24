@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { api, ErroDaApi, mensagemDoErro } from '../../componentes/api'
 import { Marca } from '../../componentes/marca'
 import { Aviso, Botao, Cartao } from '../../componentes/matrizes'
+import { telaInicial } from '../../core/telas'
 
 interface Entrada {
   id: string
@@ -67,10 +68,6 @@ export default function Entrar() {
     }
   }, [])
 
-  function destinoDoPapel(papel: string): string {
-    return papel === 'colaborador' ? '/fila' : '/distribuicao'
-  }
-
   async function entrarLocal(conta: ContaLocal) {
     setEntrando(true)
     setErro(null)
@@ -78,7 +75,7 @@ export default function Entrar() {
       const entrada = await api.enviar<{ nome: string; papel: string }>('/sessao/local', {
         email: conta.email,
       })
-      navegador.push(destinoDoPapel(entrada.papel))
+      navegador.push(telaInicial(entrada.papel))
       navegador.refresh()
     } catch (causa) {
       setErro(mensagemDoErro(causa))
@@ -96,7 +93,7 @@ export default function Entrar() {
       // Com senha provisória, nenhuma outra tela responde — o layout devolve a
       // troca de senha de qualquer forma. Ir direto evita um piscar de tela.
       navegador.push(
-        entrada.precisaTrocarSenha ? '/senha' : destinoDoPapel(entrada.papel),
+        entrada.precisaTrocarSenha ? '/senha' : telaInicial(entrada.papel),
       )
       navegador.refresh()
     } catch (causa) {

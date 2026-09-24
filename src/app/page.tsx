@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 
+import { telaInicial } from '../core/telas'
 import { atorAtual } from '../servidor/sessao'
 
 export default async function Raiz() {
@@ -7,5 +8,5 @@ export default async function Raiz() {
   if (!ator) redirect('/entrar')
 
   // Operador cai na distribuição; colaborador, na própria fila.
-  redirect(ator.papel === 'colaborador' ? '/fila' : '/distribuicao')
+  redirect(telaInicial(ator.papel))
 }

@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { Assistente } from './assistente'
 import { Marca } from './marca'
 import { api, mensagemDoErro, observarAtividade } from './api'
-import { PAPEIS_DA_TELA, ROTULO_DA_TELA, TELAS } from '../core/telas'
+import { PAPEIS_DA_TELA, ROTULO_DA_TELA, TELAS, telaInicial } from '../core/telas'
 import { juntar } from './matrizes'
 
 // Derivados de `core/telas.ts`, a mesma fonte que a segunda conferência do
@@ -72,7 +72,7 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
     <header className="border-b border-borda bg-papel">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
         <Link
-          href="/distribuicao"
+          href={telaInicial(papel)}
           className="flex items-center gap-2 text-sm font-semibold tracking-tight"
         >
           {/*
