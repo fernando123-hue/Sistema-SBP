@@ -185,8 +185,12 @@ export function Botao({
       disabled={desabilitado}
       className={juntar(
         'inline-flex items-center justify-center gap-1.5 rounded-md border font-medium transition-colors',
-        // Alvo de toque confortável: a fila individual é usada no celular.
-        tamanho === 'pequeno' ? 'min-h-9 px-2.5 text-xs' : 'min-h-11 px-3.5 text-sm sm:min-h-10',
+        // Alvo de toque confortável: a fila individual é usada no celular. O
+        // pequeno também tem 44 px lá — com 36 px, "Concluir" e "Não é comigo"
+        // lado a lado viravam um toque no botão errado (N-04).
+        tamanho === 'pequeno'
+          ? 'min-h-11 px-2.5 text-xs sm:min-h-9'
+          : 'min-h-11 px-3.5 text-sm sm:min-h-10',
         VARIANTES[variante],
         desabilitado && 'cursor-not-allowed opacity-45',
         className,

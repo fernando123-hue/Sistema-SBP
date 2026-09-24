@@ -55,6 +55,8 @@ export default function Fila() {
   const [justificativa, setJustificativa] = useState('')
   const [destino, setDestino] = useState('')
   const [equipe, setEquipe] = useState<PessoaDaEscala[]>([])
+  /** Item cujo "Concluir" já levou o primeiro toque e espera a confirmação. */
+  const [confirmandoConclusao, setConfirmandoConclusao] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     try {
@@ -82,6 +84,7 @@ export default function Fila() {
       setErro(mensagemDoErro(causa))
     } finally {
       setOcupado(null)
+      setConfirmandoConclusao(null)
     }
   }
 
@@ -215,22 +218,41 @@ export default function Fila() {
                         */}
                         <Botao
                           tamanho="pequeno"
-                          onClick={() =>
-                            saindo === item.itemId ? setSaindo(null) : void abrirSaida(item)
-                          }
+                          onClick={() => {
+                            setConfirmandoConclusao(null)
+                            if (saindo === item.itemId) setSaindo(null)
+                            else void abrirSaida(item)
+                          }}
                           desabilitado={ocupado !== null}
                         >
                           {saindo === item.itemId ? 'Deixar comigo' : 'Não é comigo'}
                         </Botao>
+                        {/*
+                          ═══ CONCLUIR PEDE DOIS TOQUES ═══
+
+                          Concluir não tem volta — não existe serviço, rota nem
+                          tela para reabrir —, e o item some de todas as filas:
+                          um toque errado dá como atendido o pedido de um
+                          associado que ninguém atendeu, o painel conta uma
+                          conclusão que não aconteceu e o prazo de retenção do
+                          texto começa a correr. Ninguém fica sabendo. É a
+                          mesma trava do Descartar da Revisão (N-04, `AT-46`).
+                        */}
                         <Botao
                           variante="principal"
                           tamanho="pequeno"
-                          onClick={() => concluir(item)}
+                          onClick={() =>
+                            confirmandoConclusao === item.itemId
+                              ? void concluir(item)
+                              : setConfirmandoConclusao(item.itemId)
+                          }
                           desabilitado={ocupado !== null}
                         >
                           {ocupado?.itemId === item.itemId && ocupado.acao === 'concluir'
                             ? 'concluindo…'
-                            : 'Concluir'}
+                            : confirmandoConclusao === item.itemId
+                              ? 'Confirmar: concluir'
+                              : 'Concluir'}
                         </Botao>
                       </div>
 
@@ -270,7 +292,7 @@ export default function Fila() {
                                   aria-label="Transferir para"
                                   value={destino}
                                   onChange={(evento) => setDestino(evento.target.value)}
-                                  className="min-h-9 rounded-md border border-borda-forte bg-papel px-2 text-xs"
+                                  className="min-h-11 rounded-md border border-borda-forte bg-papel px-2 text-xs sm:min-h-9"
                                 >
                                   <option value="">Transferir para…</option>
                                   {equipe.map((pessoa) => (
