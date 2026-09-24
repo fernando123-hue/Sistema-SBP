@@ -94,6 +94,9 @@ async function registrarNegacao(erro: PermissaoNegadaError): Promise<void> {
     const mensagem = `papel "${erro.papel}" tentou "${erro.operacao}"`
     const recente = await banco.eventoProcessamento.findFirst({
       where: {
+        // `situacao` junto de `etapa`: é o índice [situacao, etapa] da tabela,
+        // que só cresce. Sem ela, cada 403 viraria varredura (revisão do #97).
+        situacao: 'falha',
         etapa: 'autorizacao',
         referencia: erro.colaboradorId,
         mensagem,
