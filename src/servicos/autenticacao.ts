@@ -185,11 +185,11 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
   const restante = reserva.restante
   if (restante > 0) {
     // A mensagem é específica para a pessoa legítima saber que a conta destrava
-    // sozinha, em vez de ligar para o suporte. O PREÇO disso, e o comentário
-    // anterior dizia o contrário (achado C-18): quem sonda NÃO precisa saber
-    // antes que o e-mail existe — seis tentativas bastam, porque só conta real
-    // chega ao bloqueio. A mensagem, então, confirma que a conta existe e está
-    // ativa. Trocar pela genérica é decisão do dono: `DECISOES.md § H.4`, 33.
+    // sozinha, em vez de ligar para o suporte. O preço é que ela confirma que a
+    // conta existe e está ativa (achado C-18). O comentário anterior dizia que
+    // só chega aqui quem já conhece um e-mail válido — falso: quem sonda não
+    // precisa saber antes, seis tentativas bastam, porque só conta real chega
+    // ao bloqueio. Trocar pela genérica é decisão do dono: `DECISOES.md § H.4`, 33.
     //
     // O piso de tempo vale aqui também: sem ele, o relógio entregava o mesmo
     // segredo em poucos milissegundos, e continuaria entregando mesmo com a
