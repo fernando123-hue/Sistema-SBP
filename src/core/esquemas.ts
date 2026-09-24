@@ -106,6 +106,11 @@ export const AcaoAuditavelSchema = z.enum([
   'acesso_desativado',
   'entrada_autorizada',
   'entrada_recusada',
+  /** C-19: as recusas que antes não deixavam rastro. Nenhuma grava a senha digitada. */
+  'entrada_recusada_conta_bloqueada',
+  'entrada_recusada_sem_acesso',
+  'troca_de_senha_recusada',
+  'troca_de_senha_bloqueada',
   /** Entrada SEM senha pelo acesso local de desenvolvimento. Ver `servidor/acesso-local.ts`. */
   'entrada_local_sem_senha',
   'senha_trocada',

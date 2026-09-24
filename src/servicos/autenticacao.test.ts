@@ -907,3 +907,109 @@ describe('o gestor não escolhe a senha de ninguém', () => {
     expect(await conferirSenha(resultado.senhaProvisoria, gravado.senhaHash!)).toBe('confere')
   })
 })
+
+describe('toda recusa deixa rastro (achado C-19)', () => {
+  /**
+   * Só a senha errada em conta ativa entrava na trilha. Pulverizar senhas
+   * contra ex-colaboradores (conta desativada), insistir numa conta travada ou
+   * adivinhar a senha atual com um cookie roubado não deixava linha nenhuma —
+   * justamente as tentativas que mais interessam a quem investiga depois.
+   */
+  async function recusar(promessa: Promise<unknown>) {
+    await promessa.catch(() => null)
+  }
+
+  it('conta travada: a tentativa recusada entra na trilha da conta', async () => {
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(banco, { colaboradorId: base.pessoaId }, base.gestor, SENHA_PROVISORIA)
+    await banco.colaborador.update({
+      where: { id: base.pessoaId },
+      data: { bloqueadoAte: new Date(Date.now() + 60_000), tentativasFalhas: TENTATIVAS_ANTES_DE_TRAVAR },
+    })
+
+    await recusar(autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }))
+
+    expect(
+      await banco.logAuditoria.count({
+        where: { acao: 'entrada_recusada_conta_bloqueada', entidadeId: base.pessoaId },
+      }),
+    ).toBe(1)
+  })
+
+  it('conta desativada: a tentativa entra na trilha da conta, sem a senha digitada', async () => {
+    const base = await semearPessoa({ ativo: false })
+
+    await recusar(autenticar(banco, { email: 'pessoa@teste.local', senha: 'chute-sintetico-123' }))
+
+    const linhas = await banco.logAuditoria.findMany({
+      where: { acao: 'entrada_recusada_sem_acesso', entidadeId: base.pessoaId },
+    })
+    expect(linhas).toHaveLength(1)
+    expect(JSON.stringify(linhas)).not.toContain('chute-sintetico-123')
+  })
+
+  it('e-mail que não existe: vira evento, sem o e-mail nem a senha em lugar nenhum', async () => {
+    await semearPessoa()
+
+    await recusar(autenticar(banco, { email: 'ninguem-com-este-nome@teste.local', senha: 'chute-sintetico-456' }))
+
+    const eventos = await banco.eventoProcessamento.findMany({ where: { etapa: 'autenticacao' } })
+    expect(eventos).toHaveLength(1)
+    const gravado = JSON.stringify(eventos)
+    expect(gravado).not.toContain('ninguem-com-este-nome')
+    expect(gravado).not.toContain('chute-sintetico-456')
+    // E nada na trilha: não há entidade a que a linha pertença.
+    expect(await banco.logAuditoria.count()).toBe(0)
+  })
+
+  it('o rastro tem teto: insistir não enche a trilha nem os eventos (revisão de segurança do #94)', async () => {
+    // As duas tabelas nunca são apagadas, e quem ataca não precisa de sessão.
+    // Uma linha por tentativa daria a qualquer um uma torneira de escrita; uma
+    // por janela preserva o que importa — houve tentativa, contra quem, quando.
+    const base = await semearPessoa({ ativo: false })
+
+    for (let vez = 0; vez < 4; vez += 1) {
+      await recusar(autenticar(banco, { email: 'pessoa@teste.local', senha: `chute-${vez}` }))
+      await recusar(autenticar(banco, { email: `inventado-${vez}@teste.local`, senha: `chute-${vez}` }))
+    }
+
+    expect(
+      await banco.logAuditoria.count({
+        where: { acao: 'entrada_recusada_sem_acesso', entidadeId: base.pessoaId },
+      }),
+    ).toBe(1)
+    expect(await banco.eventoProcessamento.count({ where: { etapa: 'autenticacao' } })).toBe(1)
+  })
+
+  it('troca de senha com a senha atual errada entra na trilha', async () => {
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(banco, { colaboradorId: base.pessoaId }, base.gestor, SENHA_PROVISORIA)
+
+    await recusar(trocarSenha(banco, { senhaAtual: 'chute', senhaNova: SENHA_NOVA }, base.pessoaAtor))
+
+    expect(
+      await banco.logAuditoria.count({
+        where: { acao: 'troca_de_senha_recusada', entidadeId: base.pessoaId },
+      }),
+    ).toBe(1)
+  })
+
+  it('troca de senha com a conta travada entra na trilha', async () => {
+    const base = await semearPessoa()
+    await definirSenhaProvisoria(banco, { colaboradorId: base.pessoaId }, base.gestor, SENHA_PROVISORIA)
+    await banco.colaborador.update({
+      where: { id: base.pessoaId },
+      data: { bloqueadoAte: new Date(Date.now() + 60_000), tentativasFalhas: TENTATIVAS_ANTES_DE_TRAVAR },
+    })
+
+    await recusar(
+      trocarSenha(banco, { senhaAtual: SENHA_PROVISORIA, senhaNova: SENHA_NOVA }, base.pessoaAtor),
+    )
+
+    expect(
+      await banco.logAuditoria.count({
+        where: { acao: 'troca_de_senha_bloqueada', entidadeId: base.pessoaId },
+      }),
+    ).toBe(1)
+  })
+})

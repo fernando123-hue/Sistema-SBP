@@ -1010,6 +1010,20 @@ consumo-da-ia.ts:91  →  pool failed to retrieve a connection
 
 **Status:** 🟡 provisória — conferir com uso real.
 
+### AT-45 — Toda recusa de entrada deixa rastro, e o e-mail inexistente não é guardado (C-19) *(24/09/2026)*
+
+**O defeito:** só a senha errada em conta ativa entrava na trilha. Tentativa contra conta desativada (ex-colaborador), contra conta travada, contra e-mail inexistente e a senha atual errada na troca de senha não deixavam linha nenhuma.
+
+**Como ficou:** quatro ações novas em `AcaoAuditavelSchema` — `entrada_recusada_conta_bloqueada`, `entrada_recusada_sem_acesso` (conta desativada ou sem senha), `troca_de_senha_recusada`, `troca_de_senha_bloqueada` —, todas na trilha da conta, sem a senha digitada. E-mail que não existe vira `EventoProcessamento` (`autenticacao`/`falha`) **sem o endereço**. Toda escrita desses ramos acontece antes do piso de tempo, que a absorve.
+
+**Por que sem o endereço (hipótese):** guardá-lo seria gravar dado pessoal de terceiro — ou o lixo de quem pulveriza — numa tabela sem retenção (invariante 11). O volume por janela responde "está havendo ataque?". **Impacto se estiver errado:** a investigação não sabe *quais* endereços foram tentados; se isso fizer falta, a saída é gravar uma chave derivada com segredo (como a do CPF em `servidor/cpf-protegido.ts`), nunca o texto.
+
+**Teto do rastro (revisão de segurança do PR #94):** as duas tabelas nunca são apagadas e quem ataca não precisa de sessão, então uma linha por tentativa seria uma torneira de escrita (até 600 por minuto com a origem indistinguível). Por isso: **uma linha por conta e ação a cada 10 minutos**, e **um evento de e-mail inexistente por minuto**, no máximo — mesmo desenho de `avisarCredencialIlegivel`. Ataque sustentado aparece como uma linha a cada janela.
+
+**Fica de fora, anotado:** o **alerta por volume** que a auditoria sugere. Hoje o rastro existe, mas ninguém é avisado; o número de corte depende de uso real.
+
+**Status:** 🟡 provisória.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.

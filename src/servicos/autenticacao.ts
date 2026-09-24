@@ -100,6 +100,96 @@ async function avisarCredencialIlegivel(
 
 const FALHA_DE_ENTRADA = 'E-mail ou senha incorretos.'
 
+/**
+ * Janelas do rastro de recusa (revisão de segurança do PR #94).
+ *
+ * `LogAuditoria` e `EventoProcessamento` nunca são apagados, e quem ataca não
+ * precisa de sessão: uma linha por tentativa seria uma torneira de escrita
+ * aberta a qualquer um (até 600 por minuto com a origem indistinguível). Uma
+ * linha por janela guarda o que importa — houve tentativa, contra quem,
+ * quando — e o volume sustentado aparece como uma linha a cada janela. Mesmo
+ * desenho de `avisarCredencialIlegivel`.
+ */
+const JANELA_DO_RASTRO_POR_CONTA_MS = 10 * 60 * 1000
+const JANELA_DO_RASTRO_SEM_CONTA_MS = 60 * 1000
+const MENSAGEM_DE_EMAIL_SEM_CONTA = 'entrada recusada: e-mail sem conta'
+
+/** Grava a recusa na trilha da conta, no máximo uma vez por janela e ação. */
+async function auditarRecusa(
+  banco: Banco,
+  colaboradorId: string,
+  acao: 'entrada_recusada_conta_bloqueada' | 'entrada_recusada_sem_acesso' | 'troca_de_senha_bloqueada',
+  depois: Record<string, unknown>,
+  correlacaoId: string,
+): Promise<void> {
+  const recente = await banco.logAuditoria.findFirst({
+    where: {
+      entidade: 'Colaborador',
+      entidadeId: colaboradorId,
+      acao,
+      timestamp: { gte: new Date(Date.now() - JANELA_DO_RASTRO_POR_CONTA_MS) },
+    },
+    select: { id: true },
+  })
+  if (recente) return
+
+  await auditar(banco, {
+    entidade: 'Colaborador',
+    entidadeId: colaboradorId,
+    acao,
+    depois,
+    usuario: colaboradorId,
+    correlacaoId,
+  })
+}
+
+/**
+ * Rastro da tentativa contra conta sem acesso, ou contra e-mail que não existe
+ * (achado C-19).
+ *
+ * Conta desativada ou sem senha EXISTE: a linha vai para a trilha dela — é o
+ * ex-colaborador sendo tentado, o caso que mais interessa a quem investiga.
+ * E-mail que não existe não tem entidade a que pertencer: vira evento, e SEM o
+ * endereço digitado. Guardá-lo seria gravar dado pessoal de terceiro (ou lixo
+ * de quem pulveriza) numa tabela que não tem política de retenção
+ * (invariante 11); o volume por janela já responde "está havendo ataque?".
+ */
+async function registrarRecusaSemAcesso(
+  banco: Banco,
+  colaborador: { id: string; ativo: boolean; senhaHash: string | null } | null,
+  correlacaoId: string,
+): Promise<void> {
+  if (colaborador) {
+    await auditarRecusa(
+      banco,
+      colaborador.id,
+      'entrada_recusada_sem_acesso',
+      { ativo: colaborador.ativo, temSenha: colaborador.senhaHash !== null },
+      correlacaoId,
+    )
+    return
+  }
+
+  const recente = await banco.eventoProcessamento.findFirst({
+    where: {
+      etapa: 'autenticacao',
+      situacao: 'falha',
+      referencia: null,
+      mensagem: MENSAGEM_DE_EMAIL_SEM_CONTA,
+      criadoEm: { gte: new Date(Date.now() - JANELA_DO_RASTRO_SEM_CONTA_MS) },
+    },
+    select: { id: true },
+  })
+  if (recente) return
+
+  await registrarEvento(banco, {
+    correlacaoId,
+    etapa: 'autenticacao',
+    situacao: 'falha',
+    mensagem: MENSAGEM_DE_EMAIL_SEM_CONTA,
+  })
+}
+
 export interface EntradaAutorizada {
   colaboradorId: string
   nome: string
@@ -177,6 +267,9 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
 
   if (!colaborador?.ativo || !colaborador.senhaHash) {
     await gastarTempoDeConferencia()
+    // Antes do piso, como toda escrita de ramo de recusa: o piso absorve o
+    // custo dela, e o relógio não passa a separar este ramo dos outros.
+    await registrarRecusaSemAcesso(banco, colaborador, correlacaoId)
     await esperarAtePisoDeEntrada(inicio)
     throw new ErroDeNegocio(FALHA_DE_ENTRADA, 'FALHA_DE_ENTRADA')
   }
@@ -195,7 +288,14 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
     // depender da conta. O bloqueio continua valendo; só não se anuncia.
     //
     // O piso de tempo vale aqui também: sem ele, o relógio contaria o que a
-    // mensagem deixou de contar.
+    // mensagem deixou de contar. A linha da trilha vem antes dele (C-19).
+    await auditarRecusa(
+      banco,
+      colaborador.id,
+      'entrada_recusada_conta_bloqueada',
+      { bloqueadoPorSegundos: restante },
+      correlacaoId,
+    )
     await esperarAtePisoDeEntrada(inicio)
     throw new ErroDeNegocio(FALHA_DE_ENTRADA, 'FALHA_DE_ENTRADA')
   }
@@ -312,6 +412,13 @@ export async function trocarSenha(
   // agora, e a tentativa contada antes do hash.
   const { restante } = await reservarTentativa(banco, colaborador.id)
   if (restante > 0) {
+    await auditarRecusa(
+      banco,
+      colaborador.id,
+      'troca_de_senha_bloqueada',
+      { bloqueadoPorSegundos: restante },
+      correlacaoId,
+    )
     throw new ErroDeNegocio(
       `Muitas tentativas. Tente de novo em ${restante}s.`,
       'CONTA_BLOQUEADA',
@@ -335,6 +442,15 @@ export async function trocarSenha(
     throw new CredencialIlegivelError(colaborador.id)
   }
   if (conferenciaDaAtual !== 'confere') {
+    // Esta rota é oráculo de senha para quem tem o cookie: sem a linha, quem
+    // roubasse uma sessão adivinharia a senha atual sem deixar rastro (C-19).
+    await auditar(banco, {
+      entidade: 'Colaborador',
+      entidadeId: colaborador.id,
+      acao: 'troca_de_senha_recusada',
+      usuario: colaborador.id,
+      correlacaoId,
+    })
     throw new ErroDeNegocio('A senha atual está incorreta.', 'FALHA_DE_ENTRADA')
   }
 
