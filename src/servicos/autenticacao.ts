@@ -184,21 +184,20 @@ export async function autenticar(banco: Banco, entrada: unknown): Promise<Entrad
   const reserva = await reservarTentativa(banco, colaborador.id)
   const restante = reserva.restante
   if (restante > 0) {
-    // A mensagem é específica para a pessoa legítima saber que a conta destrava
-    // sozinha, em vez de ligar para o suporte. O preço é que ela confirma que a
-    // conta existe e está ativa (achado C-18). O comentário anterior dizia que
-    // só chega aqui quem já conhece um e-mail válido — falso: quem sonda não
-    // precisa saber antes, seis tentativas bastam, porque só conta real chega
-    // ao bloqueio. Trocar pela genérica é decisão do dono: `DECISOES.md § H.4`, 33.
+    // ═══ A CONTA TRAVADA RESPONDE COMO QUALQUER RECUSA (C-18, `A57`) ═══
     //
-    // O piso de tempo vale aqui também: sem ele, o relógio entregava o mesmo
-    // segredo em poucos milissegundos, e continuaria entregando mesmo com a
-    // mensagem igualada.
+    // A mensagem era específica ("volta a aceitar entrada em 30s"), para a
+    // pessoa legítima saber que a conta destrava sozinha. O preço: só conta
+    // real chega ao bloqueio, então seis tentativas contra qualquer e-mail
+    // respondiam quem tem acesso ao sistema, sem acertar senha nenhuma.
+    // Decisão do dono (24/09/2026, `§ H.4` item 33, opção b): resposta igual
+    // para todos, e a orientação de esperar fica FIXA na tela de entrada, sem
+    // depender da conta. O bloqueio continua valendo; só não se anuncia.
+    //
+    // O piso de tempo vale aqui também: sem ele, o relógio contaria o que a
+    // mensagem deixou de contar.
     await esperarAtePisoDeEntrada(inicio)
-    throw new ErroDeNegocio(
-      `Muitas tentativas. Esta conta volta a aceitar entrada em ${restante}s.`,
-      'CONTA_BLOQUEADA',
-    )
+    throw new ErroDeNegocio(FALHA_DE_ENTRADA, 'FALHA_DE_ENTRADA')
   }
 
   const conferencia = await conferirSenha(dados.senha, colaborador.senhaHash)

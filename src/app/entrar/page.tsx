@@ -28,14 +28,18 @@ interface ContaLocal {
  * identidade, inclusive a de gestor. Digitar o e-mail é o preço de não publicar
  * a equipe inteira para quem alcança a página.
  *
- * A mensagem de erro é uma só, de propósito: "e-mail não existe" e "senha
- * errada" precisam ser indistinguíveis.
+ * A mensagem de erro é uma só, de propósito: "e-mail não existe", "senha
+ * errada" e "conta travada" precisam ser indistinguíveis (a última desde o
+ * C-18, `A57`).
  */
 export default function Entrar() {
   const navegador = useRouter()
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState<string | null>(null)
+  // Recusa de e-mail e senha: é o único caso em que a orientação de esperar
+  // aparece. Falha de rede ou de servidor não é "errou várias vezes".
+  const [recusada, setRecusada] = useState(false)
   const [entrando, setEntrando] = useState(false)
   const [contasLocais, setContasLocais] = useState<ContaLocal[]>([])
 
@@ -86,6 +90,7 @@ export default function Entrar() {
     evento.preventDefault()
     setEntrando(true)
     setErro(null)
+    setRecusada(false)
     try {
       const entrada = await api.enviar<Entrada>('/sessao', { email, senha })
       // Com senha provisória, nenhuma outra tela responde — o layout devolve a
@@ -96,6 +101,7 @@ export default function Entrar() {
       navegador.refresh()
     } catch (causa) {
       setErro(mensagemDoErro(causa))
+      setRecusada(causa instanceof ErroDaApi && causa.status === 422)
       setEntrando(false)
     }
   }
@@ -121,6 +127,17 @@ export default function Entrar() {
       {erro ? (
         <div className="mt-4">
           <Aviso>{erro}</Aviso>
+          {/*
+            A MESMA frase para toda recusa, conta travada ou não (C-18, `A57`,
+            opção b do dono). O servidor não diz mais que a conta travou — isso
+            contava a quem sonda quem tem acesso —, então a orientação de
+            esperar mora aqui, fixa, sem depender da conta.
+          */}
+          {recusada ? (
+            <p className="mt-2 text-sm text-tinta-suave">
+              Errou várias vezes? Espere um minuto antes de tentar de novo.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
