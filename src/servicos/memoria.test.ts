@@ -261,6 +261,40 @@ describe('entidades consultáveis', () => {
     ).rejects.toThrow(/não é consultável/i)
   })
 
+  it('a consulta por correlação também não devolve a trilha de uma pessoa (achado C-20)', async () => {
+    // A lista fechada valia numa porta só. A limpeza diária grava com UM
+    // correlacaoId o motivo de afastamento expurgado (entidade Colaborador,
+    // "ausente" = não era férias) e o e-mail expurgado (entidade Email): o
+    // operador lia a correlação na linha do e-mail e puxava, pela outra porta,
+    // a linha da colega. Inferência sobre saúde, por caminho lateral.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const colega = base.colaboradores[0]!.id
+    const correlacaoId = 'corr-limpeza-mista'
+
+    await auditar(banco, {
+      entidade: 'Colaborador',
+      entidadeId: colega,
+      acao: 'afastamento_motivo_expurgado',
+      depois: { tipoQueFica: 'ausente' },
+      usuario: 'sistema',
+      correlacaoId,
+    })
+    await auditar(banco, {
+      entidade: 'Email',
+      entidadeId: 'email-sintetico',
+      acao: 'conteudo_do_email_expurgado',
+      usuario: 'sistema',
+      correlacaoId,
+    })
+
+    const { linhas } = await porCorrelacao(banco, correlacaoId, base.operador)
+
+    // A linha consultável continua vindo — sem isto o teste passaria apagando tudo.
+    expect(linhas.some((linha) => linha.oQue === 'conteudo_do_email_expurgado')).toBe(true)
+    expect(JSON.stringify(linhas)).not.toContain(colega)
+    expect(linhas.some((linha) => linha.oQue === 'afastamento_motivo_expurgado')).toBe(false)
+  })
+
   it('entidade fora da lista é recusada, não devolve vazio', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
 
