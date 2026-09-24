@@ -6,7 +6,7 @@
 >
 > ### 24/09/2026, depois do recomeço — N-12 e N-16 (trabalho perdido de 22/09, recuperado e terminado)
 >
-> **1. Na máquina Windows do dono havia código não commitado** na branch local `fix/auditoria-conteudo-externo` — é o trabalho da sessão de 22/09 que perdeu o acesso ao computador (bloco *23/09, tarde*, item 6). Eram dois achados da fila "sem depender de ninguém": **N-12** (liga nova sem teto) e **N-16** (limpeza diária parando inteira). Levado para `fix/n12-n16-ligas-e-limpeza`, a partir da `main`, e **terminado — estava incompleto**: o N-16 gravava `Error` em vez de dizer qual etapa quebrou (o próprio teste de 22/09 acusou), e o N-12 mandaria para a revisão todo item com menção `""`/`"-"`, que modelo pequeno devolve. Detalhe em `DECISOES.md § AT-43`.
+> **1. Na máquina Windows do dono havia código não commitado** na branch local `fix/auditoria-conteudo-externo` — é o trabalho da sessão de 22/09 que perdeu o acesso ao computador (bloco *23/09, tarde*, item 6). Eram dois achados da fila "sem depender de ninguém": **N-12** (liga nova sem teto) e **N-16** (limpeza diária parando inteira). Levado para `fix/n12-n16-ligas-e-limpeza`, a partir da `main`, e **terminado — estava incompleto**: o N-16 gravava `Error` em vez de dizer qual etapa quebrou (o próprio teste de 22/09 acusou), e o N-12 tinha um ramo que nunca executava e um evento que disparava sem nada barrado (achados da revisão técnica do PR #89). Detalhe em `DECISOES.md § AT-43`.
 >
 > **2. A branch local `fix/auditoria-conteudo-externo` pode ser apagada** depois deste PR: os commits dela entraram na `main` pelo #82 (squash), e o que estava solto veio para cá. **Apagar é com o dono.**
 >

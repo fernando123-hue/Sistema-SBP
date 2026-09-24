@@ -94,9 +94,13 @@ describe('teto de ligas novas por e-mail', () => {
     const itens = await banco.item.findMany({ select: { ligaId: true, status: true } })
     expect(itens).toHaveLength(quantas)
     expect(itens.filter((item) => item.ligaId === null)).toHaveLength(excedente)
-    expect(itens.filter((item) => item.status === 'aguardando_revisao').length).toBeGreaterThanOrEqual(
-      excedente,
-    )
+    // TODO item sem liga espera gente. Hoje quem garante é o desdobramento
+    // (mais de um item sempre vai para a revisão); se essa regra mudar, o item
+    // barrado passaria aprovado sem ninguém ver o nome da liga — e isto fica
+    // vermelho.
+    expect(
+      itens.filter((item) => item.ligaId === null).every((item) => item.status === 'aguardando_revisao'),
+    ).toBe(true)
   })
 
   it('um e-mail comum, dentro do teto, continua criando as ligas que menciona', async () => {
@@ -126,6 +130,25 @@ describe('teto de ligas novas por e-mail', () => {
       where: { etapa: 'ingestao', referencia: 'muitas-ligas@teste.local', situacao: 'reprocessavel' },
     })
     expect(evento?.mensagem).toMatch(/liga/i)
+  })
+
+  it('exatamente o teto, sem nada barrado, não vira evento', async () => {
+    // Três ligas novas num e-mail é o caso legítimo que o teto foi desenhado
+    // para não incomodar. Um evento dizendo "menções ficaram sem liga" quando
+    // nenhuma ficou seria memória falsa (achado da revisão técnica do PR #89).
+    const base = await semearBase(banco, { totalDeDias: 1 })
+
+    await sincronizar(
+      { banco, ingestao: umEmail, ia: ligantesDeLigasDiferentes(TETO_DE_LIGAS_NOVAS_POR_EMAIL, 'no limite') },
+      base.operador,
+    )
+
+    expect(await banco.item.count({ where: { ligaId: null } })).toBe(0)
+    expect(
+      await banco.eventoProcessamento.count({
+        where: { etapa: 'ingestao', referencia: 'muitas-ligas@teste.local', situacao: 'reprocessavel' },
+      }),
+    ).toBe(0)
   })
 
   it('menção vazia ou só pontuação não manda o item para a revisão', async () => {
