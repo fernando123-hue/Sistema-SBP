@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { limparCacheDeAmbiente } from '../../../../servidor/ambiente'
-import { esvaziarLimitador } from '../../../../servidor/limite-de-taxa'
+import { TETO_DE_CHAVES, esvaziarLimitador, verificarLimite } from '../../../../servidor/limite-de-taxa'
 import { obterPrisma } from '../../../../servidor/prisma'
 import { montarCookie } from '../../../../servidor/sessao'
 import { limparTudo, semearBase } from '../../../../testes/apoio'
@@ -69,5 +69,25 @@ describe('confirmar tem limite por pessoa, qualquer que seja a data', () => {
 
     expect(estados.slice(0, CONFIRMACOES_POR_MINUTO)).not.toContain(429)
     expect(estados[CONFIRMACOES_POR_MINUTO]).toBe(429)
+  })
+
+  it('encher o compartimento das datas não apaga o balde por pessoa (revisão de segurança do #99)', async () => {
+    // Com o balde por pessoa no MESMO compartimento das chaves por data
+    // (`distribuir:...`), encher o compartimento até o teto fazia o limitador
+    // despejar as chaves mais antigas — inclusive a da pessoa — e o contador
+    // dela recomeçava do zero antes do minuto acabar.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    await entrarComo(base.operadorId, 'operador')
+    const { POST } = await import('./route')
+
+    for (let vez = 0; vez < CONFIRMACOES_POR_MINUTO; vez += 1) {
+      await POST(pedido(new Date(Date.UTC(2020, 0, 1 + vez)).toISOString().slice(0, 10)))
+    }
+    // Outras contas iterando datas até o compartimento transbordar.
+    for (let vez = 0; vez <= TETO_DE_CHAVES; vez += 1) {
+      verificarLimite(`distribuir:outra-conta-${vez}:2021-01-01`, 10, 60)
+    }
+
+    expect((await POST(pedido('2022-01-01'))).status).toBe(429)
   })
 })

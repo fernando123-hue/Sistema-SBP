@@ -19,7 +19,12 @@ export async function POST(requisicao: Request): Promise<Response> {
 
     // Dois baldes. Este, sem a data, é o que contém volume: a data vem do
     // corpo, e com ela na chave cada data nova abria um balde novo (C-26).
-    const porPessoa = limitar(`distribuir:${ator.colaboradorId}`, CONFIRMACOES_POR_MINUTO, 60)
+    //
+    // Prefixo PRÓPRIO, e não `distribuir:`: o limitador separa por prefixo, e
+    // no mesmo compartimento das chaves por data este balde seria despejado
+    // quando outras contas enchessem o compartimento — o contador recomeçaria
+    // do zero antes do minuto (revisão de segurança do #99).
+    const porPessoa = limitar(`confirmar-por-pessoa:${ator.colaboradorId}`, CONFIRMACOES_POR_MINUTO, 60)
     if (porPessoa) return porPessoa
 
     const recusa = limitar(`distribuir:${ator.colaboradorId}:${pedido.data}`, 10, 60)
