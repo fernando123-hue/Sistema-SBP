@@ -17,6 +17,7 @@ import type {
 import { deslocarDias, fimDoDia, inicioDoDia } from '../core/util/datas'
 import { somar } from '../core/util/numero'
 import { exigirPapel, type Ator } from '../servidor/ator'
+import { transacaoComNovaTentativa } from '../servidor/conflito'
 import {
   mensagemDoErro,
   novaCorrelacao,
@@ -422,7 +423,11 @@ export async function confirmar(
     referencia: pedido.data,
   })
 
-  const relatorio = await banco.$transaction(async (tx) => {
+  // Repetida em impasse (revisão do PR #111): a trava de quem está ativo, logo
+  // abaixo, pode fechar um ciclo com uma desativação concorrente, e o InnoDB
+  // escolhe uma vítima. A transação inteira volta atrás e replaneja — o
+  // operador não recebe o erro cru do banco.
+  const relatorio = await transacaoComNovaTentativa(banco, async (tx) => {
     // Serializa o dia ANTES de qualquer leitura de crédito. Duas confirmações
     // concorrentes de categorias diferentes leriam o crédito global uma da
     // outra ainda não gravado e decidiriam o desempate com dado obsoleto —
@@ -464,6 +469,11 @@ export async function confirmar(
     // enxerga uma desativação que acabou de confirmar. Travadas em modo
     // compartilhado, as linhas não impedem outra distribuição; a desativação
     // que chegar agora espera o fim desta e devolve o que ela gravou.
+    //
+    // Custo aceito: enquanto a confirmação corre, toda escrita na linha de uma
+    // pessoa ativa espera por ela — a tentativa de login que registra falha, a
+    // troca de senha, a desativação. Com a equipe de 4 a 7 pessoas e uma
+    // confirmação de milissegundos, é espera, não fila.
     await tx.$queryRaw`SELECT id FROM \`Colaborador\` WHERE ativo = 1 ORDER BY id FOR SHARE`
 
     // Replaneja DENTRO da transação: o estado pode ter mudado entre a prévia
