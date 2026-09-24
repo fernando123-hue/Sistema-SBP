@@ -56,7 +56,9 @@ export default function Senha() {
     setErro(null)
     try {
       await api.enviar('/sessao/senha', { senhaAtual, senhaNova })
-      navegador.push('/distribuicao')
+      // A raiz escolhe pelo papel da sessão (`telaInicial`). O destino fixo
+      // mandava o colaborador novo para a Distribuição (achado N-31).
+      navegador.push('/')
       navegador.refresh()
     } catch (causa) {
       setErro(mensagemDoErro(causa))
