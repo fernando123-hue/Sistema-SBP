@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { TAMANHO_MAXIMO_DA_NOTA } from '../core/esquemas'
+import { LIMITE_DE_NOTAS_EXIBIDAS } from '../core/notas'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
-import { arquivar, listar, paraContexto, registrar } from './notas'
+import { LIMITE_DA_LISTAGEM, arquivar, listar, paraContexto, registrar } from './notas'
 
 /**
  * Notas do setor.
@@ -302,7 +303,7 @@ describe('a nota encontra o trabalho', () => {
     // E a listagem plana continua devolvendo as duas — ela existe para
     // administrar a memória, e é por isso que virou o modo que precisa ser
     // pedido por escrito (`?todas=1`).
-    expect(await listar(banco)).toHaveLength(2)
+    expect((await listar(banco)).notas).toHaveLength(2)
   })
 
   it('arquivada não orienta ninguém, mas continua listável', async () => {
@@ -313,9 +314,86 @@ describe('a nota encontra o trabalho', () => {
     await arquivar(banco, nota.id, {}, pessoa.ator)
 
     expect(await paraContexto(banco, {})).toEqual([])
-    expect(await listar(banco)).toEqual([])
-    expect((await listar(banco, { incluirArquivadas: true })).map((linha) => linha.texto)).toEqual([
+    expect((await listar(banco)).notas).toEqual([])
+    expect((await listar(banco, { incluirArquivadas: true })).notas.map((linha) => linha.texto)).toEqual([
       'Aviso vencido.',
     ])
+  })
+})
+describe('a leitura tem teto, e o teto não troca a nota certa por outra (achado C-16)', () => {
+  /**
+   * Notas em lote, direto no banco: `registrar` passaria pela trilha uma a
+   * uma, e o que se testa aqui é a LEITURA com muitas linhas vivas.
+   * `criadoEm` crescente e explícito, para a ordem não depender do relógio.
+   */
+  async function notasGerais(quantas: number, autorId: string, desde: Date) {
+    await banco.nota.createMany({
+      data: Array.from({ length: quantas }, (_, indice) => ({
+        texto: `Nota geral sintética ${indice}`,
+        autorId,
+        criadoEm: new Date(desde.getTime() + (indice + 1) * 1000),
+      })),
+    })
+  }
+
+  it('muitas notas gerais novas não empurram para fora a nota antiga da categoria, e o banco não é lido inteiro', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const pessoa = base.colaboradores[0]!
+    const doc = await banco.categoria.findUniqueOrThrow({ where: { codigo: 'DOC_CADASTRO' } })
+    const antes = new Date('2026-01-01T00:00:00Z')
+
+    // A nota da categoria é a MAIS ANTIGA de todas: um `take` único, ordenado
+    // por data, é exatamente o que a descartaria em silêncio.
+    await banco.nota.create({
+      data: { texto: 'Vale para DOC.', categoriaId: doc.id, autorId: pessoa.id, criadoEm: antes },
+    })
+    await notasGerais(LIMITE_DE_NOTAS_EXIBIDAS + 50, pessoa.id, antes)
+
+    // `vi.spyOn(banco.nota, ...)` não serve: o Prisma entrega um objeto
+    // `nota` novo a cada acesso, e o espião ficaria num que ninguém usa.
+    const consultas: { take: number | undefined }[] = []
+    const espiao = new Proxy(banco, {
+      get(alvo, chave, receptor) {
+        if (chave !== 'nota') return Reflect.get(alvo, chave, receptor)
+        return {
+          findMany: (argumentos: Parameters<typeof banco.nota.findMany>[0]) => {
+            consultas.push({ take: argumentos?.take })
+            return alvo.nota.findMany(argumentos)
+          },
+        }
+      },
+    })
+    const notas = await paraContexto(espiao, { categoriaId: doc.id })
+
+    expect(notas.map((linha) => linha.texto)[0]).toBe('Vale para DOC.')
+    expect(notas).toHaveLength(LIMITE_DE_NOTAS_EXIBIDAS)
+    // E as gerais que sobram são as MAIS RECENTES — o teto por faixa devolve
+    // o mesmo que a leitura inteira devolvia.
+    expect(notas[1]!.texto).toBe(`Nota geral sintética ${LIMITE_DE_NOTAS_EXIBIDAS + 49}`)
+    // Toda consulta ao banco tem teto: a leitura não cresce com o volume.
+    expect(consultas.length).toBeGreaterThan(0)
+    for (const consulta of consultas) {
+      expect(consulta.take).toBeLessThanOrEqual(LIMITE_DE_NOTAS_EXIBIDAS)
+    }
+  })
+
+  it('a listagem plana corta no teto e AVISA que cortou', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const pessoa = base.colaboradores[0]!
+    await notasGerais(LIMITE_DA_LISTAGEM + 1, pessoa.id, new Date('2026-01-01T00:00:00Z'))
+
+    const listagem = await listar(banco)
+
+    expect(listagem.notas).toHaveLength(LIMITE_DA_LISTAGEM)
+    expect(listagem.truncado).toBe(true)
+    // As mais recentes primeiro — o corte leva as mais antigas.
+    expect(listagem.notas[0]!.texto).toBe(`Nota geral sintética ${LIMITE_DA_LISTAGEM}`)
+  })
+
+  it('sem corte, a listagem diz que não cortou', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    await notasGerais(3, base.colaboradores[0]!.id, new Date('2026-01-01T00:00:00Z'))
+
+    expect(await listar(banco)).toMatchObject({ truncado: false })
   })
 })
