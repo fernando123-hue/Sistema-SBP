@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import { selecionarVerbetes } from '../core/assistente/conhecimento'
@@ -113,6 +113,39 @@ describe('assistente com modelo — o que ele aceita de volta', () => {
       'como distribuo?',
     )
     expect(resposta.verbetesUsados).toEqual(['como-distribuir'])
+  })
+
+  it('citação descartada não leva ao log o texto que o modelo escreveu (achado C-15)', async () => {
+    // `verbetesUsados` é texto livre do modelo. Quem pergunta pode colar um
+    // e-mail e induzi-lo a "citar" o CPF e o nome lá — e log não tem política
+    // de retenção (invariante 11). O log fica com a contagem, nunca o texto.
+    const citacaoComDado = '000.000.000-00 Pessoa Sintética'
+    const cliente = clienteFalso([
+      { ...RESPOSTA_VALIDA, verbetesUsados: ['como-distribuir', citacaoComDado] },
+    ])
+    const escrito: string[] = []
+    const saida = vi.spyOn(process.stdout, 'write').mockImplementation((linha) => {
+      escrito.push(String(linha))
+      return true
+    })
+    const erro = vi.spyOn(process.stderr, 'write').mockImplementation((linha) => {
+      escrito.push(String(linha))
+      return true
+    })
+    try {
+      await new AssistenteComModelo(PERFIL_DE_TESTE, cliente).responder(OPERADOR, 'como distribuo?')
+    } finally {
+      saida.mockRestore()
+      erro.mockRestore()
+    }
+
+    const log = escrito.join('')
+    // O aviso continua existindo — é o sinal barato de que o modelo saiu do
+    // material. Sem isto, o teste passaria apagando o log inteiro.
+    expect(log).toMatch(/citou verbete inexistente/)
+    expect(log).toMatch(/"descartados":1/)
+    expect(log).not.toContain('000.000.000-00')
+    expect(log).not.toContain('Pessoa Sintética')
   })
 
   it('recusa tela que não existe — o esquema fecha a união', async () => {

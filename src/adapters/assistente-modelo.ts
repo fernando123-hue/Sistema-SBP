@@ -109,7 +109,10 @@ export class AssistenteComModelo implements AssistentePort {
     if (citadosValidos.length !== resultado.resposta.verbetesUsados.length) {
       registrarLog('aviso', 'assistente citou verbete inexistente', {
         adapter: this.nome,
-        citados: resultado.resposta.verbetesUsados,
+        // A CONTAGEM, nunca o texto citado (achado C-15): `verbetesUsados` é
+        // escrito pelo modelo, e quem pergunta pode induzi-lo a "citar" o CPF
+        // do e-mail que colou. Log não tem política de retenção (invariante 11).
+        descartados: resultado.resposta.verbetesUsados.length - citadosValidos.length,
       })
     }
 

@@ -12,7 +12,9 @@
 >
 > **3. O MySQL desta máquina foi ligado nesta sessão com `--mysqlx=OFF`**: só `127.0.0.1:3307`, sem a 33060 (M-01 não está mais aberto nesta partida).
 >
-> **4. O próximo passo** continua o do bloco abaixo (item 4), sem N-12 e N-16. Hipótese nova: o teto de 3 ligas por e-mail (`§ AT-43`, provisória).
+> **4. O próximo passo** continua o do bloco abaixo (item 4), sem N-12 e N-16. Hipótese nova: o teto de 3 ligas por e-mail (`§ AT-43`, provisória). **#89 mesclado** (`12e183a`) e a branch velha apagada, com ok do dono.
+>
+> **5. C-15 corrigido** (branch `fix/c15-log-do-assistente`): o aviso de citação inventada do assistente grava só a contagem, não o texto que o modelo escreveu. Baixos restantes: C-16, C-18, C-19, C-20, C-21, C-24; informativos C-25 a C-27. **Novo, da revisão de segurança do #90, ainda sem verificar (BAIXO sugerido):** em `assistente-modelo.ts` (≈170-177) e `ia-estruturada.ts`, erro de *transporte* grava a mensagem crua do fornecedor no log — seguro só se nenhum SDK ecoar o pedido (pergunta, e-mail) na mensagem de erro. Conferir fornecedor por fornecedor antes de decidir.
 >
 > ### 24/09/2026 — RECOMEÇO DO ZERO: o dono apagou as conversas. Tudo o que importa está no repositório.
 >
