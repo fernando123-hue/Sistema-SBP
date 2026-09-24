@@ -1,8 +1,18 @@
 # Estado do projeto — retomada
 
-Última atualização: **24/09/2026 — preparado para o dono apagar TODAS as conversas e recomeçar do zero.** PRs #83 a **#87** mesclados; nenhum PR nosso aberto. Suíte: **106 arquivos, 1214 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`) **e** a medição da IA local na máquina que chegou (`A56`).
+Última atualização: **24/09/2026, depois do recomeço — N-12 e N-16 corrigidos (branch `fix/n12-n16-ligas-e-limpeza`); o bloco "Recomeço do zero" logo abaixo continua valendo.** PRs #83 a **#87** mesclados; nenhum PR nosso aberto. Suíte: **106 arquivos, 1214 testes** verde. Trabalho em curso: **rodada de segurança e qualidade** (`DECISOES.md § A49`) **e** a medição da IA local na máquina que chegou (`A56`).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### 24/09/2026, depois do recomeço — N-12 e N-16 (trabalho perdido de 22/09, recuperado e terminado)
+>
+> **1. Na máquina Windows do dono havia código não commitado** na branch local `fix/auditoria-conteudo-externo` — é o trabalho da sessão de 22/09 que perdeu o acesso ao computador (bloco *23/09, tarde*, item 6). Eram dois achados da fila "sem depender de ninguém": **N-12** (liga nova sem teto) e **N-16** (limpeza diária parando inteira). Levado para `fix/n12-n16-ligas-e-limpeza`, a partir da `main`, e **terminado — estava incompleto**: o N-16 gravava `Error` em vez de dizer qual etapa quebrou (o próprio teste de 22/09 acusou), e o N-12 tinha um ramo que nunca executava e um evento que disparava sem nada barrado (achados da revisão técnica do PR #89). Detalhe em `DECISOES.md § AT-43`.
+>
+> **2. A branch local `fix/auditoria-conteudo-externo` pode ser apagada** depois deste PR: os commits dela entraram na `main` pelo #82 (squash), e o que estava solto veio para cá. **Apagar é com o dono.**
+>
+> **3. O MySQL desta máquina foi ligado nesta sessão com `--mysqlx=OFF`**: só `127.0.0.1:3307`, sem a 33060 (M-01 não está mais aberto nesta partida).
+>
+> **4. O próximo passo** continua o do bloco abaixo (item 4), sem N-12 e N-16. Hipótese nova: o teto de 3 ligas por e-mail (`§ AT-43`, provisória).
 >
 > ### 24/09/2026 — RECOMEÇO DO ZERO: o dono apagou as conversas. Tudo o que importa está no repositório.
 >

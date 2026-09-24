@@ -136,6 +136,39 @@ describe('falha não some', () => {
     expect(depois.mensagem).toBeNull()
   })
 
+  it('uma etapa quebrada não leva as outras três junto (achado N-16)', async () => {
+    // ═══ O QUE ESTE TESTE IMPEDE ═══
+    //
+    // As quatro limpezas do dia — motivo de afastamento, texto do e-mail,
+    // dados do item e contagem de buscas — rodavam em sequência, sem rede.
+    // UMA linha de `Afastamento` com tipo inválido derrubava a primeira, e as
+    // outras três nem começavam. Todo dia, até alguém achar a linha: o texto
+    // de e-mail vencido continuava guardado, a contagem de buscas continuava
+    // crescendo — e a falha dizia respeito a outra coisa.
+    //
+    // Prazo é promessa a quem teve dado coletado. Uma promessa que depende de
+    // nenhuma outra linha estar torta é promessa fraca.
+    const corrompida = await atestadoQueVoltouHa(0, 10)
+    await banco.afastamento.update({ where: { id: corrompida.id }, data: { tipo: 'Atestado' } })
+
+    // Uma contagem de busca bem vencida, que a última etapa deve apagar mesmo
+    // com a primeira quebrada.
+    await banco.contagemDeBusca.create({
+      data: { colaboradorId: base.operadorId, dia: deslocarDias(DATA_BASE, -400), buscas: 3 },
+    })
+
+    const resultado = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+
+    // A rotina falha — a linha torta continua lá, e isso não pode ser abafado.
+    expect(resultado.executou && resultado.situacao).toBe('falha')
+    // Mas a etapa independente ACONTECEU.
+    expect(await banco.contagemDeBusca.count({ where: { dia: deslocarDias(DATA_BASE, -400) } })).toBe(0)
+
+    // E a mensagem diz QUAL etapa quebrou — "Error" sozinho não ajuda ninguém.
+    const execucao = await banco.execucaoDeRotina.findFirstOrThrow()
+    expect(execucao.mensagem).toMatch(/motivo/i)
+  })
+
   it(`para de tentar depois de ${TENTATIVAS_POR_DIA} falhas no dia`, async () => {
     const corrompida = await atestadoQueVoltouHa(0, 10)
     await banco.afastamento.update({ where: { id: corrompida.id }, data: { tipo: 'Atestado' } })
