@@ -450,6 +450,22 @@ export async function confirmar(
     // e enxerga o que a distribuição anterior gravou.
     await tomarTravaDoDia(tx, pedido.data)
 
+    // QUEM ESTÁ ATIVO FICA ATIVO ATÉ ESTA DISTRIBUIÇÃO GRAVAR (achado N-33).
+    //
+    // `carregarElegiveis` filtra `ativo` numa leitura comum, e a gravação da
+    // atribuição só confere a chave estrangeira, que não olha `ativo`. Uma
+    // desativação que confirmasse entre as duas devolvia o que a pessoa já
+    // tinha e, logo depois, esta transação gravava itens novos para ela: itens
+    // `distribuido` na fila de quem não abre sessão, fora de "Por pessoa",
+    // que ninguém recolhe.
+    //
+    // A leitura travada vem ANTES de qualquer leitura comum, pela mesma razão
+    // da trava do dia (N-09): a fotografia da transação só é tirada depois, e
+    // enxerga uma desativação que acabou de confirmar. Travadas em modo
+    // compartilhado, as linhas não impedem outra distribuição; a desativação
+    // que chegar agora espera o fim desta e devolve o que ela gravou.
+    await tx.$queryRaw`SELECT id FROM \`Colaborador\` WHERE ativo = 1 ORDER BY id FOR SHARE`
+
     // Replaneja DENTRO da transação: o estado pode ter mudado entre a prévia
     // que o operador viu e o clique em confirmar. Mesma função da prévia.
     const { planos, categoriasInvalidas } = await planejar(tx, pedido)
