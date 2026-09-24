@@ -1,10 +1,34 @@
 # Estado do projeto — retomada
 
-Última atualização: **24/09/2026, noite — preparado para o dono dar `/clear`.** PRs #89 a #100 mesclados; todos os achados C- da auditoria com destino. Próximo: verificar os 17 achados N- restantes (médios N-03 a N-06 primeiro). Ver o primeiro bloco abaixo.
+Última atualização: **24/09/2026, fim da noite — preparado para o dono dar `/clear`.** PRs #101 a #104 mesclados: os quatro achados N- médios (N-03 a N-06) corrigidos. Próximo: os 13 N- restantes (baixos N-26, N-28 a N-35; informativos N-38 a N-41). Ver o primeiro bloco abaixo.
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 24/09/2026, noite — PARA RETOMAR DEPOIS DO `/clear` (este bloco vence os de baixo; o `git log` vence este)
+> ### 24/09/2026, fim da noite — PARA RETOMAR DEPOIS DO `/clear` (este bloco vence os de baixo; o `git log` vence este)
+>
+> **1. Onde está:** `main` em `ddf989f` (#104) ou mais novo. Nenhum PR nosso aberto (só os do dependabot, #78 a #81, não avaliados). Branch local: só `main`. Nada rodando: nenhum agente, nenhum servidor de tela (`sbp-local` desligado). MySQL desta máquina continua em `127.0.0.1:3307`, `--mysqlx=OFF`.
+>
+> **2. Feito nesta sessão — os quatro N- médios, cada um confirmado lendo o código antes de corrigir:**
+> - **#101 N-03** (nível 1) — no celular, o cartão da Caixa mostra de novo remetente, liga (clicável) e o aviso de texto apagado pelo prazo: o bloco virou `ResumoDoItem`, usado na tabela e no cartão.
+> - **#102 N-04** (nível 3) — "Concluir" na Minha fila pede dois toques, como o Descartar da Revisão; `Botao` pequeno com 44 px no celular em todas as telas. **Hipótese nova: `DECISOES.md § AT-46`** (provisória — reavaliar com o uso real; por que não "Desfazer" está lá).
+> - **#103 N-05** (nível 2) — `transferir` para quem já está com o item vira `ErroDeNegocio` (era `return`, sucesso vazio); a lista "Transferir para" sai sem a própria pessoa, marca quem está de férias/ausente (marca, não bloqueia) e usa `hojeIso()`.
+> - **#104 N-06** (nível 3) — "Concluídos" por pessoa obedece ao período; "Atribuídos (hoje)" e "Pendentes (hoje)"; quais linhas saem é decisão do serviço (colaborador vê a própria mesmo zerada; quem coordena vê quem tem atribuído, concluído no período ou crédito ≠ 0, **inclusive quem já foi desativado** — achado ALTO da revisão, corrigido antes de mesclar).
+>
+> **3. PRÓXIMO PASSO — terminar a auditoria** (o dono tem instruções novas depois disso). Restam **13 N- sem verificação** na tabela `docs/auditoria/2026-09-17-achados-da-auditoria-por-agentes.md`:
+> - Baixos: N-26, N-28, N-29, N-30, N-31, N-32, N-33, N-34, N-35.
+> - Informativos: N-38, N-39, N-40, N-41.
+>
+> Mesmo método: ler o código, confirmar ou refutar (refutado também vira destino, com motivo), confirmado vira PR com teste vermelho; ao preencher a tabela, conferir no `git diff` que mudou **a linha do achado**.
+>
+> **4. Anotado nesta sessão (não urgente), somar ao item 4 do bloco abaixo:**
+> - **Classificador de risco não conhece `src/componentes/`**: `scripts/processo/nivel-de-risco.ts` tem `src/components/` (inglês); por isso toda mudança em `src/componentes/` cai no nível 3 por falha fechada. Seguro, só mais rígido. Decidir antes de mexer: `componentes/api.ts` é o cliente HTTP da tela e talvez mereça continuar acima do nível 1.
+> - Troca de rótulo "Concluir" → "Confirmar: concluir" (e o mesmo no Descartar da Revisão) sem anúncio a leitor de tela (`aria-live`) — tratar as duas telas juntas.
+> - Na Minha fila, o gestor vê "ausente hoje" em vez do motivo da ausência — mantido de propósito (tela de quem executa).
+> - Não há teste de componente com clique (o vitest roda só `*.test.ts`); o primeiro teste de componente (`src/componentes/matrizes.test.ts`) usa `react-dom/server` sem dependência nova — o padrão serve para marcação, não para interação.
+>
+> **5. Decisões abertas com o dono:** as mesmas do bloco abaixo (item 5), mais o `§ AT-46` se a equipe achar os dois toques lentos.
+>
+> ### 24/09/2026, noite — (anterior; o próximo passo dele já foi feito até o N-06)
 >
 > **1. Onde está:** `main` com os PRs **#89 a #100** mesclados (o #100 é o deste bloco). Nenhum PR nosso aberto; nada rodando em segundo plano. Branch local: só `main`. MySQL desta máquina: ligado nesta sessão com `--mysqlx=OFF` (só `127.0.0.1:3307`); se a máquina reiniciar, suba de novo como no passo 1 da retomada de 17/09, mais abaixo.
 >
