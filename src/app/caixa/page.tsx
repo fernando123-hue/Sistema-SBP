@@ -565,49 +565,20 @@ export default function Caixa() {
             <ListaResponsiva
               linhas={resultadoDaBusca ?? dados.itens}
               chaveDaLinha={(item) => item.itemId}
-              tituloDoCartao={(item) => item.titulo}
+              // O cartão do celular esconde a coluna "Item" para não repetir o
+              // título — então o título do cartão tem de trazer o bloco inteiro.
+              // Com só `item.titulo`, o celular perdia o remetente, a liga e o
+              // aviso de texto apagado pelo prazo (N-03).
+              tituloDoCartao={(item) => (
+                <ResumoDoItem item={item} aoEscolherLiga={setLigaEscolhida} />
+              )}
               colunas={[
                 {
                   chave: 'titulo',
                   cabecalho: 'Item',
                   ocultarNoCartao: true,
                   conteudo: (item) => (
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{item.titulo}</p>
-                      {/*
-                        Texto apagado pelo prazo (`A20`) não é "origem manual":
-                        a pessoa precisa saber que o original está no Outlook, e
-                        quando chegou, para achá-lo lá.
-                      */}
-                      {item.conteudoRemovidoEm ? (
-                        <p className="text-xs text-tinta-fraca">
-                          {textoDoConteudoRemovido(
-                            new Date(item.conteudoRemovidoEm),
-                            item.recebidoEm ? new Date(item.recebidoEm) : null,
-                          )}
-                        </p>
-                      ) : (
-                        <p className="truncate text-xs text-tinta-fraca">
-                          {item.remetente ?? 'origem manual'}
-                        </p>
-                      )}
-                      {/*
-                        A liga aparece na linha porque é ela que governa o
-                        rateio de `LIGANTE` e `EMAIL_LIGA` desde o `A4` — e até
-                        aqui decidia a distribuição sem nunca ser vista por
-                        quem opera. Clicar filtra a caixa por ela.
-                      */}
-                      {item.ligaNome ? (
-                        <button
-                          type="button"
-                          onClick={() => setLigaEscolhida(item.ligaId)}
-                          className="mt-0.5 truncate text-xs text-acento underline decoration-dotted underline-offset-2"
-                          title="Ver só esta liga — e o que o setor já aprendeu sobre ela"
-                        >
-                          {item.ligaNome}
-                        </button>
-                      ) : null}
-                    </div>
+                    <ResumoDoItem item={item} aoEscolherLiga={setLigaEscolhida} />
                   ),
                 },
                 {
@@ -668,6 +639,57 @@ export default function Caixa() {
         "ainda não sei de que categoria este trabalho é".
       */}
       <NotasDoSetor contexto={{ categoriaCodigo: filtro, ligaId: ligaEscolhida }} />
+    </div>
+  )
+}
+
+/**
+ * Título, origem e liga de um item — a célula "Item" da tabela e o título do
+ * cartão no celular. Um componente só, para as duas telas não divergirem.
+ */
+function ResumoDoItem({
+  item,
+  aoEscolherLiga,
+}: {
+  item: NaRede<ItemDaCaixa>
+  aoEscolherLiga: (ligaId: string | null) => void
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="truncate font-medium">{item.titulo}</p>
+      {/*
+        Texto apagado pelo prazo (`A20`) não é "origem manual":
+        a pessoa precisa saber que o original está no Outlook, e
+        quando chegou, para achá-lo lá.
+      */}
+      {item.conteudoRemovidoEm ? (
+        <p className="text-xs font-normal text-tinta-fraca">
+          {textoDoConteudoRemovido(
+            new Date(item.conteudoRemovidoEm),
+            item.recebidoEm ? new Date(item.recebidoEm) : null,
+          )}
+        </p>
+      ) : (
+        <p className="truncate text-xs font-normal text-tinta-fraca">
+          {item.remetente ?? 'origem manual'}
+        </p>
+      )}
+      {/*
+        A liga aparece na linha porque é ela que governa o
+        rateio de `LIGANTE` e `EMAIL_LIGA` desde o `A4` — e até
+        aqui decidia a distribuição sem nunca ser vista por
+        quem opera. Clicar filtra a caixa por ela.
+      */}
+      {item.ligaNome ? (
+        <button
+          type="button"
+          onClick={() => aoEscolherLiga(item.ligaId)}
+          className="mt-0.5 truncate text-xs font-normal text-acento underline decoration-dotted underline-offset-2"
+          title="Ver só esta liga — e o que o setor já aprendeu sobre ela"
+        >
+          {item.ligaNome}
+        </button>
+      ) : null}
     </div>
   )
 }

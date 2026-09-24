@@ -75,7 +75,7 @@ a linha certa), nunca só que o texto entrou no arquivo.
 |---|---|---|---|---|
 | N-01 | ALTO | `src/testes/preparar-banco.ts:45` | A suíte de testes apaga e recria QUALQUER base que estiver em DATABASE_URL, sem conferir se é a base de teste | **Confirmado** (leitura do código, 17/09) e **corrigido**: branch `fix/n01-suite-so-apaga-base-de-teste` — a suíte recusa base cujo nome não termina em `_teste` |
 | N-02 | MÉDIO | `src/adapters/ingestao-graph.ts:330` | Anexo do Graph que não é arquivo (e-mail encaminhado como anexo, link do OneDrive) é descartado sem metadado, recusa ou log | **Corrigido** (PR #62): vira recusa com motivo, sem ser baixado |
-| N-03 | MÉDIO | `src/app/caixa/page.tsx:573` | Caixa no celular esconde o remetente, a liga e o aviso de "texto apagado pelo prazo, original no Outlook" | |
+| N-03 | MÉDIO | `src/app/caixa/page.tsx:573` | Caixa no celular esconde o remetente, a liga e o aviso de "texto apagado pelo prazo, original no Outlook" | **Corrigido** (PR #101): confirmado lendo o código; o título do cartão usa o mesmo bloco da célula da tabela (título, remetente ou aviso de expurgo, liga), visto rodando em 375 px |
 | N-04 | MÉDIO | `src/app/fila/page.tsx:225` | "Concluir" na Minha fila: um toque, sem confirmação e sem desfazer, com botão de 36 px no celular | |
 | N-05 | MÉDIO | `src/app/fila/page.tsx:276` | Lista "Transferir para" inclui a própria pessoa e quem está afastado, e transferir para si mesma some com o item da tela sem aviso | |
 | N-06 | MÉDIO | `src/app/painel/page.tsx:489` | Painel "Por pessoa" ignora o período escolhido e não avisa | |
