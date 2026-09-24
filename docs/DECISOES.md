@@ -1024,6 +1024,15 @@ consumo-da-ia.ts:91  →  pool failed to retrieve a connection
 
 **Status:** 🟡 provisória.
 
+### AT-46 — "Concluir" na Minha fila pede dois toques (N-04) *(24/09/2026)*
+
+**O defeito:** Concluir gravava a conclusão no primeiro toque, sem volta — não existe serviço, rota nem tela para reabrir item. Com o botão de 36 px colado ao "Não é comigo" no celular, um toque errado dava como atendido um pedido que ninguém atendeu, sem aviso a ninguém.
+
+**Hipótese:** dois toques ("Concluir" → "Confirmar: concluir"), a mesma trava do Descartar da Revisão, e botão pequeno com 44 px no celular em todas as telas.
+**Motivo:** é o padrão que o sistema já usa para ação sem volta, e não perde conclusão: a alternativa sugerida pela auditoria, "Desfazer" por alguns segundos antes de gravar, deixaria a conclusão sem gravar se a pessoa fechasse a tela dentro da janela — falha silenciosa (invariante 7).
+**Impacto se estiver errado:** Concluir é a ação mais frequente do sistema; um toque a mais por item pode pesar para a equipe. Se pesar, as saídas são decisão do dono: um caminho de reabrir item concluído (com trilha), ou o "Desfazer" com gravação garantida.
+**Status:** 🟡 provisória — reavaliar com o uso real da equipe.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
