@@ -352,6 +352,7 @@ export default function Revisao() {
                             key={chave}
                             value={extra.campos[chave] ?? ''}
                             placeholder={chave}
+                            aria-label={`${chave} do item novo`}
                             onChange={(evento) =>
                               mudarExtra(item.revisaoId, indice, {
                                 campos: { ...extra.campos, [chave]: evento.target.value },

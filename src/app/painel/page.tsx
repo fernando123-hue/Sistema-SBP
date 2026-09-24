@@ -301,6 +301,7 @@ export default function PainelPagina() {
             <span className="text-tinta-suave">Período</span>
             <input
               type="date"
+              aria-label="Início do período"
               value={de || dados.periodo.de}
               onChange={(evento) => {
                 setDe(evento.target.value)
@@ -311,6 +312,7 @@ export default function PainelPagina() {
             <span className="text-tinta-fraca">até</span>
             <input
               type="date"
+              aria-label="Fim do período"
               value={ate || dados.periodo.ate}
               onChange={(evento) => {
                 setAte(evento.target.value)
