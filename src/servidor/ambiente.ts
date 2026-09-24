@@ -129,10 +129,10 @@ const AmbienteSchema = z.object({
    * Vazio significa "usa `SESSAO_SECRET`" — mas SÓ fora de produção: em
    * `NODE_ENV=production` ele é obrigatório e diferente do de sessão (achado
    * C-25, conferido mais abaixo). Fora de produção, cair na sessão é o que
-   * mantém a instalação de desenvolvimento funcionando sem migração. Quem for rotacionar o segredo de sessão
-   * precisa ANTES fixar esta variável com o valor antigo — senão os anexos
-   * param de abrir, e a mensagem de erro em `armazenamento-disco.ts` é a única
-   * pista de por quê.
+   * mantém a instalação de desenvolvimento funcionando sem migração. Quem for
+   * rotacionar o segredo de sessão numa instalação sem esta variável precisa
+   * ANTES fixá-la com o valor antigo — senão os anexos param de abrir, e a
+   * mensagem de erro em `armazenamento-disco.ts` é a única pista de por quê.
    */
   //
   // `ANEXOS_SECRET=` (presente e vazia) precisa significar o mesmo que ausente:
