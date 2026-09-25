@@ -71,7 +71,12 @@ export function comControleDeConsumo(cliente: ClienteDeModelo, opcoes: OpcoesDeC
       // mesmo perigo que este arquivo já descreve e corrigiu na GRAVAÇÃO
       // (`anotarNoDisjuntor`, abaixo); aqui a janela era pequena e passou a
       // ser grande. Achado BAIXO da revisão de segurança do PR #86.
-      const chamadasHoje = await contarSemDerrubar(opcoes)
+      //
+      // SEM TETO (0), A CONTAGEM NÃO DECIDE NADA, E NÃO É LIDA. Sem banco,
+      // cada leitura esperava ~10 s pelo pool para devolver um número que
+      // `impedimentoParaChamar` descarta — medido em 25/09/2026 com o gabarito
+      // na máquina da IA local. A gravação do uso, abaixo, continua.
+      const chamadasHoje = limites.tetoDiarioDeChamadas > 0 ? await contarSemDerrubar(opcoes) : null
       const estado = disjuntores.get(opcoes.fornecedor) ?? DISJUNTOR_FECHADO
       const impedimento = impedimentoParaChamar({
         estado,
