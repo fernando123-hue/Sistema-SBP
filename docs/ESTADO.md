@@ -1,6 +1,6 @@
 # Estado do projeto — retomada
 
-Última atualização: **24/09/2026, noite — auditoria fechada.** #112 a #116 mesclados: N-39 e N-28 corrigidos; N-26, N-38, N-40 e N-41 reunidos em `DECISOES.md § AT-47`. **Todos os 68 achados têm destino.** Próximo passo: as instruções novas do dono. Ver o primeiro bloco abaixo.
+Última atualização: **24/09/2026, noite — auditoria fechada.** #112 a #116 mesclados: N-39 e N-28 corrigidos; N-26, N-38, N-40 e N-41 reunidos em `DECISOES.md § AT-47`. **Todos os 68 achados têm destino.** Próximo passo: as instruções novas do dono **e a lista única de 16 pendências** (item 4 do primeiro bloco), que ele pediu para não esquecer. Ver o primeiro bloco abaixo.
 
 > ## ▶ Próxima sessão: comece aqui
 >
@@ -14,14 +14,33 @@
 > - **#115 N-28 (b)** (nível 3) — telas sem justificativa de engenharia (Caixa, Revisão, Distribuição, Painel e a narrativa da rodada), com varredura em `app/textos-da-tela.test.ts`. A revisão técnica achou três ALTOs reais de texto que contradizia o próprio cartão (selo "divisão igual", média sem o peso, "ao menos 0 · 0 de sobra" em lote inteiro), corrigidos antes de mesclar.
 > - **#116** (nível 0) — **`DECISOES.md § AT-47 — O que conferir no dia de ligar a produção`** (N-26, N-38, N-40, N-41). **Todos os 68 achados da auditoria de 16–17/09 têm destino.**
 >
-> **3. PRÓXIMO PASSO: o dono tem instruções novas** — perguntar a ele. Não há trabalho de auditoria pendente.
+> **3. PRÓXIMO PASSO:** o dono tem instruções novas **e** pediu, em 25/09, para **não esquecer as pendências da lista abaixo — "vamos resolvê-las depois"**. Ao voltar: perguntar a ele por onde começa (instruções novas ou pendências). Não há trabalho de auditoria pendente.
 >
-> **4. Anotado nesta sessão (não urgente), somar aos itens 4 dos blocos abaixo:**
-> - `ElegiveisInvalidosError` (`core/distribuicao/motor.ts`) ainda interpola `colaboradorId` numa mensagem que chega à tela como 422 — defeito de montagem, sem duplicata possível hoje (anotado no #114).
-> - Explicações que só existem em `title` (selo do critério e dica do crédito na Distribuição, dica do crédito no Painel) não chegam a toque, teclado nem leitor de tela (revisão do #115).
-> - Números da Distribuição com vírgula só na média; o crédito ("0.00 → 1.00") segue com ponto.
-> - **Servidor de telas com cache velho:** duas vezes nesta sessão o `sbp-local` subiu com **toda rota aninhada de `/api` em 404** (`/api/sessao/local`, `/api/distribuicao/previa`; a página de 404 do Next, não a da rota). Parar o servidor, `rm -rf .next`, subir de novo resolve. Sintoma na tela: a lista de contas sintéticas some da entrada, ou "Falha na requisição (404)".
-> - A mensagem genérica do cliente para erro sem corpo é "Falha na requisição (404)" (`componentes/api.ts`) — termo técnico na tela, fora do escopo do N-28.
+> **4. PENDÊNCIAS A RESOLVER (pedido do dono, 25/09) — lista única; ela substitui os itens "Anotado" dos blocos abaixo.** Mesmo método da auditoria: confirmar lendo o código, teste visto vermelho, um PR por assunto, revisão por agente. Ao resolver, riscar aqui com o número do PR.
+>
+> *A. O que a equipe lê na tela (as três que o dono viu no fim da sessão de 24/09 vêm primeiro):*
+> 1. **Código interno numa mensagem de erro da distribuição** — `ElegiveisInvalidosError` (`core/distribuicao/motor.ts`, "colaborador … aparece duas vezes") interpola `colaboradorId` e chega à tela como 422. Hoje não acontece (a lista vem do banco, sem duplicata), mas se acontecer é defeito: provavelmente virar `Error` (500 com correlação, id no log), como o item "sem lote" no #114.
+> 2. **Explicação que só aparece passando o mouse** — o selo do critério e a dica do crédito na Distribuição, e a dica do crédito no Painel, moram só em `title`: não chegam a toque, teclado nem leitor de tela (revisão do #115). Mostrar como texto visível ou `aria-describedby`.
+> 3. **"Falha na requisição (404)."** — mensagem genérica do cliente quando a resposta não traz erro legível (`componentes/api.ts:110`). Trocar por frase de gente ("Não foi possível falar com o sistema. Atualize a tela e tente de novo.") mantendo o status para o log.
+> 4. Números da Distribuição: vírgula só na média; o crédito ("0.00 → 1.00") e a dica do Painel seguem com ponto.
+> 5. Troca de rótulo "Concluir" → "Confirmar: concluir" (Minha fila) e o mesmo no Descartar da Revisão, sem anúncio a leitor de tela (`aria-live`) — tratar as duas telas juntas.
+> 6. Avisos `role="status"` que surgem na carga do Painel, Revisão e Caixa: testar com leitor de tela (NVDA) se viram rajada de anúncios (revisão do #110).
+> 7. `componentes/assistente.tsx` (≈54-61) tem uma **terceira cópia manual** dos rótulos das telas, fora de `core/telas.ts` (revisão do #108).
+>
+> *B. Segurança e robustez:*
+> 8. Sondagem **horizontal** invisível: `concluir()` em `servicos/fila.ts` recusa quem não é o responsável com 422, sem rastro (revisão de segurança do #97).
+> 9. `/api/painel` e `/api/memoria` sem limite por pessoa (revisão do #96).
+> 10. Erro de *transporte* da IA grava a mensagem crua do fornecedor no log — conferir se algum SDK ecoa o pedido (revisão de segurança do #90).
+> 11. Alerta por volume das recusas de entrada (`AT-45`); índice `(situacao, etapa, referencia)` em `EventoProcessamento` quando o volume justificar; rotação da sessão com duas chaves (`SESSAO_SECRET_ANTERIOR`, C-25).
+> 12. Dependabot #78 a #81 (`@anthropic-ai/sdk`, `react-dom`, `@google/genai`, `react`) abertos e não avaliados — cada um é nível 3, CI lido check a check.
+>
+> *C. Processo, testes e ambiente:*
+> 13. **Classificador de risco não conhece `src/componentes/`** (`scripts/processo/nivel-de-risco.ts` só tem `src/components/`): toda mudança ali cai no nível 3 por falha fechada. Seguro, só mais rígido; decidir antes se `componentes/api.ts` (cliente HTTP da tela) fica acima do nível 1.
+> 14. O teste do logotipo (`componentes/navegacao.test.ts`) acha o logotipo pela ordem no HTML; dar âncora própria.
+> 15. Não há teste de componente com clique (o vitest roda só `*.test.ts`; `react-dom/server` serve para marcação, não para interação).
+> 16. **Servidor de telas com cache velho:** duas vezes em 24/09 o `sbp-local` subiu com **toda rota aninhada de `/api` em 404** (a página 404 do Next, não a da rota). Contorno: parar, `rm -rf .next`, subir de novo. Causa não investigada.
+>
+> *Decidido de propósito — não é pendência:* o gestor vê "ausente hoje" na Minha fila (tela de quem executa); payload de item ilegível trava a revisão daquele item com 500 e o id na mensagem do log; login, troca de senha e desativação esperam milissegundos por uma confirmação de distribuição em curso; `A34` (e-mails suspeitos sem item) é a fase 4.
 >
 > **5. Decisões abertas com o dono:** as de antes (`§ H.4` 29, 30, 31, 32; `AT-42`; TI da associação; `A46`, `A21`, `A32`, `A44(i)`; `§ AT-46`). O item 34 foi respondido (`A58`).
 >
