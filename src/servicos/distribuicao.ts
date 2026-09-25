@@ -17,6 +17,7 @@ import type {
 import { deslocarDias, fimDoDia, inicioDoDia } from '../core/util/datas'
 import { somar } from '../core/util/numero'
 import { exigirPapel, type Ator } from '../servidor/ator'
+import { transacaoComNovaTentativa } from '../servidor/conflito'
 import {
   mensagemDoErro,
   novaCorrelacao,
@@ -422,7 +423,11 @@ export async function confirmar(
     referencia: pedido.data,
   })
 
-  const relatorio = await banco.$transaction(async (tx) => {
+  // Repetida em impasse (revisão do PR #111): a trava de quem está ativo, logo
+  // abaixo, pode fechar um ciclo com uma desativação concorrente, e o InnoDB
+  // escolhe uma vítima. A transação inteira volta atrás e replaneja — o
+  // operador não recebe o erro cru do banco.
+  const relatorio = await transacaoComNovaTentativa(banco, async (tx) => {
     // Serializa o dia ANTES de qualquer leitura de crédito. Duas confirmações
     // concorrentes de categorias diferentes leriam o crédito global uma da
     // outra ainda não gravado e decidiriam o desempate com dado obsoleto —
@@ -449,6 +454,27 @@ export async function confirmar(
     // trava sem ler antes, então a fotografia da transação só é tirada depois —
     // e enxerga o que a distribuição anterior gravou.
     await tomarTravaDoDia(tx, pedido.data)
+
+    // QUEM ESTÁ ATIVO FICA ATIVO ATÉ ESTA DISTRIBUIÇÃO GRAVAR (achado N-33).
+    //
+    // `carregarElegiveis` filtra `ativo` numa leitura comum, e a gravação da
+    // atribuição só confere a chave estrangeira, que não olha `ativo`. Uma
+    // desativação que confirmasse entre as duas devolvia o que a pessoa já
+    // tinha e, logo depois, esta transação gravava itens novos para ela: itens
+    // `distribuido` na fila de quem não abre sessão, fora de "Por pessoa",
+    // que ninguém recolhe.
+    //
+    // A leitura travada vem ANTES de qualquer leitura comum, pela mesma razão
+    // da trava do dia (N-09): a fotografia da transação só é tirada depois, e
+    // enxerga uma desativação que acabou de confirmar. Travadas em modo
+    // compartilhado, as linhas não impedem outra distribuição; a desativação
+    // que chegar agora espera o fim desta e devolve o que ela gravou.
+    //
+    // Custo aceito: enquanto a confirmação corre, toda escrita na linha de uma
+    // pessoa ativa espera por ela — a tentativa de login que registra falha, a
+    // troca de senha, a desativação. Com a equipe de 4 a 7 pessoas e uma
+    // confirmação de milissegundos, é espera, não fila.
+    await tx.$queryRaw`SELECT id FROM \`Colaborador\` WHERE ativo = 1 ORDER BY id FOR SHARE`
 
     // Replaneja DENTRO da transação: o estado pode ter mudado entre a prévia
     // que o operador viu e o clique em confirmar. Mesma função da prévia.
