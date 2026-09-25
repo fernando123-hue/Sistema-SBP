@@ -210,6 +210,21 @@ describe('teto diário', () => {
     expect(registradas).toHaveLength(1)
   })
 
+  // Sem a leitura, o disjuntor precisa continuar valendo: ele vive na memória
+  // e se alimenta do resultado da chamada, não da contagem (revisão de
+  // segurança do PR #119).
+  it('sem teto (0), o disjuntor continua abrindo', async () => {
+    const semTeto = (cliente: ClienteDeModelo): ClienteDeModelo =>
+      envolver(cliente, { ...LIMITES, tetoDiarioDeChamadas: 0 })
+    const quebrado = clienteQue(async () => {
+      throw Object.assign(new Error('fornecedor fora'), { status: 503 })
+    })
+
+    await expect(semTeto(quebrado).gerar(PEDIDO)).rejects.toThrow()
+    await expect(semTeto(quebrado).gerar(PEDIDO)).rejects.toThrow()
+    await expect(semTeto(OK).gerar(PEDIDO)).rejects.toBeInstanceOf(LimiteDeConsumoAtingido)
+  })
+
   it('com teto, a contagem continua sendo perguntada a cada chamada', async () => {
     let perguntas = 0
     const registroContado: RegistroDeConsumo = {
