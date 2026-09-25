@@ -15,6 +15,12 @@ import { describe, expect, it } from 'vitest'
  *
  * A varredura tira os comentários e procura o vocabulário que já escapou uma
  * vez. Não pega toda frase técnica possível; pega a volta destas.
+ *
+ * Limite conhecido do removedor de comentários (revisão técnica do #115): ele
+ * não entende o código, só o texto. `//` logo depois de `:` não é tratado como
+ * comentário (é o que preserva `http://`), e um `//` que fosse texto visível
+ * cortaria o resto da linha. Nenhuma tela tem nenhum dos dois hoje; se aparecer,
+ * o sintoma é a varredura falhar num comentário ou não ver um trecho da linha.
  */
 
 const APP = dirname(fileURLToPath(import.meta.url))

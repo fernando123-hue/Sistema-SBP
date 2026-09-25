@@ -84,8 +84,9 @@ function narrativaDe(resumo: Resumo | null, categoriaCodigo: string): string[] {
 
 const CRITERIO: Record<string, { texto: string; explicacao: string }> = {
   resto_maior: {
-    texto: 'divisão igual',
-    explicacao: 'Todos recebem a mesma quantidade; o que sobra vai para quem recebeu menos até aqui.',
+    texto: 'base igual',
+    explicacao:
+      'Todos recebem ao menos a mesma quantidade; o que sobra vai, um a um, para quem recebeu menos até aqui.',
   },
   indivisivel: {
     texto: 'lote inteiro',
@@ -434,8 +435,9 @@ export default function Distribuicao() {
           <div className="mb-3">
             <Aviso>
               <strong>
-                {mostrado.categoriasInvalidas.length} categoria(s) ficaram fora desta rodada
-                porque o cadastro delas está com problema:
+                {mostrado.categoriasInvalidas.length === 1
+                  ? '1 categoria ficou fora desta rodada porque o cadastro dela está com problema:'
+                  : `${mostrado.categoriasInvalidas.length} categorias ficaram fora desta rodada porque o cadastro delas está com problema:`}
               </strong>{' '}
               {mostrado.categoriasInvalidas
                 .map((categoria) => `${categoria.codigo} — ${categoria.motivo}`)
@@ -553,8 +555,13 @@ export default function Distribuicao() {
                       ))}
                     </ul>
                     <p className="numerico mt-2 border-t border-borda pt-2 text-xs text-tinta-fraca">
-                      média por pessoa {linha.cotaJusta.toFixed(2).replace('.', ',')} · todos recebem ao menos{' '}
-                      {linha.base} · {linha.resto} de sobra · entregues{' '}
+                      {/* A média vem em unidades com peso (DOC vale 4): 12 itens para 3
+                          pessoas dão 16,00. Sem a ressalva, "16,00" ao lado de "entregues
+                          12 de 12" parece conta que não fecha (revisão técnica do #115). */}
+                      média por pessoa com o peso da categoria{' '}
+                      {linha.cotaJusta.toFixed(2).replace('.', ',')} · todos recebem ao menos{' '}
+                      {linha.base} {linha.base === 1 ? 'item' : 'itens'} · {linha.resto} de sobra ·
+                      entregues{' '}
                       {linha.fatias.reduce((soma, fatia) => soma + fatia.quantidade, 0)} de{' '}
                       {linha.quantidade}
                     </p>
