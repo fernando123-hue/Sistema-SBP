@@ -176,11 +176,23 @@ export async function registrarEvento(banco: Transacao, evento: EventoEntrada): 
  * A regra é a MESMA que `http.ts` já usava para decidir o que cruza para o
  * cliente, e não uma invenção nova: erro de DOMÍNIO tem mensagem escrita para
  * humano e vai inteiro; qualquer outro vira só o nome da classe, e o detalhe
- * fica no log do servidor. `ConservacaoVioladaError` é a exceção explícita —
- * é erro de domínio e mesmo assim não sai, exatamente como lá.
+ * fica no log do servidor. Os `DEFEITOS_DO_SISTEMA` são a exceção explícita —
+ * erros de domínio que mesmo assim não saem, exatamente como lá.
  */
+/**
+ * Erros de domínio que são defeito NOSSO, não do uso: viram 500 em `http.ts`
+ * e não têm a mensagem gravada na memória. UMA lista para os dois lugares —
+ * com duas, a pendência 1 mudou só a de `http.ts`, e o id interno que saiu da
+ * tela continuou legível em `/api/memoria` (revisões do PR #120).
+ *
+ * - `CONSERVACAO_VIOLADA`: a mensagem traz a alocação, com o id de cada colega.
+ * - `ELEGIVEIS_INVALIDOS`: a lista é montada pelo servidor a partir do banco;
+ *   a mensagem traz id de colaborador ou chave de grupo.
+ */
+export const DEFEITOS_DO_SISTEMA: ReadonlySet<string> = new Set(['CONSERVACAO_VIOLADA', 'ELEGIVEIS_INVALIDOS'])
+
 export function mensagemPersistivel(erro: unknown): string {
-  if (erro instanceof ErroDominio && erro.codigo !== 'CONSERVACAO_VIOLADA') {
+  if (erro instanceof ErroDominio && !DEFEITOS_DO_SISTEMA.has(erro.codigo)) {
     return erro.message
   }
   return erro instanceof Error ? erro.name : 'Erro inesperado'

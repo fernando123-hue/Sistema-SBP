@@ -7,6 +7,7 @@ import { ambiente } from './ambiente'
 import { PermissaoNegadaError } from './ator'
 import { verificarLimite } from './limite-de-taxa'
 import {
+  DEFEITOS_DO_SISTEMA,
   mensagemDoErro,
   mensagemPersistivel,
   novaCorrelacao,
@@ -49,8 +50,6 @@ export function responderErro(mensagem: string, status: number, correlacaoId?: s
     { status },
   )
 }
-
-const DEFEITOS_DO_SISTEMA: ReadonlySet<string> = new Set(['CONSERVACAO_VIOLADA', 'ELEGIVEIS_INVALIDOS'])
 
 function statusDoErro(erro: unknown): number | null {
   if (erro instanceof SemSessaoError) return 401

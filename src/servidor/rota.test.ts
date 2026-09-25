@@ -115,6 +115,14 @@ describe('rota(): falha do servidor não fala', () => {
     expect(resposta.status).toBe(500)
     expect(JSON.stringify(corpo)).not.toContain(idDaColega)
     expect(corpo.correlacaoId).toEqual(expect.any(String))
+
+    // A memória é um cliente também: quem recebeu o 500 tem o papel que lê
+    // `/api/memoria` e tem o identificador na mão (revisões do PR #120).
+    const evento = await obterPrisma().eventoProcessamento.findFirst({
+      where: { correlacaoId: corpo.correlacaoId },
+    })
+    expect(evento).not.toBeNull()
+    expect(evento?.mensagem ?? '').not.toContain(idDaColega)
   })
 
   it('erro inesperado vira 500 genérico, sem a mensagem original', async () => {
