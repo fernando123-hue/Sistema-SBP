@@ -1,10 +1,39 @@
 # Estado do projeto — retomada
 
-Última atualização: **24/09/2026, fim da noite — preparado para o dono dar `/clear`.** PRs #101 a #104 mesclados: os quatro achados N- médios (N-03 a N-06) corrigidos. Próximo: os 13 N- restantes (baixos N-26, N-28 a N-35; informativos N-38 a N-41). Ver o primeiro bloco abaixo.
+Última atualização: **25/09/2026, madrugada — preparado para o dono dar `/clear`.** PRs #106 a #111 mesclados: N-29 a N-35 corrigidos. **PR #112 (N-39) aberto, faltam as duas revisões.** Restam N-26, N-28, N-38, N-40, N-41. Ver o primeiro bloco abaixo.
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 24/09/2026, fim da noite — PARA RETOMAR DEPOIS DO `/clear` (este bloco vence os de baixo; o `git log` vence este)
+> ### 25/09/2026, madrugada — PARA RETOMAR DEPOIS DO `/clear` (este bloco vence os de baixo; o `git log` vence este)
+>
+> **1. Onde está:** `main` em `6749c2d` (#111) ou mais novo. **Um PR nosso aberto: #112 (N-39)**, branch `fix/n39-contagem-por-liga-do-papel` — código pronto, teste visto vermelho, visto rodando, `npm run verificar` verde; **faltam a revisão técnica e a de segurança (nível 3)**, os links no corpo e o CI lido check a check. Dependabot (#78 a #81) segue sem avaliar. Nada rodando: nenhum agente, `sbp-local` desligado. MySQL desta máquina em `127.0.0.1:3307`.
+>
+> **2. Feito nesta sessão (um PR por achado, todos confirmados lendo o código antes de corrigir, teste visto vermelho, revisão por agente publicada no PR):**
+> - **#106 N-34 e N-35** (nível 2) — a lista da Revisão seleciona só remetente e assunto (não o corpo LongText); `resolver` com payload ilegível falha alto (500) em vez de gravar a mescla sobre um padrão vazio. A mensagem leva o id, nunca o conteúdo.
+> - **#107 N-30** (nível 1) — a Revisão desconta do total a cada decisão e busca a próxima leva quando a lista local zera; lista e total num estado só. A revisão achou um ALTO real (resposta com `itens: []` e `total > 0` prendia em "Carregando…"), corrigido antes de mesclar.
+> - **#108 N-31** (nível 3) — regra única `telaInicial(papel)` em `core/telas.ts` para entrada, raiz e logotipo; a troca de senha vai para `/`.
+> - **#109 N-29** (nível 1) — Acesso: com a senha provisória na tela, gerar outra e cadastrar ficam desabilitados; "Desligar acesso" pede o segundo clique.
+> - **#110 N-32** (nível 3) — `Aviso` é `alert` só no tom de alerta, `status` nos demais; neutro com cor própria; `aria-label` nas datas do Painel e nos campos extras da Revisão. A revisão de acessibilidade achou um ALTO real: a confirmação "sem volta" de encurtar prazo de retenção passaria a não interromper — virou tom de alerta. (A parte (c) do N-32 já estava no #102.)
+> - **#111 N-33** (nível 2) — **reproduzido na `sbp_teste`** (7 atribuições ativas para a pessoa desligada). `confirmar` trava `Colaborador` ativo `FOR SHARE` antes de planejar, e passou a repetir a transação em impasse (`transacaoComNovaTentativa`) — a revisão de banco achou o ciclo de impasse possível com a desativação. O teste espera a trava vista em `performance_schema.data_lock_waits` (o `INNODB_TRX` não listava a transação em espera nesta base).
+>
+> **3. PRÓXIMO PASSO — terminar a auditoria** (o dono tem instruções novas depois disso):
+> 1. **Fechar o #112 (N-39):** `git switch fix/n39-contagem-por-liga-do-papel`; revisão técnica e de segurança por agentes (um revisor por vez, ou os dois em paralelo, só leitura, sem trocar de branch enquanto rodam); colar os links no corpo (o rascunho do corpo está no próprio PR); CI lido check a check; mesclar. Se a `main` andou, `git merge origin/main` — a tabela da auditoria tende a conflitar em linhas vizinhas: resolver ficando com a linha preenchida de cada lado e conferir no `git diff origin/main` que só a linha do achado mudou.
+> 2. **N-28** (baixo, o maior que resta) — dividir em dois PRs: (a) servidor: mensagens do Zod em português (o zod 4 instalado tem `locales/pt-BR`; `z.config` precisa valer no servidor **e** na tela), `PermissaoNegadaError` com frase simples sem "Permitidos:" (`servidor/ator.ts:65-70`), e ids fora das mensagens de erro de negócio (≈11 pontos em `src/servicos/`) — nível 3; (b) telas: tirar as justificativas de engenharia dos textos (Caixa, Revisão, Distribuição, Painel — lista no achado). Frase curta, sem termo técnico, dizendo o que houve e o que fazer (`A40`).
+> 3. **Informativos N-26, N-38, N-40, N-41** — todos dependem da implantação real (credencial do Graph, gestor de segredos, rota de download que não existe). Destino planejado: **uma seção nova `§ AT-47 — O que conferir no dia de ligar a produção`** em `DECISOES.md`, com: N-38 (provar com `Test-ApplicationAccessPolicy` que outra caixa dá 403; certificado em vez de segredo; data de validade), N-41 (`BUSCA_SECRET` só no gestor de segredos, backup sem `.env`, ligar ao `A46`), N-40 (antes de existir rota de download: conferir `[Content_Types].xml` e recusar macro, `Content-Disposition: attachment`, `nosniff`, SHA-256 em `Anexo.hash`, antivírus da empresa, recorte `A24`, auditar download) e N-26 (pedir `internetMessageHeaders`, veredito SPF/DKIM/DMARC e From ≠ Sender, mandar para revisão com aviso na tela — implementar **com cabeçalhos reais** no dia da credencial, não com amostra inventada). Um PR de documentação (nível 0), preenchendo as quatro linhas da tabela.
+> 4. Com isso, **todos os 68 achados têm destino** — atualizar o resumo do topo da tabela da auditoria e avisar o dono de que a auditoria fechou.
+>
+> **4. Anotado nesta sessão (não urgente), somar ao item 4 do bloco de 24/09 abaixo:**
+> - `componentes/assistente.tsx` (≈54-61) tem uma **terceira cópia manual** dos rótulos das telas, fora de `core/telas.ts` (revisão do #108).
+> - Avisos `role="status"` que surgem na carga do Painel, Revisão e Caixa: testar com leitor de tela (NVDA) se viram rajada de anúncios (revisão do #110).
+> - Enquanto uma confirmação de distribuição corre, login com senha errada, troca de senha e desativação de pessoa ativa esperam por ela (milissegundos; escrito no comentário de `confirmar`).
+> - O teste do logotipo (`componentes/navegacao.test.ts`) acha o logotipo pela ordem no HTML; se a barra mudar, dar âncora própria.
+> - Payload de item ilegível agora trava a revisão daquele item com 500 (de propósito); se aparecer em produção, a mensagem diz o id.
+>
+> **5. Decisões abertas com o dono:** as de antes (`§ H.4` 29, 30, 31, 32; `AT-42`; TI da associação; `A46`, `A21`, `A32`, `A44(i)`; `§ AT-46`), **mais o `§ H.4` item 34** (o colaborador vê os totais do setor no Painel? — entra no #112).
+>
+> **6. Armadilhas vistas hoje:** conflitos da tabela da auditoria em linhas vizinhas a cada PR paralelo (ver passo 1); o *Processo* exige a seção "Visto rodando" também no nível 2 — "não se aplica" com motivo vale; `sed` com crase e barra invertida no Git Bash falha calado (0 trocas) — para sabotar ou editar código, usar a ferramenta de edição e conferir com `grep -c`; teste de componente com `vi.mock('next/navigation')` e `await import` funciona (`navegacao.test.ts`).
+>
+> ### 24/09/2026, fim da noite — (anterior; o próximo passo dele foi feito até o N-35)
 >
 > **1. Onde está:** `main` em `ddf989f` (#104) ou mais novo. Nenhum PR nosso aberto (só os do dependabot, #78 a #81, não avaliados). Branch local: só `main`. Nada rodando: nenhum agente, nenhum servidor de tela (`sbp-local` desligado). MySQL desta máquina continua em `127.0.0.1:3307`, `--mysqlx=OFF`.
 >
