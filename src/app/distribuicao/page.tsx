@@ -557,10 +557,18 @@ export default function Distribuicao() {
                     <p className="numerico mt-2 border-t border-borda pt-2 text-xs text-tinta-fraca">
                       {/* A média vem em unidades com peso (DOC vale 4): 12 itens para 3
                           pessoas dão 16,00. Sem a ressalva, "16,00" ao lado de "entregues
-                          12 de 12" parece conta que não fecha (revisão técnica do #115). */}
-                      média por pessoa com o peso da categoria{' '}
-                      {linha.cotaJusta.toFixed(2).replace('.', ',')} · todos recebem ao menos{' '}
-                      {linha.base} {linha.base === 1 ? 'item' : 'itens'} · {linha.resto} de sobra ·
+                          12 de 12" parece conta que não fecha (revisão técnica do #115).
+                          Base e sobra só existem na divisão por base: em lote inteiro e
+                          liga inteira o motor deixa os dois em 0, e "todos recebem ao menos
+                          0 · 0 de sobra" descreveria um mecanismo que não aconteceu. */}
+                      {linha.criterio === 'resto_maior' ? (
+                        <>
+                          média por pessoa com o peso da categoria{' '}
+                          {linha.cotaJusta.toFixed(2).replace('.', ',')} · todos recebem ao menos{' '}
+                          {linha.base} {linha.base === 1 ? 'item' : 'itens'} · {linha.resto} de
+                          sobra ·{' '}
+                        </>
+                      ) : null}
                       entregues{' '}
                       {linha.fatias.reduce((soma, fatia) => soma + fatia.quantidade, 0)} de{' '}
                       {linha.quantidade}

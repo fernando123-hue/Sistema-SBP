@@ -17,10 +17,9 @@ import { describe, expect, it } from 'vitest'
  * vez. Não pega toda frase técnica possível; pega a volta destas.
  *
  * Limite conhecido do removedor de comentários (revisão técnica do #115): ele
- * não entende o código, só o texto. `//` logo depois de `:` não é tratado como
- * comentário (é o que preserva `http://`), e um `//` que fosse texto visível
- * cortaria o resto da linha. Nenhuma tela tem nenhum dos dois hoje; se aparecer,
- * o sintoma é a varredura falhar num comentário ou não ver um trecho da linha.
+ * não entende o código, só o texto. Só `http://` e `https://` são poupados; um
+ * `//` que fosse texto visível cortaria o resto da linha. Nenhuma tela tem isso
+ * hoje; se aparecer, o sintoma é a varredura não ver um trecho da linha.
  */
 
 const APP = dirname(fileURLToPath(import.meta.url))
@@ -38,7 +37,7 @@ const JARGAO = [
 
 /** O fonte sem comentários de bloco, de JSX e de linha (sem pegar `http://`). */
 function semComentarios(fonte: string): string {
-  return fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+  return fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(?<!https?:)\/\/.*$/gm, '')
 }
 
 const telas = readdirSync(APP, { recursive: true, encoding: 'utf8' }).filter((nome) =>
@@ -53,6 +52,11 @@ describe('textos das telas sem jargão de engenharia', () => {
   it('tira comentário e mantém texto', () => {
     expect(semComentarios('a /* o motor */ b // o motor\n{/* cota justa */}c')).not.toMatch(/motor|cota/)
     expect(semComentarios('<p>visite http://exemplo.test</p>')).toContain('http://exemplo.test')
+    expect(semComentarios('<a href="https://exemplo.test">x</a>')).toContain('https://exemplo.test')
+    // Comentário colado, sem espaço (revisão técnica do #115): antes, o `:`
+    // antes do `//` o protegia como se fosse URL e a varredura dava vermelho falso.
+    expect(semComentarios('rotulo:// cota justa')).not.toMatch(/cota/)
+    expect(semComentarios('x//cota justa')).not.toMatch(/cota/)
   })
 
   it.each(telas)('%s', (nome) => {
