@@ -1036,6 +1036,30 @@ consumo-da-ia.ts:91  →  pool failed to retrieve a connection
 **Impacto se estiver errado:** Concluir é a ação mais frequente do sistema; um toque a mais por item pode pesar para a equipe. Se pesar, as saídas são decisão do dono: um caminho de reabrir item concluído (com trilha), ou o "Desfazer" com gravação garantida.
 **Status:** 🟡 provisória — reavaliar com o uso real da equipe.
 
+### AT-47 — O que conferir no dia de ligar a produção (N-26, N-38, N-40, N-41) *(24/09/2026)*
+
+**Por que uma seção só:** os quatro achados foram confirmados lendo o código em 24/09/2026, e nenhum tem correção honesta antes da implantação real. Três dependem de coisa que ainda não existe (a credencial do Graph, o gestor de segredos, uma rota de download); o quarto (N-26) só pode ser feito direito com cabeçalhos reais do Exchange da associação — implementar com amostra inventada seria testar contra o que imaginamos que a Microsoft manda. Escrever aqui é o que impede que virem esquecimento no dia em que a produção for ligada.
+
+**No dia da credencial do Graph (N-38 e N-26):**
+- **Provar que o token só lê a caixa do setor.** Com `Mail.Read` de aplicativo e escopo `.default` (`ingestao-graph.ts`, `ESCOPO`), o token lê qualquer caixa do tenant, a menos que o TI aplique Application Access Policy ou RBAC for Applications. O código só escolhe a caixa por `GRAPH_CAIXA`; ele não tem como se limitar. Conferência: `Test-ApplicationAccessPolicy` (ou o equivalente do RBAC) e uma chamada real a **outra** caixa com o mesmo token — tem de dar **403**. Sem esse 403, a ingestão não liga.
+- **Certificado em vez de segredo de cliente**, e a data de validade anotada com quem renova (o segredo vence em silêncio e a ingestão para).
+- **Sinal de autenticidade do remetente (N-26).** Hoje o adapter pede só `from` (`$select` sem `sender` nem cabeçalhos) e a Caixa, a Fila e a Revisão mostram o remetente como fato. Nada decide pelo remetente (liga e categoria vêm do texto), então o risco é a equipe atender um pedido forjado com cara de legítimo. Com a credencial em mãos: pedir `internetMessageHeaders` (ou só `Authentication-Results`) e `sender`, gravar um veredito (SPF/DKIM/DMARC passaram? From = Sender?), mandar para revisão quando não passar, com o motivo **visível na tela**. Teste de regressão com um cabeçalho `dmarc=fail` **copiado de um e-mail real do tenant**. O remetente continua nunca sendo identidade.
+
+**No dia de montar servidor e backup (N-41, junto com `A46`):**
+- `BUSCA_SECRET` **só no gestor de segredos** (Infisical), fora do disco do servidor e de todo backup. O CPF protegido é HMAC correto, mas o CPF tem cerca de um bilhão de valores: quem tiver o backup do banco **e** o segredo reverte a coluna inteira em minutos.
+- Checklist do plano de backup: o backup **não** contém `.env`; restaurar um backup numa máquina de teste e conferir que ela não sobe sem buscar o segredo no gestor.
+
+**Antes de existir qualquer rota que entregue anexo a alguém (N-40):**
+Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`), então nada disto é explorável agora. No PR que criar download ou visualização, **todos** estes itens entram juntos, ou o PR não é mesclado:
+- `.docx`/`.xlsx`: hoje só o prefixo ZIP (`PK\x03\x04`) é conferido — um `.jar` ou um `.docm` renomeado passam. Conferir `[Content_Types].xml` e recusar macro.
+- `.txt`/`.csv`: sem verificação de conteúdo; servir sempre como download, nunca exibir.
+- Resposta com `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` e o tipo derivado da extensão validada, nunca do que a origem declarou.
+- `Anexo.hash` preenchido com SHA-256 na ingestão (hoje é sempre `null` — nome de proteção sem a proteção). Teste: depois da ingestão, 64 caracteres hexadecimais.
+- Avaliar com o TI o antivírus da empresa no caminho do arquivo.
+- Recorte `A24` (quem não vê o item não baixa o anexo) e cada download auditado em `LogAuditoria`.
+
+**Status:** 🟡 pendente de implantação — cada item vira ✅ com a evidência (o 403, o veredito gravado, o backup sem segredo, o PR de download) anotada aqui.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.

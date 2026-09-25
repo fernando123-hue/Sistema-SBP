@@ -1,10 +1,31 @@
 # Estado do projeto — retomada
 
-Última atualização: **25/09/2026, madrugada — preparado para o dono dar `/clear`.** PRs #106 a #111 mesclados: N-29 a N-35 corrigidos. **PR #112 (N-39) aberto, faltam as duas revisões.** Restam N-26, N-28, N-38, N-40, N-41. Ver o primeiro bloco abaixo.
+Última atualização: **24/09/2026, noite — auditoria fechada.** #112 a #116 mesclados: N-39 e N-28 corrigidos; N-26, N-38, N-40 e N-41 reunidos em `DECISOES.md § AT-47`. **Todos os 68 achados têm destino.** Próximo passo: as instruções novas do dono. Ver o primeiro bloco abaixo.
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 25/09/2026, madrugada — PARA RETOMAR DEPOIS DO `/clear` (este bloco vence os de baixo; o `git log` vence este)
+> ### 24/09/2026, noite — AUDITORIA FECHADA (este bloco vence os de baixo; o `git log` vence este)
+>
+> **1. Onde está:** `main` com #112 a #116 mesclados. **Nenhum PR nosso aberto** (só os do dependabot, #78 a #81, não avaliados). Nada rodando: nenhum agente, `sbp-local` desligado. MySQL desta máquina em `127.0.0.1:3307`.
+>
+> **2. Feito nesta sessão:**
+> - **#112 N-39** (nível 3) — contagem por liga da Caixa segue o que cada papel vê. **Decisão do dono: `§ A58`** (item 34 do `§ H.4`, opção a): o colaborador segue vendo os totais do setor no Painel.
+> - **#114 N-28 (a)** (nível 3) — servidor em português de gente: validação com frases próprias (`core/mensagem-de-validacao.ts`, `z.config` no servidor e na tela), 403 "Seu acesso não permite esta ação. Se precisar dela, fale com a gestão do setor.", 14 `ErroDeNegocio` sem id com varredura em teste (`servicos/` e `core/`). A revisão técnica achou dois ALTOs reais (frase quebrada em esquema validado sem campo — `GET /api/escala?data=2026-02-30`; `senhaNova` sem rótulo), corrigidos antes de mesclar.
+> - **#115 N-28 (b)** (nível 3) — telas sem justificativa de engenharia (Caixa, Revisão, Distribuição, Painel e a narrativa da rodada), com varredura em `app/textos-da-tela.test.ts`. A revisão técnica achou três ALTOs reais de texto que contradizia o próprio cartão (selo "divisão igual", média sem o peso, "ao menos 0 · 0 de sobra" em lote inteiro), corrigidos antes de mesclar.
+> - **#116** (nível 0) — **`DECISOES.md § AT-47 — O que conferir no dia de ligar a produção`** (N-26, N-38, N-40, N-41). **Todos os 68 achados da auditoria de 16–17/09 têm destino.**
+>
+> **3. PRÓXIMO PASSO: o dono tem instruções novas** — perguntar a ele. Não há trabalho de auditoria pendente.
+>
+> **4. Anotado nesta sessão (não urgente), somar aos itens 4 dos blocos abaixo:**
+> - `ElegiveisInvalidosError` (`core/distribuicao/motor.ts`) ainda interpola `colaboradorId` numa mensagem que chega à tela como 422 — defeito de montagem, sem duplicata possível hoje (anotado no #114).
+> - Explicações que só existem em `title` (selo do critério e dica do crédito na Distribuição, dica do crédito no Painel) não chegam a toque, teclado nem leitor de tela (revisão do #115).
+> - Números da Distribuição com vírgula só na média; o crédito ("0.00 → 1.00") segue com ponto.
+> - **Servidor de telas com cache velho:** duas vezes nesta sessão o `sbp-local` subiu com **toda rota aninhada de `/api` em 404** (`/api/sessao/local`, `/api/distribuicao/previa`; a página de 404 do Next, não a da rota). Parar o servidor, `rm -rf .next`, subir de novo resolve. Sintoma na tela: a lista de contas sintéticas some da entrada, ou "Falha na requisição (404)".
+> - A mensagem genérica do cliente para erro sem corpo é "Falha na requisição (404)" (`componentes/api.ts`) — termo técnico na tela, fora do escopo do N-28.
+>
+> **5. Decisões abertas com o dono:** as de antes (`§ H.4` 29, 30, 31, 32; `AT-42`; TI da associação; `A46`, `A21`, `A32`, `A44(i)`; `§ AT-46`). O item 34 foi respondido (`A58`).
+>
+> ### 25/09/2026, madrugada — (anterior; o próximo passo dele foi feito — #112 a #116)
 >
 > **1. Onde está:** `main` em `6749c2d` (#111) ou mais novo. **Um PR nosso aberto: #112 (N-39)**, branch `fix/n39-contagem-por-liga-do-papel` — código pronto, teste visto vermelho, visto rodando, `npm run verificar` verde; **faltam a revisão técnica e a de segurança (nível 3)**, os links no corpo e o CI lido check a check. Dependabot (#78 a #81) segue sem avaliar. Nada rodando: nenhum agente, `sbp-local` desligado. MySQL desta máquina em `127.0.0.1:3307`.
 >
