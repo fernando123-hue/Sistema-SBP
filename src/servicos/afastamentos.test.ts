@@ -48,7 +48,7 @@ describe('quem pode registrar', () => {
         { colaboradorId: base.colaboradores[0]!.id, tipo: 'ferias', inicio: DATA_BASE },
         base.operador,
       ),
-    ).rejects.toThrow(/permissão|papel/i)
+    ).rejects.toMatchObject({ name: 'PermissaoNegadaError' })
   })
 
   it('gestor registra', async () => {

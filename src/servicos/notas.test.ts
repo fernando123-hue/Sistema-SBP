@@ -196,7 +196,7 @@ describe('arquivar carimba, nunca apaga', () => {
 
     const nota = await registrar(banco, { texto: 'Aviso da autora.' }, autora.ator)
 
-    await expect(arquivar(banco, nota.id, {}, outra.ator)).rejects.toThrow(/permissão|papel/i)
+    await expect(arquivar(banco, nota.id, {}, outra.ator)).rejects.toMatchObject({ name: 'PermissaoNegadaError' })
 
     const atual = await banco.nota.findUniqueOrThrow({ where: { id: nota.id } })
     expect(atual.arquivadaEm).toBeNull()

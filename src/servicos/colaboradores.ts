@@ -167,7 +167,7 @@ export async function definirHabilitacoes(
       select: { id: true },
     })
     if (!colaborador) {
-      throw new ErroDeNegocio(`Colaborador "${dados.colaboradorId}" não existe.`)
+      throw new ErroDeNegocio('Esta pessoa não está mais no cadastro. Atualize a tela.')
     }
 
     const desejadas = await resolverCategorias(tx, dados.categorias)

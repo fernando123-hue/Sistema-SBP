@@ -135,7 +135,7 @@ describe('autorização por papel', () => {
     expect(() => exigirPapel(gestor, 'definir escala', 'operador', 'gestor')).not.toThrow()
   })
 
-  it('recusa papel não listado, e a mensagem diz quais são aceitos', () => {
+  it('recusa papel não listado, e guarda papel e operação para o rastro — não na frase da tela (N-28)', () => {
     expect(() => exigirPapel(colaborador, 'confirmar distribuição', 'operador', 'gestor')).toThrow(
       PermissaoNegadaError,
     )
@@ -143,8 +143,8 @@ describe('autorização por papel', () => {
     try {
       exigirPapel(colaborador, 'confirmar distribuição', 'operador', 'gestor')
     } catch (erro) {
-      expect((erro as Error).message).toContain('operador')
-      expect((erro as Error).message).toContain('confirmar distribuição')
+      expect(erro).toMatchObject({ papel: 'colaborador', operacao: 'confirmar distribuição' })
+      expect((erro as Error).message).not.toContain('operador')
     }
   })
 

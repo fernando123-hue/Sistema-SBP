@@ -109,7 +109,10 @@ describe('papel insuficiente é recusado ANTES de qualquer efeito', () => {
   })
 
   it('a recusa nomeia a operação — é o que a trilha e o suporte leem depois', async () => {
-    await expect(confirmar(banco, PEDIDO_VAZIO, colaborador)).rejects.toThrow(/confirmar distribuição/)
+    await expect(confirmar(banco, PEDIDO_VAZIO, colaborador)).rejects.toMatchObject({
+      name: 'PermissaoNegadaError',
+      operacao: 'confirmar distribuição',
+    })
   })
 
   it('ver a PRÓPRIA fila continua liberado para colaborador', async () => {

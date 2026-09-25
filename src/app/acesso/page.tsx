@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { CadastroDeColaboradorSchema } from '../../core/esquemas'
+import { mensagemDeValidacao } from '../../core/mensagem-de-validacao'
 import { hojeIso, paraDataIso } from '../../core/util/datas'
 import { api, mensagemDoErro } from '../../componentes/api'
 import { PrazosDeRetencao } from '../../componentes/prazos-de-retencao'
@@ -143,11 +144,7 @@ export default function Acesso() {
     // conferido e não era.
     const conferido = CadastroDeColaboradorSchema.safeParse(novo)
     if (!conferido.success) {
-      setErro(
-        conferido.error.issues
-          .map((problema) => `${problema.path.join('.')}: ${problema.message}`)
-          .join('; '),
-      )
+      setErro(mensagemDeValidacao(conferido.error))
       return
     }
 

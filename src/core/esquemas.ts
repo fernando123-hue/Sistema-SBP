@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+// Frases de validação em português antes de qualquer esquema ser usado (N-28).
+import './mensagem-de-validacao'
+
 /**
  * Zod é a fonte da verdade dos domínios fechados.
  *

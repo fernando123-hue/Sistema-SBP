@@ -27,7 +27,7 @@ async function exigirColaborador(tx: Transacao, colaboradorId: string): Promise<
   })
   if (!existe) {
     throw new ErroDeNegocio(
-      `Colaborador "${colaboradorId}" não existe. A resolução de revisão precisa de um usuário real.`,
+      'Sua conta não foi encontrada no cadastro. Saia e entre de novo.',
     )
   }
 }
@@ -185,8 +185,8 @@ export async function resolver(
       include: { item: true },
     })
 
-    if (!revisao) throw new ErroDeNegocio(`Revisão "${dados.revisaoId}" não encontrada.`)
-    if (revisao.resolvidoEm) throw new ErroDeNegocio(`Revisão "${dados.revisaoId}" já foi resolvida.`)
+    if (!revisao) throw new ErroDeNegocio('Esta revisão não foi encontrada. Atualize a tela.')
+    if (revisao.resolvidoEm) throw new ErroDeNegocio('Esta revisão já foi resolvida. Atualize a tela para ver a próxima.')
 
     await exigirColaborador(tx, ator.colaboradorId)
 

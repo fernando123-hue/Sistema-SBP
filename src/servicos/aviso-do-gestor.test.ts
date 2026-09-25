@@ -32,7 +32,7 @@ beforeEach(async () => {
 describe('quem pode', () => {
   it('colaborador e operador não recebem o aviso — ele carrega motivo de ausência', async () => {
     for (const ator of [base.colaboradores[0]!.ator, base.operador]) {
-      await expect(avisoDoGestor(banco, ator, DATA_BASE)).rejects.toThrow(/não pode executar/)
+      await expect(avisoDoGestor(banco, ator, DATA_BASE)).rejects.toThrow(/Seu acesso não permite/)
     }
   })
 })
@@ -303,7 +303,7 @@ describe('o que mudou desde a última olhada (A39)', () => {
   it('só gestor marca como visto', async () => {
     for (const ator of [base.colaboradores[0]!.ator, base.operador]) {
       await expect(marcarAvisoComoVisto(banco, { chaves: [] }, ator, DATA_BASE)).rejects.toThrow(
-        /não pode executar/,
+        /Seu acesso não permite/,
       )
     }
   })

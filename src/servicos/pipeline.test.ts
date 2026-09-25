@@ -676,7 +676,7 @@ describe('invariantes de atribuição', () => {
         },
         outro.ator,
       ),
-    ).rejects.toThrow(/não pode executar/i)
+    ).rejects.toThrow(/Seu acesso não permite/)
   })
 
   // N-05 da auditoria: transferir para quem já é o dono respondia
@@ -910,7 +910,7 @@ describe('devolução ao pool (AT-07)', () => {
 
     await expect(
       devolver(banco, { itemId: atribuicao.itemId, justificativa: 'Quero soltar este.' }, outro.ator),
-    ).rejects.toThrow(/não pode executar/i)
+    ).rejects.toThrow(/Seu acesso não permite/)
   })
 })
 

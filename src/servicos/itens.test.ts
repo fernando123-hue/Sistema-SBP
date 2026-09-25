@@ -42,7 +42,7 @@ describe('quem pode registrar', () => {
         { categoriaCodigo: 'INADIMP', titulo: 'Inadimplente', colaboradorId: pessoa.id },
         pessoa.ator,
       ),
-    ).rejects.toThrow(/permissão|papel/i)
+    ).rejects.toMatchObject({ name: 'PermissaoNegadaError' })
 
     expect(await banco.item.count()).toBe(0)
   })
