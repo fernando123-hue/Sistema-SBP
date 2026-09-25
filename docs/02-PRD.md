@@ -74,7 +74,7 @@
 | RNF-01 | O motor é **função pura**: sem I/O, sem banco, sem UI. Testável isoladamente. |
 | RNF-02 | Determinismo: mesma entrada → mesma saída, sempre. Nenhuma aleatoriedade na decisão. |
 | RNF-03 | Versionamento do algoritmo. Rodadas antigas reproduzem com a versão que as gerou. |
-| RNF-04 | Mobile-first. Cards no lugar de tabelas em tela pequena — *Minha Fila* será consultada no celular. |
+| RNF-04 | ~~Mobile-first. Cards no lugar de tabelas em tela pequena — *Minha Fila* será consultada no celular.~~ **Vencido pelo `DECISOES.md § A60` (25/09/2026): o sistema é só para computador.** |
 | RNF-05 | Componentes reutilizáveis definidos uma vez, validados no Storybook antes de espalhar instâncias. |
 | RNF-06 | Segredos fora do código-fonte. Validação de input em toda borda. |
 | RNF-07 | Distribuição diária em ≤ 5 min. Hoje: 30–45 min. |
@@ -103,7 +103,7 @@ Constraints e testes, não boa intenção.
 - Marco quem está de plantão, vejo a prévia da divisão e confirmo. Não digito nenhum número.
 
 **Colaborador**
-- Abro *Minha Fila* no celular e vejo meus e-mails reais, não um número.
+- Abro *Minha Fila* ~~no celular~~ e vejo meus e-mails reais, não um número. *(`A60`: só computador.)*
 - Concluo item a item. O que não terminei continua meu amanhã, sem ninguém redigitar nada.
 
 **Gestor**
