@@ -11,7 +11,7 @@ export async function GET(requisicao: Request): Promise<Response> {
     const ator = await exigirAtor()
 
     const data = new URL(requisicao.url).searchParams.get('data')
-    if (!data) return responderErro('Parâmetro "data" é obrigatório (YYYY-MM-DD).', 400)
+    if (!data) return responderErro('Falta a data. Atualize a tela e tente de novo.', 400)
 
     return responder(await obterEscala(obterPrisma(), data, ator.papel))
   })

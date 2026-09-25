@@ -39,6 +39,10 @@ const ROTULOS: Readonly<Record<string, string>> = {
   categoriaCodigo: 'Categoria',
   senha: 'Senha',
   senhaAtual: 'Senha atual',
+  senhaNova: 'Nova senha',
+  tipo: 'Tipo',
+  campos: 'Campos',
+  itensExtras: 'Itens a mais',
   texto: 'Texto',
   titulo: 'Título',
   motivo: 'Motivo',
@@ -107,7 +111,23 @@ function frase(problema: Problema): string {
   }
 }
 
-z.config({ customError: frase })
+/**
+ * As frases que saíram daqui — para distinguir das escritas no esquema.
+ *
+ * Sem rótulo, as duas pedem tratamento diferente: a nossa ("não pode ficar
+ * vazio") precisa de sujeito; a do esquema ("essa data não existe no
+ * calendário") já é frase inteira. O conjunto só cresce com frases distintas,
+ * e elas são poucas: as de cima, com os limites que os esquemas declaram.
+ */
+const FRASES_NOSSAS = new Set<string>()
+
+z.config({
+  customError: (problema) => {
+    const texto = frase(problema)
+    FRASES_NOSSAS.add(texto)
+    return texto
+  },
+})
 
 /** O primeiro trecho do caminho que é nome de campo (`categorias.3` → `categorias`). */
 function campoDe(caminho: readonly PropertyKey[]): string | undefined {
@@ -126,9 +146,10 @@ export function mensagemDeValidacao(erro: z.ZodError): string {
     const rotulo = campo === undefined ? undefined : ROTULOS[campo]
     const texto = problema.message.replace(/\.$/, '')
     if (rotulo) return `${rotulo}: ${texto}.`
-    // Frase escrita no próprio esquema começa com maiúscula e já se sustenta.
-    if (/^\p{Lu}/u.test(texto)) return `${texto}.`
-    return `${SEM_ROTULO} ${texto}. Atualize a tela e tente de novo.`
+    if (FRASES_NOSSAS.has(problema.message)) return `${SEM_ROTULO} ${texto}. Atualize a tela e tente de novo.`
+    // Frase escrita no próprio esquema já se sustenta — como quando o esquema
+    // é validado sozinho, sem campo em volta (`DataIsoSchema.parse(data)`).
+    return `${texto.charAt(0).toUpperCase()}${texto.slice(1)}.`
   })
   return [...new Set(linhas)].join(' ')
 }

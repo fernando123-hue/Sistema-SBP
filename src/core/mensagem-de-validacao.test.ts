@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
-import { CadastroDeColaboradorSchema } from './esquemas'
+import { CadastroDeColaboradorSchema, DataIsoSchema, TrocaDeSenhaSchema } from './esquemas'
 import { mensagemDeValidacao } from './mensagem-de-validacao'
 
 /**
@@ -82,6 +82,31 @@ describe('mensagemDeValidacao', () => {
     )
 
     expect(mensagem).toBe('Justificativa: Diga por que o item vai para outra pessoa.')
+  })
+
+  describe('esquema validado sem campo em volta (revisão técnica do #114)', () => {
+    // `obterEscala` faz `DataIsoSchema.parse(data)` direto, com a data da URL:
+    // a issue nasce sem caminho, sem rótulo. A frase escrita no esquema já se
+    // sustenta; o que não pode é virar "Um dado do pedido data deve estar…".
+    it('data que não existe no calendário', () => {
+      expect(mensagemDe(DataIsoSchema, '2026-02-30')).toBe('Essa data não existe no calendário.')
+    })
+
+    it('data em formato errado dá uma frase só, não duas contraditórias', () => {
+      expect(mensagemDe(DataIsoSchema, '20-2-3')).toBe('A data não está num formato que o sistema aceita.')
+    })
+
+    it('frase nossa sem campo continua dizendo o que fazer', () => {
+      expect(mensagemDe(z.string().min(1), '')).toBe(
+        'Um dado do pedido não pode ficar vazio. Atualize a tela e tente de novo.',
+      )
+    })
+  })
+
+  it('nova senha curta: diz qual das duas senhas, sem frase quebrada', () => {
+    const mensagem = mensagemDe(TrocaDeSenhaSchema, { senhaAtual: 'qualquer', senhaNova: 'curta' })
+
+    expect(mensagem).toBe('Nova senha: a senha precisa de pelo menos 10 caracteres.')
   })
 
   it('o mesmo problema repetido em vários itens da lista aparece uma vez', () => {
