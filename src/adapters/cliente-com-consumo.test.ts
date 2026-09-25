@@ -178,6 +178,76 @@ describe('teto diário', () => {
     await expect(envolverCego(quebrado).gerar(PEDIDO)).rejects.toThrow()
     await expect(envolverCego(OK).gerar(PEDIDO)).rejects.toBeInstanceOf(LimiteDeConsumoAtingido)
   })
+
+  /**
+   * `IA_TETO_DIARIO=0` quer dizer SEM TETO — e, sem teto, a contagem não tem
+   * o que decidir. Medido em 25/09/2026 na máquina da IA local e aqui: sem
+   * MySQL, cada chamada esperava ~10 s pelo pool só para ler um número que
+   * seria descartado, e gravava um erro por chamada. A gravação do uso
+   * continua (é histórico de gasto); só a leitura inútil sai.
+   */
+  it('sem teto (0), nem pergunta a contagem ao banco', async () => {
+    let perguntas = 0
+    const registroContado: RegistroDeConsumo = {
+      async chamadasDoDia() {
+        perguntas += 1
+        return 0
+      },
+      async registrar(chamada) {
+        registradas.push(chamada)
+      },
+    }
+
+    const cliente = comControleDeConsumo(OK, {
+      fornecedor: 'fornecedor-teste',
+      tarefa: 'interpretacao',
+      registro: registroContado,
+      limites: { ...LIMITES, tetoDiarioDeChamadas: 0 },
+    })
+
+    await expect(cliente.gerar(PEDIDO)).resolves.toEqual({ objeto: { ok: true }, modeloUsado: 'modelo-datado' })
+    expect(perguntas).toBe(0)
+    expect(registradas).toHaveLength(1)
+  })
+
+  // Sem a leitura, o disjuntor precisa continuar valendo: ele vive na memória
+  // e se alimenta do resultado da chamada, não da contagem (revisão de
+  // segurança do PR #119).
+  it('sem teto (0), o disjuntor continua abrindo', async () => {
+    const semTeto = (cliente: ClienteDeModelo): ClienteDeModelo =>
+      envolver(cliente, { ...LIMITES, tetoDiarioDeChamadas: 0 })
+    const quebrado = clienteQue(async () => {
+      throw Object.assign(new Error('fornecedor fora'), { status: 503 })
+    })
+
+    await expect(semTeto(quebrado).gerar(PEDIDO)).rejects.toThrow()
+    await expect(semTeto(quebrado).gerar(PEDIDO)).rejects.toThrow()
+    await expect(semTeto(OK).gerar(PEDIDO)).rejects.toBeInstanceOf(LimiteDeConsumoAtingido)
+  })
+
+  it('com teto, a contagem continua sendo perguntada a cada chamada', async () => {
+    let perguntas = 0
+    const registroContado: RegistroDeConsumo = {
+      async chamadasDoDia() {
+        perguntas += 1
+        return 0
+      },
+      async registrar(chamada) {
+        registradas.push(chamada)
+      },
+    }
+
+    const cliente = comControleDeConsumo(OK, {
+      fornecedor: 'fornecedor-teste',
+      tarefa: 'interpretacao',
+      registro: registroContado,
+      limites: LIMITES,
+    })
+
+    await cliente.gerar(PEDIDO)
+    await cliente.gerar(PEDIDO)
+    expect(perguntas).toBe(2)
+  })
 })
 
 describe('disjuntor', () => {

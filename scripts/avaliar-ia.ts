@@ -20,6 +20,7 @@
 import { criarAiPort } from '../src/adapters/fabrica'
 import { DIMENSOES } from '../src/core/avaliacao/gabarito'
 import { ambiente } from '../src/servidor/ambiente'
+import { mandarTodoLogAoStderr } from '../src/servidor/observabilidade'
 import { avaliarInterpretacao, type ResultadoDaAvaliacao } from '../src/servicos/avaliacao-da-ia'
 
 function linha(texto = ''): void {
@@ -57,6 +58,8 @@ function imprimir(resultado: ResultadoDaAvaliacao): void {
 
 async function principal(): Promise<void> {
   const emJson = process.argv.includes('--json')
+  // A única linha do stdout é a que se guarda: log de adapter vai ao stderr.
+  if (emJson) mandarTodoLogAoStderr()
   const configurado = ambiente().IA_ADAPTER
   if (configurado !== 'mock') {
     // Em `stderr` para valer também no `--json`, cuja única linha em `stdout`

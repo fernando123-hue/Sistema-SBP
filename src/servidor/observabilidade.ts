@@ -62,6 +62,18 @@ export function novaCorrelacao(): string {
   return randomUUID()
 }
 
+/**
+ * Script que imprime saída para máquina (`ia:avaliar -- --json`) promete que o
+ * stdout é só dele. Sem isto, um `aviso` do adapter no meio da rodada virava
+ * linha extra no arquivo guardado (achado na máquina da IA local, 25/09/2026).
+ * O servidor nunca chama: lá o coletor espera `info` e `aviso` no stdout.
+ */
+let todoLogNoStderr = false
+
+export function mandarTodoLogAoStderr(): void {
+  todoLogNoStderr = true
+}
+
 export function registrarLog(
   nivel: Nivel,
   mensagem: string,
@@ -74,7 +86,7 @@ export function registrarLog(
     ...(redigir(contexto) as Record<string, unknown>),
   })
 
-  if (nivel === 'erro') process.stderr.write(`${linha}\n`)
+  if (nivel === 'erro' || todoLogNoStderr) process.stderr.write(`${linha}\n`)
   else process.stdout.write(`${linha}\n`)
 }
 
