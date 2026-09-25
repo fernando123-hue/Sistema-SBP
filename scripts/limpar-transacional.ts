@@ -10,7 +10,7 @@
 
 import { ArmazenamentoEmDisco } from '../src/adapters/armazenamento-disco'
 import { ambiente } from '../src/servidor/ambiente'
-import { obterPrisma } from '../src/servidor/prisma'
+import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
 import { limparTransacional } from './limpeza-transacional'
 
 async function principal(): Promise<void> {
@@ -55,4 +55,4 @@ async function principal(): Promise<void> {
 principal().catch((erro: unknown) => {
   process.stderr.write(`${erro instanceof Error ? erro.message : String(erro)}\n`)
   process.exitCode = 1
-})
+}).finally(encerrarBanco)
