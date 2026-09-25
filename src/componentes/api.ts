@@ -106,6 +106,10 @@ async function requisitar<T>(
   try {
     // Status 0 é a convenção do próprio navegador para "não houve resposta".
     const resposta = await fetch(`/api${caminho}`, inicializacao).catch((causa: unknown) => {
+      // Trocar de tela com pedido em voo também cai aqui — o Chromium o aborta
+      // como o mesmo `TypeError: Failed to fetch`, sem `AbortError` para
+      // filtrar. É esperado, e a tela não mostra nada (as telas descartam
+      // resposta de efeito já desmontado); a linha vale quando a tela reclama.
       console.error('Sem resposta do sistema', { caminho, causa })
       throw new ErroDaApi(SEM_RESPOSTA_LEGIVEL, 0, undefined, causa)
     })

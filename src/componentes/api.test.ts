@@ -128,6 +128,15 @@ describe('resposta com erro legível segue igual', () => {
     expect(registro).not.toHaveBeenCalled()
   })
 
+  it('sem frase mas com referência: a referência vence o código', async () => {
+    responder(JSON.stringify({ sucesso: false, dados: null, erro: null, correlacaoId: '0123456789abcdef' }), 500)
+
+    const erro = await falhaDe(api.buscar('/painel'))
+
+    // O `ref.` leva direto à linha do log do servidor; o código seria menos.
+    expect(mensagemDoErro(erro)).toBe(`${FRASE} (ref. 01234567)`)
+  })
+
   it('sucesso devolve os dados', async () => {
     responder(JSON.stringify({ sucesso: true, dados: { total: 3 }, erro: null }), 200)
 
