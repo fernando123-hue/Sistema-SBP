@@ -28,10 +28,10 @@ beforeEach(async () => {
 describe('quem pode', () => {
   it('colaborador e operador não veem nem mudam prazo', async () => {
     for (const ator of [base.colaboradores[0]!.ator, base.operador]) {
-      await expect(listarPrazos(banco, ator)).rejects.toThrow(/não pode executar/)
+      await expect(listarPrazos(banco, ator)).rejects.toThrow(/Seu acesso não permite/)
       await expect(
         alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias: 30 }, ator),
-      ).rejects.toThrow(/não pode executar/)
+      ).rejects.toThrow(/Seu acesso não permite/)
     }
 
     expect(await banco.prazoDeRetencao.count()).toBe(0)

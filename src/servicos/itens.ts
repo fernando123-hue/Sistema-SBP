@@ -109,7 +109,7 @@ async function exigirResponsavel(
   })
 
   if (!colaborador) {
-    throw new ErroDeNegocio(`Colaborador "${colaboradorId}" não existe. Nenhum item foi criado.`)
+    throw new ErroDeNegocio('A pessoa escolhida não está mais no cadastro. Nenhum item foi criado — atualize a tela e escolha de novo.')
   }
   if (!colaborador.ativo) {
     throw new ErroDeNegocio(

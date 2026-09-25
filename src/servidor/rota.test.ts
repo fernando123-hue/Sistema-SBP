@@ -33,7 +33,7 @@ describe('rota(): erro de uso chega à tela com a mensagem inteira', () => {
     [
       'papel sem permissão',
       403,
-      () => new PermissaoNegadaError(colaborador, 'confirmar distribuição', ['operador', 'gestor']),
+      () => new PermissaoNegadaError(colaborador, 'confirmar distribuição'),
     ],
     ['regra de negócio', 422, () => new ErroDeNegocio('Transferência exige justificativa.')],
   ] as const)('%s responde %i', async (_, status, criar) => {
@@ -49,7 +49,19 @@ describe('rota(): erro de uso chega à tela com a mensagem inteira', () => {
     const resposta = await lancar(erro)
 
     expect(resposta.status).toBe(400)
-    expect((await resposta.json()).erro).toMatch(/^data: /)
+    expect((await resposta.json()).erro).toBe('Data: é obrigatório.')
+  })
+
+  it('papel sem permissão: frase para a equipe, sem papel, operação nem lista de permitidos (N-28)', async () => {
+    // Antes: `Papel "colaborador" não pode executar "confirmar distribuição".
+    // Permitidos: operador, gestor.` — vocabulário interno e o mapa de
+    // permissões entregue a quem sonda. Quem, papel e operação continuam no
+    // rastro de C-24, que é onde a investigação precisa deles.
+    const resposta = await lancar(new PermissaoNegadaError(colaborador, 'confirmar distribuição'))
+    const { erro } = await resposta.json()
+
+    expect(resposta.status).toBe(403)
+    expect(erro).toBe('Seu acesso não permite esta ação. Se precisar dela, fale com a gestão do setor.')
   })
 })
 

@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+// Frases de validação em português antes de qualquer esquema ser usado (N-28).
+import './mensagem-de-validacao'
+
 /**
  * Zod é a fonte da verdade dos domínios fechados.
  *
@@ -428,7 +431,10 @@ export type Interpretacao = z.infer<typeof InterpretacaoSchema>
  */
 export const DataIsoSchema = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'data deve estar no formato YYYY-MM-DD')
+  // `abort`: com o formato errado, a conferência do calendário não tem o que
+  // conferir, e rodar as duas dava duas frases para o mesmo erro (revisão
+  // técnica do #114). As frases vão para a tela: sem "YYYY-MM-DD" (N-28).
+  .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'a data não está num formato que o sistema aceita', abort: true })
   .refine((valor) => {
     // `Date.UTC` para não depender do fuso de quem roda: aqui só interessa se o
     // trio (ano, mês, dia) sobrevive à normalização.
@@ -440,7 +446,7 @@ export const DataIsoSchema = z
       reconstruida.getUTCMonth() === mes - 1 &&
       reconstruida.getUTCDate() === dia
     )
-  }, 'data inexistente no calendário')
+  }, 'essa data não existe no calendário')
 
 export const EscalaEntradaSchema = z.object({
   data: DataIsoSchema,

@@ -351,8 +351,8 @@ describe('quem pode consultar', () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     const pessoa = base.colaboradores[0]!
 
-    await expect(porCorrelacao(banco, 'qualquer', pessoa.ator)).rejects.toThrow(/papel|permissão/i)
-    await expect(porEntidade(banco, 'Item', 'x', pessoa.ator)).rejects.toThrow(/papel|permissão/i)
+    await expect(porCorrelacao(banco, 'qualquer', pessoa.ator)).rejects.toMatchObject({ name: 'PermissaoNegadaError' })
+    await expect(porEntidade(banco, 'Item', 'x', pessoa.ator)).rejects.toMatchObject({ name: 'PermissaoNegadaError' })
   })
 
   it('gestor lê', async () => {

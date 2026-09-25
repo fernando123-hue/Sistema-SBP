@@ -535,7 +535,7 @@ export async function definirSenhaProvisoria(
     where: { id: dados.colaboradorId },
     select: { id: true, ativo: true, senhaHash: true },
   })
-  if (!colaborador) throw new ErroDeNegocio(`Colaborador "${dados.colaboradorId}" não existe.`)
+  if (!colaborador) throw new ErroDeNegocio('Esta pessoa não está mais no cadastro. Atualize a tela.')
   if (!colaborador.ativo) throw new ErroDeNegocio('Colaborador desativado não recebe senha.')
 
   // A PRÓPRIA senha só se troca por `trocarSenha`, que exige a senha atual
@@ -601,7 +601,7 @@ export async function destravarConta(
     where: { id: dados.colaboradorId },
     select: { id: true },
   })
-  if (!colaborador) throw new ErroDeNegocio(`Colaborador "${dados.colaboradorId}" não existe.`)
+  if (!colaborador) throw new ErroDeNegocio('Esta pessoa não está mais no cadastro. Atualize a tela.')
 
   // Destravar sem registro é pior que os outros dois casos: é exatamente a
   // ação que alguém investigaria depois ("quem tirou o bloqueio desta conta,
@@ -648,7 +648,7 @@ export async function definirAtivacao(
     where: { id: dados.colaboradorId },
     select: { id: true, ativo: true, papel: true },
   })
-  if (!colaborador) throw new ErroDeNegocio(`Colaborador "${dados.colaboradorId}" não existe.`)
+  if (!colaborador) throw new ErroDeNegocio('Esta pessoa não está mais no cadastro. Atualize a tela.')
 
   // ═══ DESLIGAR O ACESSO NÃO PODE ABANDONAR O TRABALHO ═══
   //

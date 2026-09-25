@@ -1,6 +1,6 @@
 import { ALGORITMO_VERSAO, distribuir } from '../core/distribuicao/motor'
 import { narrarRodada } from '../core/distribuicao/narrativa'
-import { ConservacaoVioladaError, ErroDeNegocio, SemElegiveisError } from '../core/erros'
+import { ConservacaoVioladaError, SemElegiveisError } from '../core/erros'
 import {
   FrenteSchema,
   GrupoSchema,
@@ -276,8 +276,12 @@ function repartirItens(
       // Item sem dono seria item perdido — a doença que o sistema cura. A
       // conferência de tamanho no chamador o transformaria em erro de qualquer
       // jeito; aqui a mensagem diz o que de fato aconteceu.
+      //
+      // `Error`, não `ErroDeNegocio`: nenhum uso produz isto, só defeito do
+      // motor. Vira 500 com correlação, e o id do item vai para o log — não
+      // para a tela, onde não ajudaria ninguém (N-28).
       if (!dono) {
-        throw new ErroDeNegocio(
+        throw new Error(
           `O item "${item.id}" não pertence a nenhum lote da rodada. ` +
             'A distribuição foi abortada: nenhum item pode ficar sem responsável.',
         )

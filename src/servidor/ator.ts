@@ -64,11 +64,16 @@ export class PermissaoNegadaError extends Error {
   readonly papel: Papel
   readonly operacao: Operacao
 
-  constructor(ator: Ator, operacao: Operacao, permitidos: readonly Papel[]) {
-    super(
-      `Papel "${ator.papel}" não pode executar "${operacao}". ` +
-        `Permitidos: ${permitidos.join(', ')}.`,
-    )
+  /**
+   * A mensagem é a que a tela mostra (403), então fala com a equipe (N-28).
+   *
+   * Antes: `Papel "colaborador" não pode executar "confirmar distribuição".
+   * Permitidos: operador, gestor.` — vocabulário interno, e o mapa de
+   * permissões entregue a quem sonda. Quem, papel e operação continuam nos
+   * campos abaixo, que `rota()` grava no rastro de C-24.
+   */
+  constructor(ator: Ator, operacao: Operacao) {
+    super('Seu acesso não permite esta ação. Se precisar dela, fale com a gestão do setor.')
     this.name = 'PermissaoNegadaError'
     this.colaboradorId = ator.colaboradorId
     this.papel = ator.papel
@@ -87,7 +92,7 @@ export class PermissaoNegadaError extends Error {
  */
 export function exigirPapel(ator: Ator, operacao: Operacao, ...permitidos: Papel[]): void {
   if (!permitidos.includes(ator.papel)) {
-    throw new PermissaoNegadaError(ator, operacao, permitidos)
+    throw new PermissaoNegadaError(ator, operacao)
   }
 }
 

@@ -668,7 +668,7 @@ describe('definição de senha pelo gestor', () => {
         { colaboradorId: base.pessoaId, senhaProvisoria: SENHA_PROVISORIA },
         atorDeTeste(base.pessoaId, 'operador'),
       ),
-    ).rejects.toThrow(/operador/)
+    ).rejects.toMatchObject({ name: 'PermissaoNegadaError', papel: 'operador' })
   })
 
   it('redefinir senha derruba o bloqueio e volta a exigir troca', async () => {
@@ -754,7 +754,7 @@ describe('destravar conta', () => {
         { colaboradorId: base.pessoaId },
         atorDeTeste(base.pessoaId, 'operador'),
       ),
-    ).rejects.toThrow(/operador/)
+    ).rejects.toMatchObject({ name: 'PermissaoNegadaError', papel: 'operador' })
   })
 })
 
@@ -878,7 +878,7 @@ describe('ativar e desativar acesso', () => {
         { colaboradorId: base.pessoaId, ativo: false },
         atorDeTeste(base.pessoaId, 'operador'),
       ),
-    ).rejects.toThrow(/operador/)
+    ).rejects.toMatchObject({ name: 'PermissaoNegadaError', papel: 'operador' })
   })
 })
 

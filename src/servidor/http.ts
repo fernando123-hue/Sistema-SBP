@@ -2,6 +2,7 @@ import { ZodError } from 'zod'
 
 import { ErroDominio, ErroOperacional } from '../core/erros'
 import { DOMINIO_ATUAL } from '../core/esquemas'
+import { mensagemDeValidacao } from '../core/mensagem-de-validacao'
 import { ambiente } from './ambiente'
 import { PermissaoNegadaError } from './ator'
 import { verificarLimite } from './limite-de-taxa'
@@ -59,12 +60,6 @@ function statusDoErro(erro: unknown): number | null {
     return erro.codigo === 'CONSERVACAO_VIOLADA' ? 500 : 422
   }
   return null
-}
-
-function mensagemDeValidacao(erro: ZodError): string {
-  return erro.issues
-    .map((problema) => `${problema.path.join('.') || 'corpo'}: ${problema.message}`)
-    .join('; ')
 }
 
 /**

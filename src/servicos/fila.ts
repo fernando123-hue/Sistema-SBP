@@ -18,6 +18,14 @@ import { auditar } from './auditoria'
  * item que não é seu. Ajudar um colega passa por `transferir`, que deixa rastro.
  */
 
+/**
+ * Concluir, devolver ou transferir um item que já saiu da mão de todo mundo —
+ * quase sempre outra aba ou outra pessoa agiu antes. Sem o id (N-28): ele não
+ * ajuda quem lê a fazer nada.
+ */
+const ITEM_SEM_RESPONSAVEL =
+  'Este item não está mais com ninguém — talvez já tenha sido concluído ou devolvido. Atualize a tela.'
+
 export interface ItemDaFila {
   itemId: string
   titulo: string
@@ -179,7 +187,7 @@ export async function concluir(
       include: { item: true },
     })
 
-    if (!atribuicao) throw new ErroDeNegocio(`Item "${entrada.itemId}" não tem responsável ativo.`)
+    if (!atribuicao) throw new ErroDeNegocio(ITEM_SEM_RESPONSAVEL)
     if (!ehOProprio(ator, atribuicao.colaboradorId)) {
       throw new ErroDeNegocio('Só o responsável ativo pode concluir o item. Use transferência.')
     }
@@ -242,7 +250,7 @@ export async function transferir(
       where: { itemId: entrada.itemId, ativa: true },
       include: { item: { select: { status: true } } },
     })
-    if (!atual) throw new ErroDeNegocio(`Item "${entrada.itemId}" não tem responsável ativo.`)
+    if (!atual) throw new ErroDeNegocio(ITEM_SEM_RESPONSAVEL)
 
     // Ou você é o dono atual (devolvendo/pedindo ajuda), ou você coordena a
     // operação. Um colaborador não puxa para si o item de um colega.
@@ -293,7 +301,7 @@ export async function transferir(
       select: { id: true, nome: true, ativo: true },
     })
     if (!destino) {
-      throw new ErroDeNegocio(`Colaborador "${entrada.paraColaboradorId}" não existe.`)
+      throw new ErroDeNegocio('A pessoa escolhida não está mais no cadastro. Atualize a tela e escolha de novo.')
     }
     if (!destino.ativo) {
       throw new ErroDeNegocio(
@@ -366,7 +374,7 @@ export async function devolver(
       where: { itemId: entrada.itemId, ativa: true },
       include: { item: { select: { status: true } } },
     })
-    if (!atual) throw new ErroDeNegocio(`Item "${entrada.itemId}" não tem responsável ativo.`)
+    if (!atual) throw new ErroDeNegocio(ITEM_SEM_RESPONSAVEL)
 
     if (!ehOProprio(ator, atual.colaboradorId)) {
       exigirPapel(ator, 'devolver item de outra pessoa', 'operador', 'gestor')
