@@ -134,8 +134,10 @@ export function narrarRodada(
   }
 
   linhas.push(
-    `A cota justa era ${numero(rodada.cotaJusta)} por pessoa, em unidades ponderadas — ` +
-      'quem recebeu menos que isso fica credor e leva a próxima sobra.',
+    // Texto para a equipe (N-28): a conta é a cota justa em unidades
+    // ponderadas, mas quem lê precisa de "média" e "peso", não do jargão.
+    `A média era ${numero(rodada.cotaJusta)} por pessoa, já contando o peso da categoria — ` +
+      'quem recebeu menos que isso fica na frente para a próxima sobra.',
   )
 
   return linhas

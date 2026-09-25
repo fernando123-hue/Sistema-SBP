@@ -343,8 +343,7 @@ export default function Caixa() {
           <strong>
             Esta tela mostra {dados.itens.length} itens; o filtro atual tem mais do que isso.
           </strong>{' '}
-          Estreite por categoria ou por liga para ver o resto — sem este aviso, a lista parecia
-          completa e o número da pastilha parecia errado.
+          Escolha uma categoria ou uma liga para ver o resto.
         </Aviso>
       ) : null}
 
@@ -443,16 +442,15 @@ export default function Caixa() {
               <Aviso tom={exigeResponsavel ? 'atencao' : 'neutro'}>
                 {exigeResponsavel ? (
                   <>
-                    <strong>{escolhida.rotulo}</strong> fica fora do rateio diário, então o motor
-                    nunca vai atribuir este item a ninguém. Sem responsável ele nasceria pendente
-                    para sempre — por isso &ldquo;quem atendeu&rdquo; é obrigatório aqui. O item
-                    entra na fila dessa pessoa, e a conclusão continua sendo ato dela.
+                    <strong>{escolhida.rotulo}</strong> fica fora da distribuição do dia: ninguém
+                    recebe este item automaticamente. Por isso é preciso dizer quem atendeu. O
+                    item entra na fila dessa pessoa, e é ela quem marca como concluído.
                   </>
                 ) : (
                   <>
-                    <strong>{escolhida.rotulo}</strong> entra no rateio: o item vai para o pool e
-                    quem escolhe o responsável é o motor, na próxima rodada. Escolher a dedo aqui
-                    seria a porta lateral que este sistema existe para fechar.
+                    <strong>{escolhida.rotulo}</strong> entra na distribuição do dia: o sistema
+                    escolhe quem recebe na próxima rodada, pela carga de cada um. Por isso não dá
+                    para escolher a pessoa aqui.
                   </>
                 )}
               </Aviso>

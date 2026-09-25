@@ -226,9 +226,7 @@ export default function Revisao() {
           <strong>
             {totalPendentes} revisões pendentes, e esta tela mostra {pendentes.length}.
           </strong>{' '}
-          A ordem é fixa (menor confiança primeiro), então o que ficou além do corte não sobe
-          sozinho — resolva a fila para o resto aparecer. Sem este aviso, a tela diria
-          &ldquo;{pendentes.length} itens&rdquo; para sempre enquanto a fila crescia atrás dela.
+          As de menor confiança aparecem primeiro. Resolva estas para as outras aparecerem.
         </Aviso>
       ) : null}
 
