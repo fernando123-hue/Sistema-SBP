@@ -1,4 +1,6 @@
+import type { Ator } from '../servidor/ator'
 import type { Banco } from '../servidor/prisma'
+import { recorteDaCaixa } from './caixa'
 
 /**
  * Ligas — leitura.
@@ -28,7 +30,12 @@ export interface LigaListada {
   nome: string
   instituicao: string | null
   uf: string | null
-  /** Itens já vinculados a esta liga, em qualquer status. Dá peso à escolha. */
+  /**
+   * Itens desta liga, em qualquer status, que QUEM PERGUNTA vê na Caixa (N-39):
+   * o setor inteiro para quem coordena; para o colaborador, só os que estão
+   * com ele (`A24`). Contado com o setor inteiro, o seletor dizia "· 3" e a
+   * lista mostrava 1.
+   */
   itens: number
   /** Notas vivas do setor sobre esta liga. */
   notas: number
@@ -41,7 +48,7 @@ export interface LigaListada {
  * procura pelo nome que leu no e-mail — não pela liga mais movimentada. A
  * contagem vai junto para a escolha não ser às cegas, não para ordenar.
  */
-export async function listar(banco: Banco): Promise<LigaListada[]> {
+export async function listar(banco: Banco, ator: Ator): Promise<LigaListada[]> {
   const ligas = await banco.liga.findMany({
     where: { status: 'ativa' },
     orderBy: { nome: 'asc' },
@@ -50,7 +57,7 @@ export async function listar(banco: Banco): Promise<LigaListada[]> {
       nome: true,
       instituicao: true,
       uf: true,
-      _count: { select: { itens: true } },
+      _count: { select: { itens: { where: recorteDaCaixa(ator) } } },
       // Conta só as vivas: nota arquivada não orienta ninguém, e um número que
       // inclui arquivadas prometeria memória que a tela não vai mostrar.
       notas: { where: { arquivadaEm: null }, select: { id: true } },
