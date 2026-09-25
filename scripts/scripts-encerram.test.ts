@@ -5,6 +5,8 @@ import { join } from 'node:path'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { obterPrisma } from '../src/servidor/prisma'
+
 /**
  * Script de linha de comando que usa o banco tem de ENCERRAR sozinho.
  *
@@ -92,6 +94,9 @@ describe('scripts que usam o banco encerram sozinhos', () => {
 
     afterAll(async () => {
       await new Promise<void>((fechado) => servidor.close(() => fechado()))
+      // O script conta a chamada em `UsoDaIa` (teto diário), na base de teste.
+      // Cada arquivo deixa a base como achou (revisão técnica do #122).
+      await obterPrisma().usoDaIa.deleteMany({})
     })
 
     it('termina depois da linha JSON — com o banco no ar, que é o caso que travava', async () => {
