@@ -25,7 +25,7 @@ Trazido pelo dono em capturas de tela da conversa de lá, em 25/09. Resultado co
   2. *"Avisos de log saem no stdout e sujam o `--json`"* — confirmado; corrigido no mesmo PR (com `--json`, todo log vai ao stderr).
   3. *"O 1.5b entrou em laço uma vez e foi cortado pelo teto de 300 s"* — comportamento correto (falha alta de transporte); não é defeito.
 
-**O que ninguém registrou e importa:** a **janela de contexto** usada pelo Ollama. Pela API compatível com OpenAI (`/v1`) não dá para escolhê-la por pedido; vale o que o servidor tiver (variável `OLLAMA_CONTEXT_LENGTH` do serviço, ou o padrão da versão). Se for curta, o Ollama **corta parte do pedido** (só avisa no log do próprio servidor) ou a resposta, e o resultado sai fora do esquema. As 4 falhas fixas do `qwen2.5:3b` são os casos de resposta mais longa. É a primeira coisa a medir.
+**Janela de contexto — medida, e não é o problema.** A conversa anterior de lá (a que montou a máquina) mostra o Ollama com janela **8192** e o maior pedido com ~1.164 tokens. Nesta máquina Windows (Ollama 0.34.4, janela de fábrica 4096) os pedidos têm ~1.060 tokens, sem corte (`truncated = 0` no log). **A causa das falhas do `qwen2.5:3b`**, no log de lá: `itens: invalid_type; pareceInstrucao: invalid_type` — resposta com JSON de outra forma. O remédio conhecido é mandar ao servidor o **esquema JSON** da resposta (forma forçada na geração), em vez de só `json_object`. Vale também para o 1.5b (1 campo inválido e 1 laço em 17). Teste disso: nesta máquina Windows, ver `ESTADO.md`.
 
 ## 3. Direcionamento para a sessão da máquina (texto pronto para o dono colar)
 
@@ -33,18 +33,17 @@ Atualizado em 25/09/2026, depois do `A59`. Sem comandos — a sessão de lá dec
 
 ---
 
-Vamos fechar a medição da IA local do **Sistema-SBP** com duas conferências. Contexto: `docs/maquina-da-ia-local.md` e `docs/DECISOES.md § A59` do repositório — leia antes.
+Vamos fechar a medição da IA local do **Sistema-SBP**. Contexto: `docs/maquina-da-ia-local.md` e `docs/DECISOES.md § A59` do repositório — leia antes.
 
 1. **Atualize a cópia do código para a `main` mais recente.** Ela traz a correção do gabarito sem banco: com `IA_TETO_DIARIO=0` o script não lê mais a contagem, e com `--json` o log vai todo para o stderr. **Não use mais o `avaliar-sem-teto.mts`**: meça sempre com `npm run ia:avaliar -- --json` do repositório.
-2. **Descubra e me diga qual janela de contexto o Ollama está usando** para cada modelo (a versão do Ollama e onde isso aparece). Se não houver nada configurado no serviço, configure a janela para **8192** no serviço de usuário do Ollama, reinicie o serviço e confirme que o valor novo vale.
-3. **Rode o gabarito de novo** para o `qwen2.5:1.5b-instruct-q4_K_M` e para o `qwen2.5:3b`, com a janela nova. Anote a memória usada durante a rodada — a janela maior gasta mais RAM.
-4. **No fim, me escreva:** a janela antes e depois, as notas geral e por dimensão de cada modelo, as falhas (quais casos e a mensagem exata), o tempo por caso e o pico de memória. Diga se as 4 falhas fixas do 3b mudaram.
+2. **Rode o gabarito de novo só para o `qwen2.5:1.5b-instruct-q4_K_M`** (a decisão do dono é trabalhar com ele), com `IA_TETO_DIARIO=0`. Se a versão nova do código trouxer a forma forçada no servidor, diga se as falhas de forma sumiram.
+3. **No fim, me escreva:** a versão do Ollama, a nota geral e por dimensão, as falhas (quais casos e a mensagem exata), o tempo por caso e o pico de memória.
 
 Não exponha nenhuma porta para fora da máquina, não instale o Odysseus, não mude o código do repositório e use só os e-mails sintéticos do gabarito. Só pare e me avise se algo exigir decisão que não é técnica.
 
 ---
 
-**Depois dessa rodada** (a decidir com o resultado na mão): se o 3b parar de falhar com a janela maior, reavaliar o `A59`; se continuar, testar a forma forçada no servidor (esquema JSON no pedido), que é mudança de código no `ia-local.ts` e vem por PR aqui, não por script de lá.
+**A forma forçada no servidor** (esquema JSON no pedido) é mudança de código no `ia-local.ts`: vem por PR aqui, medida primeiro na máquina Windows — nunca por script de lá.
 
 **Quando o repositório voltar a privado**, o tarball deixa de baixar. O caminho certo é um clone com git e uma **chave de implantação só de leitura** do GitHub, criada pelo dono — nunca o token pessoal dele na máquina.
 

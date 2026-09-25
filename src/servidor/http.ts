@@ -7,6 +7,7 @@ import { ambiente } from './ambiente'
 import { PermissaoNegadaError } from './ator'
 import { verificarLimite } from './limite-de-taxa'
 import {
+  DEFEITOS_DO_SISTEMA,
   mensagemDoErro,
   mensagemPersistivel,
   novaCorrelacao,
@@ -56,8 +57,10 @@ function statusDoErro(erro: unknown): number | null {
   if (erro instanceof PermissaoNegadaError) return 403
   if (erro instanceof ZodError) return 400
   if (erro instanceof ErroDominio) {
-    // Conservação violada é defeito do sistema, não erro do usuário.
-    return erro.codigo === 'CONSERVACAO_VIOLADA' ? 500 : 422
+    // Conservação violada é defeito do sistema, não erro do usuário. Lista de
+    // elegíveis inválida também: quem a monta é o servidor, a partir do banco
+    // — e a mensagem dela traz id interno de colaborador (pendência 1).
+    return DEFEITOS_DO_SISTEMA.has(erro.codigo) ? 500 : 422
   }
   return null
 }
