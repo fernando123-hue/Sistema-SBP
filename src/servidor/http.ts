@@ -50,14 +50,18 @@ export function responderErro(mensagem: string, status: number, correlacaoId?: s
   )
 }
 
+const DEFEITOS_DO_SISTEMA: ReadonlySet<string> = new Set(['CONSERVACAO_VIOLADA', 'ELEGIVEIS_INVALIDOS'])
+
 function statusDoErro(erro: unknown): number | null {
   if (erro instanceof SemSessaoError) return 401
   if (erro instanceof SenhaProvisoriaError) return 403
   if (erro instanceof PermissaoNegadaError) return 403
   if (erro instanceof ZodError) return 400
   if (erro instanceof ErroDominio) {
-    // Conservação violada é defeito do sistema, não erro do usuário.
-    return erro.codigo === 'CONSERVACAO_VIOLADA' ? 500 : 422
+    // Conservação violada é defeito do sistema, não erro do usuário. Lista de
+    // elegíveis inválida também: quem a monta é o servidor, a partir do banco
+    // — e a mensagem dela traz id interno de colaborador (pendência 1).
+    return DEFEITOS_DO_SISTEMA.has(erro.codigo) ? 500 : 422
   }
   return null
 }

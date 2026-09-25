@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
-import { ConservacaoVioladaError, ErroDeNegocio } from '../core/erros'
+import { ConservacaoVioladaError, ElegiveisInvalidosError, ErroDeNegocio } from '../core/erros'
 import { FalhaDoAssistente } from '../ports/assistente'
 import { FalhaDeInterpretacao } from '../ports/ia'
 import { PermissaoNegadaError, atorDaSessao } from './ator'
@@ -101,6 +101,20 @@ describe('rota(): falha do servidor não fala', () => {
     })
     expect(evento).not.toBeNull()
     expect(evento?.mensagem ?? '').not.toContain(idDaColega)
+  })
+
+  // A lista de elegíveis é montada pelo servidor a partir do banco
+  // (`carregarElegiveis`): quem usa não escolhe quem entra nela. Se ela chega
+  // inválida ao motor, o defeito é nosso — e a mensagem traz o id interno de
+  // uma colega, que não serve a quem está na tela (pendência 1, 25/09/2026).
+  it('lista de elegíveis inválida vira 500 sem o id da colega', async () => {
+    const idDaColega = 'colaboradora-sintetica-9b21'
+    const resposta = await lancar(new ElegiveisInvalidosError(`colaborador "${idDaColega}" aparece duas vezes`))
+    const corpo = await resposta.json()
+
+    expect(resposta.status).toBe(500)
+    expect(JSON.stringify(corpo)).not.toContain(idDaColega)
+    expect(corpo.correlacaoId).toEqual(expect.any(String))
   })
 
   it('erro inesperado vira 500 genérico, sem a mensagem original', async () => {
