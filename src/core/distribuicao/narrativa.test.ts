@@ -41,6 +41,16 @@ describe('narrarRodada', () => {
     expect(linhas[0]).toBe('Entraram 7 itens de Ligante, com 2 pessoas de plantão.')
   })
 
+  it('fala com a equipe: a média por pessoa sem "cota justa" nem "unidades ponderadas" (N-28)', () => {
+    const linhas = narrarRodada(rodar(7, [['ana', 0], ['bruno', 2]]), 'Ligante', nomeDe)
+
+    expect(linhas).toContain(
+      'A média era 3,5 por pessoa, já contando o peso da categoria — ' +
+        'quem recebeu menos que isso fica na frente para a próxima sobra.',
+    )
+    expect(linhas.join(' ')).not.toMatch(/cota justa|unidades ponderadas/i)
+  })
+
   it('concorda em número: um item, uma pessoa', () => {
     // `1 item` e `1 pessoa de plantão`, não `1 itens`. Texto que erra
     // concordância é lido como rascunho, e relatório lido como rascunho não é

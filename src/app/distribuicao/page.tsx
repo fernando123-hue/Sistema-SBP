@@ -84,8 +84,8 @@ function narrativaDe(resumo: Resumo | null, categoriaCodigo: string): string[] {
 
 const CRITERIO: Record<string, { texto: string; explicacao: string }> = {
   resto_maior: {
-    texto: 'resto maior',
-    explicacao: 'Piso igual para todos; as unidades que sobram vão para quem tem mais crédito.',
+    texto: 'divisão igual',
+    explicacao: 'Todos recebem a mesma quantidade; o que sobra vai para quem recebeu menos até aqui.',
   },
   indivisivel: {
     texto: 'lote inteiro',
@@ -401,9 +401,9 @@ export default function Distribuicao() {
               ? `${confirmado.rodadasGravadas} rodadas registradas. Cada uma é auditável.`
               : previa && previaCalculadaEm
                 ? `Calculada às ${previaCalculadaEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. ` +
-                  'Confirmar recalcula com os dados deste instante, pela mesma função: se entrou e-mail ' +
-                  'ou mudou o plantão desde então, o que for gravado acompanha o agora.'
-                : 'Mesma função e mesmo cálculo da confirmação — que refaz a conta com os dados do instante do clique.'
+                  'Confirmar refaz a conta com os dados deste momento: se chegou e-mail ou mudou o ' +
+                  'plantão desde então, o que for gravado já leva isso em conta.'
+                : 'A prévia faz a mesma conta da confirmação. Ao confirmar, a conta é refeita com os dados do momento do clique.'
           }
           acao={
             <div className="flex gap-2">
@@ -434,13 +434,13 @@ export default function Distribuicao() {
           <div className="mb-3">
             <Aviso>
               <strong>
-                {mostrado.categoriasInvalidas.length} categoria(s) fora desta rodada por cadastro
-                inválido no banco:
+                {mostrado.categoriasInvalidas.length} categoria(s) ficaram fora desta rodada
+                porque o cadastro delas está com problema:
               </strong>{' '}
               {mostrado.categoriasInvalidas
                 .map((categoria) => `${categoria.codigo} — ${categoria.motivo}`)
                 .join(' · ')}
-              . As demais seguem normalmente; corrija o cadastro antes de distribuir estas.
+              . As demais seguem normalmente. Peça a correção do cadastro antes de distribuir estas.
             </Aviso>
           </div>
         ) : null}
@@ -534,7 +534,7 @@ export default function Distribuicao() {
                           <span className="flex items-center gap-3 whitespace-nowrap">
                             <span
                               className="numerico text-xs text-tinta-fraca"
-                              title="Crédito antes → depois. Positivo significa que a pessoa recebeu menos do que a cota justa e leva a próxima sobra."
+                              title="Crédito antes → depois. Positivo: a pessoa recebeu menos que a média e fica na frente para a próxima sobra."
                             >
                               {fatia.creditoAntes.toFixed(2)} → {fatia.creditoDepois.toFixed(2)}
                             </span>
@@ -553,9 +553,9 @@ export default function Distribuicao() {
                       ))}
                     </ul>
                     <p className="numerico mt-2 border-t border-borda pt-2 text-xs text-tinta-fraca">
-                      cota justa {linha.cotaJusta.toFixed(2)} · piso {linha.base} · resto{' '}
-                      {linha.resto} · soma{' '}
-                      {linha.fatias.reduce((soma, fatia) => soma + fatia.quantidade, 0)} ={' '}
+                      média por pessoa {linha.cotaJusta.toFixed(2).replace('.', ',')} · todos recebem ao menos{' '}
+                      {linha.base} · {linha.resto} de sobra · entregues{' '}
+                      {linha.fatias.reduce((soma, fatia) => soma + fatia.quantidade, 0)} de{' '}
                       {linha.quantidade}
                     </p>
                   </>
