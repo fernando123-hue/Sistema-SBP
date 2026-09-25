@@ -1,10 +1,23 @@
 # Estado do projeto — retomada
 
-Última atualização: **24/09/2026, noite — auditoria fechada.** #112 a #116 mesclados: N-39 e N-28 corrigidos; N-26, N-38, N-40 e N-41 reunidos em `DECISOES.md § AT-47`. **Todos os 68 achados têm destino.** Próximo passo: as instruções novas do dono **e a lista única de 16 pendências** (item 4 do primeiro bloco), que ele pediu para não esquecer. Ver o primeiro bloco abaixo.
+Última atualização: **25/09/2026, noite — IA local medida e documento de segurança.** Modelo padrão da máquina Debian: `qwen2.5:1.5b` (`DECISOES.md § A59`, provisório). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Próximo passo: as **20 pendências** (item 4 do bloco de 24/09) e depois as instruções novas. Ver o primeiro bloco abaixo.
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 24/09/2026, noite — AUDITORIA FECHADA (este bloco vence os de baixo; o `git log` vence este)
+> ### 25/09/2026, noite — IA LOCAL MEDIDA; DOCUMENTO DE SEGURANÇA (este bloco vence os de baixo; o `git log` vence este)
+>
+> **1. Onde está:** `main` com o PR "gabarito sem banco" e este PR de docs. Dependabot #78 a #81 seguem sem avaliar. Nada rodando. MySQL desta máquina em `127.0.0.1:3307`.
+>
+> **2. Feito nesta sessão:**
+> - **Documento de segurança para o parceiro de TI do dono** (PDF de 9 páginas + roteiro da conversa de 4, fora do repositório, entregues ao dono). Pontos frágeis declarados nele: repositório público, nenhuma revisão humana, produção inexistente, confiança da IA autodeclarada sem conferência contra o texto. Se o dono pedir, a fonte HTML pode vir para `docs/`.
+> - **Medição da IA local lida e registrada** (`DECISOES.md § A59`, `maquina-da-ia-local.md` seção 2). A sessão de lá foi lida por capturas de tela: ela não aparece para esta máquina (Remote Control só aceita mensagem). Uma mensagem pedindo relatório foi enviada a ela em 25/09 — se a resposta chegar, conferir contra o `A59`.
+> - **PR "gabarito sem banco"** (nível 3): com `IA_TETO_DIARIO=0` a contagem do teto não é lida (sem banco custava ~10 s por chamada); com `--json`, todo log vai ao stderr (antes `aviso`/`info` sujavam a linha JSON). Medido aqui: 17 de 17, uma linha JSON, 193 s contra ~340 s.
+>
+> **3. PRÓXIMO PASSO:** as pendências do item 4 do bloco de 24/09 (agora 20, com as quatro novas da parte D), na ordem de lá; a 20 depende do dono. Depois, as instruções novas.
+>
+> **4. Decisões abertas com o dono:** as do bloco de 24/09, mais: critério da pendência 17; voltar o repositório a privado (20); se o Odysseus fica de fora de vez (recomendação da sessão de lá, `A59`).
+>
+> ### 24/09/2026, noite — AUDITORIA FECHADA (anterior; a lista de pendências do item 4 continua valendo — é a lista única)
 >
 > **1. Onde está:** `main` com #112 a #116 mesclados. **Nenhum PR nosso aberto** (só os do dependabot, #78 a #81, não avaliados). Nada rodando: nenhum agente, `sbp-local` desligado. MySQL desta máquina em `127.0.0.1:3307`.
 >
@@ -39,6 +52,12 @@
 > 14. O teste do logotipo (`componentes/navegacao.test.ts`) acha o logotipo pela ordem no HTML; dar âncora própria.
 > 15. Não há teste de componente com clique (o vitest roda só `*.test.ts`; `react-dom/server` serve para marcação, não para interação).
 > 16. **Servidor de telas com cache velho:** duas vezes em 24/09 o `sbp-local` subiu com **toda rota aninhada de `/api` em 404** (a página 404 do Next, não a da rota). Contorno: parar, `rm -rf .next`, subir de novo. Causa não investigada.
+>
+> *D. Novas em 25/09 (IA local e segurança):*
+> 17. **Conferir por código que cada valor extraído pela IA aparece no texto do e-mail** antes de aprovar o item direto; o que não aparecer vai para a Revisão. Hoje a nota de confiança é a própria IA que dá, e o modelo local escolhido tem literalidade 0,69 (`A59`). Proposto no documento de segurança de 25/09 — decidir o critério (igualdade exata? normalizada?) antes de codar.
+> 18. **Forma forçada no servidor local** (esquema JSON no pedido do `ia-local.ts`, em vez de só `json_object`) — só depois da rodada da janela de contexto (`maquina-da-ia-local.md`, seção 3), e medida pelo gabarito.
+> 19. **Janela de contexto do Ollama** não registrada; texto para a sessão de lá pronto em `maquina-da-ia-local.md`, seção 3. Dono cola quando a máquina estiver ligada.
+> 20. **Repositório público** (`gh repo view` em 25/09: `PUBLIC`), com nomes reais da equipe em `CONTEXTO.md` e `ENGENHARIA_REVERSA…`. Dono: voltar a privado. Depois: chave de implantação só de leitura para a máquina Debian (a cópia de lá é tarball), e trocar os nomes reais por fictícios nesses dois arquivos (PR de docs).
 >
 > *Decidido de propósito — não é pendência:* o gestor vê "ausente hoje" na Minha fila (tela de quem executa); payload de item ilegível trava a revisão daquele item com 500 e o id na mensagem do log; login, troca de senha e desativação esperam milissegundos por uma confirmação de distribuição em curso; `A34` (e-mails suspeitos sem item) é a fase 4.
 >

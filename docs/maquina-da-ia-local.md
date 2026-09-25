@@ -1,46 +1,52 @@
 # Máquina da IA local — estado, direção e como medir
 
-Registro de 24/09/2026. Tudo o que até aqui só existia em conversa sobre a máquina que o dono conseguiu para a IA local (`DECISOES.md § A56 (d)`). Quem abrir uma sessão nova sem memória nenhuma deve conseguir continuar só com este arquivo e com `ESTADO.md`.
+Registro de 24/09/2026, atualizado em 25/09/2026 com a medição (`DECISOES.md § A59`). Tudo o que até aqui só existia em conversa sobre a máquina que o dono conseguiu para a IA local (`DECISOES.md § A56 (d)`). Quem abrir uma sessão nova sem memória nenhuma deve conseguir continuar só com este arquivo e com `ESTADO.md`.
 
 ## 1. O que é a máquina
 
 - **Debian**, kernel `6.1.187-1` (provavelmente Debian 12). Acesso **só por terminal**, remoto; não há navegador nela.
 - Pela decisão registrada em `A56 (d)`: fraca, **cerca de 8 GB de RAM**, sem GPU garantida. Só cabe modelo pequeno (1 a 4 bilhões de parâmetros, quantizado), em CPU.
 - **O Claude Code foi instalado nela** pelo dono, com login pelo fluxo manual (URL aberta em outro aparelho). Ali roda uma sessão própria, que o dono acompanha pelo app via Remote Control.
-- **As sessões na nuvem (como a que escreveu este arquivo) não alcançam essa máquina.** São ambientes separados. A ponte é o dono levando texto de uma conversa para a outra.
+- **As sessões de outras máquinas não enxergam o terminal nem a conversa de lá.** A ponte é o dono levando texto (ou capturas de tela) de uma conversa para a outra. Desde 25/09 a sessão da máquina Windows também consegue mandar uma mensagem para a de lá pelo Remote Control, quando ela está ligada — mas não lê o histórico.
 
 > **Regra do dono (23/09/2026): o link do Remote Control nunca é escrito em lugar nenhum** — nem neste repositório, nem em resposta, nem em prompt. Se ele aparecer na conversa, não repita. Também não entregue comandos de terminal ao dono para a máquina: escreva **direcionamento em linguagem natural** para a sessão de lá, que tem acesso real e escolhe os comandos sozinha.
 
-## 2. O que a sessão de lá já fez (até 23/09, noite)
+## 2. O que a sessão de lá fez (até 25/09/2026)
 
-Segundo o que o dono trouxe daquela conversa:
+Trazido pelo dono em capturas de tela da conversa de lá, em 25/09. Resultado completo e decisão em `DECISOES.md § A59`.
 
-- Ollama instalado e servindo em `127.0.0.1:11434` (API compatível com OpenAI em `/v1`).
-- Modelos pequenos baixados (candidatos sugeridos: `qwen2.5:3b`, `llama3.2:3b`, `gemma2:2b`; menores se a RAM apertar: `qwen2.5:1.5b`, `llama3.2:1b`). **Não está registrado aqui quais foram de fato baixados** — pergunte ou peça à sessão de lá.
-- Sistema-SBP clonado e o gabarito (`npm run ia:avaliar`) rodando contra o Ollama.
-- Parou no meio de *"repetindo 6 casos que falharam"*, de 17, porque **a máquina ficou inalcançável** — não por erro de lógica.
+- **Hardware medido:** Intel i5-3330 (4 núcleos, 3,0 GHz, de 2012, **sem AVX2**), 7,6 GB de RAM (~6 livres), 428 GB de disco, sem GPU utilizável. Debian 12, **sem `sudo`** — tudo foi instalado em `~/.local` (Node 24.21.0 e Ollama).
+- **Servidor:** Ollama como serviço de usuário `systemd`, com *linger* (sobe no boot sem ninguém entrar), só em `127.0.0.1:11434`; acesso pelo IP da rede local recusado (conferido lá). Modelo fica carregado por 1 h depois da última chamada.
+- **Modelos baixados e medidos:** `qwen2.5:1.5b-instruct-q4_K_M`, `qwen2.5:3b`, `llama3.2:3b`. Notas no `A59`. **Modelo padrão escolhido pelo dono: o 1.5b**, gravado como `IA_MODELO` no `.env` de lá (com `IA_ADAPTER="local"` e `IA_LOCAL_URL="http://127.0.0.1:11434/v1"`). Teste de ponta a ponta pela API: respondeu (16 s com o modelo frio).
+- **Odysseus:** não instalado (era opcional; sem ganho para o SBP).
+- **Cópia do código:** `/home/sbp/Sistema-SBP`, baixada como **tarball**, sem git — só funcionou porque o repositório estava público. Scripts próprios de lá em `Sistema-SBP/avaliacao-local/`, fora do repositório (entre eles `avaliar-sem-teto.mts`, que pulava o controle de consumo).
+- **Três achados sobre o gabarito**, conferidos aqui em 25/09 contra a `main`:
+  1. *"`ia:avaliar` não roda sem banco"* — na `main` atual ele roda (o #86 já tratava), mas cada chamada esperava ~20 s pelo banco (10 s para contar, 10 s para registrar) e gravava dois erros. Com `IA_TETO_DIARIO=0` a contagem deixou de ser lida (PR "gabarito sem banco"); o registro de uso continua tentando e custa ~10 s por chamada sem banco — aceitável contra ~90 s do modelo. **O `avaliar-sem-teto.mts` deixa de ser necessário**; usar o script do repositório, para ninguém medir com código que não está versionado.
+  2. *"Avisos de log saem no stdout e sujam o `--json`"* — confirmado; corrigido no mesmo PR (com `--json`, todo log vai ao stderr).
+  3. *"O 1.5b entrou em laço uma vez e foi cortado pelo teto de 300 s"* — comportamento correto (falha alta de transporte); não é defeito.
 
-**Aquelas 6 falhas não servem para escolher modelo.** O clone de lá era anterior ao PR #86: sem MySQL de pé, a leitura da contagem do teto diário derrubava a chamada (`DECISOES.md § AT-42`). Reproduzido aqui: 17 falhas de 17 sem banco, 0 de 17 com o #86. A rodada tem de ser refeita com a `main` atual.
+**O que ninguém registrou e importa:** a **janela de contexto** usada pelo Ollama. Pela API compatível com OpenAI (`/v1`) não dá para escolhê-la por pedido; vale o que o servidor tiver (variável `OLLAMA_CONTEXT_LENGTH` do serviço, ou o padrão da versão). Se for curta, o Ollama **corta parte do pedido** (só avisa no log do próprio servidor) ou a resposta, e o resultado sai fora do esquema. As 4 falhas fixas do `qwen2.5:3b` são os casos de resposta mais longa. É a primeira coisa a medir.
 
 ## 3. Direcionamento para a sessão da máquina (texto pronto para o dono colar)
 
-Atualizado depois do #86. Sem comandos — a sessão de lá decide como fazer.
+Atualizado em 25/09/2026, depois do `A59`. Sem comandos — a sessão de lá decide como fazer. **Só depois de o PR "gabarito sem banco" estar mesclado.**
 
 ---
 
-Vamos retomar a avaliação do modelo de IA local para o **Sistema-SBP** (repositório público `fernando123-hue/Sistema-SBP`). O contexto completo está em `docs/maquina-da-ia-local.md` e em `docs/DECISOES.md § A56` e `§ AT-42` desse repositório — leia antes.
+Vamos fechar a medição da IA local do **Sistema-SBP** com duas conferências. Contexto: `docs/maquina-da-ia-local.md` e `docs/DECISOES.md § A59` do repositório — leia antes.
 
-1. **Atualize o clone do Sistema-SBP** para a `main` mais recente e reinstale as dependências. Isso é obrigatório: a rodada anterior foi feita antes de uma correção (PR #86) que mudou o resultado — sem ela, a falta de banco de dados derrubava as chamadas de IA e parecia culpa do modelo.
-2. **Confira que o servidor de modelo continua de pé só em loopback** (`127.0.0.1`), e liste os modelos baixados.
-3. **Rode o gabarito (`npm run ia:avaliar -- --json`) contra cada modelo**, um de cada vez, com `IA_ADAPTER=local`, `IA_LOCAL_URL` apontando para a raiz da API compatível com OpenAI do servidor (no Ollama, termina em `/v1`) e `IA_MODELO` com o nome exato do modelo. Não precisa montar banco de dados: sem banco, o teto diário fica sem valer e o script segue. Use só os e-mails sintéticos do próprio gabarito.
-4. **Se ainda houver falhas, investigue a causa antes de culpar o modelo.** Suspeita principal, ainda não verificada: o prompt de sistema do interpretador tem cerca de 9,6 mil caracteres mais o esquema JSON, e servidores locais costumam vir com janela de contexto curta (às vezes 4096 tokens). Truncamento aparece como "resposta truncada". Se for isso, aumente a janela de contexto no servidor e rode de novo — e diga qual valor usou.
-5. **No fim, escreva um resumo em português:** hardware medido (CPU, núcleos, RAM, disco, GPU), modelos testados, nota geral e por dimensão de cada um, tempo aproximado por caso, janela de contexto usada, qual recomenda e por quê, e qualquer erro relevante com a mensagem exata. Vou levar esse resumo para a conversa onde o projeto é desenvolvido.
+1. **Atualize a cópia do código para a `main` mais recente.** Ela traz a correção do gabarito sem banco: com `IA_TETO_DIARIO=0` o script não lê mais a contagem, e com `--json` o log vai todo para o stderr. **Não use mais o `avaliar-sem-teto.mts`**: meça sempre com `npm run ia:avaliar -- --json` do repositório.
+2. **Descubra e me diga qual janela de contexto o Ollama está usando** para cada modelo (a versão do Ollama e onde isso aparece). Se não houver nada configurado no serviço, configure a janela para **8192** no serviço de usuário do Ollama, reinicie o serviço e confirme que o valor novo vale.
+3. **Rode o gabarito de novo** para o `qwen2.5:1.5b-instruct-q4_K_M` e para o `qwen2.5:3b`, com a janela nova. Anote a memória usada durante a rodada — a janela maior gasta mais RAM.
+4. **No fim, me escreva:** a janela antes e depois, as notas geral e por dimensão de cada modelo, as falhas (quais casos e a mensagem exata), o tempo por caso e o pico de memória. Diga se as 4 falhas fixas do 3b mudaram.
 
-Pode decidir os comandos sozinho. Só pare e me avise se algo exigir decisão que não é técnica (por exemplo, a máquina não aguentar nem o menor modelo). Nunca exponha nenhuma porta para fora da máquina.
-
-**Opcional, só se sobrar tempo:** o Odysseus (`odysseus-dev/odysseus`, licença AGPL-3.0), seguindo o guia oficial de instalação nativa em Linux (`website/setup.md` do repositório dele), só em loopback, com `AUTH_ENABLED` e `LOCALHOST_BYPASS` nos padrões seguros, sem acesso ao socket do Docker, e sem copiar nenhum código dele para outro projeto.
+Não exponha nenhuma porta para fora da máquina, não instale o Odysseus, não mude o código do repositório e use só os e-mails sintéticos do gabarito. Só pare e me avise se algo exigir decisão que não é técnica.
 
 ---
+
+**Depois dessa rodada** (a decidir com o resultado na mão): se o 3b parar de falhar com a janela maior, reavaliar o `A59`; se continuar, testar a forma forçada no servidor (esquema JSON no pedido), que é mudança de código no `ia-local.ts` e vem por PR aqui, não por script de lá.
+
+**Quando o repositório voltar a privado**, o tarball deixa de baixar. O caminho certo é um clone com git e uma **chave de implantação só de leitura** do GitHub, criada pelo dono — nunca o token pessoal dele na máquina.
 
 ## 4. O que se sabe do Odysseus (lido no repositório dele em 23/09)
 
@@ -84,6 +90,6 @@ Com ele de pé: `IA_ADAPTER=local`, `IA_LOCAL_URL=http://127.0.0.1:11434` (o fal
 
 ## 6. Depois da medição
 
-1. Registrar em `DECISOES.md § A56` o modelo escolhido, com as notas, o hardware e a janela de contexto.
+1. ~~Registrar o modelo escolhido~~ — feito em `DECISOES.md § A59` (25/09/2026), **sem a janela de contexto**, que falta medir (seção 3).
 2. **C-05** (máscara de CPF de `A52`) depende desta medição: medir com o gabarito antes e depois da máscara.
 3. `IA_PARA_DADO_REAL.local` continua `false` até decisão do dono depois do gabarito (`A56 (e)`).
