@@ -12,6 +12,7 @@
 > - **Documento de segurança para o parceiro de TI do dono** (PDF de 9 páginas + roteiro da conversa de 4, fora do repositório, entregues ao dono). Pontos frágeis declarados nele: repositório público, nenhuma revisão humana, produção inexistente, confiança da IA autodeclarada sem conferência contra o texto. Se o dono pedir, a fonte HTML pode vir para `docs/`.
 > - **Medição da IA local lida e registrada** (`DECISOES.md § A59`, `maquina-da-ia-local.md` seção 2). A sessão de lá foi lida por capturas de tela: ela não aparece para esta máquina (Remote Control só aceita mensagem). Uma mensagem pedindo relatório foi enviada a ela em 25/09 — se a resposta chegar, conferir contra o `A59`.
 > - **PR "gabarito sem banco"** (nível 3): com `IA_TETO_DIARIO=0` a contagem do teto não é lida (sem banco custava ~10 s por chamada); com `--json`, todo log vai ao stderr (antes `aviso`/`info` sujavam a linha JSON). Medido aqui: 17 de 17, uma linha JSON, 193 s contra ~340 s.
+> - **Depois (25/09, noite):** as duas conversas da máquina Debian lidas inteiras no navegador desta máquina (o dono entrou no claude.ai no painel). Janela de contexto descartada como causa; causa real das falhas de forma registrada no `A59`. **Decisão do dono `A60`: só computador, sem versão de celular.** O dono não quer avaliar outros modelos agora: trabalhar com o `qwen2.5:1.5b` e fazê-lo dar certo. **Ollama 0.34.4 instalado nesta máquina Windows** (winget, pacote oficial, hash conferido; só `127.0.0.1:11434`; GTX 1050 Ti, 100% na GPU), só com o `qwen2.5:1.5b-instruct-q4_K_M`.
 >
 > **3. PRÓXIMO PASSO:** as pendências do item 4 do bloco de 24/09 (agora 20, com as quatro novas da parte D), na ordem de lá; a 20 depende do dono. Depois, as instruções novas.
 >
@@ -33,7 +34,7 @@
 >
 > *A. O que a equipe lê na tela (as três que o dono viu no fim da sessão de 24/09 vêm primeiro):*
 > 1. **Código interno numa mensagem de erro da distribuição** — `ElegiveisInvalidosError` (`core/distribuicao/motor.ts`, "colaborador … aparece duas vezes") interpola `colaboradorId` e chega à tela como 422. Hoje não acontece (a lista vem do banco, sem duplicata), mas se acontecer é defeito: provavelmente virar `Error` (500 com correlação, id no log), como o item "sem lote" no #114.
-> 2. **Explicação que só aparece passando o mouse** — o selo do critério e a dica do crédito na Distribuição, e a dica do crédito no Painel, moram só em `title`: não chegam a toque, teclado nem leitor de tela (revisão do #115). Mostrar como texto visível ou `aria-describedby`.
+> 2. **Explicação que só aparece passando o mouse** *(desde o `A60` o sistema é só para computador: o motivo "toque" sai, teclado e leitor de tela ficam)* — o selo do critério e a dica do crédito na Distribuição, e a dica do crédito no Painel, moram só em `title`: não chegam a toque, teclado nem leitor de tela (revisão do #115). Mostrar como texto visível ou `aria-describedby`.
 > 3. **"Falha na requisição (404)."** — mensagem genérica do cliente quando a resposta não traz erro legível (`componentes/api.ts:110`). Trocar por frase de gente ("Não foi possível falar com o sistema. Atualize a tela e tente de novo.") mantendo o status para o log.
 > 4. Números da Distribuição: vírgula só na média; o crédito ("0.00 → 1.00") e a dica do Painel seguem com ponto.
 > 5. Troca de rótulo "Concluir" → "Confirmar: concluir" (Minha fila) e o mesmo no Descartar da Revisão, sem anúncio a leitor de tela (`aria-live`) — tratar as duas telas juntas.
@@ -55,8 +56,8 @@
 >
 > *D. Novas em 25/09 (IA local e segurança):*
 > 17. **Conferir por código que cada valor extraído pela IA aparece no texto do e-mail** antes de aprovar o item direto; o que não aparecer vai para a Revisão. Hoje a nota de confiança é a própria IA que dá, e o modelo local escolhido tem literalidade 0,69 (`A59`). Proposto no documento de segurança de 25/09 — decidir o critério (igualdade exata? normalizada?) antes de codar.
-> 18. **Forma forçada no servidor local** (esquema JSON no pedido do `ia-local.ts`, em vez de só `json_object`) — só depois da rodada da janela de contexto (`maquina-da-ia-local.md`, seção 3), e medida pelo gabarito.
-> 19. **Janela de contexto do Ollama** não registrada; texto para a sessão de lá pronto em `maquina-da-ia-local.md`, seção 3. Dono cola quando a máquina estiver ligada.
+> 18. **Forma forçada no servidor local** (esquema JSON no pedido do `ia-local.ts`, em vez de só `json_object`) — **é a correção da causa real das falhas de forma** (`A59`). Medir no Ollama desta máquina Windows (instalado em 25/09 com o dono de acordo, só o `qwen2.5:1.5b`, só em `127.0.0.1`) antes e depois, pelo gabarito.
+> 19. ~~Janela de contexto do Ollama não registrada~~ — **medida e descartada** (25/09, noite): 8192 na máquina Debian, 4096 aqui, pedidos de ~1,1 mil tokens, nenhum corte (`A59`).
 > 20. **Repositório público** (`gh repo view` em 25/09: `PUBLIC`), com nomes reais da equipe em `CONTEXTO.md` e `ENGENHARIA_REVERSA…`. Dono: voltar a privado. Depois: chave de implantação só de leitura para a máquina Debian (a cópia de lá é tarball), e trocar os nomes reais por fictícios nesses dois arquivos (PR de docs).
 >
 > *Decidido de propósito — não é pendência:* o gestor vê "ausente hoje" na Minha fila (tela de quem executa); payload de item ilegível trava a revisão daquele item com 500 e o id na mensagem do log; login, troca de senha e desativação esperam milissegundos por uma confirmação de distribuição em curso; `A34` (e-mails suspeitos sem item) é a fase 4.

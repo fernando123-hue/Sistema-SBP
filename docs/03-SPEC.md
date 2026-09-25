@@ -354,7 +354,7 @@ GET    /api/diagnostico/origem        confere o tratamento de proxy
 | 1 | **Caixa de Entrada** | Itens por categoria, badge de confiança, agrupamento por e-mail de origem |
 | 2 | **Revisão** | Sugestão da IA + evidência + campos editáveis + ajuste do desdobramento |
 | 3 | **Distribuição do Dia** | Escala, prévia (`entrada 47 → Ana 24 · Bia 23`), confirmação |
-| 4 | **Minha Fila** | Itens reais. Concluir · devolver · pedir ajuda. **Mobile-first, cards** |
+| 4 | **Minha Fila** | Itens reais. Concluir · devolver · pedir ajuda. ~~**Mobile-first, cards**~~ (vencido pelo `A60`: só computador) |
 | 5 | **Painel** | Recebido/distribuído/realizado/pendente. Zero campo digitável |
 | 6 | **Auditoria da Rodada** | Entrada, elegíveis, ordem, créditos antes/depois, versão do algoritmo |
 | 7 | **Entrada** (`/entrar`) | E-mail e senha. Mensagem única para conta inexistente e senha errada, e piso de tempo igual nos dois — a diferença de relógio entregava a lista de contas |
