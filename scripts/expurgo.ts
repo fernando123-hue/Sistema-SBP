@@ -17,7 +17,7 @@
 import { criarArmazenamentoPort } from '../src/adapters/fabrica'
 import type { ArmazenamentoPort } from '../src/ports/armazenamento'
 import { rodarLimpezaDiaria } from '../src/servicos/rotinas'
-import { obterPrisma } from '../src/servidor/prisma'
+import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
 
 const POR_QUE_NAO_RODOU = {
   ja_concluida: 'a limpeza de hoje já foi feita.',
@@ -69,4 +69,4 @@ async function principal(): Promise<void> {
 principal().catch((erro: unknown) => {
   process.stderr.write(`${erro instanceof Error ? erro.message : String(erro)}\n`)
   process.exitCode = 1
-})
+}).finally(encerrarBanco)

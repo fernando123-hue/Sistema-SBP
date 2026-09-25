@@ -22,6 +22,7 @@ import { DIMENSOES } from '../src/core/avaliacao/gabarito'
 import { ambiente } from '../src/servidor/ambiente'
 import { mandarTodoLogAoStderr } from '../src/servidor/observabilidade'
 import { avaliarInterpretacao, type ResultadoDaAvaliacao } from '../src/servicos/avaliacao-da-ia'
+import { encerrarBanco } from '../src/servidor/prisma'
 
 function linha(texto = ''): void {
   process.stdout.write(`${texto}\n`)
@@ -90,4 +91,4 @@ async function principal(): Promise<void> {
 principal().catch((erro: unknown) => {
   process.stderr.write(`${erro instanceof Error ? erro.message : String(erro)}\n`)
   process.exitCode = 1
-})
+}).finally(encerrarBanco)

@@ -19,7 +19,7 @@
  */
 
 import { ambiente } from '../src/servidor/ambiente'
-import { obterPrisma } from '../src/servidor/prisma'
+import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
 import { privilegiosQueAmeacamATrilha, TABELAS_DA_TRILHA } from '../src/servidor/privilegios'
 
 function escrever(texto: string): void {
@@ -73,4 +73,4 @@ async function principal(): Promise<void> {
 principal().catch((erro: unknown) => {
   process.stderr.write(`${erro instanceof Error ? erro.message : String(erro)}\n`)
   process.exitCode = 1
-})
+}).finally(encerrarBanco)

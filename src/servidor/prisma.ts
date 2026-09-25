@@ -27,6 +27,28 @@ export function obterPrisma(): PrismaClient {
   return instancia
 }
 
+/**
+ * Fecha a conexão — SÓ para scripts de linha de comando, no fim.
+ *
+ * A conexão aberta segura o processo: sem isto, todo script que tocava o banco
+ * imprimia o resultado e ficava vivo para sempre (medido em 25/09/2026 — a
+ * rotina agendada do Gemini deixou dois processos pendurados por horas, e a
+ * limpeza diária agendada num servidor deixaria um por dia). O servidor web
+ * nunca chama: lá o cliente vive o processo inteiro.
+ *
+ * Falha ao fechar não muda o resultado do script: vai ao stderr, alto, e o
+ * código de saída continua o que o script decidiu.
+ */
+export async function encerrarBanco(): Promise<void> {
+  const aberta = instancia
+  instancia = undefined
+  try {
+    await aberta?.$disconnect()
+  } catch (erro) {
+    process.stderr.write(`não foi possível fechar a conexão com o banco: ${erro instanceof Error ? erro.message : String(erro)}\n`)
+  }
+}
+
 export type Banco = PrismaClient
 /** Tipo do handle dentro de `prisma.$transaction`. */
 export type Transacao = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]

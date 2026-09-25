@@ -1,7 +1,7 @@
 import { CATEGORIAS_CADASTRO, limiarConfiancaSemente } from '../src/core/config'
 import { deslocarDias, hojeIso, sequenciaDeDatas } from '../src/core/util/datas'
 import { gerarHash, sortearSenhaProvisoria } from '../src/servidor/credenciais'
-import { obterPrisma } from '../src/servidor/prisma'
+import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
 
 /**
  * Seed.
@@ -224,4 +224,4 @@ async function principal(): Promise<void> {
 principal().catch((erro: unknown) => {
   process.stderr.write(`${erro instanceof Error ? erro.message : String(erro)}\n`)
   process.exitCode = 1
-})
+}).finally(encerrarBanco)

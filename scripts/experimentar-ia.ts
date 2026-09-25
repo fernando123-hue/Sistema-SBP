@@ -23,6 +23,7 @@ import { criarAiPort } from '../src/adapters/fabrica'
 import { EmailBrutoSchema, type EmailBruto } from '../src/core/esquemas'
 import { ambiente } from '../src/servidor/ambiente'
 import type { AiPort } from '../src/ports/ia'
+import { encerrarBanco } from '../src/servidor/prisma'
 
 const CASOS: { rotulo: string; email: EmailBruto }[] = [
   {
@@ -154,4 +155,4 @@ async function principal(): Promise<void> {
 principal().catch((erro: unknown) => {
   process.stderr.write(`${erro instanceof Error ? erro.message : String(erro)}\n`)
   process.exitCode = 1
-})
+}).finally(encerrarBanco)

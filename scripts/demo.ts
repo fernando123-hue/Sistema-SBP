@@ -17,7 +17,7 @@ import { IaMock } from '../src/adapters/ia-mock'
 import { IngestaoMock } from '../src/adapters/ingestao-mock'
 import { sequenciaDeDatas } from '../src/core/util/datas'
 import { atorDaSessao } from '../src/servidor/ator'
-import { obterPrisma } from '../src/servidor/prisma'
+import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
 import { confirmar, previa } from '../src/servicos/distribuicao'
 import { concluir, minhaFila } from '../src/servicos/fila'
 import { sincronizar } from '../src/servicos/ingestao'
@@ -206,4 +206,4 @@ async function principal(): Promise<void> {
 principal().catch((erro: unknown) => {
   process.stderr.write(`${erro instanceof Error ? erro.stack : String(erro)}\n`)
   process.exitCode = 1
-})
+}).finally(encerrarBanco)
