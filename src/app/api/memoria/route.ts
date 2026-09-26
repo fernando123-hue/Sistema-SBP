@@ -1,5 +1,5 @@
-import { porCorrelacao, porEntidade } from '../../../servicos/memoria'
-import { responder, responderErro, rota } from '../../../servidor/http'
+import { CONSULTAS_DA_MEMORIA_POR_MINUTO, porCorrelacao, porEntidade } from '../../../servicos/memoria'
+import { limitar, responder, responderErro, rota } from '../../../servidor/http'
 import { obterPrisma } from '../../../servidor/prisma'
 import { exigirAtor } from '../../../servidor/sessao'
 
@@ -26,6 +26,12 @@ import { exigirAtor } from '../../../servidor/sessao'
 export async function GET(requisicao: Request): Promise<Response> {
   return rota(async () => {
     const ator = await exigirAtor()
+
+    // Antes de ler: as duas tabelas da trilha só crescem, e um laço de sessão
+    // virava varredura sustentada (pendência 9).
+    const recusa = limitar(`memoria:${ator.colaboradorId}`, CONSULTAS_DA_MEMORIA_POR_MINUTO, 60)
+    if (recusa) return recusa
+
     const url = new URL(requisicao.url)
     const banco = obterPrisma()
 

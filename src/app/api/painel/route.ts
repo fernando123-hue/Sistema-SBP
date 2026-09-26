@@ -1,12 +1,13 @@
 import { DataIsoSchema } from '../../../core/esquemas'
 import {
+  CONSULTAS_DO_PAINEL_POR_MINUTO,
   conferirConservacao,
   periodoPadrao,
   porCategoria,
   porPessoa,
   type Periodo,
 } from '../../../servicos/painel'
-import { responder, rota } from '../../../servidor/http'
+import { limitar, responder, rota } from '../../../servidor/http'
 import { obterPrisma } from '../../../servidor/prisma'
 import { exigirAtor } from '../../../servidor/sessao'
 
@@ -25,6 +26,12 @@ export async function GET(requisicao: Request): Promise<Response> {
     // de todos. O recorte é do serviço — filtrar na tela deixaria os números da
     // equipe inteira dentro da resposta.
     const ator = await exigirAtor()
+
+    // Antes de ler: cada pedido soma o livro-razão inteiro (conservação), e sem
+    // limite qualquer sessão o multiplicava em paralelo (pendência 9, C-21).
+    const recusa = limitar(`painel:${ator.colaboradorId}`, CONSULTAS_DO_PAINEL_POR_MINUTO, 60)
+    if (recusa) return recusa
+
     const banco = obterPrisma()
 
     const periodo = interpretarPeriodo(new URL(requisicao.url).searchParams)

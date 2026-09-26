@@ -6,6 +6,16 @@ import { exigirPapel, type Ator } from '../servidor/ator'
 import type { Banco } from '../servidor/prisma'
 
 /**
+ * Quantas vezes uma pessoa consulta a memória operacional por minuto
+ * (pendência 9).
+ *
+ * Nenhuma tela a chama: é a porta de quem investiga um caso, e cada consulta
+ * lê duas tabelas que só crescem. Trinta por minuto é mais do que alguém
+ * investigando à mão faz; um laço, não.
+ */
+export const CONSULTAS_DA_MEMORIA_POR_MINUTO = 30
+
+/**
  * Memória consultável.
  *
  * O sistema sempre teve memória e nunca teve como lê-la. `LogAuditoria` e

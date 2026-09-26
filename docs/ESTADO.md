@@ -43,7 +43,7 @@
 >
 > *B. Segurança e robustez:*
 > 8. Sondagem **horizontal** invisível: `concluir()` em `servicos/fila.ts` recusa quem não é o responsável com 422, sem rastro (revisão de segurança do #97).
-> 9. `/api/painel` e `/api/memoria` sem limite por pessoa (revisão do #96).
+> 9. ~~`/api/painel` e `/api/memoria` sem limite por pessoa~~ — **resolvida no #131.** 30 consultas por pessoa por minuto em cada uma (constantes em `servicos/painel.ts` e `servicos/memoria.ts`), mesmo desenho da qualidade (C-21).
 > 10. Erro de *transporte* da IA grava a mensagem crua do fornecedor no log — conferir se algum SDK ecoa o pedido (revisão de segurança do #90).
 > 11. Alerta por volume das recusas de entrada (`AT-45`); índice `(situacao, etapa, referencia)` em `EventoProcessamento` quando o volume justificar; rotação da sessão com duas chaves (`SESSAO_SECRET_ANTERIOR`, C-25).
 > 12. Dependabot #78 a #81 (`@anthropic-ai/sdk`, `react-dom`, `@google/genai`, `react`) abertos e não avaliados — cada um é nível 3, CI lido check a check.
