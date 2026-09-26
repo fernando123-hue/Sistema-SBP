@@ -12,8 +12,9 @@ import { InterpretadorEstruturado } from './ia-estruturada'
  * de retenção (invariante 11). Pendência 10 (revisão de segurança do #90).
  *
  * Conferido nos SDKs instalados: nenhum deles ecoa o PEDIDO. A Anthropic monta
- * `"<status> <JSON do erro>"`, o Gemini `"got status: … <JSON do erro>"` — o
- * texto é o corpo de erro que a própria API devolveu. O risco que sobra é a
+ * `"<status> <JSON do erro>"`, o Gemini (fora do streaming) só o JSON do corpo
+ * de erro — o texto é o que a própria API devolveu, e vai cru e sem limite
+ * quando não é JSON (página de proxy). O risco que sobra é a
  * API citar um trecho do conteúdo nesse corpo (erro de sintaxe "perto de …").
  * Por isso a mensagem vai ao log curta e com e-mail e número de documento
  * mascarados, mantendo o que a operação precisa ler: status e código.
@@ -45,6 +46,27 @@ describe('resumoDeTransporte', () => {
 
   it('corta mensagem longa', () => {
     expect(resumoDeTransporte('x'.repeat(5000)).length).toBeLessThan(400)
+  })
+
+  // O que as revisões do #132 mediram passando inteiro.
+  it('pega travessão, espaço duplo, CRM curto e e-mail escapado em URL', () => {
+    expect(resumoDeTransporte('tel 91234\u20135678')).not.toMatch(/\d{4}/)
+    expect(resumoDeTransporte('cpf 123  456  789  09')).not.toMatch(/\d{3}/)
+    expect(resumoDeTransporte('CRM-SP 123456 e RQE 4321')).toBe('CRM-SP [número] e RQE [número]')
+    expect(resumoDeTransporte('de associada%40exemplo.test')).toBe('de [e-mail]')
+  })
+
+  it('quebra de linha separa o status do número seguinte', () => {
+    expect(resumoDeTransporte('503\n12345678')).toBe('503\n[número]')
+  })
+
+  // Página de erro de proxy com base64 ou JS minificado: 100 mil caracteres
+  // sem espaço paravam o servidor por quase 6 s (revisões do #132).
+  it('não trava com mensagem enorme sem espaço', () => {
+    const inicio = performance.now()
+    resumoDeTransporte('a'.repeat(200_000))
+    resumoDeTransporte(`${'1-'.repeat(100_000)}`)
+    expect(performance.now() - inicio).toBeLessThan(200)
   })
 })
 
@@ -90,7 +112,8 @@ describe('falha de transporte no log', () => {
     })
 
     // A falha sobe (o e-mail vai para revisão) — e a mensagem dela também é a
-    // mascarada: é ela que a trilha grava.
+    // mascarada: é ela que vai ao log da ingestão e ao motivo da avaliação.
+    // (A trilha grava só o nome da classe: `mensagemPersistivel`.)
     const falha = await new InterpretadorEstruturado(PERFIL, clienteQueFalha()).interpretar(email).then(
       () => null,
       (erro: unknown) => (erro instanceof Error ? erro.message : String(erro)),
@@ -114,7 +137,45 @@ describe('falha de transporte no log', () => {
       .catch(() => null)
 
     expect(log.linhas()).toContain('chamada do assistente ao modelo falhou')
+    expect(log.linhas()).toContain('400')
     expect(log.linhas()).not.toContain(EMAIL_DO_ASSOCIADO)
     expect(log.linhas()).not.toContain(CPF_DO_ASSOCIADO)
+  })
+})
+
+// O ramo "indisponível" é escolhido POR TEXTO (o Gemini casa
+// "API key not valid" em qualquer mensagem, sem olhar o status). Um remetente
+// que escrevesse essa frase levaria a citação para cá — e daqui a mensagem vai
+// ao log e, na interpretação, à tela. Mascarado também (revisões do #132).
+describe('falha que para o lote', () => {
+  const PERFIL_QUE_RECUSA: PerfilDoFornecedor = { ...PERFIL, ehCredencialRecusada: () => true }
+  const mensagemDe = (erro: unknown) => (erro instanceof Error ? erro.message : String(erro))
+
+  it('interpretação indisponível: mantém o status, mascara o que foi citado', async () => {
+    const email = EmailBrutoSchema.parse({
+      messageId: 'indisponivel@teste.local',
+      remetente: 'alguem@exemplo.test',
+      assunto: 'Assunto qualquer',
+      corpo: 'Corpo qualquer',
+      recebidoEm: new Date('2026-09-26T12:00:00.000Z'),
+    })
+    const falha = await new InterpretadorEstruturado(PERFIL_QUE_RECUSA, clienteQueFalha())
+      .interpretar(email)
+      .then(() => null, mensagemDe)
+
+    expect(falha).toContain('400')
+    expect(falha).not.toContain(EMAIL_DO_ASSOCIADO)
+    expect(falha).not.toContain(CPF_DO_ASSOCIADO)
+  })
+
+  it('assistente indisponível: o mesmo', async () => {
+    const quem: QuemPergunta = { nome: '', papel: 'operador', itensNaFila: 0 }
+    const falha = await new AssistenteComModelo(PERFIL_QUE_RECUSA, clienteQueFalha())
+      .responder(quem, 'como distribuo o dia?')
+      .then(() => null, mensagemDe)
+
+    expect(falha).toContain('400')
+    expect(falha).not.toContain(EMAIL_DO_ASSOCIADO)
+    expect(falha).not.toContain(CPF_DO_ASSOCIADO)
   })
 })

@@ -241,14 +241,15 @@ export class InterpretadorEstruturado implements AiPort {
 
       // Sobe inteiro, sem virar falha deste e-mail: o laço de ingestão
       // reconhece este erro e para o lote em vez de repetir o mesmo fracasso
-      // uma vez por mensagem.
-      if (this.perfil.ehCredencialRecusada(erro)) throw new InterpretacaoIndisponivelError(causa)
+      // uma vez por mensagem. A MENSAGEM, porém, vai resumida: este ramo é
+      // escolhido por texto, e daqui ela chega ao log e à tela (#132).
+      if (this.perfil.ehCredencialRecusada(erro)) throw new InterpretacaoIndisponivelError(resumoDeTransporte(causa))
 
       // Teto diário atingido, disjuntor aberto (`A54`) ou conta sem crédito:
       // o problema não é deste e-mail, e tentar o próximo custaria o mesmo
       // fracasso duzentas vezes — que é exatamente o que o achado C-06 mediu.
       if (erro instanceof LimiteDeConsumoAtingido || this.perfil.ehSemCredito?.(erro) === true) {
-        throw new InterpretacaoIndisponivelError(causa)
+        throw new InterpretacaoIndisponivelError(resumoDeTransporte(causa))
       }
 
       const especie = especieDoErro(erro)
