@@ -6,6 +6,7 @@ import {
 import { montarMaterial, type QuemPergunta } from '../core/assistente/prompt'
 import { prepararConteudoExterno } from '../core/seguranca/conteudo-nao-confiavel'
 import { resumoDeValidacao } from '../core/seguranca/resumo-de-validacao'
+import { resumoDeTransporte } from '../core/seguranca/resumo-de-transporte'
 import { LimiteDeConsumoAtingido } from '../ports/consumo'
 import {
   AssistenteIndisponivelError,
@@ -152,20 +153,20 @@ export class AssistenteComModelo implements AssistentePort {
 
       // Sobe inteiro: chave recusada não é problema desta pergunta, e a
       // mensagem tem de mandar arrumar a configuração.
-      if (this.perfil.ehCredencialRecusada(erro)) throw new AssistenteIndisponivelError(causa)
+      if (this.perfil.ehCredencialRecusada(erro)) throw new AssistenteIndisponivelError(resumoDeTransporte(causa))
 
       // Mesma razão da interpretação: teto, disjuntor e conta sem crédito são
       // a camada fora do ar, não defeito desta pergunta — e repetir a chamada
       // gastaria a segunda tentativa contra uma porta que já está fechada.
       if (erro instanceof LimiteDeConsumoAtingido || this.perfil.ehSemCredito?.(erro) === true) {
-        throw new AssistenteIndisponivelError(causa)
+        throw new AssistenteIndisponivelError(resumoDeTransporte(causa))
       }
 
       const especie = especieDoErro(erro)
-      // Validação vira resumo estrutural; transporte é texto do fornecedor e
-      // vai inteiro. Mesma distinção de `ia-estruturada.ts`, e pelo mesmo
-      // motivo: o log não tem política de retenção.
-      const paraRegistrar = especie === 'validacao' ? resumoDeValidacao(erro) : causa
+      // Validação vira resumo estrutural; transporte é texto do fornecedor,
+      // curto e mascarado. Mesma distinção de `ia-estruturada.ts`, e pelo
+      // mesmo motivo: o log não tem política de retenção.
+      const paraRegistrar = especie === 'validacao' ? resumoDeValidacao(erro) : resumoDeTransporte(causa)
 
       registrarLog(
         'aviso',
