@@ -103,11 +103,13 @@ describe('concluir item de outra pessoa', () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     const [dono, intruso] = base.colaboradores
     const itemId = await itemDe(base, dono!.id)
-    vi.spyOn(banco.eventoProcessamento, 'create').mockRejectedValueOnce(new Error('banco fora'))
+    const espiao = vi.spyOn(banco.eventoProcessamento, 'create').mockRejectedValueOnce(new Error('banco fora'))
 
     const tentativa = concluir(banco, { itemId }, intruso!.ator)
 
     await expect(tentativa).rejects.toBeInstanceOf(ErroDeNegocio)
     await expect(tentativa).rejects.toThrow('Só o responsável ativo pode concluir o item')
+    // Sem isto o teste passaria sem exercitar o `catch` (revisão de segurança do #130).
+    expect(espiao).toHaveBeenCalled()
   })
 })

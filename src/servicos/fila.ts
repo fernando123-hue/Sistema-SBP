@@ -180,8 +180,11 @@ async function conferirPermissaoAntesDeTravar(
       select: { id: true },
     })
     if (jaFoiResponsavel) {
+      // Com `tipo`: quem conta tentativas horizontais no log acha esta também.
       registrarLog('info', 'concluir recusado: o item mudou de responsável', {
         colaboradorId: ator.colaboradorId,
+        tipo: 'horizontal',
+        motivo: 'tela desatualizada',
       })
     } else {
       await registrarNegacao(banco, ator, 'concluir item de outra pessoa')

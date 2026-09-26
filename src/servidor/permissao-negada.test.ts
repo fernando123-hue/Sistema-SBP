@@ -88,8 +88,9 @@ describe('permissão negada', () => {
   // recusa continua recebendo a recusa, mesmo com o banco fora.
   it('falha ao gravar o rastro não troca o 403 por outra coisa', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
-    vi.spyOn(banco.eventoProcessamento, 'create').mockRejectedValueOnce(new Error('banco fora'))
+    const espiao = vi.spyOn(banco.eventoProcessamento, 'create').mockRejectedValueOnce(new Error('banco fora'))
 
     expect((await tentarComoColaborador(base.colaboradores[1]!.id)).status).toBe(403)
+    expect(espiao).toHaveBeenCalled()
   })
 })
