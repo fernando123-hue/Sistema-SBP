@@ -7,13 +7,19 @@ import { ErroOperacional } from '../core/erros'
  * é infraestrutura de fronteira e não deve saber o que é Prisma. Quem liga os
  * dois é `fabrica.ts`, que é o lugar do sistema onde a fiação mora.
  */
+/**
+ * Para que a IA foi chamada. `classificacao` é a segunda opinião (`A62`): ela
+ * conta no MESMO teto do fornecedor, porque a conta é do fornecedor.
+ */
+export type TarefaDeIa = 'interpretacao' | 'assistente' | 'classificacao'
+
 export interface RegistroDeConsumo {
   /** Quantas chamadas este fornecedor já fez hoje, somando modelos e tarefas. */
   chamadasDoDia(fornecedor: string): Promise<number>
   registrar(chamada: {
     fornecedor: string
     modelo: string
-    tarefa: 'interpretacao' | 'assistente'
+    tarefa: TarefaDeIa
     resultado: 'ok' | 'falha'
     duracaoMs: number
   }): Promise<void>

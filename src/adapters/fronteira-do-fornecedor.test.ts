@@ -19,8 +19,9 @@ import { describe, expect, it } from 'vitest'
  *   - `adapters/fabrica.ts`, que é o único lugar que escolhe;
  *   - testes dentro de `adapters/`, que exercitam o próprio adapter.
  *
- * Os módulos de fornecedor são DESCOBERTOS pelo nome (`ia-<nome>.ts`), não
- * listados: o próximo que entrar já nasce guardado.
+ * Os módulos de fornecedor são DESCOBERTOS pelo nome (`ia-<nome>.ts` e, desde
+ * o `A62`, `classificador-<nome>.ts`), não listados: o próximo que entrar já
+ * nasce guardado.
  */
 
 const RAIZ_ADAPTERS = dirname(fileURLToPath(import.meta.url))
@@ -28,12 +29,17 @@ const RAIZ_SRC = dirname(RAIZ_ADAPTERS)
 const RAIZ_PROJETO = dirname(RAIZ_SRC)
 const FABRICA = join(RAIZ_ADAPTERS, 'fabrica.ts')
 
-/** `ia-*` que não falam com empresa nenhuma: a política comum e o duble. */
-const NAO_SAO_FORNECEDOR = new Set(['ia-estruturada.ts', 'ia-mock.ts'])
+/** `ia-*` e `classificador-*` que não falam com empresa nenhuma: a política comum e o dublê. */
+const NAO_SAO_FORNECEDOR = new Set([
+  'ia-estruturada.ts',
+  'ia-mock.ts',
+  'classificador-externo.ts',
+  'classificador-mock.ts',
+])
 
 function modulosDeFornecedor(): string[] {
   return readdirSync(RAIZ_ADAPTERS)
-    .filter((nome) => /^ia-[a-z0-9-]+\.ts$/.test(nome) && !nome.endsWith('.test.ts'))
+    .filter((nome) => /^(?:ia|classificador)-[a-z0-9-]+\.ts$/.test(nome) && !nome.endsWith('.test.ts'))
     .filter((nome) => !NAO_SAO_FORNECEDOR.has(nome))
     .map((nome) => join(RAIZ_ADAPTERS, nome.replace(/\.ts$/, '')))
 }
@@ -102,7 +108,11 @@ describe('fronteira do fornecedor de IA', () => {
     // Sem isto, uma descoberta quebrada devolveria lista vazia e o teste abaixo
     // passaria verde para sempre, sem guardar nada.
     expect(fornecedores).toEqual(
-      expect.arrayContaining([join(RAIZ_ADAPTERS, 'ia-anthropic'), join(RAIZ_ADAPTERS, 'ia-gemini')]),
+      expect.arrayContaining([
+        join(RAIZ_ADAPTERS, 'ia-anthropic'),
+        join(RAIZ_ADAPTERS, 'ia-gemini'),
+        join(RAIZ_ADAPTERS, 'classificador-typesafe'),
+      ]),
     )
   })
 

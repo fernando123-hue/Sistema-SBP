@@ -15,7 +15,9 @@ import type { Banco } from '../servidor/prisma'
  * pergunta que ele responde ("dá para gastar menos?") não é da equipe.
  */
 
-export type TarefaDeIa = 'interpretacao' | 'assistente'
+import type { TarefaDeIa } from '../ports/consumo'
+
+export type { TarefaDeIa }
 
 export interface ChamadaRegistrada {
   fornecedor: string

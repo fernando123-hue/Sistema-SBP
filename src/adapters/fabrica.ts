@@ -3,13 +3,18 @@ import { LIMITES_PADRAO } from '../core/ia/consumo'
 import { inicioDoDia } from '../core/util/datas'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { AssistentePort } from '../ports/assistente'
+import type { ClassificadorPort } from '../ports/classificador'
+import type { TarefaDeIa } from '../ports/consumo'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { chamadasDoDia, registrarChamada } from '../servicos/consumo-da-ia'
 import { ambiente } from '../servidor/ambiente'
 import { obterPrisma } from '../servidor/prisma'
 import { ArmazenamentoEmDisco } from './armazenamento-disco'
-import { comControleDeConsumo } from './cliente-com-consumo'
+import { ClassificadorExterno, type ClienteDeClassificacao } from './classificador-externo'
+import { clienteMock as clienteClassificadorMock, PERFIL_MOCK as PERFIL_CLASSIFICADOR_MOCK } from './classificador-mock'
+import { clienteTypeSafe, PERFIL_TYPESAFE } from './classificador-typesafe'
+import { chamarComControle, comControleDeConsumo, type OpcoesDeConsumo } from './cliente-com-consumo'
 import { AssistentePorBusca } from './assistente-busca'
 import { AssistenteComModelo } from './assistente-modelo'
 import type { ClienteDeModelo } from './fornecedor'
@@ -87,12 +92,16 @@ export function criarAiPort(): AiPort {
 function controlar(
   cliente: ClienteDeModelo,
   fornecedor: string,
-  tarefa: 'interpretacao' | 'assistente',
+  tarefa: TarefaDeIa,
 ): ClienteDeModelo {
+  return comControleDeConsumo(cliente, opcoesDeConsumo(fornecedor, tarefa))
+}
+
+function opcoesDeConsumo(fornecedor: string, tarefa: TarefaDeIa): OpcoesDeConsumo {
   const banco = obterPrisma()
   const tetoConfigurado = ambiente().IA_TETO_DIARIO
 
-  return comControleDeConsumo(cliente, {
+  return {
     fornecedor,
     tarefa,
     registro: {
@@ -103,7 +112,7 @@ function controlar(
       tetoConfigurado === undefined
         ? LIMITES_PADRAO
         : { ...LIMITES_PADRAO, tetoDiarioDeChamadas: tetoConfigurado },
-  })
+  }
 }
 
 /**
@@ -133,6 +142,47 @@ export function criarAssistentePort(): AssistentePort {
       return new AssistenteComModelo(PERFIL_LOCAL, controlar(clienteLocal(), 'local', 'assistente'))
     default:
       throw new AdapterIndisponivelError('assistente', nome)
+  }
+}
+
+/**
+ * A segunda opinião (`A62`), por `CLASSIFICADOR_ADAPTER` — ou nenhuma.
+ *
+ * `null` é resposta, não falha: o sistema funciona igual sem classificador, e
+ * quem pede trata a ausência como "sem segunda opinião". A escolha do
+ * fornecedor fica aqui e só aqui, como em `criarAiPort`; a política (camada
+ * de defesa, injeção, conferência da resposta) é a MESMA para todos, em
+ * `ClassificadorExterno`. O dublê também passa por ela.
+ *
+ * A trava de dado real não mora aqui: é `ambiente()`, que recusa na partida
+ * `typesafe` com caixa de e-mail real (`CLASSIFICADOR_PARA_DADO_REAL`).
+ */
+export function criarClassificadorPort(): ClassificadorPort | null {
+  const { CLASSIFICADOR_ADAPTER: nome, CLASSIFICADOR_MODELO: modelo } = ambiente()
+  switch (nome) {
+    case 'nenhum':
+      return null
+    case 'mock':
+      // Sem controle de consumo, como a `IaMock`: não custa nada, e contá-lo
+      // encheria a tabela de uso com o que a suíte faz.
+      return new ClassificadorExterno(PERFIL_CLASSIFICADOR_MOCK, clienteClassificadorMock(), modelo)
+    case 'typesafe':
+      return new ClassificadorExterno(
+        PERFIL_TYPESAFE,
+        controlarClassificacao(clienteTypeSafe(), PERFIL_TYPESAFE.nome),
+        modelo,
+      )
+    default:
+      throw new AdapterIndisponivelError('classificador', nome)
+  }
+}
+
+/** O mesmo teto diário e o mesmo disjuntor da IA (`A54`), por fornecedor. */
+function controlarClassificacao(cliente: ClienteDeClassificacao, fornecedor: string): ClienteDeClassificacao {
+  const opcoes = opcoesDeConsumo(fornecedor, 'classificacao')
+  return {
+    perguntar: (pedido) =>
+      chamarComControle(opcoes, pedido.modelo, () => cliente.perguntar(pedido), (resposta) => resposta.modeloUsado),
   }
 }
 
