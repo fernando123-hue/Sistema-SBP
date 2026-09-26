@@ -39,7 +39,7 @@
 > 4. Números da Distribuição: vírgula só na média; o crédito ("0.00 → 1.00") e a dica do Painel seguem com ponto.
 > 5. Troca de rótulo "Concluir" → "Confirmar: concluir" (Minha fila) e o mesmo no Descartar da Revisão, sem anúncio a leitor de tela (`aria-live`) — tratar as duas telas juntas.
 > 6. Avisos `role="status"` que surgem na carga do Painel, Revisão e Caixa: testar com leitor de tela (NVDA) se viram rajada de anúncios (revisão do #110).
-> 7. `componentes/assistente.tsx` (≈54-61) tem uma **terceira cópia manual** dos rótulos das telas, fora de `core/telas.ts` (revisão do #108).
+> 7. ~~`componentes/assistente.tsx` (≈54-61) tem uma **terceira cópia manual** dos rótulos das telas~~ — **resolvida no #127.** O assistente lê o rótulo de `core/telas.ts`; `componentes/rotulos-das-telas.test.ts` recusa qualquer outro mapa indexado por caminho de tela.
 >
 > *B. Segurança e robustez:*
 > 8. Sondagem **horizontal** invisível: `concluir()` em `servicos/fila.ts` recusa quem não é o responsável com 422, sem rastro (revisão de segurança do #97).
