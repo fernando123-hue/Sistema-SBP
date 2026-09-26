@@ -34,7 +34,32 @@ describe('decimal', () => {
     expect(decimal(-1e-12, { sinal: true })).toBe('0,00')
   })
 
-  it('outra quantidade de casas', () => {
-    expect(decimal(0.85, { casas: 1 })).toBe('0,9')
+  // No empate exato, meio último dígito vai para longe do zero — igual ao
+  // `Intl`, com quem o limiar do resíduo tem de concordar.
+  it('empate no limiar do resíduo', () => {
+    expect(decimal(0.005)).toBe('0,01')
+    expect(decimal(-0.005)).toBe('-0,01')
+    expect(decimal(-0.0049999)).toBe('0,00')
+  })
+
+  it('o antigo "+0.00" do Painel sai sem sinal', () => {
+    expect(decimal(-0, { sinal: true })).toBe('0,00')
+    expect(decimal(0.004, { sinal: true })).toBe('0,00')
+  })
+
+  it('negativo com milhar', () => {
+    expect(decimal(-1234.5)).toBe('-1.234,50')
+  })
+
+  it('outra quantidade de casas, com limiar exato em qualquer uma', () => {
+    expect(decimal(0.87, { casas: 1 })).toBe('0,9')
+    expect(decimal(-0.00004999, { casas: 4 })).toBe('0,0000')
+  })
+
+  // Frase corrida (narrativa da rodada): "A média era 52", não "52,00".
+  it('enxuto: sem zeros à direita, e o resíduo também sai zero', () => {
+    expect(decimal(52, { enxuto: true })).toBe('52')
+    expect(decimal(3.5, { enxuto: true })).toBe('3,5')
+    expect(decimal(-1e-16, { enxuto: true })).toBe('0')
   })
 })

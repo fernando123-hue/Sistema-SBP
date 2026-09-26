@@ -668,7 +668,7 @@ function QualidadeDaIa({ medida }: { medida: Qualidade }) {
             <div className="mt-3">
               <Aviso tom="atencao">
                 <strong>A confiança do modelo não separa acerto de erro.</strong> As duas médias
-                estão a {decimal(separacao)} de distância. Enquanto isso durar, mexer no limiar de
+                estão a {decimal(Math.abs(separacao))} de distância. Enquanto isso durar, mexer no limiar de
                 confiança é calibrar no escuro — o número que ele reporta não distingue os casos.
               </Aviso>
             </div>
