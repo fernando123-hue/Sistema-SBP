@@ -4,6 +4,7 @@ import { ehOProprio, exigirPapel, type Ator } from '../servidor/ator'
 import { transacaoComNovaTentativa } from '../servidor/conflito'
 import { novaCorrelacao } from '../servidor/observabilidade'
 import type { Banco, Transacao } from '../servidor/prisma'
+import { registrarNegacao } from '../servidor/rastro-de-negacao'
 import { auditar } from './auditoria'
 
 /**
@@ -166,6 +167,12 @@ async function conferirPermissaoAntesDeTravar(
   // Sem responsável, a transação dá a mensagem certa.
   if (!atual || ehOProprio(ator, atual.colaboradorId)) return
   if (operacao === null) {
+    // Sondagem HORIZONTAL (pendência 8): a recusa era calada — quem varresse
+    // ids para concluir o que não é dele não deixava linha nenhuma. A resposta
+    // continua a mesma: o caso legítimo existe (a tela estava aberta quando o
+    // item foi transferido), e a frase o explica bem. O rastro é o mesmo da
+    // sondagem vertical, com o mesmo limite por janela.
+    await registrarNegacao(banco, ator, 'concluir item de outra pessoa')
     throw new ErroDeNegocio('Só o responsável ativo pode concluir o item. Use transferência.')
   }
   exigirPapel(ator, operacao, 'operador', 'gestor')

@@ -42,7 +42,7 @@
 > 7. ~~`componentes/assistente.tsx` (≈54-61) tem uma **terceira cópia manual** dos rótulos das telas~~ — **resolvida no #127.** O assistente lê o rótulo de `core/telas.ts`; `componentes/rotulos-das-telas.test.ts` recusa qualquer outro mapa indexado por caminho de tela.
 >
 > *B. Segurança e robustez:*
-> 8. Sondagem **horizontal** invisível: `concluir()` em `servicos/fila.ts` recusa quem não é o responsável com 422, sem rastro (revisão de segurança do #97).
+> 8. ~~Sondagem **horizontal** invisível~~ — **resolvida no #130.** Concluir item de outra pessoa continua 422 com a mesma frase, mas agora deixa o mesmo rastro da sondagem vertical (evento `autorizacao`, uma linha por pessoa a cada 10 min, log sempre). O rastro saiu de `servidor/http.ts` para `servidor/rastro-de-negacao.ts`.
 > 9. `/api/painel` e `/api/memoria` sem limite por pessoa (revisão do #96).
 > 10. Erro de *transporte* da IA grava a mensagem crua do fornecedor no log — conferir se algum SDK ecoa o pedido (revisão de segurança do #90).
 > 11. Alerta por volume das recusas de entrada (`AT-45`); índice `(situacao, etapa, referencia)` em `EventoProcessamento` quando o volume justificar; rotação da sessão com duas chaves (`SESSAO_SECRET_ANTERIOR`, C-25).
