@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import { Aviso, Botao } from './matrizes'
+import { Aviso, Botao, Selo, SeloDeConfianca } from './matrizes'
 
 function classesDoBotao(tamanho: 'normal' | 'pequeno'): string[] {
   const html = renderToStaticMarkup(createElement(Botao, { tamanho, children: 'Concluir' }))
@@ -54,5 +54,50 @@ describe('Aviso — o que o leitor de tela anuncia (N-32)', () => {
 
   it('o tom neutro não usa a cor de sucesso', () => {
     expect(avisoRenderizado('neutro').classes.some((classe) => classe.includes('ok'))).toBe(false)
+  })
+})
+
+describe('Selo — explicação fora do mouse (pendência 2)', () => {
+  // `title` só aparece passando o mouse: não chega a teclado nem a leitor de
+  // tela. A explicação tem de estar no texto que o leitor lê.
+  it('a explicação do selo chega ao leitor de tela, não só ao `title`', () => {
+    const html = renderToStaticMarkup(
+      createElement(Selo, { titulo: 'Registrado à mão: nenhum modelo classificou este item.', children: 'manual' }),
+    )
+    const semAtributos = html.replace(/<[^>]*>/g, ' ')
+
+    expect(semAtributos).toContain('Registrado à mão: nenhum modelo classificou este item.')
+    expect(html).toContain('sr-only')
+  })
+
+  it('selo sem explicação continua só com o rótulo', () => {
+    const html = renderToStaticMarkup(createElement(Selo, { children: 'Cadastro' }))
+
+    expect(html).not.toContain('sr-only')
+    expect(html).not.toContain('title=')
+  })
+})
+
+describe('SeloDeConfianca — o número nunca parece passar do mínimo sem passar', () => {
+  function numero(valor: number, limiar: number): string {
+    const html = renderToStaticMarkup(createElement(SeloDeConfianca, { valor, limiar }))
+    return /class="numerico">(\d+)%/.exec(html)?.[1] ?? '?'
+  }
+
+  it('0,949 com mínimo de 95% aparece como 94%, não 95%', () => {
+    expect(numero(0.949, 0.95)).toBe('94')
+  })
+
+  it('valores exatos não perdem um ponto no ponto flutuante', () => {
+    expect(numero(0.29, 0.85)).toBe('29')
+    expect(numero(0.57, 0.85)).toBe('57')
+    expect(numero(0.95, 0.95)).toBe('95')
+  })
+
+  it('o mínimo sai em porcentagem, em português de gente', () => {
+    const html = renderToStaticMarkup(createElement(SeloDeConfianca, { valor: 0.9, limiar: 0.85 }))
+
+    expect(html).toContain('mínimo da categoria 85%')
+    expect(html).not.toMatch(/limiar/)
   })
 })

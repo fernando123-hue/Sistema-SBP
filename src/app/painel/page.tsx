@@ -501,7 +501,7 @@ export default function PainelPagina() {
         */}
         <CabecalhoDeSecao
           titulo="Por pessoa"
-          descricao={`Concluídos: de ${dataCurta(dados.periodo.de)} a ${dataCurta(dados.periodo.ate)}. Atribuídos (hoje) e pendentes (hoje): o que está com cada pessoa agora, fora do período. Cada pessoa vê os próprios números; quem coordena vê os de todos. Crédito perto de zero significa carga equilibrada.`}
+          descricao={`Concluídos: de ${dataCurta(dados.periodo.de)} a ${dataCurta(dados.periodo.ate)}. Atribuídos (hoje) e pendentes (hoje): o que está com cada pessoa agora, fora do período. Cada pessoa vê os próprios números; quem coordena vê os de todos. Crédito perto de zero significa carga equilibrada; positivo, a pessoa recebeu menos que a média e fica na frente para a próxima sobra.`}
         />
         <ListaResponsiva
           // Sem filtro aqui: quais linhas saem é decisão do servidor, que sabe
@@ -545,7 +545,6 @@ export default function PainelPagina() {
                     'numerico',
                     Math.abs(pessoa.creditoGlobal) < 1 ? 'text-tinta-suave' : 'text-atencao',
                   )}
-                  title="Positivo: recebeu menos que a média e fica na frente para a próxima sobra."
                 >
                   {pessoa.creditoGlobal >= 0 ? '+' : ''}
                   {pessoa.creditoGlobal.toFixed(2)}
