@@ -1,10 +1,31 @@
 # Estado do projeto — retomada
 
-Última atualização: **25/09/2026, noite — IA local medida e documento de segurança.** Modelo padrão da máquina Debian: `qwen2.5:1.5b` (`DECISOES.md § A59`, provisório). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Próximo passo: as **20 pendências** (item 4 do bloco de 24/09) e depois as instruções novas. Ver o primeiro bloco abaixo.
+Última atualização: **25/09/2026, fim da noite — sessão em nuvem (Linux) retomou a da máquina Windows, interrompida pelo limite de uso.** #122 mesclado; #123 verde, **esperando o dono mesclar**; **servidor da implantação é Linux** (`DECISOES.md § A61`, decisão do dono). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Próximo passo: seguir as pendências do item 4 do bloco de 24/09, a partir da **2**. Ver o primeiro bloco abaixo.
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 25/09/2026, noite — IA LOCAL MEDIDA; DOCUMENTO DE SEGURANÇA (este bloco vence os de baixo; o `git log` vence este)
+> ### 25/09/2026, fim da noite — RETOMADA NA NUVEM; #122 MESCLADO, #123 PRONTO; LINUX DECIDIDO (este bloco vence os de baixo; o `git log` vence este)
+>
+> **1. Onde está:** `main` com #120 a #122 mesclados. **#123 (pendência 3) aberto, CI verde e revisões publicadas — o classificador de permissões recusou a mesclagem pelo agente ("mesclar sem revisão"); fica para o dono mesclar.** Este PR de docs também. Dependabot #78 a #81 seguem sem avaliar. A sessão da máquina Windows parou no meio da pendência 3 por limite de uso; esta sessão (nuvem, Linux, MySQL 8.4 em contêiner) conferiu o que ela deixou e continuou.
+>
+> **2. Conferido e feito nesta sessão:**
+> - **Conferência do que a sessão interrompida deixou:** `main` íntegra (typecheck limpo, 1379 de 1379 em Linux antes de qualquer mudança). #120 e #121 mesclados; #122 aberto com as duas revisões publicadas, mas com "(link a seguir)" no corpo — por isso o *Processo* estava vermelho.
+> - **#122 fechado** (nível 3): o MÉDIO da revisão técnica (o teste novo deixava uma linha em `UsoDaIa` na base de teste — conferido: 1 linha sem a limpeza, 0 com ela) corrigido; `main` mesclada; links no corpo; CI verde; mesclado. Confirmação ao vivo do defeito: o `db:seed` da `main` antiga ficou pendurado depois de gravar, exatamente como o PR descreve.
+> - **#123 — pendência 3 refeita do zero (aberto, pronto).** O trabalho dela na máquina Windows (`src/componentes/api.test.ts`, criado e não commitado) **nunca chegou ao GitHub**. Refeito aqui com teste vermelho, visto na tela e duas revisões (a técnica pediu mudanças na 1ª rodada — causa descartada e status sem log —, corrigidas; 2ª rodada aprovou).
+> - **Decisão do dono `A61`: o servidor da implantação é Linux**; o Windows é só a máquina de desenvolvimento. Quando os dois divergirem, vale o Linux (o CI).
+>
+> **3. ⚠ NA MÁQUINA WINDOWS, antes de qualquer coisa:** a cópia local tem mudanças **não commitadas** da sessão interrompida que **não devem ir para o repositório**: `src/componentes/api.test.ts` (substituído pelo do #123) e a **linha provisória em `src/adapters/ia-local.ts`** (estrutura forçada, feita "só para medir"). Descartar as duas (`git status` para ver; `git restore src/adapters/ia-local.ts` e apagar o `api.test.ts` solto), `git switch main && git pull`, e apagar as pastas temporárias de worktree que sobrarem.
+>
+> **4. PRÓXIMO PASSO:** as pendências do item 4 do bloco de 24/09, na ordem, a partir da **2** (a 1 saiu no #120; a 3 está no #123 — conferir que foi mesclado). A 20 depende do dono.
+>
+> **5. Anotado nesta sessão:**
+> - **Resultado da medição da pendência 18** (feita na máquina Windows em 25/09, noite; lido das capturas daquela sessão, não medido aqui): com o `qwen2.5:1.5b`, nota **0,78** (0,76 na medição anterior), 2 falhas — `ligantes-tres` e `ligantes-dois-tracos`. **A estrutura forçada deu resultado idêntico caso a caso**: o 1.5b já acerta a forma. A causa das duas falhas é de **entendimento**: o modelo junta os três ligantes num item só e devolve `campos` como lista de pares `{chave, valor}` com chave repetida, estourando o limite de 30 campos por item — e o sistema recusa corretamente e manda para revisão humana. Correção provável: um exemplo na instrução, em PR próprio e medido antes e depois. **Isto corrige o `A59`** onde ele diz que forma forçada "é a correção da causa real" — ela não muda nada neste modelo.
+> - **`next dev` escreve no `CLAUDE.md`:** ao subir, o Next 16 anexa um bloco `nextjs-agent-rules` ao `CLAUDE.md` (e o texto do bloco sugere commitá-lo). Não foi commitado — mexer nas regras dos agentes é decisão do dono. **Pendência 23 (somar à lista do item 4 de 24/09):** decidir entre `agentRules: false` no `next.config` (nível 3, configuração) ou aceitar o bloco no `CLAUDE.md`; até lá, quem subir `npm run dev` desfaz o bloco antes de commitar (`git checkout -- CLAUDE.md`).
+> - Tela vista nesta sessão em largura de computador (1366 px), seguindo o `A60`.
+>
+> **6. Decisões abertas com o dono:** as do bloco de baixo, mais a pendência 23.
+>
+> ### 25/09/2026, noite — IA LOCAL MEDIDA; DOCUMENTO DE SEGURANÇA (anterior; o próximo passo dele foi seguido — pendências 1 e 3)
 >
 > **1. Onde está:** `main` com o PR "gabarito sem banco" e este PR de docs. Dependabot #78 a #81 seguem sem avaliar. Nada rodando. MySQL desta máquina em `127.0.0.1:3307`.
 >
@@ -33,7 +54,7 @@
 > **4. PENDÊNCIAS A RESOLVER (pedido do dono, 25/09) — lista única; ela substitui os itens "Anotado" dos blocos abaixo.** Mesmo método da auditoria: confirmar lendo o código, teste visto vermelho, um PR por assunto, revisão por agente. Ao resolver, riscar aqui com o número do PR.
 >
 > *A. O que a equipe lê na tela (as três que o dono viu no fim da sessão de 24/09 vêm primeiro):*
-> 1. **Código interno numa mensagem de erro da distribuição** — `ElegiveisInvalidosError` (`core/distribuicao/motor.ts`, "colaborador … aparece duas vezes") interpola `colaboradorId` e chega à tela como 422. Hoje não acontece (a lista vem do banco, sem duplicata), mas se acontecer é defeito: provavelmente virar `Error` (500 com correlação, id no log), como o item "sem lote" no #114.
+> 1. ~~**Código interno numa mensagem de erro da distribuição**~~ — **resolvida no #120** (lista de elegíveis inválida é defeito do sistema: 500 com rastreio, sem id na tela). — `ElegiveisInvalidosError` (`core/distribuicao/motor.ts`, "colaborador … aparece duas vezes") interpola `colaboradorId` e chega à tela como 422. Hoje não acontece (a lista vem do banco, sem duplicata), mas se acontecer é defeito: provavelmente virar `Error` (500 com correlação, id no log), como o item "sem lote" no #114.
 > 2. **Explicação que só aparece passando o mouse** *(desde o `A60` o sistema é só para computador: o motivo "toque" sai, teclado e leitor de tela ficam)* — o selo do critério e a dica do crédito na Distribuição, e a dica do crédito no Painel, moram só em `title`: não chegam a toque, teclado nem leitor de tela (revisão do #115). Mostrar como texto visível ou `aria-describedby`.
 > 3. **"Falha na requisição (404)."** — mensagem genérica do cliente quando a resposta não traz erro legível (`componentes/api.ts:110`). Trocar por frase de gente ("Não foi possível falar com o sistema. Atualize a tela e tente de novo.") mantendo o status para o log.
 > 4. Números da Distribuição: vírgula só na média; o crédito ("0.00 → 1.00") e a dica do Painel seguem com ponto.
@@ -56,7 +77,7 @@
 >
 > *D. Novas em 25/09 (IA local e segurança):*
 > 17. **Conferir por código que cada valor extraído pela IA aparece no texto do e-mail** antes de aprovar o item direto; o que não aparecer vai para a Revisão. Hoje a nota de confiança é a própria IA que dá, e o modelo local escolhido tem literalidade 0,69 (`A59`). Proposto no documento de segurança de 25/09 — decidir o critério (igualdade exata? normalizada?) antes de codar.
-> 18. **Forma forçada no servidor local** (esquema JSON no pedido do `ia-local.ts`, em vez de só `json_object`) — **é a correção da causa real das falhas de forma** (`A59`). Medir no Ollama desta máquina Windows (instalado em 25/09 com o dono de acordo, só o `qwen2.5:1.5b`, só em `127.0.0.1`) antes e depois, pelo gabarito.
+> 18. **Forma forçada no servidor local** (esquema JSON no pedido do `ia-local.ts`, em vez de só `json_object`) — **é a correção da causa real das falhas de forma** (`A59`). Medir no Ollama desta máquina Windows (instalado em 25/09 com o dono de acordo, só o `qwen2.5:1.5b`, só em `127.0.0.1`) antes e depois, pelo gabarito. **Medido (25/09, fim da noite): idêntico caso a caso no 1.5b — ver item 5 do primeiro bloco.** O que resta é a falha de entendimento (ligantes num item só); próximo passo, exemplo na instrução, medido.
 > 19. ~~Janela de contexto do Ollama não registrada~~ — **medida e descartada** (25/09, noite): 8192 na máquina Debian, 4096 aqui, pedidos de ~1,1 mil tokens, nenhum corte (`A59`).
 > 20. **Repositório público** (`gh repo view` em 25/09: `PUBLIC`), com nomes reais da equipe em `CONTEXTO.md` e `ENGENHARIA_REVERSA…`. Dono: voltar a privado. Depois: chave de implantação só de leitura para a máquina Debian (a cópia de lá é tarball), e trocar os nomes reais por fictícios nesses dois arquivos (PR de docs).
 >
