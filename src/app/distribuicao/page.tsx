@@ -486,6 +486,16 @@ export default function Distribuicao() {
               <Metrica rotulo="Categorias" valor={comItens.length} detalhe="com demanda" />
             </div>
 
+            {/*
+              A legenda do crédito morava num `title` em cada número — só
+              aparecia passando o mouse (pendência 2). Uma vez aqui, visível,
+              vale para todos os cartões.
+            */}
+            <p className="text-xs text-tinta-suave">
+              Ao lado de cada pessoa, o crédito antes → depois desta rodada. Positivo: a pessoa recebeu
+              menos que a média e fica na frente para a próxima sobra.
+            </p>
+
             {comItens.map((linha) => (
               <Cartao key={linha.categoriaCodigo} className="px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -498,12 +508,15 @@ export default function Distribuicao() {
                       entrada <strong>{linha.quantidade}</strong>
                     </span>
                     {linha.criterio ? (
-                      <Selo tom="acento" titulo={CRITERIO[linha.criterio]?.explicacao}>
-                        {CRITERIO[linha.criterio]?.texto ?? linha.criterio}
-                      </Selo>
+                      <Selo tom="acento">{CRITERIO[linha.criterio]?.texto ?? linha.criterio}</Selo>
                     ) : null}
                   </div>
                 </div>
+
+                {/* Visível, e não no `title` do selo: pendência 2. */}
+                {linha.criterio && CRITERIO[linha.criterio] ? (
+                  <p className="mt-1 text-xs text-tinta-suave">{CRITERIO[linha.criterio]?.explicacao}</p>
+                ) : null}
 
                 {/*
                   Relatório legível da rodada (`A6`). O texto vem pronto do
@@ -534,11 +547,12 @@ export default function Distribuicao() {
                             {nomePor.get(fatia.colaboradorId) ?? fatia.colaboradorId}
                           </span>
                           <span className="flex items-center gap-3 whitespace-nowrap">
-                            <span
-                              className="numerico text-xs text-tinta-fraca"
-                              title="Crédito antes → depois. Positivo: a pessoa recebeu menos que a média e fica na frente para a próxima sobra."
-                            >
-                              {fatia.creditoAntes.toFixed(2)} → {fatia.creditoDepois.toFixed(2)}
+                            <span className="numerico text-xs text-tinta-fraca">
+                              <span className="sr-only">crédito de </span>
+                              {fatia.creditoAntes.toFixed(2)}
+                              <span aria-hidden="true"> → </span>
+                              <span className="sr-only"> para </span>
+                              {fatia.creditoDepois.toFixed(2)}
                             </span>
                             <span
                               className={juntar(

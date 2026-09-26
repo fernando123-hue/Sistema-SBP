@@ -683,9 +683,10 @@ function ResumoDoItem({
           type="button"
           onClick={() => aoEscolherLiga(item.ligaId)}
           className="mt-0.5 truncate text-xs font-normal text-acento underline decoration-dotted underline-offset-2"
-          title="Ver só esta liga — e o que o setor já aprendeu sobre ela"
         >
           {item.ligaNome}
+          {/* Era `title`, que teclado e leitor de tela não alcançam (pendência 2). */}
+          <span className="sr-only"> — ver só esta liga e o que o setor já aprendeu sobre ela</span>
         </button>
       ) : null}
     </div>

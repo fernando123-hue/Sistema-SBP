@@ -66,3 +66,27 @@ describe('textos das telas sem jargão de engenharia', () => {
     expect(achados).toEqual([])
   })
 })
+
+describe('explicação que só aparece passando o mouse (pendência 2)', () => {
+  // `title` não chega a teclado nem a leitor de tela (revisão do #115). O selo
+  // do critério e a dica do crédito moravam só ali. Explicação é texto visível
+  // ou vai pelo `titulo` do `Selo`, que também a entrega ao leitor de tela.
+  it.each(telas)('%s não põe explicação em atributo title', (tela) => {
+    const fonte = semComentarios(readFileSync(join(APP, tela), 'utf8'))
+
+    expect(fonte).not.toMatch(/\btitle=/)
+  })
+
+  it('a explicação do critério e a do crédito estão no texto da Distribuição', () => {
+    const fonte = semComentarios(readFileSync(join(APP, 'distribuicao', 'page.tsx'), 'utf8'))
+
+    expect(fonte).toMatch(/explicacao\}?\s*<\/p>|\.explicacao\}/)
+    expect(fonte).toMatch(/fica na frente para a próxima sobra/)
+  })
+
+  it('a explicação do crédito está no texto do Painel', () => {
+    const fonte = semComentarios(readFileSync(join(APP, 'painel', 'page.tsx'), 'utf8'))
+
+    expect(fonte).toMatch(/fica na frente para a próxima sobra/)
+  })
+})

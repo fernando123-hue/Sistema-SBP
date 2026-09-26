@@ -92,6 +92,9 @@ export function Selo({
   tom?: TomDoSelo
   titulo?: string | undefined
 }) {
+  // `title` sozinho só aparece passando o mouse: não chega a teclado nem a
+  // leitor de tela (pendência 2). O texto escondido leva a explicação ao
+  // leitor; o `title` fica para quem usa o mouse.
   return (
     <span
       title={titulo}
@@ -101,6 +104,7 @@ export function Selo({
       )}
     >
       {children}
+      {titulo ? <span className="sr-only">: {titulo}</span> : null}
     </span>
   )
 }
