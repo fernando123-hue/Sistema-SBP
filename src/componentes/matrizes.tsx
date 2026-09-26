@@ -134,7 +134,12 @@ export function SeloDeConfianca({ valor, limiar }: { valor: number; limiar: numb
   const tom: TomDoSelo = valor >= limiar ? 'ok' : valor >= limiar - 0.2 ? 'atencao' : 'alerta'
   return (
     <Selo tom={tom} titulo={`mínimo da categoria ${(limiar * 100).toFixed(0)}%`}>
-      <span className="numerico">{(valor * 100).toFixed(0)}%</span>
+      {/*
+        Para baixo: 0,949 com mínimo de 95% não pode aparecer como "95%"
+        (revisão do #126). A folga de 1e-9 é o ponto flutuante: 0,29 × 100 dá
+        28,999…, e sem ela a tela diria 28%.
+      */}
+      <span className="numerico">{Math.floor(valor * 100 + 1e-9)}%</span>
     </Selo>
   )
 }

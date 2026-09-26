@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import { Aviso, Botao, Selo } from './matrizes'
+import { Aviso, Botao, Selo, SeloDeConfianca } from './matrizes'
 
 function classesDoBotao(tamanho: 'normal' | 'pequeno'): string[] {
   const html = renderToStaticMarkup(createElement(Botao, { tamanho, children: 'Concluir' }))
@@ -75,5 +75,29 @@ describe('Selo — explicação fora do mouse (pendência 2)', () => {
 
     expect(html).not.toContain('sr-only')
     expect(html).not.toContain('title=')
+  })
+})
+
+describe('SeloDeConfianca — o número nunca parece passar do mínimo sem passar', () => {
+  function numero(valor: number, limiar: number): string {
+    const html = renderToStaticMarkup(createElement(SeloDeConfianca, { valor, limiar }))
+    return /class="numerico">(\d+)%/.exec(html)?.[1] ?? '?'
+  }
+
+  it('0,949 com mínimo de 95% aparece como 94%, não 95%', () => {
+    expect(numero(0.949, 0.95)).toBe('94')
+  })
+
+  it('valores exatos não perdem um ponto no ponto flutuante', () => {
+    expect(numero(0.29, 0.85)).toBe('29')
+    expect(numero(0.57, 0.85)).toBe('57')
+    expect(numero(0.95, 0.95)).toBe('95')
+  })
+
+  it('o mínimo sai em porcentagem, em português de gente', () => {
+    const html = renderToStaticMarkup(createElement(SeloDeConfianca, { valor: 0.9, limiar: 0.85 }))
+
+    expect(html).toContain('mínimo da categoria 85%')
+    expect(html).not.toMatch(/limiar/)
   })
 })

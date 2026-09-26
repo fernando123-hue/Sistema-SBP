@@ -94,6 +94,8 @@ describe('explicação que só aparece passando o mouse (pendência 2)', () => {
   it('o detector de elemento acerta', () => {
     expect(elementosComTitle('<span className="x"\n title="a">')).toEqual(['span'])
     expect(elementosComTitle('<button\n  type="button"\n  title="a"\n>')).toEqual(['button'])
+    // Um `<` de comparação no caminho: não reconhece, e conta como violação.
+    expect(elementosComTitle('a < b title="x"')).toEqual(['?'])
   })
 
   it.each([...telas.map((tela) => join(APP, tela)), ...componentes.map((nome) => join(COMPONENTES, nome))])(
@@ -105,11 +107,11 @@ describe('explicação que só aparece passando o mouse (pendência 2)', () => {
     },
   )
 
-  it('a explicação do critério e a do crédito estão no texto da Distribuição', () => {
+  // A explicação do critério é a narrativa da rodada, garantida critério a
+  // critério em `core/distribuicao/narrativa.test.ts` (revisão do #126).
+  it('a legenda do crédito está no texto da Distribuição', () => {
     const fonte = semComentarios(readFileSync(join(APP, 'distribuicao', 'page.tsx'), 'utf8'))
 
-    // Num parágrafo, não num atributo: `titulo={…explicacao}` passaria aqui.
-    expect(fonte).toMatch(/\.explicacao\}\s*<\/p>/)
     expect(fonte).toMatch(/fica na frente para a próxima sobra/)
   })
 
