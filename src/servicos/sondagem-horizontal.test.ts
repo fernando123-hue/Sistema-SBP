@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ErroDeNegocio } from '../core/erros'
+import { DOMINIO_ATUAL } from '../core/esquemas'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo, semearBase } from '../testes/apoio'
-import { concluir } from './fila'
+import { concluir, transferir } from './fila'
 import { registrarManual } from './itens'
 
 /**
@@ -21,6 +22,10 @@ const banco = obterPrisma()
 
 beforeEach(async () => {
   await limparTudo(banco)
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 async function itemDe(base: Awaited<ReturnType<typeof semearBase>>, colaboradorId: string): Promise<string> {
@@ -47,6 +52,10 @@ describe('concluir item de outra pessoa', () => {
     expect(eventos[0]!.situacao).toBe('falha')
     expect(eventos[0]!.referencia).toBe(intruso!.id)
     expect(eventos[0]!.mensagem).toContain('concluir item de outra pessoa')
+    // Invariante 14: a linha nasce sabendo de que domínio é.
+    expect(eventos[0]!.dominio).toBe(DOMINIO_ATUAL)
+    // Nem o id do item: a mensagem é gravada sem redação e para sempre.
+    expect(eventos[0]!.mensagem).not.toContain(itemId)
     // Nada foi concluído.
     expect((await banco.item.findUniqueOrThrow({ where: { id: itemId } })).status).not.toBe('concluido')
   })
@@ -71,5 +80,34 @@ describe('concluir item de outra pessoa', () => {
     await concluir(banco, { itemId }, dono.ator)
 
     expect(await banco.eventoProcessamento.count({ where: { etapa: 'autorizacao' } })).toBe(0)
+  })
+
+  // O caso legítimo (revisões do #130): a tela estava aberta quando o item foi
+  // remanejado. Quem já foi responsável não está sondando — e uma linha de
+  // "negação" com o nome dela, numa trilha que nunca é apagada, seria lida
+  // como acusação (invariante 10).
+  it('tela desatualizada (o item já foi seu) é recusada sem virar evento', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const [antiga, nova] = base.colaboradores
+    const itemId = await itemDe(base, antiga!.id)
+    await transferir(banco, { itemId, paraColaboradorId: nova!.id, justificativa: 'remanejar carga do dia' }, base.operador)
+
+    await expect(concluir(banco, { itemId }, antiga!.ator)).rejects.toThrow(
+      'Só o responsável ativo pode concluir o item',
+    )
+
+    expect(await banco.eventoProcessamento.count({ where: { etapa: 'autorizacao' } })).toBe(0)
+  })
+
+  it('falha ao gravar o rastro não troca a recusa por erro interno', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const [dono, intruso] = base.colaboradores
+    const itemId = await itemDe(base, dono!.id)
+    vi.spyOn(banco.eventoProcessamento, 'create').mockRejectedValueOnce(new Error('banco fora'))
+
+    const tentativa = concluir(banco, { itemId }, intruso!.ator)
+
+    await expect(tentativa).rejects.toBeInstanceOf(ErroDeNegocio)
+    await expect(tentativa).rejects.toThrow('Só o responsável ativo pode concluir o item')
   })
 })

@@ -97,7 +97,7 @@ export async function rota(handler: () => Promise<Response>): Promise<Response> 
 
     // Negação de permissão é tentativa, não engano de digitação: deixa rastro
     // antes de virar 403 (C-24).
-    if (erro instanceof PermissaoNegadaError) await registrarNegacao(obterPrisma(), erro, erro.operacao)
+    if (erro instanceof PermissaoNegadaError) await registrarNegacao(obterPrisma, erro, erro.operacao)
 
     const status = statusDoErro(erro)
 

@@ -2,7 +2,7 @@ import { ErroDeNegocio } from '../core/erros'
 import type { Operacao } from '../core/esquemas'
 import { ehOProprio, exigirPapel, type Ator } from '../servidor/ator'
 import { transacaoComNovaTentativa } from '../servidor/conflito'
-import { novaCorrelacao } from '../servidor/observabilidade'
+import { novaCorrelacao, registrarLog } from '../servidor/observabilidade'
 import type { Banco, Transacao } from '../servidor/prisma'
 import { registrarNegacao } from '../servidor/rastro-de-negacao'
 import { auditar } from './auditoria'
@@ -169,10 +169,23 @@ async function conferirPermissaoAntesDeTravar(
   if (operacao === null) {
     // Sondagem HORIZONTAL (pendência 8): a recusa era calada — quem varresse
     // ids para concluir o que não é dele não deixava linha nenhuma. A resposta
-    // continua a mesma: o caso legítimo existe (a tela estava aberta quando o
-    // item foi transferido), e a frase o explica bem. O rastro é o mesmo da
-    // sondagem vertical, com o mesmo limite por janela.
-    await registrarNegacao(banco, ator, 'concluir item de outra pessoa')
+    // continua a mesma, e a frase explica bem o caso legítimo: a tela estava
+    // aberta quando o item foi remanejado. Esse caso NÃO vira evento — quem já
+    // foi responsável pelo item está com a tela desatualizada, não sondando, e
+    // uma linha de "negação" com o nome dela, numa trilha que nunca é apagada,
+    // seria lida como acusação (invariante 10; revisões do #130). Fica no log.
+    const jaFoiResponsavel = await banco.atribuicao.findFirst({
+      // Encerrada é `ativa: null` (libera o índice único `(itemId, ativa)`).
+      where: { itemId, colaboradorId: ator.colaboradorId, ativa: null },
+      select: { id: true },
+    })
+    if (jaFoiResponsavel) {
+      registrarLog('info', 'concluir recusado: o item mudou de responsável', {
+        colaboradorId: ator.colaboradorId,
+      })
+    } else {
+      await registrarNegacao(banco, ator, 'concluir item de outra pessoa')
+    }
     throw new ErroDeNegocio('Só o responsável ativo pode concluir o item. Use transferência.')
   }
   exigirPapel(ator, operacao, 'operador', 'gestor')
@@ -196,6 +209,10 @@ export async function concluir(
 
     if (!atribuicao) throw new ErroDeNegocio(ITEM_SEM_RESPONSAVEL)
     if (!ehOProprio(ator, atribuicao.colaboradorId)) {
+      // Sem rastro, de propósito: chegar aqui é a corrida (o item mudou de mão
+      // entre a pré-conferência e a trava), não sondagem — e gravar dentro de
+      // uma transação que vai abortar deixaria a trilha afirmando o que não
+      // ficou (invariante 14).
       throw new ErroDeNegocio('Só o responsável ativo pode concluir o item. Use transferência.')
     }
     if (atribuicao.item.status === 'concluido') return
