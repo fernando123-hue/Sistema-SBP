@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { criarCategoria, criarElegivel } from '../testes/fabricas'
 import type { ResultadoRodada } from '../tipos'
+import { decimal } from '../util/numero'
 import { distribuir } from './motor'
 import { narrarRodada } from './narrativa'
 
@@ -143,7 +144,17 @@ describe('narrarRodada', () => {
     // que o A6 exige: a narrativa descreve, não recalcula.
     expect(texto).toContain(String(rodada.quantidadeEntrada))
     expect(texto).toContain(String(rodada.base))
-    expect(texto).toContain(rodada.cotaJusta.toLocaleString('pt-BR', { maximumFractionDigits: 2 }))
+    expect(texto).toContain(decimal(rodada.cotaJusta, { enxuto: true }))
+  })
+
+  // Revisão técnica do #129: o crédito roda em float64 cheio, e um resíduo
+  // negativo saía "Ana (-0)" — dívida que não existe.
+  it('resíduo negativo de crédito não vira "-0"', () => {
+    const rodada = rodar(9, [['ana', -1e-15], ['bruno', 4], ['clara', 2]])
+    const texto = narrarRodada(rodada, 'Ligante', nomeDe).join(' ')
+
+    expect(texto).not.toMatch(/-0\b/)
+    expect(texto).toContain('Ana (0)')
   })
 
   it('cai no id quando o nome não vier, em vez de sumir com a pessoa', () => {

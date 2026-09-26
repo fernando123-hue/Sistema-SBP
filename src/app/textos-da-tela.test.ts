@@ -153,3 +153,15 @@ describe('explicação que só aparece passando o mouse (pendência 2)', () => {
     expect(fonte).toMatch(/fica na frente para a próxima sobra/)
   })
 })
+
+describe('número na tela com vírgula (pendência 4)', () => {
+  // `toFixed` escreve com ponto. Número de tela passa por `decimal`
+  // (`core/util/numero.ts`), que escreve como se escreve aqui. Limite: só as
+  // telas; `componentes/` fica de fora porque `marca.tsx` usa `toFixed` em
+  // `transform` de SVG, onde o ponto é obrigatório.
+  it.each(telas)('%s não usa toFixed', (tela) => {
+    const fonte = semComentarios(readFileSync(join(APP, tela), 'utf8'))
+
+    expect(fonte).not.toMatch(/\.toFixed\(/)
+  })
+})

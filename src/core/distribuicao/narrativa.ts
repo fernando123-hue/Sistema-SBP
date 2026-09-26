@@ -1,4 +1,5 @@
 import type { ColaboradorId, ResultadoRodada } from '../tipos'
+import { decimal } from '../util/numero'
 
 /**
  * Narrativa da rodada — o que foi feito, como, e por quê (`A6`).
@@ -31,7 +32,9 @@ export type NomeDeColaborador = (id: ColaboradorId) => string
  * exatamente onde arredondar é seguro.
  */
 function numero(valor: number): string {
-  return valor.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+  // `decimal`, e não `toLocaleString` direto: um resíduo de -1e-16 no crédito
+  // saía "Ana (-0)" — dívida que não existe (revisão técnica do #129).
+  return decimal(valor, { enxuto: true })
 }
 
 function plural(quantidade: number, singular: string, plural: string): string {
