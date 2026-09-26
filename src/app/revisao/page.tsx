@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
+  Anuncio,
   Aviso,
   Botao,
   CabecalhoDeSecao,
@@ -14,6 +15,7 @@ import {
   Vazio,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
+import { pedidoDeConfirmacao } from '../../componentes/pedido-de-confirmacao'
 import { depoisDeResolver, estadoDaFila, filaDaResposta } from './fila-na-tela'
 import type { ItemEmRevisao, NaRede } from '../../core/tipos'
 
@@ -75,6 +77,11 @@ export default function Revisao() {
   const [ocupado, setOcupado] = useState<{ revisaoId: string; aprovar: boolean } | null>(null)
   /** Qual descarte está esperando o segundo clique. */
   const [confirmando, definirConfirmando] = useState<string | null>(null)
+  /**
+   * O que o leitor de tela ouve depois de aprovar ou descartar: o item sumia
+   * calado. Toda ação nova o limpa (revisão do #128).
+   */
+  const [feito, setFeito] = useState<string | null>(null)
   const [edicao, setEdicao] = useState<Record<string, Edicao>>({})
 
   const carregar = useCallback(async () => {
@@ -175,6 +182,9 @@ export default function Revisao() {
 
     setOcupado({ revisaoId: item.revisaoId, aprovar })
     setErro(null)
+    // Limpa ANTES do `await`: duas aprovações seguidas dão o mesmo texto, e
+    // sem o vazio no meio a segunda não seria lida.
+    setFeito(null)
     try {
       await api.enviar('/revisao/resolver', {
         revisaoId: item.revisaoId,
@@ -192,7 +202,9 @@ export default function Revisao() {
         return { itens: depois.itens, total: depois.total, pedirMais: depois.recarregar }
       })
       definirConfirmando(null)
+      setFeito(aprovar ? 'Item aprovado.' : 'Item descartado.')
     } catch (causa) {
+      setFeito(null)
       setErro(mensagemDoErro(causa))
     } finally {
       setOcupado(null)
@@ -231,6 +243,18 @@ export default function Revisao() {
       ) : null}
 
       {erro ? <Aviso>{erro}</Aviso> : null}
+      {/* Qual item está armado, pela posição e pelo título: `pedido-de-confirmacao.ts`. */}
+      <Anuncio
+        mensagem={
+          confirmando
+            ? pedidoDeConfirmacao(
+                'descartar',
+                fila?.itens.findIndex((item) => item.revisaoId === confirmando) ?? -1,
+                fila?.itens.length ?? 0,
+              )
+            : feito
+        }
+      />
 
       {estado === 'carregando' || pendentes === null ? (
         <Carregando />
@@ -390,11 +414,14 @@ export default function Revisao() {
                     <Botao
                       variante="perigo"
                       tamanho="pequeno"
-                      onClick={() =>
-                        confirmando === item.revisaoId
-                          ? void resolver(item, false)
-                          : definirConfirmando(item.revisaoId)
-                      }
+                      onClick={() => {
+                        if (confirmando === item.revisaoId) {
+                          void resolver(item, false)
+                          return
+                        }
+                        definirConfirmando(item.revisaoId)
+                        setFeito(null)
+                      }}
                       desabilitado={ocupado !== null}
                     >
                       {ocupado?.revisaoId === item.revisaoId && !ocupado.aprovar

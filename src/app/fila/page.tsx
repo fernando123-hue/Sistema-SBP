@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
+  Anuncio,
   Aviso,
   Botao,
   CabecalhoDeSecao,
@@ -13,6 +14,7 @@ import {
   Vazio,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
+import { pedidoDeConfirmacao } from '../../componentes/pedido-de-confirmacao'
 import { hojeIso } from '../../core/util/datas'
 
 interface ItemDaFila {
@@ -76,6 +78,12 @@ export default function Fila() {
   const [equipe, setEquipe] = useState<PessoaDaEscala[]>([])
   /** Item cujo "Concluir" já levou o primeiro toque e espera a confirmação. */
   const [confirmandoConclusao, setConfirmandoConclusao] = useState<string | null>(null)
+  /**
+   * O que o leitor de tela ouve depois do segundo clique: sem isto, o item
+   * sumia calado. Toda ação nova o limpa — senão, desarmar o Concluir fazia o
+   * leitor repetir um sucesso antigo (revisão do #128).
+   */
+  const [feito, setFeito] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     try {
@@ -96,10 +104,15 @@ export default function Fila() {
   async function concluir(item: ItemDaFila) {
     setOcupado({ itemId: item.itemId, acao: 'concluir' })
     setErro(null)
+    // Limpa ANTES do `await`: o aviso novo passa a ser uma mudança de verdade,
+    // mesmo quando é igual ao anterior.
+    setFeito(null)
     try {
       await api.enviar(`/itens/${item.itemId}/concluir`)
       setItens((atual) => (atual ?? []).filter((linha) => linha.itemId !== item.itemId))
+      setFeito('Item concluído.')
     } catch (causa) {
+      setFeito(null)
       setErro(mensagemDoErro(causa))
     } finally {
       setOcupado(null)
@@ -190,6 +203,19 @@ export default function Fila() {
       />
 
       {erro ? <Aviso>{erro}</Aviso> : null}
+      {/* Qual item está armado, pela posição e pelo título: `pedido-de-confirmacao.ts`. */}
+      <Anuncio
+        mensagem={
+          confirmandoConclusao
+            ? pedidoDeConfirmacao(
+                'concluir',
+                // A ordem da TELA, agrupada por categoria — não a de `itens`.
+                [...porCategoria.values()].flat().findIndex((item) => item.itemId === confirmandoConclusao),
+                itens?.length ?? 0,
+              )
+            : feito
+        }
+      />
 
       {itens === null ? (
         <Carregando />
@@ -248,6 +274,7 @@ export default function Fila() {
                           tamanho="pequeno"
                           onClick={() => {
                             setConfirmandoConclusao(null)
+                            setFeito(null)
                             if (saindo === item.itemId) setSaindo(null)
                             else void abrirSaida(item)
                           }}
@@ -269,11 +296,14 @@ export default function Fila() {
                         <Botao
                           variante="principal"
                           tamanho="pequeno"
-                          onClick={() =>
-                            confirmandoConclusao === item.itemId
-                              ? void concluir(item)
-                              : setConfirmandoConclusao(item.itemId)
-                          }
+                          onClick={() => {
+                            if (confirmandoConclusao === item.itemId) {
+                              void concluir(item)
+                              return
+                            }
+                            setConfirmandoConclusao(item.itemId)
+                            setFeito(null)
+                          }}
                           desabilitado={ocupado !== null}
                         >
                           {ocupado?.itemId === item.itemId && ocupado.acao === 'concluir'
