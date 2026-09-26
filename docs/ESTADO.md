@@ -1,10 +1,27 @@
 # Estado do projeto — retomada
 
-Última atualização: **25/09/2026, noite — IA local medida e documento de segurança.** Modelo padrão da máquina Debian: `qwen2.5:1.5b` (`DECISOES.md § A59`, provisório). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Próximo passo: as **20 pendências** (item 4 do bloco de 24/09) e depois as instruções novas. Ver o primeiro bloco abaixo.
+Última atualização: **26/09/2026, madrugada — sessão em nuvem (Linux) resolveu as pendências 2, 3, 4, 5, 7, 8, 9 e 23 (#122 a #131 mesclados); #132 e #133 abertos esperando revisão; #124 (docs) aberto e bloqueado.** Servidor da implantação é Linux (decisão do dono, registrada no #124 como `A61`). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Ver o primeiro bloco abaixo.
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 25/09/2026, noite — IA LOCAL MEDIDA; DOCUMENTO DE SEGURANÇA (este bloco vence os de baixo; o `git log` vence este)
+> ### 26/09/2026, madrugada — PENDÊNCIAS EM SEQUÊNCIA, NA NUVEM (este bloco vence os de baixo; o `git log` vence este)
+>
+> **1. Onde está.** `main` com #120 a #131 mesclados. **PRs abertos, nesta ordem de prioridade:**
+> - **#132 — pendência 10** (erro de transporte da IA mascarado no log). Código pronto, `verificar` verde (1466), teste visto vermelho. **Faltam:** revisão técnica e de segurança por agentes (nível 3), links no corpo, CI lido, mesclar.
+> - **#133 — teste do expurgo na meia-noite.** Um teste de `expurgo-lgpd.test.ts` falhava quando a suíte atravessava a meia-noite de São Paulo (`DATA_BASE` fixa no carregamento × `cancelar()` com a hora real). **Faltam:** revisão técnica (nível 2), link, CI, mesclar.
+> - **#124 — docs da sessão de 25/09** (decisão `A61` "servidor é Linux", resultado da medição da forma forçada — pendência 18 —, definição da pendência 23). **O classificador de permissões recusou que o agente atualizasse esse branch ("autoaprovação")** — o dono mescla, resolvendo o conflito no `ESTADO.md` (ficar com as linhas já riscadas da `main`). Enquanto não entrar, o `A61` só existe no #124.
+> - Dependabot #78 a #81 (pendência 12).
+>
+> **2. Feito nesta sessão** (cada um com teste visto vermelho, visto rodando, revisões por agente publicadas no PR — várias com segunda e terceira rodada —, CI lido, mesclado com autorização do dono de 26/09):
+> - **#122** scripts que usam o banco encerram sozinhos · **#123** pendência 3 (frase de gente quando a API não responde) · **#125** pendência 23 (`agentRules: false`: `next dev` não escreve mais no `CLAUDE.md`) · **#126** pendência 2 (explicação fora do mouse) · **#127** pendência 7 (rótulos das telas numa fonte só) · **#128** pendência 5 (segundo clique anunciado ao leitor de tela; regra nova **`DECISOES.md § AT-48`**: a região viva só fala literais do código e números, nunca texto de e-mail) · **#129** pendência 4 (vírgula decimal, `decimal()` em `core/util/numero.ts`) · **#130** pendência 8 (sondagem horizontal deixa rastro; tela desatualizada fica só no log) · **#131** pendência 9 (limite de 30/min por pessoa no Painel e na memória; o Painel espera 400 ms entre dígitos da data).
+>
+> **3. PRÓXIMO PASSO.** (a) Fechar #132 e #133 (revisões → links → CI → mesclar). (b) Seguir a lista do item 4 do bloco de 24/09, na ordem, a partir da **11**. Dependem do dono: **6** (ouvir com NVDA — a lista do que ouvir está na própria pendência), **17** (critério), **20** (repositório privado). A **18** precisa de um servidor de modelo (a máquina Windows tem Ollama; esta nuvem não). Novas desta sessão, já na lista: **21, 22, 24, 25, 26**.
+>
+> **4. Como esta sessão trabalhou (vale repetir).** Um branch e uma pasta (`git worktree`) por pendência, em `/home/user/sbp-*`, com `node_modules` copiado por hardlink (`cp -al`) — o Next recusa link simbólico. MySQL 8.4 em Docker na porta 3307 (`dockerd &`, `docker run -d --name sbp-mysql -e MYSQL_ALLOW_EMPTY_PASSWORD=yes -p 3307:3306 mysql:8.4`, e criar `sbp`, `sbp_teste`, `sbp_sombra` com `utf8mb4_0900_as_cs`). `SESSAO_SECRET` de teste com 16+ caracteres na linha de comando. Base de desenvolvimento `sbp` preenchida com `npm run db:seed` e `npm run demo`. Tela vista com o Playwright global (`$(npm root -g)/playwright`) e conferida pela árvore de acessibilidade. **Nunca rodar duas suítes ao mesmo tempo** (mesma base de teste). **Nunca `pkill -f`** (mata o próprio shell): matar por PID. Revisões: um agente técnico e um de segurança por PR (só leitura), o texto publicado **sem edição** com uma nota do autor no topo dizendo o destino de cada achado.
+>
+> **5. Decisões abertas com o dono:** as do bloco de 25/09 abaixo, mais: mesclar o #124; a pendência 6 (NVDA).
+>
+> ### 25/09/2026, noite — IA LOCAL MEDIDA; DOCUMENTO DE SEGURANÇA (anterior; o próximo passo dele foi seguido — pendências 1 a 10 e 23)
 >
 > **1. Onde está:** `main` com o PR "gabarito sem banco" e este PR de docs. Dependabot #78 a #81 seguem sem avaliar. Nada rodando. MySQL desta máquina em `127.0.0.1:3307`.
 >
@@ -33,7 +50,7 @@
 > **4. PENDÊNCIAS A RESOLVER (pedido do dono, 25/09) — lista única; ela substitui os itens "Anotado" dos blocos abaixo.** Mesmo método da auditoria: confirmar lendo o código, teste visto vermelho, um PR por assunto, revisão por agente. Ao resolver, riscar aqui com o número do PR.
 >
 > *A. O que a equipe lê na tela (as três que o dono viu no fim da sessão de 24/09 vêm primeiro):*
-> 1. **Código interno numa mensagem de erro da distribuição** — `ElegiveisInvalidosError` (`core/distribuicao/motor.ts`, "colaborador … aparece duas vezes") interpola `colaboradorId` e chega à tela como 422. Hoje não acontece (a lista vem do banco, sem duplicata), mas se acontecer é defeito: provavelmente virar `Error` (500 com correlação, id no log), como o item "sem lote" no #114.
+> 1. ~~**Código interno numa mensagem de erro da distribuição**~~ — **resolvida no #120.** — `ElegiveisInvalidosError` (`core/distribuicao/motor.ts`, "colaborador … aparece duas vezes") interpola `colaboradorId` e chega à tela como 422. Hoje não acontece (a lista vem do banco, sem duplicata), mas se acontecer é defeito: provavelmente virar `Error` (500 com correlação, id no log), como o item "sem lote" no #114.
 > 2. ~~**Explicação que só aparece passando o mouse**~~ — **resolvida no #126.** Legenda do crédito visível na Distribuição e no Painel; a regra do critério é a narrativa da rodada; o `Selo` entrega a dica também ao leitor de tela; varredura recusa `title` fora de `<button>`. Limite assumido: quem enxerga e usa só teclado segue sem a dica dos selos da Caixa. Duplicação possível no JAWS/VoiceOver entra no teste da pendência 6.
 > 3. ~~**"Falha na requisição (404)."**~~ — **resolvida no #123.** Resposta sem erro legível mostra "Não foi possível falar com o sistema. Atualize a tela e tente de novo." com `(código N)` no fim quando não há `ref.`; caminho, status e causa vão ao console do navegador. **Contrato novo:** rede caída deixa de rejeitar com `TypeError` e vira `ErroDaApi` com status 0 e a causa em `cause`.
 > 4. ~~Números da Distribuição: vírgula só na média~~ — **resolvida no #129.** `decimal()` em `core/util/numero.ts` (vírgula, milhar com ponto, sem "-0,00"); Distribuição e Painel sem `toFixed`, e uma varredura recusa `toFixed` nas telas.
@@ -44,7 +61,7 @@
 > *B. Segurança e robustez:*
 > 8. ~~Sondagem **horizontal** invisível~~ — **resolvida no #130.** Concluir item de outra pessoa continua 422 com a mesma frase, mas deixa o mesmo rastro da sondagem vertical (evento `autorizacao`, uma linha por pessoa e tentativa a cada 10 min; log sempre). Engano comum fica de fora do evento: quem **já foi** responsável pelo item está com a tela desatualizada — só log. O rastro saiu de `servidor/http.ts` para `servidor/rastro-de-negacao.ts`, com tentativa em vocabulário fechado.
 > 9. ~~`/api/painel` e `/api/memoria` sem limite por pessoa~~ — **resolvida no #131.** 30 consultas por pessoa por minuto em cada uma (constantes em `servicos/painel.ts` e `servicos/memoria.ts`), mesmo desenho da qualidade (C-21), e vale por processo. O Painel espera 400 ms depois da última mudança nas datas antes de pedir (o campo de data disparava a cada dígito). Ficam para depois: teto de duração do período do Painel (hoje sem limite, ao contrário da qualidade) e `GET /api/itens` e `GET /api/rodadas/[id]` sem limite (revisões do #131).
-> 10. Erro de *transporte* da IA grava a mensagem crua do fornecedor no log — conferir se algum SDK ecoa o pedido (revisão de segurança do #90).
+> 10. Erro de *transporte* da IA grava a mensagem crua do fornecedor no log — conferir se algum SDK ecoa o pedido (revisão de segurança do #90). **Em andamento no #132.**
 > 11. Alerta por volume das recusas de entrada (`AT-45`); índice `(situacao, etapa, referencia)` em `EventoProcessamento` quando o volume justificar; rotação da sessão com duas chaves (`SESSAO_SECRET_ANTERIOR`, C-25).
 > 12. Dependabot #78 a #81 (`@anthropic-ai/sdk`, `react-dom`, `@google/genai`, `react`) abertos e não avaliados — cada um é nível 3, CI lido check a check.
 >
@@ -63,6 +80,7 @@
 > *E. Novas em 25/09, noite (revisão do #123):*
 > 21. **Frase repetida quando embutida:** `app/senha/page.tsx` (≈42) monta "Não foi possível sair: ${mensagemDoErro(…)} Você continua conectado." e, sem resposta do sistema, sai "Não foi possível sair: Não foi possível falar com o sistema. …"; o mesmo em `app/entrar/page.tsx` (≈64, "Acesso local indisponível: …"). Legível, mas redundante.
 > 22. **Na tela de entrada, 404 de rota quebrada vira "acesso local desligado"** (`app/entrar/page.tsx` ≈63): no cenário da pendência 16 (rotas aninhadas de `/api` em 404, página HTML do Next), a tela fica calada em vez de avisar. Anterior ao #123; tratar junto da 16.
+> 23. ~~**`next dev` escreve no `CLAUDE.md`**~~ — **resolvida no #125** (`agentRules: false`; teste e comentário lembram de repetir o "visto rodando" ao atualizar o Next).
 > 24. **Foco perdido depois de agir** (revisão do #128): depois de concluir, descartar, aprovar, devolver ou transferir, o botão com foco some e o foco cai no `<body>` — quem usa teclado ou leitor de tela recomeça do topo. Levar o foco ao próximo item ou ao título da seção. Devolver e transferir, na Minha fila, também não anunciam o resultado (o `Anuncio` do #128 cobre só concluir, aprovar e descartar).
 > 25. **Varrer ids inexistentes não deixa rastro** (revisão de segurança do #130): `concluir`/`devolver`/`transferir` com id que não existe respondem `ITEM_SEM_RESPONSAVEL` (422) sem log nem evento. Como `Item` nunca é apagado (invariante 11) e a tela nunca manda id inexistente, "id que não existe em `Item`" é sinal de sondagem sem falso positivo — registrar com o mesmo `registrarNegacao`.
 > 26. **`transferir` revela nome de quem foi desativado** (revisão de segurança do #130): transferir o próprio item para um `paraColaboradorId` qualquer devolve, no 422, o nome de quem está desativado — e distingue ids de colaborador existentes dos inexistentes. Trocar por frase neutra (ou conferir se quem pede já enxerga esse nome por outro caminho).
