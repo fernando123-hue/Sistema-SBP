@@ -92,9 +92,12 @@ export function Selo({
   tom?: TomDoSelo
   titulo?: string | undefined
 }) {
-  // `title` sozinho só aparece passando o mouse: não chega a teclado nem a
-  // leitor de tela (pendência 2). O texto escondido leva a explicação ao
-  // leitor; o `title` fica para quem usa o mouse.
+  // `title` num selo só aparece passando o mouse: não chega a leitor de tela
+  // (pendência 2). O texto escondido leva a explicação ao leitor; o `title`
+  // fica para quem usa o mouse. Quem enxerga e usa só teclado continua sem
+  // ela — explicação que essa pessoa precisa vai em texto visível na tela.
+  // Como o leitor lê o texto em toda linha de tabela, ele tem de ser curto e
+  // em português de gente.
   return (
     <span
       title={titulo}
@@ -104,7 +107,7 @@ export function Selo({
       )}
     >
       {children}
-      {titulo ? <span className="sr-only">: {titulo}</span> : null}
+      {titulo ? <span className="sr-only">, {titulo}</span> : null}
     </span>
   )
 }
@@ -130,7 +133,7 @@ export function Selo({
 export function SeloDeConfianca({ valor, limiar }: { valor: number; limiar: number }) {
   const tom: TomDoSelo = valor >= limiar ? 'ok' : valor >= limiar - 0.2 ? 'atencao' : 'alerta'
   return (
-    <Selo tom={tom} titulo={`Confiança da classificação automática (limiar ${limiar})`}>
+    <Selo tom={tom} titulo={`mínimo da categoria ${(limiar * 100).toFixed(0)}%`}>
       <span className="numerico">{(valor * 100).toFixed(0)}%</span>
     </Selo>
   )

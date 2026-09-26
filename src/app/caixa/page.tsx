@@ -588,7 +588,7 @@ export default function Caixa() {
                       {item.irmaos > 1 ? (
                         <Selo
                           tom="acento"
-                          titulo={`Este e-mail gerou ${item.irmaos} itens — um e-mail pode valer N unidades de carga.`}
+                          titulo={`este e-mail virou ${item.irmaos} itens`}
                         >
                           {item.irmaos}×
                         </Selo>
@@ -606,7 +606,7 @@ export default function Caixa() {
                     item.classificadaPorIa ? (
                       <SeloDeConfianca valor={item.confianca} limiar={item.limiarConfianca} />
                     ) : (
-                      <Selo titulo="Registrado à mão: nenhum modelo classificou este item.">
+                      <Selo titulo="registrado à mão, sem classificação automática">
                         manual
                       </Selo>
                     ),
@@ -683,10 +683,12 @@ function ResumoDoItem({
           type="button"
           onClick={() => aoEscolherLiga(item.ligaId)}
           className="mt-0.5 truncate text-xs font-normal text-acento underline decoration-dotted underline-offset-2"
+          // Em botão o `title` é a descrição acessível: o leitor de tela o lê
+          // ao focar, e quem usa o mouse o vê. Diferente de `title` em texto
+          // sem foco, que só o mouse alcança (pendência 2, revisão do #126).
+          title="Ver só esta liga — e o que o setor já aprendeu sobre ela"
         >
           {item.ligaNome}
-          {/* Era `title`, que teclado e leitor de tela não alcançam (pendência 2). */}
-          <span className="sr-only"> — ver só esta liga e o que o setor já aprendeu sobre ela</span>
         </button>
       ) : null}
     </div>

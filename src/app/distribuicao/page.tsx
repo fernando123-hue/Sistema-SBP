@@ -513,8 +513,12 @@ export default function Distribuicao() {
                   </div>
                 </div>
 
-                {/* Visível, e não no `title` do selo: pendência 2. */}
-                {linha.criterio && CRITERIO[linha.criterio] ? (
+                {/*
+                  Visível, e não no `title` do selo (pendência 2) — mas só sem
+                  a narrativa: com ela, a regra já vem contada com os números
+                  da rodada, e repetir pesa para quem ouve o cartão inteiro.
+                */}
+                {linha.criterio && CRITERIO[linha.criterio] && narrativaDe(mostrado, linha.categoriaCodigo).length === 0 ? (
                   <p className="mt-1 text-xs text-tinta-suave">{CRITERIO[linha.criterio]?.explicacao}</p>
                 ) : null}
 
@@ -562,6 +566,7 @@ export default function Distribuicao() {
                                   : 'text-tinta-fraca',
                               )}
                             >
+                              <span className="sr-only">recebe </span>
                               {fatia.quantidade}
                             </span>
                           </span>

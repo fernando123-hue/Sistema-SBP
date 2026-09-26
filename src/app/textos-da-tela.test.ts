@@ -33,6 +33,7 @@ const JARGAO = [
   /\bpiso\b/i,
   /no banco\b/i,
   /sem este aviso/i,
+  /unidades? de carga/i,
 ]
 
 /** O fonte sem comentários de bloco, de JSX e de linha (sem pegar `http://`). */
@@ -67,15 +68,42 @@ describe('textos das telas sem jargão de engenharia', () => {
   })
 })
 
-describe('explicação que só aparece passando o mouse (pendência 2)', () => {
-  // `title` não chega a teclado nem a leitor de tela (revisão do #115). O selo
-  // do critério e a dica do crédito moravam só ali. Explicação é texto visível
-  // ou vai pelo `titulo` do `Selo`, que também a entrega ao leitor de tela.
-  it.each(telas)('%s não põe explicação em atributo title', (tela) => {
-    const fonte = semComentarios(readFileSync(join(APP, tela), 'utf8'))
-
-    expect(fonte).not.toMatch(/\btitle=/)
+/**
+ * Em que elemento cada `title=` está. Em `<button>` ele é a descrição
+ * acessível — o leitor de tela o lê ao focar —; em texto sem foco, só o mouse
+ * o alcança (revisão do #126). Elemento que o detector não reconhece (um `<`
+ * de comparação no meio do caminho) volta como `?` e conta como violação:
+ * na dúvida, falha fechada.
+ */
+function elementosComTitle(fonte: string): string[] {
+  return [...fonte.matchAll(/\btitle=/g)].map((achado) => {
+    const abertura = fonte.lastIndexOf('<', achado.index)
+    return /^<([A-Za-z][\w.]*)/.exec(fonte.slice(abertura))?.[1] ?? '?'
   })
+}
+
+const COMPONENTES = join(APP, '..', 'componentes')
+// `Selo` põe o `title` e o mesmo texto escondido para o leitor de tela.
+const componentes = readdirSync(COMPONENTES).filter((nome) => nome.endsWith('.tsx') && nome !== 'matrizes.tsx')
+
+describe('explicação que só aparece passando o mouse (pendência 2)', () => {
+  // `title` em texto sem foco não chega a teclado nem a leitor de tela
+  // (revisão do #115). O selo do critério e a dica do crédito moravam só ali.
+  // Explicação é texto visível ou vai pelo `titulo` do `Selo`, que também a
+  // entrega ao leitor de tela.
+  it('o detector de elemento acerta', () => {
+    expect(elementosComTitle('<span className="x"\n title="a">')).toEqual(['span'])
+    expect(elementosComTitle('<button\n  type="button"\n  title="a"\n>')).toEqual(['button'])
+  })
+
+  it.each([...telas.map((tela) => join(APP, tela)), ...componentes.map((nome) => join(COMPONENTES, nome))])(
+    '%s só usa title em botão',
+    (arquivo) => {
+      const fonte = semComentarios(readFileSync(arquivo, 'utf8'))
+
+      expect(elementosComTitle(fonte).filter((elemento) => elemento !== 'button')).toEqual([])
+    },
+  )
 
   it('a explicação do critério e a do crédito estão no texto da Distribuição', () => {
     const fonte = semComentarios(readFileSync(join(APP, 'distribuicao', 'page.tsx'), 'utf8'))
