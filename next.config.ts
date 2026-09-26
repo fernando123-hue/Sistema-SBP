@@ -6,9 +6,10 @@ const config: NextConfig = {
   serverExternalPackages: ['@prisma/client'],
   poweredByHeader: false,
   // Sem isto, `next dev` que detecta um agente de IA anexa um bloco próprio ao
-  // `CLAUDE.md` e cria um `AGENTS.md` — as regras de quem escreve código aqui
-  // mudando como efeito colateral de subir a tela (visto em 25/09/2026). Elas
-  // mudam por decisão do dono, num PR que diz isso.
+  // `CLAUDE.md` (só criaria `AGENTS.md` se nenhum dos dois existisse) — as
+  // regras de quem escreve código aqui mudando como efeito colateral de subir
+  // a tela (visto em 25/09/2026). Elas mudam por decisão do dono, num PR que
+  // diz isso. Ao atualizar o Next, subir a tela e conferir o `git status`.
   agentRules: false,
 
   async headers() {
