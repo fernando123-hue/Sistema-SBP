@@ -138,6 +138,9 @@ function Atraso({ dias }: { dias: number | null }) {
   return <span className="numerico">{dias === 0 ? 'hoje' : `${dias}d`}</span>
 }
 
+/** Quanto esperar, depois da última mudança nas datas, antes de pedir o período. */
+const ESPERA_DO_PERIODO_MS = 400
+
 /**
  * Painel.
  *
@@ -153,6 +156,22 @@ export default function PainelPagina() {
   /** Vazio = deixa o servidor escolher o mês corrente, a unidade da planilha. */
   const [de, setDe] = useState('')
   const [ate, setAte] = useState('')
+  /**
+   * O período que de fato vai ao servidor: o dos campos, depois de um tempo
+   * sem mudança. O campo de data dispara a cada dígito — o ano passa por
+   * "0002", "0020", "0202" antes de "2025", e segurar a seta dispara em
+   * rajada —, e cada valor virava uma consulta com as três leituras do Painel. Com
+   * o limite por pessoa (pendência 9), a rajada chegava ao 429 em uso normal
+   * (revisão técnica do #131).
+   */
+  const [periodoPedido, setPeriodoPedido] = useState({ de: '', ate: '' })
+  useEffect(() => {
+    const espera = setTimeout(
+      () => setPeriodoPedido((anterior) => (anterior.de === de && anterior.ate === ate ? anterior : { de, ate })),
+      ESPERA_DO_PERIODO_MS,
+    )
+    return () => clearTimeout(espera)
+  }, [de, ate])
   /** Muda para pedir os dados de novo depois de uma falha. */
   const [tentativa, setTentativa] = useState(0)
   // Um erro por efeito, e não um só: mudar o período limpa o erro DO PERÍODO,
@@ -176,7 +195,8 @@ export default function PainelPagina() {
     // Limpa o erro anterior: sem isto, a faixa vermelha da tentativa que falhou
     // ficaria na tela por cima dos dados que a tentativa seguinte trouxe.
     setErroDoPeriodo(null)
-    const recorte = de && ate ? `?de=${de}&ate=${ate}` : ''
+    const { de: dePedido, ate: atePedido } = periodoPedido
+    const recorte = dePedido && atePedido ? `?de=${dePedido}&ate=${atePedido}` : ''
     api
       .buscar<Painel>(`/painel${recorte}`)
       .then((painel) => {
@@ -188,7 +208,7 @@ export default function PainelPagina() {
     return () => {
       vigente = false
     }
-  }, [de, ate, tentativa])
+  }, [periodoPedido, tentativa])
 
   useEffect(() => {
     let vigente = true
