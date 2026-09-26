@@ -20,6 +20,7 @@ describe('o que sai do texto', () => {
     expect(proteger('CPF 12345678909')).toBe('CPF [número]')
     expect(proteger('CPF 123 456 789 09')).toBe('CPF [número]')
     expect(proteger('CPF 123  456  789  09')).toBe('CPF [número]')
+    expect(proteger('CPF 123    456    789    09')).toBe('CPF [número]')
   })
 
   // Achados das revisões do #135: cada um destes saía inteiro ou pela metade.
@@ -81,6 +82,18 @@ describe('o que sai do texto', () => {
       'matrícula número 4521',
       'Matrícula SBP nº 4521',
       'matrícula da associada: 4521',
+      // Terceira rodada: palavra qualquer no meio, `no` sem ponto, UF depois
+      // da palavra, rótulo alinhado com espaços, `№`, abreviações.
+      'RQE em Pediatria 1234',
+      'CRM da médica: 1234',
+      'crm de sp 1234',
+      'CRM no 1234',
+      'minha matrícula na SBP é 4521',
+      'CRM:      1234',
+      'CRM \u2116 1234',
+      'CRM nro. 1234',
+      'Mat. 4521',
+      'insc. 1234',
     ]) {
       expect(proteger(grafia), grafia).not.toMatch(/\d/)
     }
@@ -103,6 +116,9 @@ describe('o que sai do texto', () => {
     expect(proteger('ftp://exemplo.test/arquivo')).toBe('[link]')
     expect(proteger('(https://exemplo.test/x)')).toBe('([link]')
     expect(proteger('http\u200b://exemplo.test/token')).toBe('[link]')
+    // Imagem ou documento embutido: opaco para o classificador, pode ser a
+    // foto de um documento.
+    expect(proteger('segue data:image/png;base64,iVBORw0KGgo= fim')).toBe('segue [link] fim')
   })
 
   // Segunda rodada de revisões do #135: com a decisão ancorada no começo da
@@ -161,6 +177,12 @@ describe('o que fica — o que o classificador precisa para entender o pedido', 
     expect(proteger('o CRM do associado está anexo')).toBe('o CRM do associado está anexo')
   })
 
+  // `AT-49`: com palavra no meio, 3 dígitos ou mais já é registro.
+  it('contagem de 3 dígitos ou mais depois de palavra-chave sai', () => {
+    expect(proteger('registro em 2026')).toBe('registro em [número]')
+    expect(proteger('registro de 150 associados')).toBe('registro de [número] associados')
+  })
+
   // Segunda rodada de revisões: com "duas letras quaisquer" como UF e `nº`
   // igual a `no` depois do NFKC, estas contagens viravam `[número]`.
   it('contagem pequena depois de palavra-chave', () => {
@@ -169,7 +191,6 @@ describe('o que fica — o que o classificador precisa para entender o pedido', 
       'o CRM de 2 médicos',
       'registro no 2º semestre',
       'matrícula da 3ª turma',
-      'registro em 2026',
     ]) {
       expect(proteger(texto), texto).toMatch(/\d/)
     }
@@ -192,6 +213,14 @@ describe('corte e contagem', () => {
   it('texto enorme depois de normalizado é cortado antes das máscaras, e diz', () => {
     const protegido = protegerParaFornecedorExterno('\ufdfa '.repeat(10_000), 20)
     expect(protegido.cortado).toBe(true)
+  })
+
+  // Terceira rodada: procurar o espaço até o começo devolvia texto VAZIO.
+  it('texto sem espaço até o teto é cortado no teto, e não some', () => {
+    const protegido = protegerParaFornecedorExterno(`${'QUJD'.repeat(20_000)} pedido de segunda via`)
+    expect(protegido.cortado).toBe(true)
+    expect(protegido.texto.length).toBeGreaterThan(1000)
+    expect(protegerParaFornecedorExterno('\ufdfa'.repeat(200_000)).texto).not.toBe('')
   })
 
   it('não diz que cortou quando cabe', () => {
@@ -235,6 +264,9 @@ describe('texto hostil longo não trava o servidor', () => {
     'palavra-chave e ligação repetidas': 'CRM-SP sob o nº '.repeat(N / 16),
     'link colado repetido': 'x:https://'.repeat(N / 10),
     'domínio sem caminho numa palavra só': 'a.b'.repeat(N / 3),
+    'chave seguida de palavras sem número': 'CRM de da do no na SP '.repeat(N / 22),
+    'palavra longa depois da chave': `CRM ${'a'.repeat(N)}`,
+    'data: sem base64': 'data:image/'.repeat(N / 11),
   }
 
   // O NFKC multiplica `ﷺ` por 18: 200 mil viravam 3,6 milhões (meio segundo).

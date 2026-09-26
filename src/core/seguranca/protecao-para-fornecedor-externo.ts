@@ -22,7 +22,8 @@ import { truncar } from './conteudo-nao-confiavel'
  * - e-mail, inclusive `%40`.
  * - o número depois de conselho profissional (CRM, CREMESP, RQE, COREN…),
  *   de "matrícula", "registro" e "inscrição", mesmo curto, com UF e até três
- *   palavras de ligação no meio (`inscrita no CRM/SP sob o nº 1.234`).
+ *   palavras quaisquer no meio (`inscrita no CRM/SP sob o nº 1.234`) — com
+ *   palavra no meio, só a partir de 3 dígitos.
  * - toda sequência de 5 ou mais dígitos com até três separadores entre eles:
  *   CPF, CNPJ, telefone, CEP, RG, protocolo — e também DATA COMPLETA e valor
  *   com 5+ dígitos (`AT-49`). Aqui um falso positivo custa pouco (o
@@ -61,6 +62,8 @@ export const LIMITE_PARA_FORNECEDOR_EXTERNO = 4000
 // Formatação invisível: largura zero, hífen suave, marcas de direção.
 const INVISIVEL = /\p{Cf}/gu
 
+const ESPACO_REPETIDO = /[^\S\n]{2,}/gu
+
 // A decisão de ser link é feita por PALAVRA (tudo até o próximo espaço ou
 // aspas retas), e o link pode começar em QUALQUER ponto dela: `Link:https://…`,
 // `[aqui](https://…)`, `“https://…”` (aspas curvas do Word e do Outlook). Uma
@@ -73,13 +76,17 @@ const INVISIVEL = /\p{Cf}/gu
 // (`fulana@exemplo.test/x` não vira `fulana@[link]`) —, e todo
 // quantificador tem teto: uma palavra de 200 mil caracteres custa uma passada.
 //
+// `data:…;base64,` também é tratado como link: é imagem ou documento embutido
+// (pode ser a foto de um documento), opaco para o classificador e caro em
+// token.
+//
 // Domínio sem esquema precisa de caminho (`/`), porta ou consulta com `=`:
 // `bem.Obrigado?` é frase sem espaço, não link. O que fica de fora, e está
 // declarado: domínio nu (`exemplo.com.br`), `localhost:3000/…` e link partido
 // por quebra de linha — o pedaço depois da quebra sai.
 const PALAVRA = /[^\s<>"'`]+/gu
 const LINK_NA_PALAVRA =
-  /(?<![\p{L}\p{Nd}])(?:[a-z][a-z0-9+.-]{0,15}:\/\/|www\.)|(?<![\p{L}\p{Nd}+.@-])(?:[\p{L}\p{Nd}-]{1,63}\.){1,8}\p{L}{2,24}(?::\p{Nd}{1,5})?(?:\/|[?#][\p{L}\p{Nd}_.-]{1,64}=)/iu
+  /(?<![\p{L}\p{Nd}])(?:[a-z][a-z0-9+.-]{0,15}:\/\/|www\.|data:[a-z]{1,20}\/[a-z0-9.+-]{1,40};base64,)|(?<![\p{L}\p{Nd}+.@-])(?:[\p{L}\p{Nd}-]{1,63}\.){1,8}\p{L}{2,24}(?::\p{Nd}{1,5})?(?:\/|[?#][\p{L}\p{Nd}_.-]{1,64}=)/iu
 
 // Parte local sem `%`, `,`, `;` e `:`. Com `%`, cada `%40` abria uma nova
 // varredura (1,7 s em 200 mil caracteres); sem `,;`, dois endereços colados
@@ -89,27 +96,31 @@ const EMAIL =
   /[^\s@<>"'`()[\]%,;:]{1,64}(?:@|%40)(?:[\p{L}\p{Nd}_-]{1,63}\.){1,8}[\p{L}\p{Nd}-]{2,63}/giu
 
 // Conselho profissional, e "matrícula" (a chave da própria associação, `A23`),
-// com UF e até três palavras de ligação antes do número, nas grafias comuns:
-// `CRM-SP 1234`, `CRMSP1234`, `CRM/SP nº 1.234`, `inscrita no CRM/SP sob o nº
-// 1234`, `matrícula da associada: 4521`, `Conselho: CRM⏎Número: 1234`. O
-// número aceita ponto e traço — `CRM 12.345-6` saía `CRM [número].345-6`.
+// com UF colada ou separada e até TRÊS PALAVRAS QUAISQUER antes do número:
+// `CRM-SP 1234`, `CRMSP1234`, `inscrita no CRM/SP sob o nº 1234`, `matrícula
+// da associada: 4521`, `RQE em Pediatria 1234`, `Conselho: CRM⏎Número: 1234`.
+// O número aceita ponto e traço — `CRM 12.345-6` saía `CRM [número].345-6`.
 //
-// UF é a LISTA das 27 siglas, e não "duas letras": sob `i`, duas letras
-// quaisquer casavam `de`, `do`, `em`, e "o CRM de 2 médicos" perdia o 2. Pelo
-// mesmo motivo, quando há palavra de ligação no meio, o número precisa ter 3
-// ou mais dígitos (ver `registroOuNao`): "registro de 3 dependentes" fica.
-// `º` vira `°` ANTES do NFKC, que o transformaria em `o` — e `nº` ficaria
-// igual à preposição `no` ("registro no 2º semestre").
+// Palavras quaisquer, e não uma lista de ligações: a lista da segunda rodada
+// deixava passar `CRM da médica: 1234`, `CRM de SP 1234`, `CRM no 1234` —
+// cada grafia nova era um vazamento novo (terceira rodada de revisões do
+// #135). O que segura o falso positivo é outra regra: com palavra no meio, o
+// número precisa ter 3 ou mais dígitos (`registroOuNao`). "registro de 3
+// dependentes" e "o CRM de 2 médicos" ficam; "registro de 150 associados" e
+// "registro em 2026" saem (`AT-49`).
+//
+// UF colada ao número é a LISTA das 27 siglas (`CRMSP1234`); `º` e `№` viram
+// `°`/`n°` ANTES do NFKC, que os transformaria em `o`/`No`.
 //
 // De fora, declarado: a ordem invertida (`Nº 1234 do CRM`).
 const SEPARADOR_CURTO = String.raw`[^\p{L}\p{Nd}]{0,4}`
-const CHAVE = String.raw`C\.?R\.?M\.?|CREME[A-Z]{1,2}|RQE|COREN|CRO|CRP|CRF|CRN|CREFITO|matr[ií]cula|registro|inscri[cç][aã]o`
+const CHAVE = String.raw`C\.?R\.?M\.?|CREME[A-Z]{1,2}|RQE|COREN|CRO|CRP|CRF|CRN|CREFITO|matr[ií]cula|matr?\.|registro|inscri[cç][aã]o|insc\.`
 const UF = String.raw`AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO`
-const LIGACAO = String.raw`n[uú]mero|n\.?\s?°\.?|n\.|nr\.?|no\.|é|sob|o|a|da|do|de|SBP|associad[oa]|estado`
+const PALAVRA_NO_MEIO = String.raw`\p{L}[\p{L}.°]{0,19}`
 const REGISTRO = new RegExp(
   String.raw`(?<![\p{L}\p{Nd}])(${CHAVE})` +
     String.raw`((?:${SEPARADOR_CURTO}(?:${UF})(?!\p{L}))?)` +
-    String.raw`((?:${SEPARADOR_CURTO}(?:${LIGACAO})(?!\p{L})){0,3})` +
+    String.raw`((?:${SEPARADOR_CURTO}${PALAVRA_NO_MEIO}(?![\p{L}.°])){0,3})` +
     String.raw`(${SEPARADOR_CURTO})` +
     String.raw`(\p{Nd}(?:[.\-/ ]?\p{Nd}){0,9})`,
   'giu',
@@ -135,14 +146,25 @@ const NUMERO = /\+?\(?\p{Nd}(?:[^\p{L}\p{Nd}\n@<>[\]]{0,3}\p{Nd}){4,}\)?/gu
  */
 const MULTIPLO_DO_TETO = 16
 
-function antesDoUltimoEspaco(texto: string): string {
-  for (let i = texto.length - 1; i >= 0; i--) {
-    if (/\s/u.test(texto[i]!)) return texto.slice(0, i)
+/**
+ * Até onde o corte procura um espaço. Sem espaço por perto — um bloco de
+ * base64 no começo do corpo —, o corte é exato: procurar mais para trás
+ * chegava a devolver o texto VAZIO, e o classificador recebia nada com um
+ * `cortado` que também aparece em todo texto só longo (terceira rodada de
+ * revisões do #135; invariante 7). A palavra partida continua passando pelas
+ * máscaras.
+ */
+const PROCURA_DE_ESPACO = 256
+
+function cortarNoTeto(texto: string, teto: number): string {
+  const fatia = texto.slice(0, teto)
+  for (let i = fatia.length - 1; i >= Math.max(0, fatia.length - PROCURA_DE_ESPACO); i--) {
+    if (/\s/u.test(fatia[i]!)) return fatia.slice(0, i)
   }
-  return ''
+  return fatia
 }
 
-/** "registro de 3 dependentes" não é registro: com ligação, só 3+ dígitos. */
+/** "registro de 3 dependentes" não é registro: com palavra no meio, só 3+ dígitos. */
 function registroOuNao(
   chave: string,
   uf: string,
@@ -165,11 +187,18 @@ export function protegerParaFornecedorExterno(
   // que o teto, e depois, porque ele pode ter multiplicado o que recebeu.
   const teto = limite * MULTIPLO_DO_TETO
   let passouDoTeto = texto.length > teto
-  const cru = passouDoTeto ? antesDoUltimoEspaco(texto.slice(0, teto)) : texto
-  let normalizado = cru.replaceAll('º', '°').normalize('NFKC').replace(INVISIVEL, '')
+  const cru = passouDoTeto ? cortarNoTeto(texto, teto) : texto
+  let normalizado = cru
+    .replaceAll('º', '°')
+    .replaceAll('№', 'n°')
+    .normalize('NFKC')
+    .replace(INVISIVEL, '')
+    // Rótulo alinhado com espaços (`CRM:      1234`, comum em assinatura em
+    // texto puro) passava do teto de separador. Quebra de linha fica.
+    .replace(ESPACO_REPETIDO, ' ')
   if (normalizado.length > teto) {
     passouDoTeto = true
-    normalizado = antesDoUltimoEspaco(normalizado.slice(0, teto))
+    normalizado = cortarNoTeto(normalizado, teto)
   }
 
   const semDado = normalizado
