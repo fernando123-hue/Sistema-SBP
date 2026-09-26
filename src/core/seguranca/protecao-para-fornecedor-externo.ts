@@ -8,18 +8,39 @@ import { truncar } from './conteudo-nao-confiavel'
  * passar por uma camada de defesa. Esta é ela, e vale para qualquer
  * fornecedor externo — não é do Jev.
  *
- * O QUE SAI: link inteiro (pode carregar token, e-mail ou número na própria
- * URL), e-mail, e toda sequência de 5 ou mais dígitos — CPF, CNPJ, telefone,
- * CEP, RG, número de protocolo — com ou sem pontuação entre eles. E o número
- * que vem depois de "CRM", mesmo curto. Nada de dígito verificador: aqui um
- * falso positivo custa pouco (o classificador perde um número que não precisa
- * para entender o pedido) e um falso negativo é dado pessoal saindo da casa.
+ * ANTES DE TUDO, NORMALIZA (NFKC, e sem caracteres invisíveis de formatação):
+ * dígito de largura total, `＠`, espaço de largura zero e hífen suave entre os
+ * grupos de um CPF aparecem ao copiar de PDF ou da web, e passavam inteiros
+ * pelas expressões (revisões do #135). O texto que sai é o normalizado: o
+ * classificador não precisa da forma original, e acento continua acento.
+ *
+ * O QUE SAI:
+ * - "palavra" com cara de link: com esquema (`https://`, `ftp://`, qualquer
+ *   `xxx://`), com `www.` ou `dominio.tld/caminho`. Link carrega token,
+ *   e-mail e número na própria URL; sai inteiro.
+ * - e-mail, inclusive `%40`.
+ * - o número depois de conselho profissional (CRM, CREMESP, RQE, COREN…),
+ *   de "matrícula" e de "registro", mesmo curto, nas grafias comuns
+ *   (`CRM/SP nº 1.234`).
+ * - toda sequência de 5 ou mais dígitos com até três separadores entre eles:
+ *   CPF, CNPJ, telefone, CEP, RG, protocolo — e também DATA COMPLETA e valor
+ *   com 5+ dígitos (`AT-49`). Aqui um falso positivo custa pouco (o
+ *   classificador perde um número que não precisa para entender o pedido); um
+ *   falso negativo é dado pessoal saindo da casa.
  *
  * O QUE FICA, e é por isso que esta camada NÃO basta sozinha para dado real:
- * NOMES, endereços por extenso, e o que mais o texto contar sobre a pessoa.
- * Achar nome em texto livre sem modelo não é confiável. Por isso a chave de
- * dado real nasce desligada e quem a liga é o dono, depois de ler os termos
- * do fornecedor (`A38`, `A62`).
+ * nome, endereço e data por extenso, dado de saúde (CID), placa, agência de
+ * 4 dígitos, dado de terceiro em e-mail encaminhado, e escrita feita de
+ * propósito para escapar (`12x34x56`,
+ * `fulana [at] exemplo`). Achar nome em texto livre sem modelo não é
+ * confiável. Por isso a chave de dado real nasce desligada, e quem a liga é o
+ * dono, com as condições do `§ H.4` item 35.
+ *
+ * TEMPO: todo quantificador tem teto, e os conjuntos de separador e de dígito
+ * são disjuntos — o texto inteiro é mascarado ANTES do corte, e um corpo pode
+ * ter 200 mil caracteres. Um `\s*…\s*` sem teto em volta de um grupo que pode
+ * ser vazio levava 16 s num corpo hostil (revisões do #135); o teste de texto
+ * hostil tem um caso para cada expressão.
  *
  * ORDEM: mascara, e SÓ DEPOIS corta — um número partido ao meio no limite
  * escaparia pela metade que ficou. A contagem diz quanto foi mascarado, nunca
@@ -35,21 +56,43 @@ export interface TextoProtegido {
 /** Texto maior que isto não ajuda a classificar e custa por token. */
 export const LIMITE_PARA_FORNECEDOR_EXTERNO = 4000
 
-const LINK = /\b(?:https?:\/\/|www\.)[^\s<>"'`]+/gi
-// COM teto de tamanho, e não `+`: sem ele, um trecho longo sem espaço e sem
-// `@` era varrido inteiro a partir de CADA posição — 100 mil caracteres
-// levavam 5,6 s (medido; é o teste de texto hostil). 64 antes do `@` e 255
-// depois são os limites do próprio endereço de e-mail.
-// `%40` é o `@` escapado em URL: um endereço colado de um link continua endereço.
-const EMAIL = /[^\s@<>"'`()[\]]{1,64}(?:@|%40)[^\s@<>"'`()[\]]{1,255}\.[^\s@<>"'`()[\]]{1,63}/gi
-// "CRM 12345/SP", "CRM-SP 1234", "crm: 987": o número do registro é curto
-// demais para a regra geral de 5 dígitos.
-const CRM = /\b(CRM(?:[-/ ]?[A-Z]{2})?\s*[:º°.-]*\s*)\d{1,7}/gi
-// Cinco ou mais dígitos, com até dois separadores entre eles: `(11) 9…`,
-// `123.456.789-09`, `12.345.678/0001-95`, `+55 11 91234 5678`. Os traços
-// incluem os tipográficos (‐ ‑ ‒ – —): o Outlook e o Word trocam o hífen
-// sozinhos, e `91234–5678` passava inteiro (achado na revisão do #132).
-const NUMERO = /\+?\(?\d(?:[\s.\-/()\u2010-\u2014]{0,2}\d){4,}\)?/g
+// Formatação invisível: largura zero, hífen suave, marcas de direção.
+const INVISIVEL = /\p{Cf}/gu
+
+// A decisão de ser link é feita por PALAVRA (tudo até o próximo espaço ou
+// aspas), e não por uma expressão que busca domínio no meio do texto: cada
+// palavra é olhada uma vez, só pelo começo, sem recuo.
+const PALAVRA = /[^\s<>"'`]+/gu
+const COM_ESQUEMA = /^[([{]?(?:[a-z][a-z0-9+.-]{0,15}:\/\/|www\.)/iu
+const DOMINIO_COM_CAMINHO = /^[([{]?(?:[\p{L}\p{Nd}-]{1,63}\.){1,8}\p{L}{2,24}\//u
+
+// Parte local sem `%`, `,`, `;` e `:`. Com `%`, cada `%40` abria uma nova
+// varredura (1,7 s em 200 mil caracteres); sem `,;`, dois endereços colados
+// viravam um só, e o domínio do segundo vazava. O domínio é uma sequência de
+// rótulos separados por ponto; como o rótulo não contém ponto, não há recuo.
+const EMAIL =
+  /[^\s@<>"'`()[\]%,;:]{1,64}(?:@|%40)(?:[\p{L}\p{Nd}_-]{1,63}\.){1,8}[\p{L}\p{Nd}-]{2,63}/giu
+
+// Conselho profissional, e "matrícula" (a chave da própria associação, `A23`),
+// com UF e "nº" opcionais nas grafias comuns: `CRM-SP 1234`, `CRM/SP nº 1.234`,
+// `CRM – SP n.º 1234` (depois do NFKC, `º` vira `o`). O número aceita ponto e
+// traço — `CRM 12.345-6` saía `CRM [número].345-6`.
+const ENTRE = String.raw`[^\p{L}\p{Nd}\n]{0,4}`
+const REGISTRO = new RegExp(
+  String.raw`(?<![\p{L}\p{Nd}])(` +
+    String.raw`(?:C\.?R\.?M\.?|CREM[A-Z]{0,3}|RQE|COREN|CRO|CRP|CRF|CRN|CREFITO|matr[ií]cula|registro)` +
+    ENTRE +
+    String.raw`(?:[A-Z]{2}(?![\p{L}\p{Nd}])${ENTRE})?` +
+    String.raw`(?:n\.?[oº°]?\.?${ENTRE})?` +
+    String.raw`)\p{Nd}(?:[.\-/ ]?\p{Nd}){0,9}`,
+  'giu',
+)
+
+// Cinco ou mais dígitos, com até TRÊS separadores entre eles: `123 - 456 -
+// 789 - 09` tem três, e saía inteiro com dois. Separador é tudo que não é
+// letra, dígito nem quebra de linha — pega travessão, sinal de menos, ponto
+// médio e espaço duro sem precisar listá-los.
+const NUMERO = /\+?\(?\p{Nd}(?:[^\p{L}\p{Nd}\n@<>[\]]{0,3}\p{Nd}){4,}\)?/gu
 
 export function protegerParaFornecedorExterno(
   texto: string,
@@ -58,7 +101,10 @@ export function protegerParaFornecedorExterno(
   const mascarados = { numero: 0, email: 0, link: 0 }
 
   const semDado = texto
-    .replace(LINK, () => {
+    .normalize('NFKC')
+    .replace(INVISIVEL, '')
+    .replace(PALAVRA, (palavra) => {
+      if (!COM_ESQUEMA.test(palavra) && !DOMINIO_COM_CAMINHO.test(palavra)) return palavra
       mascarados.link += 1
       return '[link]'
     })
@@ -66,7 +112,7 @@ export function protegerParaFornecedorExterno(
       mascarados.email += 1
       return '[e-mail]'
     })
-    .replace(CRM, (_inteiro, prefixo: string) => {
+    .replace(REGISTRO, (_inteiro, prefixo: string) => {
       mascarados.numero += 1
       return `${prefixo}[número]`
     })
