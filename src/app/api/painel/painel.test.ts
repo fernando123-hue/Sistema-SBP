@@ -10,10 +10,11 @@ import { CONSULTAS_DO_PAINEL_POR_MINUTO } from '../../../servicos/painel'
 /**
  * A rota do Painel tem limite por pessoa (pendência 9, revisão do #96).
  *
- * Cada pedido calcula três leituras — por categoria, por pessoa e a
- * conferência de conservação, que soma o livro-razão inteiro. Qualquer sessão
- * lê, e sem limite chamadas em paralelo multiplicavam esse custo no servidor
- * único — o mesmo buraco que o C-21 fechou na qualidade.
+ * Cada pedido faz três leituras — por categoria, por pessoa (algumas
+ * contagens por colaborador) e a conferência de conservação — sobre um período
+ * que quem pede escolhe. Qualquer sessão lê, e sem limite chamadas em paralelo
+ * multiplicavam esse custo no servidor único — o mesmo buraco que o C-21
+ * fechou na qualidade.
  *
  * Mesmo duble de `next/headers` de `qualidade/qualidade.test.ts`.
  */
@@ -71,11 +72,15 @@ describe('consultar o painel tem limite por pessoa', () => {
     const { GET } = await import('./route')
 
     await entrarComo(base.colaboradores[1]!.id, 'colaborador')
+    let ultimo = 0
     for (let vez = 0; vez <= CONSULTAS_DO_PAINEL_POR_MINUTO; vez += 1) {
-      await GET(pedido())
+      ultimo = (await GET(pedido())).status
     }
+    // A primeira pessoa chegou mesmo ao teto — senão o resto não prova nada.
+    expect(ultimo).toBe(429)
 
+    // Status exato: `not.toBe(429)` aceitaria 401 ou 500 (revisão do #131).
     await entrarComo(base.colaboradores[2]!.id, 'colaborador')
-    expect((await GET(pedido())).status).not.toBe(429)
+    expect((await GET(pedido())).status).toBe(200)
   })
 })

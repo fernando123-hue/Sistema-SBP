@@ -27,8 +27,8 @@ export async function GET(requisicao: Request): Promise<Response> {
   return rota(async () => {
     const ator = await exigirAtor()
 
-    // Antes de ler: as duas tabelas da trilha só crescem, e um laço de sessão
-    // virava varredura sustentada (pendência 9).
+    // Antes de ler: um laço de sessão varrendo ids reconstruiria a trilha da
+    // operação inteira — a listagem geral que esta rota não tem (pendência 9).
     const recusa = limitar(`memoria:${ator.colaboradorId}`, CONSULTAS_DA_MEMORIA_POR_MINUTO, 60)
     if (recusa) return recusa
 

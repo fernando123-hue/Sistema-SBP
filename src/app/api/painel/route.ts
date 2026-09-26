@@ -27,8 +27,8 @@ export async function GET(requisicao: Request): Promise<Response> {
     // equipe inteira dentro da resposta.
     const ator = await exigirAtor()
 
-    // Antes de ler: cada pedido soma o livro-razão inteiro (conservação), e sem
-    // limite qualquer sessão o multiplicava em paralelo (pendência 9, C-21).
+    // Antes de ler: cada pedido faz três leituras sobre o período pedido, e sem
+    // limite qualquer sessão as multiplicava em paralelo (pendência 9, C-21).
     const recusa = limitar(`painel:${ator.colaboradorId}`, CONSULTAS_DO_PAINEL_POR_MINUTO, 60)
     if (recusa) return recusa
 

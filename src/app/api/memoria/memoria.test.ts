@@ -11,10 +11,11 @@ import { CONSULTAS_DA_MEMORIA_POR_MINUTO } from '../../../servicos/memoria'
  * A rota da memória operacional tem limite por pessoa (pendência 9, revisão
  * do #96).
  *
- * Nenhuma tela a chama: é a porta de quem investiga (ou de uma integração), e
- * cada consulta lê `LogAuditoria` e `EventoProcessamento`, que só crescem.
- * Sem limite, uma sessão de operador em laço fazia varredura sustentada da
- * trilha.
+ * Nenhuma tela a chama: é a porta de quem investiga um caso (ou de uma
+ * integração). Cada consulta é indexada e cortada, então o risco não é o custo
+ * de um pedido — é o laço: um operador varrendo ids de item ou de correlação
+ * reconstruiria a trilha da operação inteira, a "listagem geral" que a rota
+ * diz não existir de propósito.
  *
  * Mesmo duble de `next/headers` de `qualidade/qualidade.test.ts`.
  */
@@ -72,11 +73,20 @@ describe('consultar a memória tem limite por pessoa', () => {
     const { GET } = await import('./route')
 
     await entrarComo(base.operadorId, 'operador')
+    let ultimo = 0
     for (let vez = 0; vez <= CONSULTAS_DA_MEMORIA_POR_MINUTO; vez += 1) {
-      await GET(pedido())
+      ultimo = (await GET(pedido())).status
     }
+    // A primeira pessoa chegou mesmo ao teto — senão o resto não prova nada.
+    expect(ultimo).toBe(429)
 
-    await entrarComo(base.colaboradores[2]!.id, 'colaborador')
-    expect((await GET(pedido())).status).not.toBe(429)
+    // Outra pessoa do MESMO papel: uma chave "por papel" passaria se a segunda
+    // fosse colaboradora (que recebe 403 de qualquer jeito). Status exato:
+    // `not.toBe(429)` aceitaria 401 ou 500 (revisão do #131).
+    const outraOperadora = await banco.colaborador.create({
+      data: { nome: 'Outra Operadora de Teste', email: 'operador2@teste.local', papel: 'operador' },
+    })
+    await entrarComo(outraOperadora.id, 'operador')
+    expect((await GET(pedido())).status).toBe(200)
   })
 })
