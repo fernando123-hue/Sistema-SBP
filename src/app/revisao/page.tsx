@@ -15,6 +15,7 @@ import {
   Vazio,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
+import { pedidoDeConfirmacao } from '../../componentes/pedido-de-confirmacao'
 import { depoisDeResolver, estadoDaFila, filaDaResposta } from './fila-na-tela'
 import type { ItemEmRevisao, NaRede } from '../../core/tipos'
 
@@ -76,6 +77,8 @@ export default function Revisao() {
   const [ocupado, setOcupado] = useState<{ revisaoId: string; aprovar: boolean } | null>(null)
   /** Qual descarte está esperando o segundo clique. */
   const [confirmando, definirConfirmando] = useState<string | null>(null)
+  /** O que o leitor de tela ouve depois de aprovar ou descartar: o item sumia calado. */
+  const [feito, setFeito] = useState<string | null>(null)
   const [edicao, setEdicao] = useState<Record<string, Edicao>>({})
 
   const carregar = useCallback(async () => {
@@ -193,7 +196,9 @@ export default function Revisao() {
         return { itens: depois.itens, total: depois.total, pedirMais: depois.recarregar }
       })
       definirConfirmando(null)
+      setFeito(`Item ${aprovar ? 'aprovado' : 'descartado'}: «${atual?.titulo ?? item.titulo}».`)
     } catch (causa) {
+      setFeito(null)
       setErro(mensagemDoErro(causa))
     } finally {
       setOcupado(null)
@@ -232,8 +237,17 @@ export default function Revisao() {
       ) : null}
 
       {erro ? <Aviso>{erro}</Aviso> : null}
+      {/* Qual item está armado, pela posição e pelo título: `pedido-de-confirmacao.ts`. */}
       <Anuncio
-        mensagem={confirmando ? 'Para descartar o item, clique de novo no botão. Descartar não tem volta.' : null}
+        mensagem={
+          confirmando
+            ? pedidoDeConfirmacao(
+                'descartar',
+                edicao[confirmando]?.titulo ?? fila?.itens.find((item) => item.revisaoId === confirmando)?.titulo,
+                fila?.itens.findIndex((item) => item.revisaoId === confirmando) ?? -1,
+              )
+            : feito
+        }
       />
 
       {estado === 'carregando' || pendentes === null ? (

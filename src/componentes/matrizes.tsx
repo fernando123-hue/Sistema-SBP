@@ -269,7 +269,7 @@ export function Aviso({ children, tom = 'alerta' }: { children: ReactNode; tom?:
  */
 export function Anuncio({ mensagem }: { mensagem: string | null }) {
   return (
-    <span className="sr-only" aria-live="polite">
+    <span className="sr-only" aria-live="polite" aria-atomic="true">
       {mensagem ?? ''}
     </span>
   )

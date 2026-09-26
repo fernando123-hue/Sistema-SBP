@@ -69,13 +69,26 @@ describe('textos das telas sem jargão de engenharia', () => {
 })
 
 describe('confirmação em dois cliques é anunciada (pendência 5)', () => {
+  // Teste de fonte, sem clique (não há teste de interação — pendência 15); o
+  // comportamento foi visto rodando. Trava contra apagar a região ou movê-la.
   it.each([
-    ['fila', 'confirmandoConclusao'],
-    ['revisao', 'confirmando'],
-  ])('%s anuncia quando o botão pede o segundo clique', (tela, estado) => {
+    ['fila', 'confirmandoConclusao', '{itens === null ? ('],
+    ['revisao', 'confirmando', "{estado === 'carregando'"],
+  ])('%s anuncia o segundo clique e o resultado', (tela, estado, ramoDeCarga) => {
     const fonte = semComentarios(readFileSync(join(APP, tela, 'page.tsx'), 'utf8'))
+    const anuncio = /<Anuncio[\s\S]*?\/>/.exec(fonte)?.[0] ?? ''
 
-    expect(fonte).toMatch(new RegExp(`<Anuncio\\s+mensagem=\\{\\s*${estado}\\b`))
+    expect(anuncio).toMatch(new RegExp(`mensagem=\\{\\s*${estado}\\b`))
+    // O título muda a frase de um item para outro; frase igual não é repetida.
+    expect(anuncio).toMatch(/titulo/)
+    // E o segundo clique também diz algo: o item sumia calado.
+    expect(anuncio).toMatch(/:\s*feito\b/)
+    expect(fonte).toMatch(/setFeito\(`Item /)
+    // Fora do ramo de carregamento: remontada, a região nasceria com texto,
+    // e região viva que nasce com texto não é anunciada.
+    expect(fonte.indexOf('<Anuncio')).toBeGreaterThan(0)
+    expect(fonte.indexOf(ramoDeCarga)).toBeGreaterThan(0)
+    expect(fonte.indexOf('<Anuncio')).toBeLessThan(fonte.indexOf(ramoDeCarga))
   })
 })
 

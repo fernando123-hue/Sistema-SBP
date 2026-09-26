@@ -14,6 +14,7 @@ import {
   Vazio,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
+import { pedidoDeConfirmacao } from '../../componentes/pedido-de-confirmacao'
 import { hojeIso } from '../../core/util/datas'
 
 interface ItemDaFila {
@@ -77,6 +78,8 @@ export default function Fila() {
   const [equipe, setEquipe] = useState<PessoaDaEscala[]>([])
   /** Item cujo "Concluir" já levou o primeiro toque e espera a confirmação. */
   const [confirmandoConclusao, setConfirmandoConclusao] = useState<string | null>(null)
+  /** O que o leitor de tela ouve depois do segundo clique: sem isto, o item sumia calado. */
+  const [feito, setFeito] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     try {
@@ -100,7 +103,9 @@ export default function Fila() {
     try {
       await api.enviar(`/itens/${item.itemId}/concluir`)
       setItens((atual) => (atual ?? []).filter((linha) => linha.itemId !== item.itemId))
+      setFeito(`Item concluído: «${item.titulo}».`)
     } catch (causa) {
+      setFeito(null)
       setErro(mensagemDoErro(causa))
     } finally {
       setOcupado(null)
@@ -191,9 +196,17 @@ export default function Fila() {
       />
 
       {erro ? <Aviso>{erro}</Aviso> : null}
+      {/* Qual item está armado, pela posição e pelo título: `pedido-de-confirmacao.ts`. */}
       <Anuncio
         mensagem={
-          confirmandoConclusao ? 'Para concluir o item, clique de novo no botão. Concluir não tem volta.' : null
+          confirmandoConclusao
+            ? pedidoDeConfirmacao(
+                'concluir',
+                itens?.find((item) => item.itemId === confirmandoConclusao)?.titulo,
+                // A ordem da TELA, agrupada por categoria — não a de `itens`.
+                [...porCategoria.values()].flat().findIndex((item) => item.itemId === confirmandoConclusao),
+              )
+            : feito
         }
       />
 
