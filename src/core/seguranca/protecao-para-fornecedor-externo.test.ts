@@ -67,6 +67,20 @@ describe('o que sai do texto', () => {
       'COREN-SP 1234',
       'matrícula 4521',
       'registro 1234-SP',
+      // Segunda rodada de revisões: palavras no meio, UF colada, quebra de linha.
+      'inscrita no CRM/SP sob o nº 1234',
+      'CRM sob nº 1234',
+      'CRM número 1234',
+      'CRM é 1234',
+      'CRM do estado 1234',
+      'CRM-SP1234',
+      'CRMSP1234',
+      'CRM\n1234',
+      'Conselho: CRM\nNúmero: 1234',
+      'minha matrícula é 4521',
+      'matrícula número 4521',
+      'Matrícula SBP nº 4521',
+      'matrícula da associada: 4521',
     ]) {
       expect(proteger(grafia), grafia).not.toMatch(/\d/)
     }
@@ -87,12 +101,38 @@ describe('o que sai do texto', () => {
     expect(proteger('acesse portal.exemplo.org.br/reset/Zx9Qk2LmP')).toBe('acesse [link]')
     expect(proteger('bit.ly/abcDEF')).toBe('[link]')
     expect(proteger('ftp://exemplo.test/arquivo')).toBe('[link]')
-    expect(proteger('(https://exemplo.test/x)')).toBe('[link]')
+    expect(proteger('(https://exemplo.test/x)')).toBe('([link]')
     expect(proteger('http\u200b://exemplo.test/token')).toBe('[link]')
+  })
+
+  // Segunda rodada de revisões do #135: com a decisão ancorada no começo da
+  // palavra, todos estes saíam inteiros, com o token.
+  it('link colado a outra coisa na mesma palavra', () => {
+    for (const [entrada, saida] of [
+      ['Link:https://exemplo.test/reset?t=Zx9Qk2LmP', 'Link:[link]'],
+      ['URL=https://exemplo.test/x', 'URL=[link]'],
+      ['href=https://exemplo.test/x', 'href=[link]'],
+      ['[clique aqui](https://exemplo.test/reset/Zx9Qk2LmP)', '[clique aqui]([link]'],
+      ['\u201chttps://exemplo.test/reset?t=Zx9\u201d', '\u201c[link]'],
+      ['\u00abhttps://exemplo.test/x\u00bb', '\u00ab[link]'],
+      ['segue,https://exemplo.test/x', 'segue,[link]'],
+      ['...https://exemplo.test/x', '...[link]'],
+      ['Acesse:portal.exemplo.test/reset/Zx9', 'Acesse:[link]'],
+      ['portal.exemplo.test?token=Zx9Qk2LmP', '[link]'],
+      ['exemplo.test:8080/reset/Zx9', '[link]'],
+    ]) {
+      expect(proteger(entrada!), entrada).toBe(saida)
+    }
   })
 
   // `AT-49`: data completa e valor com 5+ dígitos também saem. Data de
   // nascimento é dado pessoal; o classificador não precisa do dia exato.
+  // Separador amplo: lista, notas e horário também viram um número só.
+  it('lista de números pequenos, notas e horário', () => {
+    expect(proteger('itens 1, 2, 3, 4, 5')).toBe('itens [número]')
+    expect(proteger('das 14:30-15:00')).toBe('das [número]')
+  })
+
   it('data completa e valor longo', () => {
     expect(proteger('vencimento 30/09/2026')).toBe('vencimento [número]')
     expect(proteger('nascimento: 12 / 03 / 1985')).toBe('nascimento: [número]')
@@ -120,6 +160,25 @@ describe('o que fica — o que o classificador precisa para entender o pedido', 
   it('"CRM" como palavra, sem número', () => {
     expect(proteger('o CRM do associado está anexo')).toBe('o CRM do associado está anexo')
   })
+
+  // Segunda rodada de revisões: com "duas letras quaisquer" como UF e `nº`
+  // igual a `no` depois do NFKC, estas contagens viravam `[número]`.
+  it('contagem pequena depois de palavra-chave', () => {
+    for (const texto of [
+      'solicito o registro de 3 dependentes',
+      'o CRM de 2 médicos',
+      'registro no 2º semestre',
+      'matrícula da 3ª turma',
+      'registro em 2026',
+    ]) {
+      expect(proteger(texto), texto).toMatch(/\d/)
+    }
+  })
+
+  it('frase sem espaço depois do ponto não é link', () => {
+    expect(proteger('tudo bem.Obrigado?')).toBe('tudo bem.Obrigado?')
+    expect(proteger('segue arquivo.pdf em anexo')).toBe('segue arquivo.pdf em anexo')
+  })
 })
 
 describe('corte e contagem', () => {
@@ -128,6 +187,11 @@ describe('corte e contagem', () => {
     expect(protegido.cortado).toBe(true)
     expect(protegido.texto.startsWith('a'.repeat(20))).toBe(true)
     expect(protegido.texto.length).toBeLessThan(80)
+  })
+
+  it('texto enorme depois de normalizado é cortado antes das máscaras, e diz', () => {
+    const protegido = protegerParaFornecedorExterno('\ufdfa '.repeat(10_000), 20)
+    expect(protegido.cortado).toBe(true)
   })
 
   it('não diz que cortou quando cabe', () => {
@@ -168,7 +232,19 @@ describe('texto hostil longo não trava o servidor', () => {
     'rótulos de domínio sem caminho': 'abc.'.repeat(N / 4),
     'dígitos com quatro separadores': '1 - - '.repeat(N / 6),
     'matrícula repetida': 'matrícula '.repeat(N / 10),
+    'palavra-chave e ligação repetidas': 'CRM-SP sob o nº '.repeat(N / 16),
+    'link colado repetido': 'x:https://'.repeat(N / 10),
+    'domínio sem caminho numa palavra só': 'a.b'.repeat(N / 3),
   }
+
+  // O NFKC multiplica `ﷺ` por 18: 200 mil viravam 3,6 milhões (meio segundo).
+  // Com o limite de verdade, o teto corta antes e depois da normalização.
+  it('caractere que o NFKC multiplica', () => {
+    const inicio = performance.now()
+    protegerParaFornecedorExterno('\ufdfa'.repeat(N))
+    protegerParaFornecedorExterno('\ufdfa '.repeat(N / 2))
+    expect(performance.now() - inicio).toBeLessThan(200)
+  })
 
   for (const [nome, texto] of Object.entries(hostis)) {
     it(nome, () => {
