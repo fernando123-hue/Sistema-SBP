@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { hojeIso } from '../../core/util/datas'
+import { decimal } from '../../core/util/numero'
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
   Aviso,
@@ -540,10 +541,10 @@ export default function Distribuicao() {
                           <span className="flex items-center gap-3 whitespace-nowrap">
                             <span className="numerico text-xs text-tinta-fraca">
                               <span className="sr-only">crédito de </span>
-                              {fatia.creditoAntes.toFixed(2)}
+                              {decimal(fatia.creditoAntes)}
                               <span aria-hidden="true"> → </span>
                               <span className="sr-only"> para </span>
-                              {fatia.creditoDepois.toFixed(2)}
+                              {decimal(fatia.creditoDepois)}
                             </span>
                             <span
                               className={juntar(
@@ -570,7 +571,7 @@ export default function Distribuicao() {
                       {linha.criterio === 'resto_maior' ? (
                         <>
                           média por pessoa com o peso da categoria{' '}
-                          {linha.cotaJusta.toFixed(2).replace('.', ',')} · todos recebem ao menos{' '}
+                          {decimal(linha.cotaJusta)} · todos recebem ao menos{' '}
                           {linha.base} {linha.base === 1 ? 'item' : 'itens'} · {linha.resto} de
                           sobra ·{' '}
                         </>
