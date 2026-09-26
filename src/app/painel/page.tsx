@@ -16,6 +16,7 @@ import {
 } from '../../componentes/matrizes'
 
 import type { LinhaPainel, LinhaPorPessoa, NaRede } from '../../core/tipos'
+import { decimal } from '../../core/util/numero'
 
 interface Periodo {
 
@@ -546,8 +547,7 @@ export default function PainelPagina() {
                     Math.abs(pessoa.creditoGlobal) < 1 ? 'text-tinta-suave' : 'text-atencao',
                   )}
                 >
-                  {pessoa.creditoGlobal >= 0 ? '+' : ''}
-                  {pessoa.creditoGlobal.toFixed(2)}
+                  {decimal(pessoa.creditoGlobal, { sinal: true })}
                 </span>
               ),
             },
@@ -614,7 +614,7 @@ function QualidadeDaIa({ medida }: { medida: Qualidade }) {
             />
             <Metrica
               rotulo="Confiança quando acerta"
-              valor={taxa.confiancaMediaAceita === null ? '—' : taxa.confiancaMediaAceita.toFixed(2)}
+              valor={taxa.confiancaMediaAceita === null ? '—' : decimal(taxa.confiancaMediaAceita)}
               detalhe="média informada pelo modelo"
             />
             <Metrica
@@ -622,7 +622,7 @@ function QualidadeDaIa({ medida }: { medida: Qualidade }) {
               valor={
                 taxa.confiancaMediaCorrigida === null
                   ? '—'
-                  : taxa.confiancaMediaCorrigida.toFixed(2)
+                  : decimal(taxa.confiancaMediaCorrigida)
               }
               detalhe="média informada pelo modelo"
             />
@@ -668,7 +668,7 @@ function QualidadeDaIa({ medida }: { medida: Qualidade }) {
             <div className="mt-3">
               <Aviso tom="atencao">
                 <strong>A confiança do modelo não separa acerto de erro.</strong> As duas médias
-                estão a {separacao.toFixed(2)} de distância. Enquanto isso durar, mexer no limiar de
+                estão a {decimal(Math.abs(separacao))} de distância. Enquanto isso durar, mexer no limiar de
                 confiança é calibrar no escuro — o número que ele reporta não distingue os casos.
               </Aviso>
             </div>
