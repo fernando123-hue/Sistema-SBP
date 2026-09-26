@@ -22,6 +22,11 @@ export const TELAS = ['/distribuicao', '/revisao', '/caixa', '/fila', '/painel',
 
 export type Tela = (typeof TELAS)[number]
 
+/** "Isto é uma tela?" também com fonte única — sem `as Tela` espalhado. */
+export function ehTela(caminho: string): caminho is Tela {
+  return (TELAS as readonly string[]).includes(caminho)
+}
+
 export const ROTULO_DA_TELA: Readonly<Record<Tela, string>> = {
   '/distribuicao': 'Distribuição',
   '/revisao': 'Revisão',

@@ -186,7 +186,7 @@ export default function Fila() {
         descricao={
           itens === null
             ? 'Carregando…'
-            : `${itens.length} ${itens.length === 1 ? 'item' : 'itens'} para trabalhar. O que não terminar hoje continua seu amanhã.`
+            : `${itens.length} ${itens.length === 1 ? 'item' : 'itens'} para trabalhar, o que entrou há mais tempo primeiro. O que não terminar hoje continua seu amanhã.`
         }
       />
 
@@ -234,10 +234,8 @@ export default function Fila() {
                           origem manual não tem e-mail, e item devolvido guarda
                           a data original.
                         */}
-                        <span
-                          className="numerico text-xs whitespace-nowrap text-tinta-fraca"
-                          title="Entrou no sistema nesta data. A fila mostra o mais antigo primeiro."
-                        >
+                        <span className="numerico text-xs whitespace-nowrap text-tinta-fraca">
+                          <span className="sr-only">entrou em </span>
                           {quando(item.criadoEm)}
                         </span>
                       </div>

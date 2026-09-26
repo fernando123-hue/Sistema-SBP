@@ -43,7 +43,7 @@ interface Edicao {
 }
 
 const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutro' }> = {
-  baixa_confianca: { texto: 'confiança abaixo do limiar', tom: 'atencao' },
+  baixa_confianca: { texto: 'confiança abaixo do mínimo', tom: 'atencao' },
   campo_ausente: { texto: 'campo obrigatório faltando', tom: 'atencao' },
   duplicata_suspeita: { texto: 'possível duplicata', tom: 'atencao' },
   anomalia: { texto: 'anomalia', tom: 'alerta' },
@@ -241,7 +241,7 @@ export default function Revisao() {
       ) : estado === 'vazia' ? (
         <Vazio
           titulo="Fila de revisão vazia"
-          descricao="Todos os itens passaram do limiar de confiança das suas categorias."
+          descricao="Todos os itens passaram da confiança mínima das suas categorias."
         />
       ) : (
         <ul className="flex flex-col gap-3">

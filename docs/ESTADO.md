@@ -34,12 +34,12 @@
 >
 > *A. O que a equipe lê na tela (as três que o dono viu no fim da sessão de 24/09 vêm primeiro):*
 > 1. **Código interno numa mensagem de erro da distribuição** — `ElegiveisInvalidosError` (`core/distribuicao/motor.ts`, "colaborador … aparece duas vezes") interpola `colaboradorId` e chega à tela como 422. Hoje não acontece (a lista vem do banco, sem duplicata), mas se acontecer é defeito: provavelmente virar `Error` (500 com correlação, id no log), como o item "sem lote" no #114.
-> 2. **Explicação que só aparece passando o mouse** *(desde o `A60` o sistema é só para computador: o motivo "toque" sai, teclado e leitor de tela ficam)* — o selo do critério e a dica do crédito na Distribuição, e a dica do crédito no Painel, moram só em `title`: não chegam a toque, teclado nem leitor de tela (revisão do #115). Mostrar como texto visível ou `aria-describedby`.
+> 2. ~~**Explicação que só aparece passando o mouse**~~ — **resolvida no #126.** Legenda do crédito visível na Distribuição e no Painel; a regra do critério é a narrativa da rodada; o `Selo` entrega a dica também ao leitor de tela; varredura recusa `title` fora de `<button>`. Limite assumido: quem enxerga e usa só teclado segue sem a dica dos selos da Caixa. Duplicação possível no JAWS/VoiceOver entra no teste da pendência 6.
 > 3. ~~**"Falha na requisição (404)."**~~ — **resolvida no #123.** Resposta sem erro legível mostra "Não foi possível falar com o sistema. Atualize a tela e tente de novo." com `(código N)` no fim quando não há `ref.`; caminho, status e causa vão ao console do navegador. **Contrato novo:** rede caída deixa de rejeitar com `TypeError` e vira `ErroDaApi` com status 0 e a causa em `cause`.
 > 4. Números da Distribuição: vírgula só na média; o crédito ("0.00 → 1.00") e a dica do Painel seguem com ponto.
 > 5. ~~Troca de rótulo "Concluir" → "Confirmar: concluir" sem anúncio a leitor de tela~~ — **resolvida no #128.** `Anuncio` (região `aria-live="polite"` sempre presente, vazia até o primeiro clique) na Minha fila e na Revisão.
 > 6. Avisos `role="status"` que surgem na carga do Painel, Revisão e Caixa: testar com leitor de tela (NVDA) se viram rajada de anúncios (revisão do #110).
-> 7. `componentes/assistente.tsx` (≈54-61) tem uma **terceira cópia manual** dos rótulos das telas, fora de `core/telas.ts` (revisão do #108).
+> 7. ~~`componentes/assistente.tsx` (≈54-61) tem uma **terceira cópia manual** dos rótulos das telas~~ — **resolvida no #127.** O assistente lê o rótulo de `core/telas.ts`; `componentes/rotulos-das-telas.test.ts` recusa qualquer outro mapa indexado por caminho de tela.
 >
 > *B. Segurança e robustez:*
 > 8. Sondagem **horizontal** invisível: `concluir()` em `servicos/fila.ts` recusa quem não é o responsável com 422, sem rastro (revisão de segurança do #97).

@@ -82,27 +82,22 @@ function narrativaDe(resumo: Resumo | null, categoriaCodigo: string): string[] {
   return resumo?.narrativas.find((n) => n.categoriaCodigo === categoriaCodigo)?.linhas ?? []
 }
 
-const CRITERIO: Record<string, { texto: string; explicacao: string }> = {
-  resto_maior: {
-    texto: 'base igual',
-    explicacao:
-      'Todos recebem ao menos a mesma quantidade; o que sobra vai, um a um, para quem recebeu menos até aqui.',
-  },
-  indivisivel: {
-    texto: 'lote inteiro',
-    explicacao: 'Volume baixo: o lote vai inteiro para uma pessoa em vez de fragmentar.',
-  },
+/**
+ * O nome curto de cada critério, para o selo. A explicação da regra NÃO mora
+ * aqui: toda linha com critério tem narrativa, e é ela que conta a regra com
+ * os números da rodada (`core/distribuicao/narrativa.ts`, garantido critério a
+ * critério em `narrativa.test.ts`). Uma explicação fixa ao lado só repetia a
+ * narrativa (revisão do #126); antes, morava num `title` que teclado e leitor
+ * de tela não alcançam (pendência 2).
+ */
+const CRITERIO: Record<string, string> = {
+  resto_maior: 'base igual',
+  indivisivel: 'lote inteiro',
   // Faltava, e o buraco aparecia na tela: toda rodada de LIGANTE ou EMAIL_LIGA
   // usa este critério, então o operador via o identificador interno cru
-  // (`por_grupo`) sem nenhuma explicação — justamente na categoria em que a
-  // regra é menos óbvia e mais precisa ser explicada.
-  por_grupo: {
-    texto: 'liga inteira',
-    explicacao:
-      'Cada liga vai inteira para uma pessoa, a que estiver com mais crédito no momento. ' +
-      'Ligas diferentes podem ir para pessoas diferentes.',
-  },
-  sem_demanda: { texto: 'sem demanda', explicacao: 'Nada a distribuir nesta categoria.' },
+  // (`por_grupo`) — justamente na categoria em que a regra é menos óbvia.
+  por_grupo: 'liga inteira',
+  sem_demanda: 'sem demanda',
 }
 
 export default function Distribuicao() {
@@ -486,6 +481,16 @@ export default function Distribuicao() {
               <Metrica rotulo="Categorias" valor={comItens.length} detalhe="com demanda" />
             </div>
 
+            {/*
+              A legenda do crédito morava num `title` em cada número — só
+              aparecia passando o mouse (pendência 2). Uma vez aqui, visível,
+              vale para todos os cartões.
+            */}
+            <p className="text-xs text-tinta-suave">
+              Ao lado de cada pessoa, o crédito antes → depois desta rodada. Positivo: a pessoa recebeu
+              menos que a média e fica na frente para a próxima sobra.
+            </p>
+
             {comItens.map((linha) => (
               <Cartao key={linha.categoriaCodigo} className="px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -498,12 +503,11 @@ export default function Distribuicao() {
                       entrada <strong>{linha.quantidade}</strong>
                     </span>
                     {linha.criterio ? (
-                      <Selo tom="acento" titulo={CRITERIO[linha.criterio]?.explicacao}>
-                        {CRITERIO[linha.criterio]?.texto ?? linha.criterio}
-                      </Selo>
+                      <Selo tom="acento">{CRITERIO[linha.criterio] ?? linha.criterio}</Selo>
                     ) : null}
                   </div>
                 </div>
+
 
                 {/*
                   Relatório legível da rodada (`A6`). O texto vem pronto do
@@ -534,11 +538,12 @@ export default function Distribuicao() {
                             {nomePor.get(fatia.colaboradorId) ?? fatia.colaboradorId}
                           </span>
                           <span className="flex items-center gap-3 whitespace-nowrap">
-                            <span
-                              className="numerico text-xs text-tinta-fraca"
-                              title="Crédito antes → depois. Positivo: a pessoa recebeu menos que a média e fica na frente para a próxima sobra."
-                            >
-                              {fatia.creditoAntes.toFixed(2)} → {fatia.creditoDepois.toFixed(2)}
+                            <span className="numerico text-xs text-tinta-fraca">
+                              <span className="sr-only">crédito de </span>
+                              {fatia.creditoAntes.toFixed(2)}
+                              <span aria-hidden="true"> → </span>
+                              <span className="sr-only"> para </span>
+                              {fatia.creditoDepois.toFixed(2)}
                             </span>
                             <span
                               className={juntar(
@@ -548,6 +553,7 @@ export default function Distribuicao() {
                                   : 'text-tinta-fraca',
                               )}
                             >
+                              <span className="sr-only">recebe </span>
                               {fatia.quantidade}
                             </span>
                           </span>
