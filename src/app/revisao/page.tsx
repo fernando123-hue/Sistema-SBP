@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
+  Anuncio,
   Aviso,
   Botao,
   CabecalhoDeSecao,
@@ -231,6 +232,9 @@ export default function Revisao() {
       ) : null}
 
       {erro ? <Aviso>{erro}</Aviso> : null}
+      <Anuncio
+        mensagem={confirmando ? 'Para descartar o item, clique de novo no botão. Descartar não tem volta.' : null}
+      />
 
       {estado === 'carregando' || pendentes === null ? (
         <Carregando />

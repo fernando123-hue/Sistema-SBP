@@ -66,3 +66,14 @@ describe('textos das telas sem jargão de engenharia', () => {
     expect(achados).toEqual([])
   })
 })
+
+describe('confirmação em dois cliques é anunciada (pendência 5)', () => {
+  it.each([
+    ['fila', 'confirmandoConclusao'],
+    ['revisao', 'confirmando'],
+  ])('%s anuncia quando o botão pede o segundo clique', (tela, estado) => {
+    const fonte = semComentarios(readFileSync(join(APP, tela, 'page.tsx'), 'utf8'))
+
+    expect(fonte).toMatch(new RegExp(`<Anuncio\\s+mensagem=\\{\\s*${estado}\\b`))
+  })
+})

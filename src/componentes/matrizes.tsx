@@ -243,6 +243,26 @@ export function Aviso({ children, tom = 'alerta' }: { children: ReactNode; tom?:
   )
 }
 
+/**
+ * O que muda na tela sem mover o foco, dito ao leitor de tela (pendência 5).
+ *
+ * "Concluir" vira "Confirmar: concluir" no MESMO botão, com o foco nele, e boa
+ * parte dos leitores não repete um nome que mudou: quem não enxerga clicava uma
+ * vez, não ouvia nada e não sabia que faltava o segundo clique.
+ *
+ * A região fica na página SEMPRE, vazia até haver o que dizer — leitor de tela
+ * não anuncia região viva que já nasce com texto, e vazia ela não soma à rajada
+ * de avisos na carga da tela (pendência 6). `polite`: espera a pessoa terminar
+ * o que está ouvindo; não é alerta.
+ */
+export function Anuncio({ mensagem }: { mensagem: string | null }) {
+  return (
+    <span className="sr-only" aria-live="polite">
+      {mensagem ?? ''}
+    </span>
+  )
+}
+
 // ─── Métrica (somente leitura por construção) ────────────────
 
 /**

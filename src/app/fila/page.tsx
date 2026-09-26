@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
+  Anuncio,
   Aviso,
   Botao,
   CabecalhoDeSecao,
@@ -190,6 +191,11 @@ export default function Fila() {
       />
 
       {erro ? <Aviso>{erro}</Aviso> : null}
+      <Anuncio
+        mensagem={
+          confirmandoConclusao ? 'Para concluir o item, clique de novo no botão. Concluir não tem volta.' : null
+        }
+      />
 
       {itens === null ? (
         <Carregando />
