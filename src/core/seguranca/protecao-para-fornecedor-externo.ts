@@ -32,8 +32,10 @@ import { truncar } from './conteudo-nao-confiavel'
  *
  * O QUE FICA, e é por isso que esta camada NÃO basta sozinha para dado real:
  * nome, endereço e data por extenso, dado de saúde (CID), placa, agência de
- * 4 dígitos, número curto com a palavra-chave DEPOIS (`Nº 1234 do CRM`),
- * domínio sem caminho, link partido por quebra de linha, dado de terceiro em
+ * 4 dígitos, número curto com a palavra-chave DEPOIS (`Nº 1234 do CRM`) ou
+ * com mais de três palavras entre as duas,
+ * domínio sem caminho, link ou bloco `data:` partido por quebra de linha (o
+ * resto do base64 é opaco, mas custa token), dado de terceiro em
  * e-mail encaminhado, e escrita feita de propósito para escapar (`12x34x56`,
  * `fulana [at] exemplo`). Achar nome em texto livre sem modelo não é
  * confiável. Por isso a chave de dado real nasce desligada, e quem a liga é o
@@ -156,12 +158,21 @@ const MULTIPLO_DO_TETO = 16
  */
 const PROCURA_DE_ESPACO = 256
 
+/**
+ * No corte exato, quanto mais se descarta do fim: a parte local e o domínio
+ * de um e-mail no seu tamanho máximo (64 + 1 + 255). Sem isto, um endereço
+ * partido no teto (`fulana@exem`) deixava a parte local à vista, porque a
+ * máscara de e-mail precisa do domínio inteiro (quarta rodada de revisões do
+ * #135 — só com entrada fabricada, mas custa uma linha).
+ */
+const MARGEM_DO_CORTE_EXATO = 320
+
 function cortarNoTeto(texto: string, teto: number): string {
   const fatia = texto.slice(0, teto)
   for (let i = fatia.length - 1; i >= Math.max(0, fatia.length - PROCURA_DE_ESPACO); i--) {
     if (/\s/u.test(fatia[i]!)) return fatia.slice(0, i)
   }
-  return fatia
+  return fatia.slice(0, Math.max(0, fatia.length - MARGEM_DO_CORTE_EXATO))
 }
 
 /** "registro de 3 dependentes" não é registro: com palavra no meio, só 3+ dígitos. */

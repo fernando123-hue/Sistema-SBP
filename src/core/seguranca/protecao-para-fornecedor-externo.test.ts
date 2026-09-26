@@ -223,6 +223,15 @@ describe('corte e contagem', () => {
     expect(protegerParaFornecedorExterno('\ufdfa'.repeat(200_000)).texto).not.toBe('')
   })
 
+  // Quarta rodada: um e-mail partido no corte exato deixava a parte local.
+  it('e-mail partido no corte exato não deixa a parte local', () => {
+    const limite = 100
+    const teto = limite * 16
+    const antes = 'x'.repeat(teto - 'fulana@exem'.length)
+    const protegido = protegerParaFornecedorExterno(`${antes}fulana@exemplo.test`, teto)
+    expect(protegido.texto).not.toContain('fulana')
+  })
+
   it('não diz que cortou quando cabe', () => {
     const protegido = protegerParaFornecedorExterno('cabe inteiro', 20)
     expect(protegido.cortado).toBe(false)
