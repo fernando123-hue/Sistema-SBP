@@ -40,13 +40,16 @@ const LINK = /\b(?:https?:\/\/|www\.)[^\s<>"'`]+/gi
 // `@` era varrido inteiro a partir de CADA posição — 100 mil caracteres
 // levavam 5,6 s (medido; é o teste de texto hostil). 64 antes do `@` e 255
 // depois são os limites do próprio endereço de e-mail.
-const EMAIL = /[^\s@<>"'`()[\]]{1,64}@[^\s@<>"'`()[\]]{1,255}\.[^\s@<>"'`()[\]]{1,63}/g
+// `%40` é o `@` escapado em URL: um endereço colado de um link continua endereço.
+const EMAIL = /[^\s@<>"'`()[\]]{1,64}(?:@|%40)[^\s@<>"'`()[\]]{1,255}\.[^\s@<>"'`()[\]]{1,63}/gi
 // "CRM 12345/SP", "CRM-SP 1234", "crm: 987": o número do registro é curto
 // demais para a regra geral de 5 dígitos.
 const CRM = /\b(CRM(?:[-/ ]?[A-Z]{2})?\s*[:º°.-]*\s*)\d{1,7}/gi
 // Cinco ou mais dígitos, com até dois separadores entre eles: `(11) 9…`,
-// `123.456.789-09`, `12.345.678/0001-95`, `+55 11 91234 5678`.
-const NUMERO = /\+?\(?\d(?:[\s.\-/()]{0,2}\d){4,}\)?/g
+// `123.456.789-09`, `12.345.678/0001-95`, `+55 11 91234 5678`. Os traços
+// incluem os tipográficos (‐ ‑ ‒ – —): o Outlook e o Word trocam o hífen
+// sozinhos, e `91234–5678` passava inteiro (achado na revisão do #132).
+const NUMERO = /\+?\(?\d(?:[\s.\-/()\u2010-\u2014]{0,2}\d){4,}\)?/g
 
 export function protegerParaFornecedorExterno(
   texto: string,

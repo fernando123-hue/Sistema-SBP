@@ -23,6 +23,10 @@ describe('o que sai do texto', () => {
     expect(proteger('ligue (11) 91234-5678')).toBe('ligue [número]')
     expect(proteger('ligue +55 11 91234 5678')).toBe('ligue [número]')
     expect(proteger('CEP 01310-100')).toBe('CEP [número]')
+    // Travessão que o Outlook põe no lugar do hífen, e espaço duplo.
+    expect(proteger('ligue 91234\u20135678')).toBe('ligue [número]')
+    expect(proteger('CPF 123.456.789\u201309')).toBe('CPF [número]')
+    expect(proteger('CPF 123  456  789  09')).toBe('CPF [número]')
   })
 
   it('CRM, mesmo curto', () => {
@@ -33,6 +37,7 @@ describe('o que sai do texto', () => {
 
   it('e-mail', () => {
     expect(proteger('escreva para associada.ficticia@exemplo.test hoje')).toBe('escreva para [e-mail] hoje')
+    expect(proteger('de associada%40exemplo.test')).toBe('de [e-mail]')
   })
 
   // Link pode carregar token, e-mail ou número na própria URL.
