@@ -85,8 +85,13 @@ describe('confirmação em dois cliques é anunciada (pendência 5)', () => {
     // E o segundo clique também diz algo: o item sumia calado.
     expect(anuncio).toMatch(/:\s*feito\b/)
     expect(fonte).toMatch(/setFeito\([^)]*'Item /)
-    // Toda ação nova limpa o aviso anterior: senão ele era repetido fora de hora.
-    expect(fonte.match(/setFeito\(null\)/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
+    // Só literal do código ou `null` vai para a região (§ AT-48): nada de
+    // crase, variável ou título.
+    for (const chamada of fonte.match(/setFeito\([^)]*\)/g) ?? []) {
+      expect(chamada).toMatch(/^setFeito\((null|aprovar \? '[^'`$]*' : '[^'`$]*'|'[^'`$]*')\)$/)
+    }
+    // Armar limpa o aviso anterior, senão desarmar o repetia fora de hora.
+    expect(fonte).toMatch(new RegExp(`(setConfirmandoConclusao\\(item\\.itemId\\)|definirConfirmando\\(item\\.revisaoId\\))\\s*setFeito\\(null\\)`))
     // Fora do ramo de carregamento: remontada, a região nasceria com texto,
     // e região viva que nasce com texto não é anunciada.
     expect(fonte.indexOf('<Anuncio')).toBeGreaterThan(0)
