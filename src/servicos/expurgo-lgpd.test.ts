@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { deslocarDias } from '../core/util/datas'
+import { deslocarDias, paraDataIso } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import { semearBase, limparTudo, atorDeTeste, DATA_BASE, type BaseSemeada } from '../testes/apoio'
 import type { Ator } from '../servidor/ator'
@@ -156,13 +156,24 @@ describe('o que a limpeza apaga', () => {
       },
       gestor,
     )
-    // Cancelada hoje.
+    // Cancelada hoje — pelo relógio de verdade, que é o que `cancelar` grava.
     await cancelar(banco, adiada.id, gestor)
+    // Os dias contam do dia REAL do cancelamento, pela mesma regra do expurgo,
+    // e não de `DATA_BASE`: ela é calculada quando ESTE ARQUIVO carrega (o
+    // Vitest isola por arquivo), e um arquivo que carrega às 23:59 e chega
+    // aqui depois da meia-noite cancelava "amanhã" — o texto ficava um dia a
+    // menos vencido e o teste falhava sem defeito nenhum (visto em
+    // 26/09/2026, 02:57 UTC).
+    const { canceladoEm } = await linha(adiada.id)
+    // Sem isto, um `cancelar` que deixasse de gravar viraria "observação não
+    // é null" três linhas abaixo, longe da causa.
+    if (!canceladoEm) throw new Error('cancelar não gravou canceladoEm')
+    const diaDoCancelamento = paraDataIso(canceladoEm)
 
-    await expurgarMotivosDeAfastamento(banco, { diasDeRetencao: 7, hoje: deslocarDias(DATA_BASE, 6) })
+    await expurgarMotivosDeAfastamento(banco, { diasDeRetencao: 7, hoje: deslocarDias(diaDoCancelamento, 6) })
     expect((await linha(adiada.id)).observacao).toBe('registrado por engano')
 
-    await expurgarMotivosDeAfastamento(banco, { diasDeRetencao: 7, hoje: deslocarDias(DATA_BASE, 7) })
+    await expurgarMotivosDeAfastamento(banco, { diasDeRetencao: 7, hoje: deslocarDias(diaDoCancelamento, 7) })
     const depois = await linha(adiada.id)
     expect(depois.observacao).toBeNull()
     expect(depois.tipo).toBe('ausente')
