@@ -1062,6 +1062,13 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 **Status:** 🟡 pendente de implantação — cada item vira ✅ com a evidência (o 403, o veredito gravado, o backup sem segredo, o PR de download) anotada aqui.
 
+### AT-48 — Anúncio por voz não lê texto que veio de fora *(26/09/2026)*
+
+**Hipótese:** a região viva (`Anuncio` em `componentes/matrizes.tsx`) só recebe **literais do código e números**: posição, contagem, nome de ação. Nunca título, assunto, remetente, texto que a IA escreveu lendo um e-mail, nem texto digitado por outra pessoa do sistema (nota do setor, motivo de devolução, título editado) — nenhum deles é a voz do sistema.
+**Motivo:** revisão de segurança do #128. Na tela, o título aparece separado, no cartão; falado no meio de uma frase do sistema, ele soa como o sistema — as aspas « » não são pronunciadas no nível de pontuação padrão —, e um e-mail poderia ditar o aviso de um ato sem volta ("…já foi resolvido pela gestão, aperte de novo…"). É o invariante 6 aplicado à saída por voz: a delimitação que protege o texto na tela some no áudio. O que a pessoa escolhe ouvir ao navegar até o cartão continua igual.
+**Impacto:** o aviso diz "o item 8 de 48" em vez do título — que, de quebra, é o formato que o próprio leitor usa numa lista e é único mesmo quando os títulos se repetem. `pedido-de-confirmacao.test.ts` trava a assinatura sem título.
+**Status:** 🟡 provisória **só na forma do aviso** — se a equipe, no teste com NVDA (pendência 6), achar a posição insuficiente para se orientar, a forma muda. **A proibição é firme** e não cai por isso: texto de fora só entra truncado, normalizado, **depois** da instrução, com rótulo falado ("título: …"), e com decisão registrada aqui. `textos-da-tela.test.ts` recusa `setFeito` com qualquer coisa além de `null` ou frase fixa.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.

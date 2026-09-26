@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
-import { Aviso, Botao, Selo, SeloDeConfianca } from './matrizes'
+import { Anuncio, Aviso, Botao, Selo, SeloDeConfianca } from './matrizes'
 
 function classesDoBotao(tamanho: 'normal' | 'pequeno'): string[] {
   const html = renderToStaticMarkup(createElement(Botao, { tamanho, children: 'Concluir' }))
@@ -54,6 +54,31 @@ describe('Aviso — o que o leitor de tela anuncia (N-32)', () => {
 
   it('o tom neutro não usa a cor de sucesso', () => {
     expect(avisoRenderizado('neutro').classes.some((classe) => classe.includes('ok'))).toBe(false)
+  })
+})
+
+describe('Anuncio — o que muda sem mover o foco chega ao leitor de tela (pendência 5)', () => {
+  // "Concluir" vira "Confirmar: concluir" no MESMO botão, com o foco nele. Boa
+  // parte dos leitores não repete o nome que mudou: quem não enxerga clicava
+  // uma vez, não ouvia nada e ficava sem saber que faltava o segundo clique.
+  it('fica na página vazio, antes de haver o que dizer', () => {
+    const html = renderToStaticMarkup(createElement(Anuncio, { mensagem: null }))
+
+    // A região precisa existir ANTES do texto: leitor de tela não anuncia
+    // região viva que nasce já com conteúdo.
+    expect(html).toMatch(/aria-live="polite"/)
+    expect(html).toContain('sr-only')
+    expect(html.replace(/<[^>]*>/g, '')).toBe('')
+  })
+
+  it('diz o que fazer quando há mensagem, sem interromper', () => {
+    const html = renderToStaticMarkup(
+      createElement(Anuncio, { mensagem: 'Para concluir, clique de novo. Concluir não tem volta.' }),
+    )
+
+    expect(html).toMatch(/aria-live="polite"/)
+    expect(html).not.toMatch(/role="alert"|aria-live="assertive"/)
+    expect(html).toContain('Para concluir, clique de novo. Concluir não tem volta.')
   })
 })
 
