@@ -5,6 +5,11 @@ const config: NextConfig = {
   // O cliente Prisma não pode ser empacotado pelo bundler do servidor.
   serverExternalPackages: ['@prisma/client'],
   poweredByHeader: false,
+  // Sem isto, `next dev` que detecta um agente de IA anexa um bloco próprio ao
+  // `CLAUDE.md` e cria um `AGENTS.md` — as regras de quem escreve código aqui
+  // mudando como efeito colateral de subir a tela (visto em 25/09/2026). Elas
+  // mudam por decisão do dono, num PR que diz isso.
+  agentRules: false,
 
   async headers() {
     return [
