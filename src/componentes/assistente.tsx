@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { AvisoParaATela } from '../core/aviso-do-gestor'
-import { ROTULO_DA_TELA, TELAS, type Tela } from '../core/telas'
+import { ehTela, ROTULO_DA_TELA } from '../core/telas'
 import { api, mensagemDoErro } from './api'
 import { AvisoDoDia } from './aviso-do-gestor'
 import { Botao, juntar } from './matrizes'
@@ -59,7 +59,7 @@ interface RespostaDaApi {
  * pela conferência do servidor, então isso seria defeito, e crua ele aparece.
  */
 function rotuloDaTela(caminho: string): string {
-  return (TELAS as readonly string[]).includes(caminho) ? ROTULO_DA_TELA[caminho as Tela] : caminho
+  return ehTela(caminho) ? ROTULO_DA_TELA[caminho] : caminho
 }
 
 /** Perguntas prontas por papel. Campo em branco não ensina ninguém a perguntar. */
