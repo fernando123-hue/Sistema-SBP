@@ -6,6 +6,7 @@ import {
 import { montarMaterial, type QuemPergunta } from '../core/assistente/prompt'
 import { prepararConteudoExterno } from '../core/seguranca/conteudo-nao-confiavel'
 import { resumoDeValidacao } from '../core/seguranca/resumo-de-validacao'
+import { resumoDeTransporte } from '../core/seguranca/resumo-de-transporte'
 import { LimiteDeConsumoAtingido } from '../ports/consumo'
 import {
   AssistenteIndisponivelError,
@@ -162,10 +163,10 @@ export class AssistenteComModelo implements AssistentePort {
       }
 
       const especie = especieDoErro(erro)
-      // Validação vira resumo estrutural; transporte é texto do fornecedor e
-      // vai inteiro. Mesma distinção de `ia-estruturada.ts`, e pelo mesmo
-      // motivo: o log não tem política de retenção.
-      const paraRegistrar = especie === 'validacao' ? resumoDeValidacao(erro) : causa
+      // Validação vira resumo estrutural; transporte é texto do fornecedor,
+      // curto e mascarado. Mesma distinção de `ia-estruturada.ts`, e pelo
+      // mesmo motivo: o log não tem política de retenção.
+      const paraRegistrar = especie === 'validacao' ? resumoDeValidacao(erro) : resumoDeTransporte(causa)
 
       registrarLog(
         'aviso',

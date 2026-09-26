@@ -12,6 +12,7 @@ import {
 } from '../core/esquemas'
 import { prepararConteudoExterno } from '../core/seguranca/conteudo-nao-confiavel'
 import { resumoDeValidacao } from '../core/seguranca/resumo-de-validacao'
+import { resumoDeTransporte } from '../core/seguranca/resumo-de-transporte'
 import { LimiteDeConsumoAtingido } from '../ports/consumo'
 import { FalhaDeInterpretacao, InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import { ambiente } from '../servidor/ambiente'
@@ -261,9 +262,11 @@ export class InterpretadorEstruturado implements AiPort {
       // política de retenção (invariante 11), vai só o resumo estrutural.
       //
       // Falha de TRANSPORTE é texto do fornecedor (`timeout`, `503`,
-      // `RESOURCE_EXHAUSTED`), não do remetente, e é o que a operação precisa
-      // ler para saber o que arrumar. Essa vai inteira.
-      const paraRegistrar = especie === 'validacao' ? resumoDeValidacao(erro) : causa
+      // `RESOURCE_EXHAUSTED`), e é o que a operação precisa ler para saber o
+      // que arrumar. Vai quase inteira: curta, e com e-mail e número de
+      // documento mascarados — o corpo de erro da API pode citar um trecho do
+      // que recebeu (`resumoDeTransporte`, pendência 10).
+      const paraRegistrar = especie === 'validacao' ? resumoDeValidacao(erro) : resumoDeTransporte(causa)
 
       registrarLog(
         'aviso',
