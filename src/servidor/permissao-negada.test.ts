@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DOMINIO_ATUAL } from '../core/esquemas'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
@@ -19,6 +19,10 @@ const banco = obterPrisma()
 
 beforeEach(async () => {
   await limparTudo(banco)
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 async function tentarComoColaborador(colaboradorId: string): Promise<Response> {
@@ -78,5 +82,15 @@ describe('permissão negada', () => {
     expect(
       await banco.eventoProcessamento.count({ where: { etapa: 'autorizacao', dominio: DOMINIO_ATUAL } }),
     ).toBe(1)
+  })
+
+  // O contrato do rastro (`servidor/rastro-de-negacao.ts`): quem recebe a
+  // recusa continua recebendo a recusa, mesmo com o banco fora.
+  it('falha ao gravar o rastro não troca o 403 por outra coisa', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const espiao = vi.spyOn(banco.eventoProcessamento, 'create').mockRejectedValueOnce(new Error('banco fora'))
+
+    expect((await tentarComoColaborador(base.colaboradores[1]!.id)).status).toBe(403)
+    expect(espiao).toHaveBeenCalled()
   })
 })

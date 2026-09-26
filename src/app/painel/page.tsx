@@ -160,7 +160,7 @@ export default function PainelPagina() {
    * O período que de fato vai ao servidor: o dos campos, depois de um tempo
    * sem mudança. O campo de data dispara a cada dígito — o ano passa por
    * "0002", "0020", "0202" antes de "2025", e segurar a seta dispara em
-   * rajada —, e cada valor virava uma consulta que soma o Painel inteiro. Com
+   * rajada —, e cada valor virava uma consulta com as três leituras do Painel. Com
    * o limite por pessoa (pendência 9), a rajada chegava ao 429 em uso normal
    * (revisão técnica do #131).
    */
