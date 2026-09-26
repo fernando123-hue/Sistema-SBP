@@ -35,7 +35,7 @@
 > *A. O que a equipe lê na tela (as três que o dono viu no fim da sessão de 24/09 vêm primeiro):*
 > 1. **Código interno numa mensagem de erro da distribuição** — `ElegiveisInvalidosError` (`core/distribuicao/motor.ts`, "colaborador … aparece duas vezes") interpola `colaboradorId` e chega à tela como 422. Hoje não acontece (a lista vem do banco, sem duplicata), mas se acontecer é defeito: provavelmente virar `Error` (500 com correlação, id no log), como o item "sem lote" no #114.
 > 2. **Explicação que só aparece passando o mouse** *(desde o `A60` o sistema é só para computador: o motivo "toque" sai, teclado e leitor de tela ficam)* — o selo do critério e a dica do crédito na Distribuição, e a dica do crédito no Painel, moram só em `title`: não chegam a toque, teclado nem leitor de tela (revisão do #115). Mostrar como texto visível ou `aria-describedby`.
-> 3. **"Falha na requisição (404)."** — mensagem genérica do cliente quando a resposta não traz erro legível (`componentes/api.ts:110`). Trocar por frase de gente ("Não foi possível falar com o sistema. Atualize a tela e tente de novo.") mantendo o status para o log.
+> 3. ~~**"Falha na requisição (404)."**~~ — **resolvida no #123.** Resposta sem erro legível mostra "Não foi possível falar com o sistema. Atualize a tela e tente de novo." com `(código N)` no fim quando não há `ref.`; caminho, status e causa vão ao console do navegador. **Contrato novo:** rede caída deixa de rejeitar com `TypeError` e vira `ErroDaApi` com status 0 e a causa em `cause`.
 > 4. Números da Distribuição: vírgula só na média; o crédito ("0.00 → 1.00") e a dica do Painel seguem com ponto.
 > 5. Troca de rótulo "Concluir" → "Confirmar: concluir" (Minha fila) e o mesmo no Descartar da Revisão, sem anúncio a leitor de tela (`aria-live`) — tratar as duas telas juntas.
 > 6. Avisos `role="status"` que surgem na carga do Painel, Revisão e Caixa: testar com leitor de tela (NVDA) se viram rajada de anúncios (revisão do #110).
@@ -59,6 +59,10 @@
 > 18. **Forma forçada no servidor local** (esquema JSON no pedido do `ia-local.ts`, em vez de só `json_object`) — **é a correção da causa real das falhas de forma** (`A59`). Medir no Ollama desta máquina Windows (instalado em 25/09 com o dono de acordo, só o `qwen2.5:1.5b`, só em `127.0.0.1`) antes e depois, pelo gabarito.
 > 19. ~~Janela de contexto do Ollama não registrada~~ — **medida e descartada** (25/09, noite): 8192 na máquina Debian, 4096 aqui, pedidos de ~1,1 mil tokens, nenhum corte (`A59`).
 > 20. **Repositório público** (`gh repo view` em 25/09: `PUBLIC`), com nomes reais da equipe em `CONTEXTO.md` e `ENGENHARIA_REVERSA…`. Dono: voltar a privado. Depois: chave de implantação só de leitura para a máquina Debian (a cópia de lá é tarball), e trocar os nomes reais por fictícios nesses dois arquivos (PR de docs).
+>
+> *E. Novas em 25/09, noite (revisão do #123):*
+> 21. **Frase repetida quando embutida:** `app/senha/page.tsx` (≈42) monta "Não foi possível sair: ${mensagemDoErro(…)} Você continua conectado." e, sem resposta do sistema, sai "Não foi possível sair: Não foi possível falar com o sistema. …"; o mesmo em `app/entrar/page.tsx` (≈64, "Acesso local indisponível: …"). Legível, mas redundante.
+> 22. **Na tela de entrada, 404 de rota quebrada vira "acesso local desligado"** (`app/entrar/page.tsx` ≈63): no cenário da pendência 16 (rotas aninhadas de `/api` em 404, página HTML do Next), a tela fica calada em vez de avisar. Anterior ao #123; tratar junto da 16.
 >
 > *Decidido de propósito — não é pendência:* o gestor vê "ausente hoje" na Minha fila (tela de quem executa); payload de item ilegível trava a revisão daquele item com 500 e o id na mensagem do log; login, troca de senha e desativação esperam milissegundos por uma confirmação de distribuição em curso; `A34` (e-mails suspeitos sem item) é a fase 4.
 >
