@@ -12,6 +12,7 @@ import {
 } from '../core/esquemas'
 import { prepararConteudoExterno } from '../core/seguranca/conteudo-nao-confiavel'
 import { resumoDeValidacao } from '../core/seguranca/resumo-de-validacao'
+import { resumoDeTransporte } from '../core/seguranca/resumo-de-transporte'
 import { LimiteDeConsumoAtingido } from '../ports/consumo'
 import { FalhaDeInterpretacao, InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import { ambiente } from '../servidor/ambiente'
@@ -240,14 +241,15 @@ export class InterpretadorEstruturado implements AiPort {
 
       // Sobe inteiro, sem virar falha deste e-mail: o laço de ingestão
       // reconhece este erro e para o lote em vez de repetir o mesmo fracasso
-      // uma vez por mensagem.
-      if (this.perfil.ehCredencialRecusada(erro)) throw new InterpretacaoIndisponivelError(causa)
+      // uma vez por mensagem. A MENSAGEM, porém, vai resumida: este ramo é
+      // escolhido por texto, e daqui ela chega ao log e à tela (#132).
+      if (this.perfil.ehCredencialRecusada(erro)) throw new InterpretacaoIndisponivelError(resumoDeTransporte(causa))
 
       // Teto diário atingido, disjuntor aberto (`A54`) ou conta sem crédito:
       // o problema não é deste e-mail, e tentar o próximo custaria o mesmo
       // fracasso duzentas vezes — que é exatamente o que o achado C-06 mediu.
       if (erro instanceof LimiteDeConsumoAtingido || this.perfil.ehSemCredito?.(erro) === true) {
-        throw new InterpretacaoIndisponivelError(causa)
+        throw new InterpretacaoIndisponivelError(resumoDeTransporte(causa))
       }
 
       const especie = especieDoErro(erro)
@@ -261,9 +263,11 @@ export class InterpretadorEstruturado implements AiPort {
       // política de retenção (invariante 11), vai só o resumo estrutural.
       //
       // Falha de TRANSPORTE é texto do fornecedor (`timeout`, `503`,
-      // `RESOURCE_EXHAUSTED`), não do remetente, e é o que a operação precisa
-      // ler para saber o que arrumar. Essa vai inteira.
-      const paraRegistrar = especie === 'validacao' ? resumoDeValidacao(erro) : causa
+      // `RESOURCE_EXHAUSTED`), e é o que a operação precisa ler para saber o
+      // que arrumar. Vai quase inteira: curta, e com e-mail e número de
+      // documento mascarados — o corpo de erro da API pode citar um trecho do
+      // que recebeu (`resumoDeTransporte`, pendência 10).
+      const paraRegistrar = especie === 'validacao' ? resumoDeValidacao(erro) : resumoDeTransporte(causa)
 
       registrarLog(
         'aviso',
