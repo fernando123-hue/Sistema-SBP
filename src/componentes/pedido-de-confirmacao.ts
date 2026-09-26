@@ -2,17 +2,19 @@
  * O que o leitor de tela ouve quando "Concluir" ou "Descartar" pede o segundo
  * clique (pendência 5).
  *
- * Posição e título não são enfeite: armar um segundo item com a mesma frase
- * não muda a região viva, e o leitor fica calado (revisão do #128). Só o
- * título não basta — a fila repete títulos ("Ficha de atualização cadastral"
- * várias vezes); a posição na lista é única.
+ * "Item 8 de 48", e não o título. Duas razões (revisões do #128):
+ *
+ * 1. A frase tem de MUDAR de um item para outro — região viva com o mesmo
+ *    texto não é lida de novo, e armar o segundo item ficava em silêncio. O
+ *    título não garante isso (a fila repete títulos); a posição garante, e
+ *    "8 de 48" é o formato que o próprio leitor usa numa lista.
+ * 2. O título vem da IA, que o escreveu lendo o e-mail. Falado no meio de uma
+ *    frase do sistema, ele soaria como o sistema — as aspas não são
+ *    pronunciadas —, e um e-mail poderia ditar o aviso de um ato sem volta.
+ *    Anúncio por voz não lê texto que veio de fora (`DECISOES.md § AT-48`).
  */
-export function pedidoDeConfirmacao(
-  acao: 'concluir' | 'descartar',
-  titulo: string | undefined,
-  posicao: number,
-): string {
-  const qual = posicao < 0 || titulo === undefined ? 'o item' : `o ${posicao + 1}º item, «${titulo}»`
+export function pedidoDeConfirmacao(acao: 'concluir' | 'descartar', posicao: number, total: number): string {
+  const qual = posicao < 0 || total < 1 ? 'o item' : `o item ${posicao + 1} de ${total}`
   const nome = acao === 'concluir' ? 'Concluir' : 'Descartar'
   return `Para ${acao} ${qual}, aperte o mesmo botão de novo. ${nome} não tem volta.`
 }

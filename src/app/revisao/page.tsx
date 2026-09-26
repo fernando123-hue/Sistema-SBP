@@ -77,7 +77,10 @@ export default function Revisao() {
   const [ocupado, setOcupado] = useState<{ revisaoId: string; aprovar: boolean } | null>(null)
   /** Qual descarte está esperando o segundo clique. */
   const [confirmando, definirConfirmando] = useState<string | null>(null)
-  /** O que o leitor de tela ouve depois de aprovar ou descartar: o item sumia calado. */
+  /**
+   * O que o leitor de tela ouve depois de aprovar ou descartar: o item sumia
+   * calado. Toda ação nova o limpa (revisão do #128).
+   */
   const [feito, setFeito] = useState<string | null>(null)
   const [edicao, setEdicao] = useState<Record<string, Edicao>>({})
 
@@ -179,6 +182,9 @@ export default function Revisao() {
 
     setOcupado({ revisaoId: item.revisaoId, aprovar })
     setErro(null)
+    // Limpa ANTES do `await`: duas aprovações seguidas dão o mesmo texto, e
+    // sem o vazio no meio a segunda não seria lida.
+    setFeito(null)
     try {
       await api.enviar('/revisao/resolver', {
         revisaoId: item.revisaoId,
@@ -196,7 +202,7 @@ export default function Revisao() {
         return { itens: depois.itens, total: depois.total, pedirMais: depois.recarregar }
       })
       definirConfirmando(null)
-      setFeito(`Item ${aprovar ? 'aprovado' : 'descartado'}: «${atual?.titulo ?? item.titulo}».`)
+      setFeito(aprovar ? 'Item aprovado.' : 'Item descartado.')
     } catch (causa) {
       setFeito(null)
       setErro(mensagemDoErro(causa))
@@ -243,8 +249,8 @@ export default function Revisao() {
           confirmando
             ? pedidoDeConfirmacao(
                 'descartar',
-                edicao[confirmando]?.titulo ?? fila?.itens.find((item) => item.revisaoId === confirmando)?.titulo,
                 fila?.itens.findIndex((item) => item.revisaoId === confirmando) ?? -1,
+                fila?.itens.length ?? 0,
               )
             : feito
         }
@@ -408,11 +414,14 @@ export default function Revisao() {
                     <Botao
                       variante="perigo"
                       tamanho="pequeno"
-                      onClick={() =>
-                        confirmando === item.revisaoId
-                          ? void resolver(item, false)
-                          : definirConfirmando(item.revisaoId)
-                      }
+                      onClick={() => {
+                        if (confirmando === item.revisaoId) {
+                          void resolver(item, false)
+                          return
+                        }
+                        definirConfirmando(item.revisaoId)
+                        setFeito(null)
+                      }}
                       desabilitado={ocupado !== null}
                     >
                       {ocupado?.revisaoId === item.revisaoId && !ocupado.aprovar

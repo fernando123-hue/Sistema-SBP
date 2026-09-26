@@ -79,11 +79,14 @@ describe('confirmação em dois cliques é anunciada (pendência 5)', () => {
     const anuncio = /<Anuncio[\s\S]*?\/>/.exec(fonte)?.[0] ?? ''
 
     expect(anuncio).toMatch(new RegExp(`mensagem=\\{\\s*${estado}\\b`))
-    // O título muda a frase de um item para outro; frase igual não é repetida.
-    expect(anuncio).toMatch(/titulo/)
+    // A frase vem de `pedidoDeConfirmacao` (posição, nunca o título: § AT-48).
+    expect(anuncio).toMatch(/pedidoDeConfirmacao\(/)
+    expect(anuncio).not.toMatch(/titulo/)
     // E o segundo clique também diz algo: o item sumia calado.
     expect(anuncio).toMatch(/:\s*feito\b/)
-    expect(fonte).toMatch(/setFeito\(`Item /)
+    expect(fonte).toMatch(/setFeito\([^)]*'Item /)
+    // Toda ação nova limpa o aviso anterior: senão ele era repetido fora de hora.
+    expect(fonte.match(/setFeito\(null\)/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
     // Fora do ramo de carregamento: remontada, a região nasceria com texto,
     // e região viva que nasce com texto não é anunciada.
     expect(fonte.indexOf('<Anuncio')).toBeGreaterThan(0)
