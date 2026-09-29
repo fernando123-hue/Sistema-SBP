@@ -156,6 +156,9 @@ async function contarTentativasAnteriores(
   for (let inicio = 0; inicio < messageIds.length; inicio += LOTE_DE_CONSULTA) {
     const linhas = await banco.eventoProcessamento.groupBy({
       by: ['referencia'],
+      // `situacao`, `etapa` e `referencia` juntas: é o índice
+      // [situacao, etapa, referencia, criadoEm]. Sem uma delas, cada
+      // sincronização varre a tabela, que só cresce (pendência 11).
       where: {
         etapa: 'ingestao',
         situacao: 'reprocessavel',

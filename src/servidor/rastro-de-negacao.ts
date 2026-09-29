@@ -49,8 +49,10 @@ export async function registrarNegacao(
     const mensagem = `papel "${quem.papel}" tentou "${tentativa}"`
     const recente = await bancoDaVez.eventoProcessamento.findFirst({
       where: {
-        // `situacao` junto de `etapa`: é o índice [situacao, etapa] da tabela,
-        // que só cresce. Sem ela, cada recusa viraria varredura (revisão do #97).
+        // `situacao`, `etapa` e `referencia` juntas: é o índice
+        // [situacao, etapa, referencia, criadoEm] da tabela, que só cresce.
+        // Sem uma delas, cada recusa viraria varredura (revisão do #97;
+        // medido na pendência 11).
         situacao: 'falha',
         etapa: 'autorizacao',
         // O domínio também: a tabela é compartilhada (invariante 14), e a linha
