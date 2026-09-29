@@ -43,7 +43,8 @@
 >     - As `instrucoes` devem dizer ao Jev que o bloco delimitado é dado não confiável. Sem isso, os marcadores só custam token.
 >     - Gravar da `Classificacao` só códigos e números, nunca `JSON.stringify` do objeto inteiro.
 >     - `PerfilDoClassificador` não tem `ehSemCredito`: 402/429 viram falha comum até o disjuntor abrir. Decidir se isso basta.
->     - **Antes de ligar o Jev no assistente:** a trava `CLASSIFICADOR_PARA_DADO_REAL` olha só `INGESTAO_ADAPTER`. Com caixa `mock` e pessoas reais colando e-mail no assistente (invariante 13), ela não protege. Registrar em `§ C` ou no `§ H.4` item 35.
+>     - **Antes de ligar o Jev no assistente:** a trava `CLASSIFICADOR_PARA_DADO_REAL` olha só `INGESTAO_ADAPTER`. Com caixa `mock` e pessoas reais colando e-mail no assistente (invariante 13), ela não protege. Já escrito no `§ H.4` item 35; o uso no assistente precisa de trava própria.
+>     - **Nunca decidir pela `confianca`** (limiar, desempate, alarme): o que ela mede na TypeSafe não está confirmado, e ela só é conferida na faixa. Se precisar de um número, usar `probabilidades[escolha]`, que é conferido contra as outras.
 > - **(c)** Medir no gabarito (`npm run ia:avaliar`, com a categoria esperada dos 17 casos) a concordância do Jev. Isso **exige** a `TYPESAFE_API_KEY` e liberar na rede do ambiente `api.typesafe.ai`, `typesafe.ai` e `docs.typesafe.ai`, os três bloqueados em 26/09. Sem isso, preço, qualidade em português e retenção seguem não confirmados (`A62`).
 > - **(d)** Pendências da lista abaixo, a partir da 11. A 29 (`logLevel: 'warn'` explícito em `clienteAnthropic`, porque a opção explícita vence `ANTHROPIC_LOG`) foi estudada e é pequena. Anotada para ela: o SDK da Anthropic também lê `ANTHROPIC_BASE_URL` do ambiente, o que mudaria para onde o texto vai; decidir se fixa.
 >
@@ -151,7 +152,7 @@
 
 > *H. Novas em 29/09 (revisões do #142), anteriores a ele:*
 > 32. **A hora de volta do disjuntor sai mascarada.** A mensagem de `LimiteDeConsumoAtingido` passa por `resumoDeTransporte`, e a máscara de 5+ dígitos come a data ISO: sai "suspensas até [número]T01:37:24.478Z". Acontece em `ia-estruturada.ts` (≈251), `assistente-modelo.ts` (≈161) e `classificador-externo.ts`. `ports/consumo.ts` promete essa mensagem inteira na tela. Para o classificador, ela ainda diz "a IA falhou N vezes" (`core/ia/consumo.ts` ≈138).
-> 33. **`modeloUsado` da IA sem forma conferida.** `ia-anthropic` e `ia-local` gravam em `UsoDaIa.modelo` (`VARCHAR(191)`, na chave primária) o nome que o fornecedor devolveu. Um nome longo derruba a gravação, e a chamada some da conta do teto diário. O #142 corrigiu isso no classificador (`NOME_DE_MODELO`); falta levar a mesma regra aos adaptadores de IA.
+> 33. **`modeloUsado` da IA sem forma conferida.** `ia-anthropic`, `ia-gemini` (`resposta.modelVersion`, ≈222) e `ia-local` gravam em `UsoDaIa.modelo` (`VARCHAR(191)`, na chave primária) o nome que o fornecedor devolveu. Um nome longo derruba a gravação, e a chamada some da conta do teto diário. O #142 corrigiu isso no classificador (`NOME_DE_MODELO`); falta levar a mesma regra aos adaptadores de IA.
 
 > *Decidido de propósito — não é pendência:* o gestor vê "ausente hoje" na Minha fila (tela de quem executa); payload de item ilegível trava a revisão daquele item com 500 e o id na mensagem do log; login, troca de senha e desativação esperam milissegundos por uma confirmação de distribuição em curso; `A34` (e-mails suspeitos sem item) é a fase 4.
 >

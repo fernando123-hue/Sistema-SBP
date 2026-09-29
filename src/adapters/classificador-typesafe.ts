@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import type { Pergunta, Resposta } from '../ports/classificador'
 import { ambiente } from '../servidor/ambiente'
+import { registrarLog } from '../servidor/observabilidade'
 import type { ClienteDeClassificacao, PerfilDoClassificador } from './classificador-externo'
 
 /**
@@ -123,9 +124,14 @@ const ResultadoNoFioSchema = z.object({
  * esquema: a chave de `probabilities` embaixo dele, também do fornecedor,
  * nunca entra. Só o código do defeito é copiado; `message`, `input` e o resto
  * do issue ficam para trás.
+ *
+ * O código vai em `code`, que é o único campo que `resumoDeValidacao` lê. No
+ * primeiro contato com a API real, a diferença entre `invalid_type` e
+ * `unrecognized_keys` no log é o diagnóstico (rodada 2 do #142: com o código
+ * em `message`, tudo saía como `custom`).
  */
 function defeitoDeForma(caminho: (string | number)[], codigo: string): z.ZodError {
-  return new z.ZodError([{ code: 'custom', path: caminho, message: codigo } as z.core.$ZodIssue])
+  return new z.ZodError([{ code: codigo, path: caminho, message: '' } as z.core.$ZodIssue])
 }
 
 function lerResultado(
@@ -144,7 +150,8 @@ function lerResultado(
   const nomes = Object.keys(envelope.data.answers)
   const perguntadas = Object.keys(perguntas)
   if (nomes.length !== perguntadas.length || nomes.some((nome) => !Object.hasOwn(perguntas, nome))) {
-    throw defeitoDeForma(['answers'], 'respostas_diferentes_das_perguntas')
+    // O código do Zod para chave a mais — sem as chaves, que são do fornecedor.
+    throw defeitoDeForma(['answers'], 'unrecognized_keys')
   }
 
   const respostas: Record<string, Resposta> = {}
@@ -158,8 +165,14 @@ function lerResultado(
     respostas[nome] = doFio(dada.data)
   }
 
-  const modelo = NOME_DE_MODELO.test(envelope.data.model) ? envelope.data.model : null
-  return { respostas, modelo }
+  if (!NOME_DE_MODELO.test(envelope.data.model)) {
+    // Troca de nome não é silenciosa: o tamanho diz o bastante, o valor não sai.
+    registrarLog('aviso', 'a TypeSafe devolveu um nome de modelo fora da forma; vale o pedido', {
+      tamanho: envelope.data.model.length,
+    })
+    return { respostas, modelo: null }
+  }
+  return { respostas, modelo: envelope.data.model }
 }
 
 function paraOFio(pergunta: Pergunta): unknown {
@@ -201,6 +214,15 @@ function doFio(resposta: z.infer<typeof RespostaNoFioSchema>): Resposta {
 }
 
 /**
+ * Corpo que não vai ser lido é cancelado: pendurado, ele segura a conexão até
+ * o prazo ou o coletor de lixo. Falhar ao cancelar não muda nada para quem
+ * chamou — o erro que importa é o que vem depois.
+ */
+async function descartarCorpo(resposta: Response): Promise<void> {
+  await resposta.body?.cancel().catch(() => {})
+}
+
+/**
  * O corpo, lido até `MAIOR_RESPOSTA_BYTES`. Acima disso a leitura é cancelada
  * — pelo tamanho declarado, antes de ler, ou pelo contado, durante.
  *
@@ -210,7 +232,10 @@ function doFio(resposta: z.infer<typeof RespostaNoFioSchema>): Resposta {
  */
 async function lerComTeto(resposta: Response): Promise<string> {
   const declarado = Number(resposta.headers.get('content-length'))
-  if (declarado > MAIOR_RESPOSTA_BYTES) throw new Error('a resposta da TypeSafe passa do tamanho aceito')
+  if (declarado > MAIOR_RESPOSTA_BYTES) {
+    await descartarCorpo(resposta)
+    throw new Error('a resposta da TypeSafe passa do tamanho aceito')
+  }
   if (!resposta.body) return ''
 
   const leitor = resposta.body.getReader()
@@ -258,6 +283,7 @@ export function clienteTypeSafe(chave: string | undefined = ambiente().TYPESAFE_
       })
 
       if (!resposta.ok) {
+        await descartarCorpo(resposta)
         throw new FalhaDaTypeSafe(resposta.status, resposta.headers.get('x-typesafe-request-id'))
       }
 

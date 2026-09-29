@@ -236,6 +236,34 @@ describe('a política: a resposta é conferida contra a pergunta', () => {
       })
     }
 
+    // A soma de n rótulos arredondados desvia até n × 0,005; a nota, em
+    // proporção à escala.
+    it('aceita o arredondamento acumulado em muitos rótulos e em escala longa', async () => {
+      const seis = Object.fromEntries(['a', 'b', 'c', 'd', 'e', 'f'].map((rotulo) => [rotulo, null]))
+      await expect(
+        classificar(
+          {
+            muitos: {
+              tipo: 'escolha',
+              escolha: 'a',
+              confianca: 0.17,
+              probabilidades: { a: 0.17, b: 0.17, c: 0.17, d: 0.17, e: 0.17, f: 0.17 },
+            },
+          },
+          { muitos: { tipo: 'escolha', instrucoes: 'x', opcoes: seis } },
+        ),
+      ).resolves.toBeDefined()
+
+      const onze = Array.from({ length: 11 }, (_, nivel) => String(nivel))
+      const probabilidades = Object.fromEntries(onze.map((nivel) => [nivel, nivel === '5' ? 1 : 0]))
+      await expect(
+        classificar(
+          { escala: { tipo: 'nota', nota: 5.1, confianca: 1, probabilidades } },
+          { escala: { tipo: 'nota', instrucoes: 'x', niveis: onze } },
+        ),
+      ).resolves.toBeDefined()
+    })
+
     it('aceita o arredondamento do fornecedor e o empate', async () => {
       await expect(
         classificar(escolha({ probabilidades: { anuidade: 0.905, cadastro: 0.1 } }), { categoria: CATEGORIA }),
@@ -494,8 +522,28 @@ describe('o adaptador da TypeSafe', () => {
     expect(await classificarComTypeSafe()).toBeInstanceOf(ClassificadorIndisponivelError)
   })
 
-  it('o prazo é o do SDK, 10 s', () => {
+  it('o prazo é o do SDK, 10 s, e é ele que vai na chamada', async () => {
     expect(TEMPO_LIMITE_MS).toBe(10_000)
+    const prazo = vi.spyOn(AbortSignal, 'timeout')
+    trocarFetch(json({ error: 'x' }, 500))
+    await classificarComTypeSafe()
+    expect(prazo).toHaveBeenCalledWith(TEMPO_LIMITE_MS)
+    prazo.mockRestore()
+  })
+
+  // No primeiro contato com a API real, o código é o diagnóstico: "o tipo não
+  // bate" e "as chaves não são as perguntas" não podem sair iguais no log.
+  it('o código do defeito de forma chega à mensagem', async () => {
+    trocarFetch(
+      json({
+        model: 'jev-1',
+        answers: { categoria: { type: 'choice', choice: 'anuidade', confidence: 'alta', probabilities: {} } },
+      }),
+    )
+    expect((await classificarComTypeSafe()).message).toMatch(/answers\.categoria\.confidence: invalid_type/)
+
+    trocarFetch(json({ model: 'jev-1', answers: { outra: { type: 'noul', noul: 0.5 } } }))
+    expect((await classificarComTypeSafe()).message).toMatch(/answers: unrecognized_keys/)
   })
 
   // Os dois vão a mensagem, log e `UsoDaIa` (chave primária com `modelo` em
@@ -520,20 +568,44 @@ describe('o adaptador da TypeSafe', () => {
     expect(classificacao.modeloUsado).toBe('jev-latest')
   })
 
-  it('resposta acima do teto não é lida', async () => {
-    const grande = 'x'.repeat(MAIOR_RESPOSTA_BYTES + 1)
-    // Pelo tamanho declarado…
-    trocarFetch(new Response(grande, { status: 200, headers: { 'content-length': String(grande.length) } }))
-    expect((await classificarComTypeSafe()).message).toMatch(/tamanho aceito/)
-    // …e pelo contado, quando o cabeçalho não diz.
-    const pedacos = new ReadableStream<Uint8Array>({
-      start(controle) {
-        for (let i = 0; i < 5; i++) controle.enqueue(new Uint8Array(MAIOR_RESPOSTA_BYTES / 4))
-        controle.close()
+  /** Corpo que registra se foi cancelado — pendurado, ele segura a conexão. */
+  function corpoVigiado(conteudo: Uint8Array[]) {
+    const vigia = { cancelado: false }
+    const corpo = new ReadableStream<Uint8Array>({
+      pull(controle) {
+        const proximo = conteudo.shift()
+        if (proximo) controle.enqueue(proximo)
+        else controle.close()
+      },
+      cancel() {
+        vigia.cancelado = true
       },
     })
-    trocarFetch(new Response(pedacos, { status: 200 }))
+    return { corpo, vigia }
+  }
+
+  it('resposta acima do teto não é lida, e o corpo é cancelado', async () => {
+    // Pelo tamanho declarado, sem ler nada: o corpo de verdade é pequeno.
+    const declarado = corpoVigiado([new TextEncoder().encode('{}')])
+    trocarFetch(
+      new Response(declarado.corpo, { status: 200, headers: { 'content-length': String(MAIOR_RESPOSTA_BYTES + 1) } }),
+    )
     expect((await classificarComTypeSafe()).message).toMatch(/tamanho aceito/)
+    expect(declarado.vigia.cancelado).toBe(true)
+
+    // Pelo contado, no meio da leitura. Pedaços de sobra: o corte tem de
+    // acontecer com o corpo ainda aberto (cancelar um corpo já fechado não
+    // cancela nada, e o teste não provaria o cancelamento).
+    const contado = corpoVigiado(Array.from({ length: 10 }, () => new Uint8Array(MAIOR_RESPOSTA_BYTES / 4)))
+    trocarFetch(new Response(contado.corpo, { status: 200 }))
+    expect((await classificarComTypeSafe()).message).toMatch(/tamanho aceito/)
+    expect(contado.vigia.cancelado).toBe(true)
+
+    // E o de um erro HTTP, que nunca é lido.
+    const erro = corpoVigiado([new TextEncoder().encode('{"error":"x"}')])
+    trocarFetch(new Response(erro.corpo, { status: 500 }))
+    expect((await classificarComTypeSafe()).message).toContain('500')
+    expect(erro.vigia.cancelado).toBe(true)
   })
 
   // O prazo vale na leitura do corpo; o motivo registrado tem de ser o prazo.

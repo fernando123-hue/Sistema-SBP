@@ -141,11 +141,23 @@ function conferirPerguntas(perguntas: Readonly<Record<string, Pergunta>>): void 
 const ehProbabilidade = (valor: number) => Number.isFinite(valor) && valor >= 0 && valor <= 1
 
 /**
- * Folga das contas de coerência. As probabilidades vêm arredondadas pelo
+ * Folga das contas de coerência. As probabilidades podem vir arredondadas pelo
  * fornecedor; 0,02 aceita o arredondamento e recusa a contradição (uma soma 2,
  * uma escolha com 1% contra 99% do outro rótulo).
  */
 const FOLGA = 0.02
+
+/**
+ * Na SOMA, o arredondamento se acumula: n rótulos arredondados a duas casas
+ * desviam até n × 0,005 — seis rótulos de 1/6 escritos 0,17 somam 1,02, e as
+ * oito categorias de `core/config.ts` podem desviar 0,04 (revisão técnica,
+ * rodada 2 do #142). Uma folga fixa recusaria justamente a distribuição
+ * espalhada, que é resposta boa.
+ */
+const folgaDaSoma = (rotulos: number) => Math.max(FOLGA, 0.005 * rotulos)
+
+/** Ponto flutuante: `Math.abs(1.02 - 1)` é 0,020000000000000018. */
+const RESIDUO_DE_CONTA = 1e-9
 
 /**
  * O que está errado na resposta, em palavras NOSSAS — ou `null`.
@@ -200,7 +212,7 @@ function problemaNasRespostas(
       return `a pergunta "${nome}" voltou com probabilidade fora de 0 a 1`
     }
     const soma = probabilidades.reduce((total, valor) => total + valor, 0)
-    if (Math.abs(soma - 1) > FOLGA) return `a pergunta "${nome}" voltou com probabilidades que não somam 1`
+    if (Math.abs(soma - 1) > folgaDaSoma(esperadas.length) + RESIDUO_DE_CONTA) return `a pergunta "${nome}" voltou com probabilidades que não somam 1`
 
     if (resposta.tipo === 'escolha') {
       if (!esperadas.includes(resposta.escolha)) {
@@ -208,7 +220,7 @@ function problemaNasRespostas(
       }
       // Empate aceito: dois rótulos com a mesma probabilidade, qualquer um serve.
       const maior = Math.max(...probabilidades)
-      if (resposta.probabilidades[resposta.escolha]! < maior - FOLGA) {
+      if (resposta.probabilidades[resposta.escolha]! < maior - FOLGA - RESIDUO_DE_CONTA) {
         return `a pergunta "${nome}" voltou com uma escolha que as probabilidades desmentem`
       }
     }
@@ -220,7 +232,7 @@ function problemaNasRespostas(
       // A nota é a ESPERADA (`ports/classificador.ts`): a média dos níveis
       // pesada pelas probabilidades. Folga proporcional à escala.
       const esperada = probabilidades.reduce((total, valor, nivel) => total + valor * nivel, 0)
-      if (Math.abs(resposta.nota - esperada) > FOLGA * maior) {
+      if (Math.abs(resposta.nota - esperada) > FOLGA * maior + RESIDUO_DE_CONTA) {
         return `a pergunta "${nome}" voltou com uma nota que as probabilidades desmentem`
       }
     }
