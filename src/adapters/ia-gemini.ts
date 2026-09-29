@@ -162,12 +162,13 @@ export function clienteGemini(): ClienteDeModelo {
 
   const cliente = new GoogleGenAI({
     apiKey: chave,
-    // DESTINO FIXO (pendência 29). Sem as duas linhas abaixo, o SDK lê do
-    // ambiente `GOOGLE_GEMINI_BASE_URL`, que manda o corpo do e-mail para outro
-    // endereço, e `GOOGLE_GENAI_USE_VERTEXAI`/`GOOGLE_GENAI_USE_ENTERPRISE`,
-    // que trocam a API gratuita pela Vertex (outro contrato, outro projeto,
-    // outra cobrança). A opção passada aqui vence as variáveis — conferido na
-    // fonte do SDK 2.21. Para onde o texto vai é decisão do código.
+    // DESTINO FIXO (pendência 29). Sem `vertexai: false` e
+    // `httpOptions.baseUrl`, o SDK lê do ambiente `GOOGLE_GEMINI_BASE_URL`, que
+    // manda o corpo do e-mail para outro endereço, e
+    // `GOOGLE_GENAI_USE_VERTEXAI`/`GOOGLE_GENAI_USE_ENTERPRISE`, que trocam a
+    // API gratuita pela Vertex (outro contrato, outro projeto, outra cobrança).
+    // A opção passada aqui vence as variáveis — conferido na fonte do SDK 2.21.
+    // Para onde o texto vai é decisão do código.
     vertexai: false,
     // TETO DE TEMPO EXPLÍCITO.
     //

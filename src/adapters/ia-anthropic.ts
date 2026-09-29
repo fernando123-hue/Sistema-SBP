@@ -80,14 +80,14 @@ export const PERFIL_ANTHROPIC: PerfilDoFornecedor = {
   },
 }
 
+/** O único destino do texto. Ver o comentário em `clienteAnthropic`. */
+export const ENDERECO_DA_API = 'https://api.anthropic.com'
+
 /**
  * `chave` e `fetch` só existem para o teste exercitar o SDK de verdade sem
  * rede (`forma-na-saida-estruturada.test.ts`). Em produção nada é passado, e a
  * chave vem de `ambiente()`.
  */
-/** O único destino do texto. Ver o comentário em `clienteAnthropic`. */
-export const ENDERECO_DA_API = 'https://api.anthropic.com'
-
 export function clienteAnthropic(
   opcoes: { chave?: string; fetch?: typeof fetch } = {},
 ): ClienteDeModelo {
@@ -114,11 +114,22 @@ export function clienteAnthropic(
   // o texto vai e o que sai no log é decisão do código, nunca de uma variável
   // esquecida na máquina.
   //
-  // `ANTHROPIC_CUSTOM_HEADERS` não tem opção que a desligue: o SDK junta os
-  // cabeçalhos dela aos nossos. Ela não muda o destino nem o log.
+  // `ANTHROPIC_CUSTOM_HEADERS` é a quarta, e a pior de ver: o destino não
+  // muda, mas os cabeçalhos dela entram DEPOIS dos de autenticação e trocam a
+  // `x-api-key` (o e-mail processado na conta de outra organização) ou põem
+  // de volta o `Authorization` que `authToken: null` tirou (revisões do
+  // #144). A tranca principal é `ambiente()`, que recusa subir com ela e
+  // `IA_ADAPTER=anthropic`. Esta é a segunda: `defaultHeaders` explícito vence
+  // o da variável, cabeçalho por cabeçalho, e `null` apaga. Ela só cobre a
+  // credencial — cabeçalho que não conhecemos passaria, e é por isso que a
+  // primeira tranca existe. O `authorization: null` daqui também apaga o que
+  // `ANTHROPIC_AUTH_TOKEN` poria: são duas trancas no mesmo cabeçalho, de
+  // propósito. Tirar só uma não fica vermelho em teste nenhum; tirar as duas,
+  // fica.
   const cliente = new Anthropic({
     apiKey: chave,
     authToken: null,
+    defaultHeaders: { 'x-api-key': chave, authorization: null },
     baseURL: ENDERECO_DA_API,
     logLevel: 'warn',
     maxRetries: 2,

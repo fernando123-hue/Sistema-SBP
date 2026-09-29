@@ -318,6 +318,23 @@ export function ambiente(): Ambiente {
     throw new Error(`IA_ADAPTER="${resultado.data.IA_ADAPTER}" exige ${exigida} configurada.`)
   }
 
+  // O SDK da Anthropic junta os cabeçalhos de `ANTHROPIC_CUSTOM_HEADERS` aos
+  // do pedido DEPOIS dos de autenticação: a variável troca a chave (o e-mail
+  // processado na conta de outra organização), põe de volta um `Authorization`
+  // e muda `anthropic-version` e `anthropic-beta`, sem que nada no código diga
+  // isso (pendência 29, revisões do #144). Máquina configurada para um gateway
+  // de modelo costuma ter a variável, com o segredo do gateway dentro.
+  //
+  // Só com `IA_ADAPTER=anthropic`: nos outros casos o SDK nem é construído, e
+  // a mesma variável pode existir na máquina para outra ferramenta. A mensagem
+  // não repete o valor, porque ele costuma carregar segredo.
+  if (resultado.data.IA_ADAPTER === 'anthropic' && (process.env['ANTHROPIC_CUSTOM_HEADERS'] ?? '').trim() !== '') {
+    throw new Error(
+      'ANTHROPIC_CUSTOM_HEADERS está definida, e com IA_ADAPTER="anthropic" ela trocaria a chave e os cabeçalhos ' +
+        'que vão com o texto do e-mail. Apague a variável deste processo antes de subir o sistema.',
+    )
+  }
+
   // O servidor local não tem credencial na tabela acima, mas tem duas
   // exigências próprias, e as duas falham na partida em vez de na primeira
   // chamada ao modelo.

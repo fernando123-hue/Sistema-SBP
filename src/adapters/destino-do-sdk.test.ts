@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
-import { limparCacheDeAmbiente } from '../servidor/ambiente'
+import { ambiente, limparCacheDeAmbiente } from '../servidor/ambiente'
 import { clienteAnthropic, ENDERECO_DA_API as ENDERECO_ANTHROPIC } from './ia-anthropic'
 import { clienteGemini, ENDERECO_DA_API as ENDERECO_GEMINI } from './ia-gemini'
 
@@ -11,14 +11,14 @@ import { clienteGemini, ENDERECO_DA_API as ENDERECO_GEMINI } from './ia-gemini'
  * Pendência 29: os dois SDKs leem variáveis do ambiente por conta própria.
  * `ANTHROPIC_BASE_URL` e `GOOGLE_GEMINI_BASE_URL` mandam o corpo do e-mail para
  * outro endereço; `GOOGLE_GENAI_USE_VERTEXAI` troca a API gratuita pela Vertex;
- * `ANTHROPIC_LOG=debug` escreve o pedido inteiro no console, por fora de
- * `registrarLog` e `redigir`; `ANTHROPIC_AUTH_TOKEN` manda uma segunda
- * credencial junto. Nenhuma delas aparece no `.env.example`, então quem as
- * deixou numa máquina não tem motivo para lembrar.
+ * `ANTHROPIC_AUTH_TOKEN` manda uma segunda credencial junto;
+ * `ANTHROPIC_CUSTOM_HEADERS` troca a chave. Nenhuma delas aparece no
+ * `.env.example`, então quem as deixou numa máquina não tem motivo para
+ * lembrar. (`ANTHROPIC_LOG` tem arquivo próprio: `log-do-sdk.test.ts`.)
  *
  * Cada teste liga UMA variável contra o SDK de verdade, com a rede trocada por
- * um `fetch` falso, e confere o endereço, o cabeçalho ou o console. Um teste
- * por variável, para a mutação de cada opção fixada ter um vermelho só dela.
+ * um `fetch` falso, e confere o endereço ou o cabeçalho. Um teste por
+ * variável, para a mutação de cada opção fixada ter um vermelho só dela.
  */
 
 const SENTINELA = 'SENTINELA-DO-CORPO-DO-EMAIL'
@@ -56,7 +56,7 @@ afterEach(() => {
   limparCacheDeAmbiente()
 })
 
-describe('Anthropic: o ambiente não escolhe destino, credencial nem log', () => {
+describe('Anthropic: o ambiente não escolhe destino nem credencial', () => {
   function apiFalsa() {
     const chamadas: Chamada[] = []
     const falso = async (entrada: unknown, init?: RequestInit) => {
@@ -99,20 +99,50 @@ describe('Anthropic: o ambiente não escolhe destino, credencial nem log', () =>
     expect(cabecalhos.get('authorization')).toBeNull()
   })
 
-  it('ANTHROPIC_LOG=debug não escreve o pedido no console', async () => {
-    vi.stubEnv('ANTHROPIC_LOG', 'debug')
-    const escrito: string[] = []
-    for (const metodo of ['debug', 'info', 'log', 'warn', 'error'] as const) {
-      vi.spyOn(console, metodo).mockImplementation((...args: unknown[]) => {
-        escrito.push(args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' '))
-      })
-    }
+  // A variável entra DEPOIS dos cabeçalhos de autenticação no SDK: sem a
+  // segunda tranca, a chave de outra conta e o `Authorization` do gateway iam
+  // no pedido (revisões técnica e de segurança do #144).
+  it('ANTHROPIC_CUSTOM_HEADERS não troca a chave nem devolve o Authorization', async () => {
+    vi.stubEnv('ANTHROPIC_CUSTOM_HEADERS', 'x-api-key: chave-de-outra-conta\nAuthorization: Bearer token-do-gateway')
     const api = apiFalsa()
 
     await clienteAnthropic({ chave: 'chave-de-teste', fetch: api.fetch }).gerar(PEDIDO)
 
-    expect(api.chamadas).toHaveLength(1)
-    expect(escrito.filter((linha) => linha.includes(SENTINELA))).toEqual([])
+    const cabecalhos = api.chamadas[0]!.cabecalhos
+    expect(cabecalhos.get('x-api-key')).toBe('chave-de-teste')
+    expect(cabecalhos.get('authorization')).toBeNull()
+  })
+})
+
+// A tranca principal: a segunda, acima, só cobre a credencial, e um cabeçalho
+// que não conhecemos passaria. `ANTHROPIC_LOG` fica em `log-do-sdk.test.ts`,
+// num arquivo próprio — ver lá por quê.
+describe('ambiente(): ANTHROPIC_CUSTOM_HEADERS com a Anthropic falha na partida', () => {
+  const VALOR = 'x-segredo-do-gateway: valor-que-nao-pode-aparecer'
+
+  it('com IA_ADAPTER=anthropic, recusa subir, sem repetir o valor', () => {
+    vi.stubEnv('IA_ADAPTER', 'anthropic')
+    vi.stubEnv('ANTHROPIC_API_KEY', 'chave-de-teste')
+    vi.stubEnv('ANTHROPIC_CUSTOM_HEADERS', VALOR)
+
+    let mensagem = ''
+    try {
+      ambiente()
+    } catch (erro) {
+      mensagem = erro instanceof Error ? erro.message : String(erro)
+    }
+    expect(mensagem).toMatch(/ANTHROPIC_CUSTOM_HEADERS/)
+    expect(mensagem).not.toContain('valor-que-nao-pode-aparecer')
+  })
+
+  // O outro lado: a variável pode existir na máquina para outra ferramenta
+  // (o próprio Claude Code a aceita), e o SDK da Anthropic nem é construído.
+  it('com outro adaptador, sobe', () => {
+    vi.stubEnv('IA_ADAPTER', 'gemini')
+    vi.stubEnv('GOOGLE_AI_KEY', 'chave-de-teste')
+    vi.stubEnv('ANTHROPIC_CUSTOM_HEADERS', VALOR)
+
+    expect(() => ambiente()).not.toThrow()
   })
 })
 
