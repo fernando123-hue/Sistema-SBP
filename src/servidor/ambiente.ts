@@ -119,6 +119,32 @@ const AmbienteSchema = z.object({
       'SESSAO_SECRET precisa de no mínimo 16 caracteres — gere um com: node -e "console.log(crypto.randomUUID())"',
     ),
   /**
+   * A chave de sessão de antes da troca, só para a troca de rotina (achado C-25).
+   *
+   * Trocar `SESSAO_SECRET` sozinho derruba todo mundo no meio do expediente.
+   * Com esta variável, o cookie emitido antes da troca continua valendo até
+   * expirar, e todo cookie novo sai com a chave nova. Ela só CONFERE; nunca
+   * assina. Vale nas primeiras 12h do processo, a validade de um cookie: depois
+   * disso `servidor/sessao.ts` a ignora, mesmo esquecida aqui.
+   *
+   * Depois de um VAZAMENTO, não use: a chave vazada é justamente a que não pode
+   * continuar abrindo sessão. Nesse caso, troque só `SESSAO_SECRET` e deixe
+   * todo mundo entrar de novo.
+   */
+  //
+  // Vazia é o mesmo que ausente, como em `ANEXOS_SECRET`: é o estado normal,
+  // fora de uma troca.
+  SESSAO_SECRET_ANTERIOR: z
+    .string()
+    .transform((valor) => (valor.trim() === '' ? undefined : valor))
+    .pipe(
+      z
+        .string()
+        .min(16, 'SESSAO_SECRET_ANTERIOR, quando definido, precisa de no mínimo 16 caracteres')
+        .optional(),
+    )
+    .optional(),
+  /**
    * Onde os arquivos de anexo são guardados.
    *
    * Fora do repositório de propósito: são documentos de associado, não código.
@@ -388,6 +414,15 @@ export function ambiente(): Ambiente {
     )
   }
 
+  // Igual à atual, a troca não aconteceu: quem configurou acha que rotacionou,
+  // e o segredo antigo segue assinando tudo. Falha alto em qualquer ambiente.
+  if (resultado.data.SESSAO_SECRET_ANTERIOR === resultado.data.SESSAO_SECRET) {
+    throw new Error(
+      'SESSAO_SECRET_ANTERIOR igual a SESSAO_SECRET: a troca da chave de sessão não aconteceu. ' +
+        'Ponha em SESSAO_SECRET o segredo novo, ou apague SESSAO_SECRET_ANTERIOR.',
+    )
+  }
+
   // Segredo escrito no repositório não é segredo (achado N-18): o CI e a suíte
   // usam valores públicos de propósito, e nada impedia que um deles fosse
   // copiado para produção. A mensagem nomeia a variável, nunca o valor.
@@ -438,6 +473,23 @@ export function ambiente(): Ambiente {
         'ANEXOS_SECRET igual a SESSAO_SECRET, ou um contido no outro, em NODE_ENV=production: ' +
           'derivado de um, o outro cai junto num vazamento. Gere cada um com o seu próprio ' +
           'crypto.randomUUID(), nunca por concatenação.',
+      )
+    }
+
+    // A chave anterior também abre sessão, então vale para ela a mesma
+    // separação da de cima: a chave dos anexos não pode abrir sessão durante
+    // a troca. Fora de produção a igualdade é o caminho documentado (fixar
+    // `ANEXOS_SECRET` com o valor antigo antes de trocar a sessão).
+    //
+    // A saída que a mensagem dá é apagar a anterior, nunca trocar a dos
+    // anexos: trocar a dos anexos torna ilegível todo documento gravado
+    // (`AT-13`); apagar a anterior custa uma reentrada por pessoa.
+    const anterior = resultado.data.SESSAO_SECRET_ANTERIOR
+    if (anterior !== undefined && (anexos.includes(anterior) || anterior.includes(anexos))) {
+      throw new Error(
+        'SESSAO_SECRET_ANTERIOR igual a ANEXOS_SECRET, ou um contido no outro, em NODE_ENV=production: ' +
+          'durante a troca, a chave dos anexos abriria sessão. Apague SESSAO_SECRET_ANTERIOR ' +
+          '(cada pessoa entra de novo uma vez); não troque ANEXOS_SECRET, que tornaria os anexos ilegíveis.',
       )
     }
   }
@@ -541,7 +593,7 @@ function motivoDeEnderecoLocalInvalido(valor: string): string | null {
  */
 const VARIEDADE_MINIMA_DO_SEGREDO = 8
 
-const SEGREDOS = ['SESSAO_SECRET', 'BUSCA_SECRET', 'ANEXOS_SECRET'] as const
+const SEGREDOS = ['SESSAO_SECRET', 'SESSAO_SECRET_ANTERIOR', 'BUSCA_SECRET', 'ANEXOS_SECRET'] as const
 
 /**
  * A forma dos valores públicos do repositório: `…-nao-e-segredo-…` no CI e no

@@ -69,16 +69,46 @@ function segredo(): string {
   return valor
 }
 
-function assinar(carga: string): string {
-  return createHmac('sha256', segredo()).update(carga).digest('base64url')
+/**
+ * A chave de antes da troca (`SESSAO_SECRET_ANTERIOR`, achado C-25), enquanto
+ * ela ainda pode ser necessária.
+ *
+ * Todo cookie legítimo assinado com ela foi emitido ANTES de este processo
+ * subir com a chave nova, e vale 12h: passado esse prazo, contado da subida
+ * do processo, nenhum cookie legítimo depende dela. Um forjado com a chave
+ * vazada depende — e ele escolhe o próprio `expiraEm`. Por isso o prazo é do
+ * processo, não do cookie, e vale mesmo que a variável seja esquecida no
+ * ambiente. Reiniciar com ela ainda lá reabre a janela: apagar a variável
+ * continua sendo o passo final da troca.
+ *
+ * `performance.timeOrigin` é o instante, no relógio de parede, em que o
+ * processo começou. Um ajuste do relógio depois disso desloca o fim da janela
+ * na mesma medida — o acerto do NTP são segundos, não horas.
+ */
+function segredoAnterior(): string | undefined {
+  const valor = ambiente().SESSAO_SECRET_ANTERIOR
+  if (valor === undefined) return undefined
+  if (Date.now() >= performance.timeOrigin + VALIDADE_SEGUNDOS * 1000) return undefined
+  return valor
 }
 
-function conferirAssinatura(carga: string, assinatura: string): boolean {
-  const esperada = Buffer.from(assinar(carga))
+/** Assina SEMPRE com a chave atual: a anterior só confere. */
+function assinar(carga: string, chave: string = segredo()): string {
+  return createHmac('sha256', chave).update(carga).digest('base64url')
+}
+
+function confere(carga: string, assinatura: string, chave: string): boolean {
+  const esperada = Buffer.from(assinar(carga, chave))
   const recebida = Buffer.from(assinatura)
   // Comparação em tempo constante: evita descobrir a assinatura byte a byte.
   if (esperada.length !== recebida.length) return false
   return timingSafeEqual(esperada, recebida)
+}
+
+function conferirAssinatura(carga: string, assinatura: string): boolean {
+  if (confere(carga, assinatura, segredo())) return true
+  const anterior = segredoAnterior()
+  return anterior !== undefined && confere(carga, assinatura, anterior)
 }
 
 export function montarCookie(

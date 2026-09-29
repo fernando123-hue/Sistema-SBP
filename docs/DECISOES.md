@@ -1088,6 +1088,19 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 **Impacto:** se o gabarito mostrar que o Jev erra pedidos que dependem de prazo ou valor, a saída é trocar a máscara desses casos por um marcador de tipo (`[data]`, `[valor]`), nunca devolver o número.
 **Status:** 🟡 assumida; fixada em `protecao-para-fornecedor-externo.test.ts` ("data completa e valor longo", "valor curto e ano sozinho", "lista de números pequenos, notas e horário", "contagem pequena depois de palavra-chave", "contagem de 3 dígitos ou mais depois de palavra-chave sai").
 
+### AT-50 — Rotação da sessão com duas chaves, e a anterior vence sozinha em 12h (C-25, pendência 11) *(29/09/2026)*
+
+**O defeito:** trocar `SESSAO_SECRET` derrubava todo mundo na hora. A troca de rotina ficava cara, e ninguém a faria.
+
+**Como ficou:** `SESSAO_SECRET_ANTERIOR`, opcional (vazia é o normal). Ela só **confere** a assinatura do cookie; todo cookie novo sai assinado com `SESSAO_SECRET`. O passo a passo está no `.env.example`. Na partida, o sistema recusa três configurações. A primeira é a anterior igual à atual, porque aí a troca não aconteceu. As outras duas valem só em produção: a anterior com valor de teste público (`N-18`) e a anterior igual ou contida na `ANEXOS_SECRET`, porque durante a troca a chave dos anexos abriria sessão. Fora de produção essa igualdade é permitida: é o passo que o `.env.example` manda dar antes de trocar a sessão sem `ANEXOS_SECRET`.
+
+**Hipótese — a janela conta da subida do processo, não do cookie:** a chave anterior vale só nas primeiras 12h do processo (`performance.timeOrigin`), que é a validade de um cookie. Todo cookie legítimo da chave anterior foi emitido antes de o processo subir com a nova, então depois de 12h ninguém precisa dela. Um cookie forjado com a chave vazada precisaria — e ele escolhe o próprio `expiraEm`, por isso o prazo não pode vir do cookie. Assim, esquecer a variável no ambiente deixa de ser uma porta aberta para sempre.
+**Motivo:** é a menor coisa que resolve sem estado novo nem variável de prazo para o operador errar. Supõe o que o `A61` descreve: um servidor e um processo; os limites de taxa já supõem o mesmo.
+**Impacto se estiver errado:** reiniciar com a variável ainda definida reabre a janela por mais 12h — por isso o último passo continua sendo apagá-la. Um ajuste do relógio de parede desloca o fim da janela na mesma medida. Com mais de um processo atrás de um balanceador, cada um conta a própria subida, e a janela continua limitada a 12h por processo.
+**Depois de um vazamento, não se usa:** a chave vazada é justamente a que não pode continuar abrindo sessão; troca-se só `SESSAO_SECRET`, e cada pessoa entra de novo uma vez.
+
+**Status:** 🟡 assumida; fixada em `sessao.test.ts` ("rotação do segredo de sessão com duas chaves") e `ambiente-seguro.test.ts` ("chave anterior da sessão").
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.

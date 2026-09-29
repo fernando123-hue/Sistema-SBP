@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { limparCacheDeAmbiente } from './ambiente'
 import { PermissaoNegadaError, atorDaSessao, ehOProprio, exigirPapel } from './ator'
@@ -28,9 +28,19 @@ function definirSegredo(valor: string): void {
   limparCacheDeAmbiente()
 }
 
+function definirAnterior(valor: string): void {
+  process.env['SESSAO_SECRET_ANTERIOR'] = valor
+  limparCacheDeAmbiente()
+}
+
 beforeEach(() => {
   // `segredo()` lê do ambiente e exige no mínimo 16 caracteres.
   definirSegredo('segredo-de-teste-com-tamanho-suficiente')
+  definirAnterior('')
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('cookie de sessão', () => {
@@ -120,6 +130,87 @@ describe('cookie de sessão', () => {
     const cookie = montarCookie(COLABORADOR, 'operador', null)
     definirSegredo('outro-segredo-completamente-diferente')
     expect(lerCookie(cookie)).toBeNull()
+  })
+})
+
+describe('rotação do segredo de sessão com duas chaves (C-25)', () => {
+  /**
+   * Sem a chave anterior, trocar `SESSAO_SECRET` derruba todo mundo no meio do
+   * expediente — e o gesto de rotina fica caro o bastante para ninguém fazer.
+   * Com ela, o cookie emitido antes da troca continua valendo até expirar, e
+   * todo cookie novo sai com a chave nova.
+   */
+  const ANTIGO = 'segredo-de-teste-antigo-da-sessao'
+  const NOVO = 'segredo-de-teste-novo-da-sessao'
+
+  it('cookie assinado com a chave anterior segue valendo depois da troca', () => {
+    definirSegredo(ANTIGO)
+    const emitidoAntes = montarCookie(COLABORADOR, 'gestor', null)
+
+    definirSegredo(NOVO)
+    definirAnterior(ANTIGO)
+
+    expect(lerCookie(emitidoAntes)?.papel).toBe('gestor')
+  })
+
+  it('cookie novo sai com a chave nova, nunca com a anterior', () => {
+    definirSegredo(NOVO)
+    definirAnterior(ANTIGO)
+    const emitidoDepois = montarCookie(COLABORADOR, 'operador', null)
+
+    // Tirar a anterior não pode derrubar quem entrou depois da troca...
+    definirAnterior('')
+    expect(lerCookie(emitidoDepois)).not.toBeNull()
+    // ...e a chave anterior sozinha não confere o cookie novo.
+    definirSegredo(ANTIGO)
+    expect(lerCookie(emitidoDepois)).toBeNull()
+  })
+
+  it('sem a chave anterior, a troca derruba os cookies antigos — o gesto certo depois de um vazamento', () => {
+    definirSegredo(ANTIGO)
+    const emitidoAntes = montarCookie(COLABORADOR, 'operador', null)
+
+    definirSegredo(NOVO)
+
+    expect(lerCookie(emitidoAntes)).toBeNull()
+  })
+
+  it('a chave anterior não confere carga adulterada', () => {
+    definirSegredo(ANTIGO)
+    const original = montarCookie(COLABORADOR, 'colaborador', null)
+    definirSegredo(NOVO)
+    definirAnterior(ANTIGO)
+
+    const [carga, assinatura] = original.split('.') as [string, string]
+    const adulterada = JSON.parse(Buffer.from(carga, 'base64url').toString()) as Record<string, unknown>
+    adulterada['papel'] = 'gestor'
+    const forjada = Buffer.from(JSON.stringify(adulterada)).toString('base64url')
+
+    expect(lerCookie(`${forjada}.${assinatura}`)).toBeNull()
+  })
+
+  it('a chave anterior deixa de valer sozinha 12h depois de o processo subir, mesmo esquecida no ambiente', () => {
+    const DOZE_HORAS = 12 * 60 * 60 * 1000
+    vi.useFakeTimers({ toFake: ['Date'] })
+
+    // Um cookie da chave anterior, emitido perto do fim da janela: a validade
+    // dele passa do prazo da chave, e é o prazo da chave que tem de valer.
+    vi.setSystemTime(performance.timeOrigin + DOZE_HORAS - 60_000)
+    definirSegredo(ANTIGO)
+    const tardio = montarCookie(COLABORADOR, 'operador', null)
+    definirSegredo(NOVO)
+    definirAnterior(ANTIGO)
+    expect(lerCookie(tardio)).not.toBeNull()
+
+    // Todo cookie legítimo da chave anterior foi emitido antes de o processo
+    // subir com a nova, e vale 12h: passado isso, ninguém precisa dela. Um
+    // cookie forjado com a chave vazada, sim — e ele escolhe o próprio
+    // `expiraEm`. Por isso o prazo é contado do processo, não do cookie.
+    vi.setSystemTime(performance.timeOrigin + DOZE_HORAS + 1000)
+    expect(lerCookie(tardio)).toBeNull()
+
+    // O cookie novo não tem prazo além da própria validade.
+    expect(lerCookie(montarCookie(COLABORADOR, 'operador', null))).not.toBeNull()
   })
 })
 

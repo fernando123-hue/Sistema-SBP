@@ -24,6 +24,7 @@ beforeEach(() => {
   // que a trava do C-25 recusa (revisão de segurança do #98). Gerado na hora:
   // um literal com cara de chave é confundido com segredo pelo gitleaks.
   vi.stubEnv('ANEXOS_SECRET', randomUUID())
+  vi.stubEnv('SESSAO_SECRET_ANTERIOR', '')
   vi.stubEnv('INGESTAO_ADAPTER', 'mock')
   vi.stubEnv('IA_ADAPTER', 'mock')
   vi.stubEnv('ACESSO_LOCAL_SEM_SENHA', '')
@@ -217,5 +218,57 @@ describe('servidor de modelo local (A56)', () => {
   it('caixa real com IA local é recusada enquanto o gabarito não decidir (A56 (e))', () => {
     vi.stubEnv('INGESTAO_ADAPTER', 'graph')
     expect(() => ambiente()).toThrow(/IA_ADAPTER/)
+  })
+})
+
+describe('chave anterior da sessão, para rotacionar sem derrubar todo mundo (C-25)', () => {
+  it('vazia é o mesmo que ausente: sobe, e não há rotação em curso', () => {
+    vi.stubEnv('SESSAO_SECRET_ANTERIOR', '')
+    expect(ambiente().SESSAO_SECRET_ANTERIOR).toBeUndefined()
+  })
+
+  it('curta demais é recusada, como a atual', () => {
+    vi.stubEnv('SESSAO_SECRET_ANTERIOR', 'curta')
+    expect(() => ambiente()).toThrow(/SESSAO_SECRET_ANTERIOR/)
+  })
+
+  it('igual à atual é recusada — a troca não aconteceu, e quem configurou precisa saber', () => {
+    vi.stubEnv('SESSAO_SECRET_ANTERIOR', FORTE)
+    expect(() => ambiente()).toThrow(/SESSAO_SECRET_ANTERIOR/)
+  })
+
+  it('em produção, igual ou contida na dos anexos é recusada — a chave dos anexos abriria sessão', () => {
+    const anexos = randomUUID()
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('ANEXOS_SECRET', anexos)
+    vi.stubEnv('SESSAO_SECRET_ANTERIOR', anexos)
+    expect(() => ambiente()).toThrow(/SESSAO_SECRET_ANTERIOR/)
+
+    limparCacheDeAmbiente()
+    vi.stubEnv('SESSAO_SECRET_ANTERIOR', `${anexos}-velha`)
+    expect(() => ambiente()).toThrow(/SESSAO_SECRET_ANTERIOR/)
+  })
+
+  it('em produção, valor de teste público é recusado, como nos outros segredos (N-18)', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('SESSAO_SECRET_ANTERIOR', 'segredo-de-teste-antigo-da-sessao')
+    expect(() => ambiente()).toThrow(/SESSAO_SECRET_ANTERIOR/)
+  })
+
+  it('em produção, uma chave anterior própria sobe', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('SESSAO_SECRET_ANTERIOR', randomUUID())
+    expect(ambiente().SESSAO_SECRET_ANTERIOR).toBeDefined()
+  })
+
+  it('fora de produção, igual à dos anexos sobe — é o passo que o .env.example manda dar antes de trocar a sessão', () => {
+    // Em desenvolvimento, sem `ANEXOS_SECRET`, a chave dos anexos é a de sessão.
+    // Para trocar a de sessão sem perder os anexos, fixa-se `ANEXOS_SECRET` com
+    // o valor antigo — que é o mesmo que vai em `SESSAO_SECRET_ANTERIOR`.
+    const antiga = randomUUID()
+    vi.stubEnv('NODE_ENV', 'test')
+    vi.stubEnv('ANEXOS_SECRET', antiga)
+    vi.stubEnv('SESSAO_SECRET_ANTERIOR', antiga)
+    expect(() => ambiente()).not.toThrow()
   })
 })
