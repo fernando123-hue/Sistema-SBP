@@ -6,6 +6,7 @@ import { PapelSchema, type Papel } from '../core/esquemas'
 import { acessoLocalHabilitado, ehContaSintetica } from './acesso-local'
 import { ambiente } from './ambiente'
 import { atorDaSessao, type Ator } from './ator'
+import { registrarLog } from './observabilidade'
 import { obterPrisma } from './prisma'
 
 /**
@@ -69,16 +70,96 @@ function segredo(): string {
   return valor
 }
 
-function assinar(carga: string): string {
-  return createHmac('sha256', segredo()).update(carga).digest('base64url')
+/**
+ * A chave de antes da troca (`SESSAO_SECRET_ANTERIOR`, achado C-25), enquanto
+ * ela ainda pode ser necessária.
+ *
+ * Todo cookie legítimo assinado com ela foi emitido ANTES de este processo
+ * subir com a chave nova, e vale 12h: passado esse prazo, contado da subida
+ * do processo, nenhum cookie legítimo depende dela. Um forjado com a chave
+ * vazada depende — e ele escolhe o próprio `expiraEm`. Por isso o prazo é do
+ * processo, não do cookie.
+ *
+ * `performance.now()` é o tempo desde a subida pelo relógio MONOTÔNICO: um
+ * relógio de parede corrigido para trás (relógio de hardware errado na
+ * subida) não estica a janela (revisões do #146). A janela fecha pelo
+ * PRIMEIRO dos dois relógios: o monotônico, aqui, e o de parede, pela trava
+ * de forma de `lerCookie` (`expiraEm` preso a `timeOrigin + 12h`). Numa VM
+ * pausada o monotônico não anda — é o de parede que fecha (2ª rodada do #146).
+ *
+ * Cada reinício reabre a janela, inclusive os automáticos (deploy, queda,
+ * `Restart=always`). Por isso a rotação em curso aparece no log a cada subida
+ * (`avisarTrocaDaChaveEmCurso`), e apagar a variável continua sendo o passo
+ * final da troca.
+ */
+function segredoAnterior(): string | undefined {
+  const valor = ambiente().SESSAO_SECRET_ANTERIOR
+  if (valor === undefined) return undefined
+  if (performance.now() >= VALIDADE_SEGUNDOS * 1000) return undefined
+  return valor
 }
 
-function conferirAssinatura(carga: string, assinatura: string): boolean {
-  const esperada = Buffer.from(assinar(carga))
+/**
+ * Avisa, NA SUBIDA do processo, que há uma troca de chave em curso — e agenda
+ * o aviso de janela fechada para o instante em que o relógio monotônico a
+ * fecha.
+ *
+ * O aviso morava em `segredoAnterior` e só saía quando chegava um cookie que
+ * a chave atual não conferia. No caso que motivou o aviso — a variável
+ * esquecida e o processo reiniciando sozinho —, todo cookie é da chave atual,
+ * a anterior nunca é consultada, e o log ficava calado (2ª rodada do #146).
+ * Ele saiu de lá de vez: o Next compila este arquivo uma vez por camada
+ * (instrumentação, rota), e cada cópia repetiria o aviso (3ª rodada do #146).
+ *
+ * Chamado por `instrumentation-node.ts`, que garante uma chamada por processo.
+ * O `setTimeout` é `unref`: não segura o processo vivo ao parar. O `valeAte`
+ * impresso é o horário PREVISTO pelo relógio de parede; o aviso de fechada
+ * sai quando o monotônico fecha a janela.
+ */
+export function avisarTrocaDaChaveEmCurso(): void {
+  if (ambiente().SESSAO_SECRET_ANTERIOR === undefined) return
+  const restanteMs = VALIDADE_SEGUNDOS * 1000 - performance.now()
+  if (restanteMs <= 0) {
+    avisarJanelaFechada()
+    return
+  }
+  registrarLog('aviso', 'SESSAO_SECRET_ANTERIOR definida: troca da chave de sessão em curso', {
+    subidaEm: new Date(performance.timeOrigin),
+    valeAte: new Date(performance.timeOrigin + VALIDADE_SEGUNDOS * 1000),
+    // Com a variável esquecida e o processo reiniciando antes de 12h, o aviso
+    // de fechada nunca sai e o `valeAte` anda a cada subida: a frase diz isso
+    // (revisão de segurança, 3ª rodada do #146).
+    passo: 'apague a variável e reinicie depois desse horário; cada reinício antes dele adia o prazo por mais 12h',
+  })
+  setTimeout(() => {
+    if (ambiente().SESSAO_SECRET_ANTERIOR !== undefined) avisarJanelaFechada()
+  }, restanteMs).unref()
+}
+
+function avisarJanelaFechada(): void {
+  registrarLog('aviso', 'SESSAO_SECRET_ANTERIOR ainda definida, e não confere mais nenhum cookie', {
+    passo: 'apague a variável e reinicie: cada reinício reabre a janela por 12h',
+  })
+}
+
+/** Assina SEMPRE com a chave atual: a anterior só confere. */
+function assinar(carga: string, chave: string = segredo()): string {
+  return createHmac('sha256', chave).update(carga).digest('base64url')
+}
+
+function confere(carga: string, assinatura: string, chave: string): boolean {
+  const esperada = Buffer.from(assinar(carga, chave))
   const recebida = Buffer.from(assinatura)
   // Comparação em tempo constante: evita descobrir a assinatura byte a byte.
   if (esperada.length !== recebida.length) return false
   return timingSafeEqual(esperada, recebida)
+}
+
+/** Qual chave conferiu a assinatura — a anterior pede conferências a mais em `lerCookie`. */
+function conferirAssinatura(carga: string, assinatura: string): 'atual' | 'anterior' | null {
+  if (confere(carga, assinatura, segredo())) return 'atual'
+  const anterior = segredoAnterior()
+  return anterior !== undefined && confere(carga, assinatura, anterior) ? 'anterior' : null
 }
 
 export function montarCookie(
@@ -108,7 +189,8 @@ export function lerCookie(valor: string | undefined): Conteudo | null {
 
   const carga = valor.slice(0, separador)
   const assinatura = valor.slice(separador + 1)
-  if (!conferirAssinatura(carga, assinatura)) return null
+  const chave = conferirAssinatura(carga, assinatura)
+  if (chave === null) return null
 
   try {
     const conteudo = JSON.parse(Buffer.from(carga, 'base64url').toString()) as Conteudo
@@ -119,6 +201,23 @@ export function lerCookie(valor: string | undefined): Conteudo | null {
     // versão; aceitar manteria de pé exatamente os cookies que a mudança
     // existe para poder derrubar.
     if (typeof conteudo.emitidoEm !== 'number') return null
+    // Pela chave anterior, só a forma de um cookie legítimo: emitido antes de
+    // este processo subir com a chave nova, e com a validade exata. Um forjado
+    // com a chave vazada podia pôr `emitidoEm` no futuro e escapar de todo
+    // "sair" (`sessoesInvalidasAntes`) feito durante a troca (revisão de
+    // segurança do #146). Com um processo só (`A61`), nenhum cookie legítimo
+    // paga nada por isso; com o relógio corrigido para trás entre os dois
+    // processos, ou instâncias sobrepostas na troca, a pessoa entra de novo
+    // uma vez (2ª rodada do #146).
+    if (
+      chave === 'anterior' &&
+      !(
+        conteudo.emitidoEm < performance.timeOrigin &&
+        conteudo.expiraEm - conteudo.emitidoEm === VALIDADE_SEGUNDOS * 1000
+      )
+    ) {
+      return null
+    }
     // `local` só vale como `true` exato; qualquer outro valor é tratado como
     // sessão comum, que é a que recebe MENOS permissão, não mais.
     const { local, ...resto } = conteudo

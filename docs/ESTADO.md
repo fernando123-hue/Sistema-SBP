@@ -1,10 +1,98 @@
 # Estado do projeto — retomada
 
-Última atualização: **29/09/2026, noite — ponto de parada combinado com o dono.** Mesclados hoje: #143 (Jev fase 3, modo sombra), #144 (pendência 29) e #124 (`A61`, servidor Linux). Sem gasto com IA (`A63`). A ordem de trabalho combinada está no primeiro bloco abaixo. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **29/09/2026, fim da noite — ponto de parada pedido pelo dono, que tem instruções novas sobre o Jev e sobre a conta dele no sistema.** Três trabalhos da pendência 11 ficaram estacionados em ponto seguro (dois PRs abertos, um desenho decidido). **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 29/09/2026, noite — PONTO DE PARADA; A ORDEM COMBINADA COM O DONO (este bloco vence os de baixo; o `git log` vence este)
+> ### 29/09/2026, depois da parada — INVESTIGAÇÃO DAS INSTRUÇÕES NOVAS (JEV + CONTA DO DONO) ENTREGUE; AGUARDA O DONO (este bloco vence os de baixo)
+>
+> **1. O que foi feito.** Os dois pedidos novos do dono foram investigados **sem mudar código**:
+> - "todo o potencial do Jev";
+> - "Autonomous Operations + SBP Control Center".
+>
+> O resultado está em `docs/arquitetura/2026-09-29-jev-harness-e-operacao-autonoma.md`. As decisões que só o dono pode tomar estão em `DECISOES.md § H.4`, itens **37 a 48**.
+>
+> **2. A rede continua bloqueando a TypeSafe.** `api.typesafe.ai` e `docs.typesafe.ai` deram **403** em 29/09, como em 26/09. Nenhum número do Jev foi medido; o documento diz isso onde importa.
+>
+> **3. Rota recomendada** (Parte III do documento). Nenhum dos passos 1 a 5 gasta com IA:
+> - **passo 1:** pendência 17 (conferência de literalidade + DV do CPF), com o critério do `§ H.4` 40;
+> - **passo 2:** Harness puro em `core/harness/`, sem mudar comportamento;
+> - **passo 3:** registro por chamada de IA, com latência e versões;
+> - **passo 4:** ingestão em segundo plano, porque a IA local leva dezenas de segundos por e-mail;
+> - **passo 5:** Jev em paralelo e o relatório sombra × desfecho.
+>
+> Depois vêm o ator próprio (`§ H.4` 7) e o papel `dono`, e só então o Control Center.
+>
+> **4. Respostas do dono no mesmo dia** (registradas no `§ H.4`):
+> - 37: sinal de IA só aumenta o cuidado até calibrar;
+> - 41: avisos só dentro do sistema, por enquanto;
+> - 45: a conta dele é separada da gestão, e o papel **não** se chama "dono" (nome a escolher).
+>
+> Ele perguntou se o sistema vive sem o Jev e se dá para ter um "Jev próprio". A resposta está na **Parte IV** do documento e nos itens novos **47 e 48**.
+>
+> **5. MUDANÇA DE RUMO NO MESMO DIA — LINHA DE CHEGADA DO PROTÓTIPO (vence os itens acima).**
+>
+> O dono pediu foco para **terminar o protótipo** e medo de evoluir sem fim. Ficou valendo `DIRECAO.md`, *Linha de chegada do protótipo*:
+> - **pronto** = equipe usando com e-mail real, em paralelo com a planilha, por 2 semanas;
+> - **código que falta:**
+>   - fechar #146 e #147;
+>   - pendência 17 (critério: `§ H.4` 40);
+>   - pendência 37;
+>   - a sincronização em segundo plano, só se a medição do tempo por e-mail mandar;
+> - **o resto é TI, servidor e decisões do dono.**
+>
+> Jev, Harness, Control Center, operação autônoma e "Jev próprio" ficam **congelados** até o fim da rodada paralela. Nome do papel da conta do dono: **"Supervisor do sistema"** (`§ H.4` 45), também congelado.
+>
+> **Regra:** ideia nova vai para a lista abaixo e não vira trabalho, a menos que bloqueie a rodada paralela, seja defeito ou seja risco de segurança ou de dado real.
+>
+> **Depois do protótipo (lista; não é trabalho agora):**
+> - tudo da Parte III do documento de arquitetura de 29/09;
+> - pendências fora do item 1 acima.
+>
+> ### 29/09/2026, fim da noite — PARADA PARA AS INSTRUÇÕES NOVAS DO DONO (anterior; o item 0 dele foi feito no bloco acima)
+>
+> **0. PRIMEIRO, antes de qualquer código.** O dono vai passar **instruções novas sobre o Jev e sobre como quer que funcione a conta dele no sistema**. O que ele pediu:
+> - **Priorizar:** comparar as instruções novas com o trabalho estacionado abaixo e dizer a ele qual vem primeiro, com o motivo. Recomendação já dada: as instruções novas primeiro. Os dois PRs abertos estão parados em ponto seguro, e cada um leva uma sessão curta para fechar.
+> - **Analisar com cuidado** e, se preciso, **pesquisar sobre o Jev** (TypeSafe AI) antes de seguir. O que já se sabe está no `A62`. Da última vez, `api.typesafe.ai`, `typesafe.ai` e `docs.typesafe.ai` estavam **bloqueados pela rede desta nuvem** (26/09): tentar de novo e, se continuar bloqueado, dizer isso a ele em vez de inventar.
+> - **Conversar com ele sobre toda dúvida e toda recomendação importante.** O que for pequeno pode seguir sem perguntar.
+> - Lembrar a ele o que está em vigor e pode ser afetado pelas instruções novas:
+>   - `A63`: sem gasto com IA, Jev desligado até ele avisar;
+>   - a trava `CLASSIFICADOR_PARA_DADO_REAL`, com o `§ H.4` item 35 em aberto;
+>   - a segunda opinião em modo sombra (fase 3, #143).
+>
+>   "A conta dele" é possivelmente a conta de gestor no sistema; perguntar se não ficar claro.
+>
+> **1. Onde está.**
+> - `main`: sem mudança de código desde #145, apenas este PR de docs.
+> - **Aberto, #146 — rotação da sessão com duas chaves** (pendência 11, parte 3), branch `feat/pendencia-11-rotacao-da-sessao`, head `ecc17f6`.
+>   - Duas revisões na 1ª rodada; todos os achados corrigidos.
+>   - A **2ª rodada pediu mudança: achado 1 (MÉDIO)**. O aviso no log só sai quando chega cookie da chave anterior, então não sai no caso que o motivou: variável esquecida e processo reiniciando sozinho.
+>   - **Falta:**
+>     - emitir o aviso na subida, por `instrumentation-node.ts` → uma função exportada de `sessao.ts`, com `setTimeout(12h − performance.now()).unref()` para o aviso de janela fechada;
+>     - um teste que o veja sair **sem** chamar `lerCookie`, visto vermelho antes;
+>     - os três informativos da 2ª rodada, só texto no comentário de `sessao.ts` e no `AT-50`: a janela fecha pelo primeiro dos dois relógios; relógio corrigido para trás ou processos sobrepostos custam uma reentrada; `valeAte` é o horário previsto;
+>     - `verificar`, 3ª rodada de revisão, os links das revisões no corpo (as seções "Revisão técnica" e "Revisão de segurança" ainda dizem "(link a seguir)"), CI lido, mesclar.
+>   - Os comentários de revisão já publicados no PR são o registro completo.
+> - **Aberto, #147 — índice `[situacao, etapa, referencia, criadoEm]` em `EventoProcessamento`** (pendência 11, parte 2), branch `perf/pendencia-11-indice-do-rastro`, head `aa3707a`, pasta `/home/user/sbp-p11-indice`.
+>   - Medido com 500 mil eventos: a leitura feita a cada entrada com e-mail inexistente caiu de 1962 ms para 0,11 ms. Com 2 s, ela também quebrava o piso de tempo da entrada e dizia pelo relógio se o e-mail tinha conta.
+>   - Revisões de banco e de segurança publicadas, achados corrigidos, `verificar` verde (138 arquivos, 1610 testes, numa base própria, `sbp_indice_teste`).
+>   - **Falta:** os links das revisões no corpo, o CI lido e mesclar.
+>   - **Depois do #146:** `git merge origin/main` e, no `ESTADO.md`, riscar a parte 2 da pendência 11 e acrescentar as pendências 40 e 41 (texto no último comentário do #147).
+> - **Decidido, sem código ainda — pendência 11, parte 1 (alerta por volume, `AT-45`).**
+>   - **Decisão do dono (29/09): o alerta vai no aviso do dia da gestora (`A17`)**, a mesma caixa que avisa quando a limpeza falha. Texto aprovado: "Muitas tentativas de entrada recusadas nas últimas 24 horas. Se não foi ninguém da equipe, avise o TI." Aparece só acima de um corte, sem número e sem nome de pessoa (invariante 10).
+>   - Registrar como `A64` no PR dela.
+>   - Desenho levantado nesta sessão:
+>     - contar em 24h as linhas de `LogAuditoria` com `entrada_recusada`, `entrada_recusada_conta_bloqueada` e `entrada_recusada_sem_acesso`, mais os eventos `falha/autenticacao` com `referencia` nula (e-mail inexistente);
+>     - corte provisório de **20**, registrado em `§ C` como hipótese;
+>     - uma chave nova no aviso (lista nova em `core/aviso-do-gestor.ts`, com a bolinha de "o que mudou");
+>     - a contagem no serviço, a regra pura no `core`;
+>     - tela vista rodando.
+> - **Pastas:** `/home/user/Sistema-SBP` (no branch do #146), `/home/user/sbp-p11-indice` (#147) e `/home/user/sbp-docs` (este PR). Bases MySQL descartáveis desta sessão: `sbp_medida` (500 mil eventos, para medir), `sbp_mig` e `sbp_indice_teste`; pode apagar.
+> - O Docker para quando a sessão dorme: `dockerd &`, depois `docker start sbp-mysql`.
+>
+> **2. Anotado nesta sessão (já no #146, entra com ele):** pendências **38** (`SESSAO_SECRET` × `BUSCA_SECRET` sem comparação na partida) e **39** (`emitidoEm` no futuro aceito pela chave atual). As 40 e 41 estão descritas no último comentário do #147.
+>
+> ### 29/09/2026, noite — PONTO DE PARADA; A ORDEM COMBINADA COM O DONO (anterior; a ordem de trabalho dele continua valendo depois das instruções novas)
 >
 > **1. Onde está.**
 > - `main` verde: 137 arquivos e 1609 testes.
@@ -24,7 +112,7 @@
 >   - A trava `IA_PARA_DADO_REAL.local = false` só o dono destrava (`A56 (e)`).
 >
 > **3. A ORDEM COMBINADA (29/09).**
-> - **(1) Pendências gratuitas e técnicas** da lista abaixo, em ordem numérica: 11, 12, 13, 14, 15, 16, 17, 18, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36 e 37.
+> - **(1) Pendências gratuitas e técnicas** da lista abaixo, em ordem numérica: 11, 12, 13, 14, 15, 16, 17, 18, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38 e 39 (38 e 39 vieram das revisões do #146).
 >   - A 18 depende de medição com Ollama.
 >   - Um PR por pendência, com o processo de sempre: teste visto vermelho, `verificar`, revisões por agente publicadas no PR, CI lido check a check, mesclar.
 > - **(2) Design e experiência do usuário**, se o dono não tiver investido até lá.
@@ -175,7 +263,7 @@
 > 8. ~~Sondagem **horizontal** invisível~~ — **resolvida no #130.** Concluir item de outra pessoa continua 422 com a mesma frase, mas deixa o mesmo rastro da sondagem vertical (evento `autorizacao`, uma linha por pessoa e tentativa a cada 10 min; log sempre). Engano comum fica de fora do evento: quem **já foi** responsável pelo item está com a tela desatualizada — só log. O rastro saiu de `servidor/http.ts` para `servidor/rastro-de-negacao.ts`, com tentativa em vocabulário fechado.
 > 9. ~~`/api/painel` e `/api/memoria` sem limite por pessoa~~ — **resolvida no #131.** 30 consultas por pessoa por minuto em cada uma (constantes em `servicos/painel.ts` e `servicos/memoria.ts`), mesmo desenho da qualidade (C-21), e vale por processo. O Painel espera 400 ms depois da última mudança nas datas antes de pedir (o campo de data disparava a cada dígito). Ficam para depois: teto de duração do período do Painel (hoje sem limite, ao contrário da qualidade) e `GET /api/itens` e `GET /api/rodadas/[id]` sem limite (revisões do #131).
 > 10. ~~Erro de *transporte* da IA grava a mensagem crua do fornecedor no log~~ — **resolvida no #132.** Conferido nos SDKs instalados, nenhum ecoa o pedido. Anthropic e Gemini montam a mensagem com o corpo de erro da própria API, e o põem cru quando ele não é JSON. `ia-local` só lança frases nossas. Mesmo assim, a mensagem de transporte, **inclusive a dos erros "indisponível"** que param o lote e chegam à tela, passa por `resumoDeTransporte`. O resumo corta antes de mascarar, tem teto de 300 caracteres e troca e-mail, CRM/RQE e 8+ dígitos por marcadores; status e código sobrevivem. **Resíduo aceito:** nome e endereço não são cobertos. A trilha grava só o nome da classe (`mensagemPersistivel`).
-> 11. Alerta por volume das recusas de entrada (`AT-45`); índice `(situacao, etapa, referencia)` em `EventoProcessamento` quando o volume justificar; rotação da sessão com duas chaves (`SESSAO_SECRET_ANTERIOR`, C-25).
+> 11. Alerta por volume das recusas de entrada (`AT-45`); índice `(situacao, etapa, referencia)` em `EventoProcessamento` quando o volume justificar; ~~rotação da sessão com duas chaves (`SESSAO_SECRET_ANTERIOR`, C-25)~~ — **a rotação foi resolvida no #146** (`AT-50`). As outras duas partes seguem abertas nesta linha até os PRs delas.
 > 12. Dependabot #78 a #81 (`@anthropic-ai/sdk`, `react-dom`, `@google/genai`, `react`) abertos e não avaliados — cada um é nível 3, CI lido check a check.
 >
 > *C. Processo, testes e ambiente:*
@@ -216,6 +304,10 @@
 > 35. **Perguntas ao classificador por tipo, não por varredura.** Hoje a garantia "a pergunta é do código" é uma varredura por texto em `segunda-opiniao.test.ts`, que ignora comentários sem apagar strings. Ela pega as formas comuns, inclusive regex literal, `${…}` em template e desestruturação em várias linhas, que foram casos das rodadas de revisão do #143. Ainda escapam dela o nome montado em tempo de execução (`c['classi' + 'ficar']`) e o texto de JSX fora de string. Toda varredura por texto pode falhar em formas que ninguém listou. O remédio de fundo é a porta aceitar só um conjunto de perguntas *marcado* (tipo *branded*, construído só num módulo de perguntas). Fazer antes do segundo uso do classificador (gabarito ou assistente).
 > 36. **Medição × custo não batem um a um.** Uma opinião paga e descartada (corrida de unicidade, transação abortada) aparece no `UsoDaIa`, mas não deixa evento `segunda_opiniao`. Levar em conta ao ler a medição do modo sombra.
 > 37. **`NODE_TLS_REJECT_UNAUTHORIZED=0` em produção desliga a verificação de TLS do processo inteiro** *(revisão de segurança do #144, fora do escopo dele)*. Com ela, um proxy que abra o TLS vê o corpo do e-mail indo para qualquer fornecedor. Proxy corporativo com `NODE_EXTRA_CA_CERTS` é legítimo; desligar a verificação não é. Proposta: `ambiente()` recusa subir com o valor `0` fora de `NODE_ENV=development`, com teste dos dois lados.
+
+> *J. Novas em 29/09 (revisões do #146):*
+> 38. **`SESSAO_SECRET` e `BUSCA_SECRET` não são comparadas na partida.** O #146 recusa, em produção, a chave anterior da sessão igual ou contida na da busca; entre a atual e a da busca, a mesma lacuna vem de antes. A da busca nunca troca (`A23(b)`), então reaproveitá-la como chave de sessão a deixaria abrindo sessão para sempre. Proposta: a mesma regra de contenção em produção, com teste dos dois lados.
+> 39. **`emitidoEm` no futuro é aceito pela chave atual.** Pela anterior, o #146 já exige a forma de um cookie legítimo. Pela atual, quem tem o segredo põe `emitidoEm` no futuro e escapa de todo "sair" (`sessoesInvalidasAntes`). Proposta: recusar `emitidoEm > agora + tolerância` e `expiraEm − emitidoEm ≠ validade` para qualquer chave. Só importa com o segredo atual vazado, e aí a resposta é trocá-lo.
 
 > *Decidido de propósito — não é pendência:* o gestor vê "ausente hoje" na Minha fila (tela de quem executa); payload de item ilegível trava a revisão daquele item com 500 e o id na mensagem do log; login, troca de senha e desativação esperam milissegundos por uma confirmação de distribuição em curso; `A34` (e-mails suspeitos sem item) é a fase 4.
 >

@@ -835,6 +835,50 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
     - **Opções:** (a) sim, depois de medido, se o Jev acertar a categoria pelo menos tanto quanto a IA atual no gabarito; (b) só como segunda opinião, em que a discordância vai para uma pessoa e a IA local continua dona da categoria; (c) outra.
     - **Depende do item 35** para valer com e-mail real.
 
+**Itens 37 a 46: da investigação de 29/09/2026 sobre o Jev, o Harness e a operação autônoma** (`docs/arquitetura/2026-09-29-jev-harness-e-operacao-autonoma.md`). Os itens 37, 41 e 45 foram respondidos pelo dono em 29/09 (marcados abaixo); os outros seguem sem resposta assumida. Os passos 1 a 5 da rota (Parte III do documento) não dependem deles.
+
+37. ✅ **RESPONDIDO pelo dono em 29/09/2026: sim.** Nas palavras dele: "vamos manter assim até calibrarmos o JEV". Vale para todo sinal de IA, e não só para o Jev, até existir calibração medida. *Texto original da pergunta:* **Sinal de IA só aumenta o cuidado até ser calibrado?** *(seção I.F)* A proposta é uma "regra monotônica":
+    - uma resposta do Jev ou da IA pode mandar um item para mais verificação ou para uma pessoa;
+    - ela só pode **dispensar** verificação ou revisão (nível N3) com calibração medida naquela categoria, com decisão do dono e com amostra de conferência.
+
+    Com ela, enganar o Jev ou os dois modelos errarem juntos nunca deixa o sistema pior que hoje. **Recomendação:** sim, como invariante.
+38. **Amostra de conferência e erro tolerável, se um dia houver N3.** *(seções I.F e I.L)* Quando um sinal dispensa revisão, uma fração sorteada por código continua indo para pessoa; sem ela, a taxa de acerto fica cega (`core/qualidade-ia.ts` só mede o que passou por humano). **Perguntas:**
+    - (a) qual fração (proposta: 10%);
+    - (b) qual taxa de erro, por categoria, o dono aceita num item que ninguém olhou.
+
+    O número é de negócio, não técnico.
+39. **Enquanto o `A63` valer, o degrau acima da IA local é o humano?** *(seção I.H)* Não há IA paga para onde escalar, e dado real só vai a camada paga sem treino (`A38`). **Recomendação:** sim. O degrau da IA paga fica reservado no desenho, sem código, até o dono avisar.
+40. **Critério da conferência de literalidade** (pendência 17, passo 1 da rota). *(seção I.G)*
+    - **Proposta:** o valor extraído precisa aparecer no texto depois de normalizar caixa, espaço e acento; número se compara só pelos dígitos. CPF com dígito verificador errado vai para a revisão.
+    - **Efeito a saber antes:** com a literalidade de 0,69 do modelo local (`A59`), mais itens irão para a revisão. São itens que hoje passam aprovados com valor possivelmente errado. O número exato sai do gabarito antes de ligar.
+41. ✅ **RESPONDIDO pelo dono em 29/09/2026: os avisos ficam só dentro do sistema, por enquanto.** Nada de e-mail, celular ou serviço externo; a pergunta volta se ele pedir. *Texto original da pergunta:* **Aviso fora do sistema: qual canal?** *(seção II.J)* Ocorrência crítica aparece na tela do dono, mas não há como avisar fora dela. Mandar e-mail pela caixa da associação exige permissão de envio, que o `A5` recusou de propósito. As opções são um e-mail próprio do sistema, notificação no celular por serviço externo ou só a tela e o relatório. Cada uma tem custo e dado próprios.
+42. **O agente de desenvolvimento pode mesclar sozinho?** *(seção II.I)* Não há proteção de branch (plano do GitHub), então um check vermelho não segura o botão. **Recomendação:** nada automático agora; no máximo documentação (nível 0) depois. Arquivos de governança (`CLAUDE.md`, `PROCESSO.md`, `scripts/processo/`, `.github/`, travas, política) **nunca**, com trava no CI.
+43. **Que contenção o sistema aplica sozinho numa ocorrência crítica?** *(seção II.J)* **Proposta:** só coisas que **desligam**: a IA externa, o Jev e a ingestão automática. Efeito: o trabalho vai para pessoa ou fica no Outlook. Religar é sempre o dono. Nada que apague, reverta dado ou mexa em acesso.
+44. **O assistente administrativo pode devolver uma tela com o valor já preenchido?** *(seção II.F)* O invariante 13 permite "no máximo o nome de uma tela". Para "mude a auditoria para quinzenal", a proposta é abrir a tela de configuração com "quinzenal" marcado e o dono confirmar. É uma extensão do invariante. **Segunda pergunta:** quando houver orçamento, esse assistente pode usar IA paga com dado só agregado, sem pessoa e sem e-mail?
+45. ✅ **RESPONDIDO em parte pelo dono em 29/09/2026: a conta dele é separada da conta de gestão, e o papel NÃO se chama "dono".** **Nome escolhido pelo dono em 29/09/2026: "Supervisor do sistema"** (no código, sugestão: `supervisor`); substitui o `dono` provisório do `A32` e do `A53`. **Implementação congelada até depois da rodada paralela** (`DIRECAO.md`, *Linha de chegada do protótipo*). A pergunta complementar abaixo (o gestor vê parte do Control Center?) segue aberta. *Texto original da pergunta:* **"Minha conta" é o papel `dono` do `A32`/`A53`?** *(seção II.B)* A leitura desta investigação é que sim, separado da conta de gestão (`A53`). Isso responde parte do item 29. **Pergunta complementar:** o gestor vê alguma parte do Control Center (por exemplo, a saúde da operação)?
+46. **Auditoria semanal de código por uma rotina do Claude Code?** *(seção II.E)* A parte do servidor é só código e não custa nada. A parte que lê código, testes, dependências e documentação seria uma rotina do Claude Code:
+    - usa o plano do dono;
+    - lê só o repositório, nunca a base de produção;
+    - entrega o relatório como issue ou PR de documentação.
+
+    **A frequência dessa rotina é configurada no claude.ai, não no SBP.**
+47. **Classificador próprio treinado com texto real de e-mail?** *(29/09/2026, pergunta do dono sobre um "Jev próprio"; documento, Parte IV)* Um classificador treinado na casa só fica bom com exemplos reais: e-mails com a decisão que a revisão humana tomou. Isso esbarra em duas regras:
+    - **invariante 9:** treinar com dado real exige decisão explícita do dono, e hoje não existe caminho de exportação para isso;
+    - **invariante 11:** o texto do e-mail é apagado no prazo de retenção; um conjunto de treino com texto real seria uma **classe nova de retenção**, com prazo, lugar e acesso próprios.
+
+    **Opções:**
+    - (a) só dado sintético, por ora (permitido hoje);
+    - (b) texto real, só na máquina da associação, nunca exportado, com prazo próprio e análise de LGPD (encarregado de dados ou RIPD);
+    - (c) outra.
+
+    **Recomendação:** (a) agora; decidir (b) depois de o classificador próprio provar valor no gabarito sintético.
+48. **Usar as respostas do Jev como rótulo para treinar o classificador próprio?** *(29/09/2026, documento, Parte IV)*
+    - Os termos da TypeSafe não foram lidos: estavam bloqueados pela rede.
+    - É comum fornecedor de IA proibir o uso das respostas para treinar modelo concorrente.
+    - Um rótulo copiado do Jev ensina também os erros dele. A verdade de campo do SBP é o desfecho da revisão humana.
+
+    **Recomendação:** não. O Jev serve de **régua de comparação** no mesmo gabarito, nunca de professor. Se um dia for professor, só depois de lidos os termos.
+
 ### AT-36 — O gabarito da IA: respostas escritas pelo agente, cinco dimensões de peso igual *(17/09/2026)*
 
 **O que existe:** `src/core/avaliacao/` (nota, pura, e `casos.ts` com 17 e-mails sintéticos e a resposta esperada de cada um), `src/servicos/avaliacao-da-ia.ts` (roda qualquer `AiPort`, um caso por vez) e `npm run ia:avaliar` (`-- --json` para guardar). Passo 3 do plano de `A56`; lacuna nº 1 de `docs/arquitetura/2026-09-14-avaliacao-arquitetura-cognitiva.md`.
@@ -1089,6 +1133,24 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 **Motivo:** a regra é "5 ou mais dígitos, com até três separadores", sem exceção. Data de nascimento é dado pessoal, e uma exceção para data ou dinheiro reabriria a porta para CPF escrito com barra ou vírgula. Um falso positivo custa pouco; um falso negativo é dado saindo da casa.
 **Impacto:** se o gabarito mostrar que o Jev erra pedidos que dependem de prazo ou valor, a saída é trocar a máscara desses casos por um marcador de tipo (`[data]`, `[valor]`), nunca devolver o número.
 **Status:** 🟡 assumida; fixada em `protecao-para-fornecedor-externo.test.ts` ("data completa e valor longo", "valor curto e ano sozinho", "lista de números pequenos, notas e horário", "contagem pequena depois de palavra-chave", "contagem de 3 dígitos ou mais depois de palavra-chave sai").
+
+### AT-50 — Rotação da sessão com duas chaves, e a anterior vence sozinha em 12h (C-25, pendência 11) *(29/09/2026)*
+
+**O defeito:** trocar `SESSAO_SECRET` derrubava todo mundo na hora. A troca de rotina ficava cara, e ninguém a faria.
+
+**Como ficou (#146):** `SESSAO_SECRET_ANTERIOR`, opcional (vazia é o normal). Ela só **confere** a assinatura do cookie; todo cookie novo sai assinado com `SESSAO_SECRET`. O passo a passo está no `.env.example`.
+- **Recusado na partida, em qualquer ambiente:** a anterior com menos de 16 caracteres; a anterior igual à atual ou contida nela, ou o contrário. Isso cobre a troca que não aconteceu, a cópia com um espaço sobrando e a nova derivada da velha (`<velha>-v2`).
+- **Recusado também em produção:** a anterior com valor de teste público ou previsível (`N-18`); a anterior igual ou contida na `ANEXOS_SECRET` ou na `BUSCA_SECRET`, porque durante a troca a chave dos anexos ou a da busca abriria sessão. A mensagem manda apagar a anterior, nunca trocar a outra.
+- **Fora de produção,** a anterior igual à dos anexos é permitida: é o passo que o `.env.example` manda dar antes de trocar a sessão sem `ANEXOS_SECRET`.
+- **O cookie aceito pela anterior precisa ter a forma de um legítimo:** `emitidoEm` antes da subida do processo e `expiraEm − emitidoEm` igual à validade. Sem isso, um forjado com a chave vazada punha `emitidoEm` no futuro e escapava de todo "sair" feito durante a troca.
+- **A troca em curso aparece no log a cada subida do processo** (`instrumentation-node.ts`), sem o valor: um aviso com a hora da subida, o horário previsto em que a anterior deixa de valer e o lembrete de que cada reinício antes disso adia o prazo; e outro no instante em que o relógio monotônico fecha a janela com a variável ainda definida. Na subida, e não na leitura de cookie: com a variável esquecida e o processo reiniciando sozinho, nenhum cookie da chave anterior chega, e o aviso nunca sairia (2ª rodada do #146); e o Next compila `sessao.ts` uma vez por camada, então um aviso no caminho do cookie sairia repetido (3ª rodada). Com o processo reiniciando sempre antes de 12h, o aviso de fechada nunca sai: o de subida, repetido a cada reinício, é o sinal; um alerta do coletor de log sobre `SESSAO_SECRET_ANTERIOR` fica para o roteiro de implantação.
+
+**Hipótese — a janela conta da subida do processo, pelo relógio monotônico:** a chave anterior vale só enquanto `performance.now()` (o tempo desde a subida) for menor que 12h, a validade de um cookie. Todo cookie legítimo da chave anterior foi emitido antes de o processo subir com a nova, então depois de 12h ninguém precisa dela. Um cookie forjado com a chave vazada precisaria, e ele escolhe o próprio `expiraEm`; por isso o prazo não pode vir do cookie. O relógio é o monotônico porque um relógio de parede corrigido para trás (relógio de hardware errado na subida) esticaria a janela. A janela fecha pelo **primeiro** dos dois relógios: o monotônico, e o de parede pela trava de forma (`expiraEm` preso a `timeOrigin + 12h`); numa VM pausada o monotônico não anda, e é o de parede que fecha.
+**Motivo:** é a menor coisa que resolve sem estado novo nem variável de prazo para o operador errar (uma variável `…_ATE` foi considerada e deixada de fora pelo mesmo motivo). Supõe o que o `A61` descreve: um servidor e um processo; os limites de taxa já supõem o mesmo.
+**Impacto se estiver errado:** **cada reinício reabre a janela por 12h, inclusive os automáticos** (deploy, queda com `Restart=always`, limite de memória). Esquecer a variável não deixa uma porta aberta para sempre, mas deixa uma que reabre a cada reinício. Por isso o log avisa, e apagar a variável continua sendo o último passo. Com mais de um processo atrás de um balanceador, cada um conta a própria subida, e a janela continua limitada a 12h por processo. Com o relógio corrigido para trás entre o processo velho e o novo, ou instâncias sobrepostas na troca, um cookie legítimo pode ser recusado pela trava de forma: a pessoa entra de novo uma vez.
+**Depois de um vazamento, não se usa:** a chave vazada é justamente a que não pode continuar abrindo sessão; troca-se só `SESSAO_SECRET`, e cada pessoa entra de novo uma vez.
+
+**Status:** 🟡 assumida; fixada em `sessao.test.ts` ("rotação do segredo de sessão com duas chaves") e `ambiente-seguro.test.ts` ("chave anterior da sessão"). Duas revisões por agente no #146.
 
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
