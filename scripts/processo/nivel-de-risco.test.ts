@@ -29,6 +29,8 @@ describe('nivelDoArquivo', () => {
     ['src/core/seguranca/conteudo-nao-confiavel.ts', 3],
     ['src/core/assistente/conhecimento.ts', 3],
     ['src/core/esquemas.ts', 3],
+    ['src/core/config.ts', 3],
+    ['src/servicos/segunda-opiniao.ts', 3],
     ['prisma/schema.prisma', 3],
     ['package.json', 3],
     ['package-lock.json', 3],

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { Pergunta, Resposta } from '../ports/classificador'
 import { ambiente } from '../servidor/ambiente'
 import { registrarLog } from '../servidor/observabilidade'
+import { ehNomeDeModelo } from '../core/ia/nome-de-modelo'
 import type { ClienteDeClassificacao, PerfilDoClassificador } from './classificador-externo'
 
 /**
@@ -66,7 +67,6 @@ export const MAIOR_RESPOSTA_BYTES = 256 * 1024
  * um pedaço de texto estranho continua estranho.
  */
 const ID_DO_PEDIDO = /^[A-Za-z0-9_-]{1,64}$/
-const NOME_DE_MODELO = /^[\w.:/-]{1,100}$/
 
 /**
  * O erro da API, **sem o corpo**. O corpo de erro pode citar o que recebeu, e
@@ -169,7 +169,7 @@ function lerResultado(
     respostas[nome] = doFio(dada.data)
   }
 
-  if (!NOME_DE_MODELO.test(envelope.data.model)) {
+  if (!ehNomeDeModelo(envelope.data.model)) {
     // Troca de nome não é silenciosa: o tamanho diz o bastante, o valor não sai.
     registrarLog('aviso', 'a TypeSafe devolveu um nome de modelo fora da forma; vale o pedido', {
       fornecedor: PERFIL_TYPESAFE.nome,

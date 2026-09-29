@@ -30,23 +30,20 @@
 > - **#135, Jev fase 1** (`A62`, `AT-49`, `§ H.4` item 35). `core/seguranca/protecao-para-fornecedor-externo.ts` normaliza e tira link (mesmo colado), e-mail, número de conselho/matrícula e sequências de 5+ dígitos, com teto antes e depois do NFKC. **Quatro rodadas de revisão técnica e de segurança**, com dois ReDoS (16 s e 1,9 s) e uma regressão de link colado achados e corrigidos. As duas revisões aprovaram na quarta. Pior caso medido: 62 ms.
 >
 > **3. PRÓXIMO PASSO, nesta ordem.**
-> - **(a) Abrir o PR da fase 2** a partir de `feat/jev-2-classificador`, no nível 3: corpo no formato do #135, revisão técnica e de segurança por agentes, CI, mesclar. No corpo: ainda não há chamador, então nada sai da casa; o "visto rodando" é pelos testes com `fetch` trocado.
-> - **(b) Fase 3, segunda opinião na ingestão.** Em `servicos/ingestao.ts`, `processarUm`, depois da interpretação e FORA da transação, perguntar ao classificador (quando existir) a categoria (`escolha` entre os códigos) e a suspeita (`sim_ou_nao`) numa chamada só. Detalhes:
->   - As descrições das categorias hoje só existem no prompt de `ia-estruturada.ts`; mover para `core/config.ts` e usar nos dois.
->   - Guardar a opinião (códigos e probabilidades, nunca texto) num evento `dominio` próprio, **na mesma transação** (invariante 14).
->   - Começar em **modo sombra**: registra concordância, não muda o fluxo. Discordância → Revisão só por decisão do dono depois de medido.
->   - `ClassificadorIndisponivelError` para de perguntar no lote; nunca para o lote.
->   - Aplicar a camada ao assunto e aos nomes de anexo também.
->   - Anotações das revisões do #135: limite padrão; texto vazio não é classificado e gera evento.
->   - Anotações das revisões do #142:
->     - As perguntas devem ser **constantes de módulo**, com teste de varredura. Hoje "a pergunta é do código" é só convenção, e uma `instrucoes` montada com texto de e-mail sairia sem máscara e fora dos delimitadores.
->     - As `instrucoes` devem dizer ao Jev que o bloco delimitado é dado não confiável. Sem isso, os marcadores só custam token.
->     - Gravar da `Classificacao` só códigos e números, nunca `JSON.stringify` do objeto inteiro.
->     - `PerfilDoClassificador` não tem `ehSemCredito`: 402/429 viram falha comum até o disjuntor abrir. Decidir se isso basta.
->     - **Antes de ligar o Jev no assistente:** a trava `CLASSIFICADOR_PARA_DADO_REAL` olha só `INGESTAO_ADAPTER`. Com caixa `mock` e pessoas reais colando e-mail no assistente (invariante 13), ela não protege. Já escrito no `§ H.4` item 35; o uso no assistente precisa de trava própria.
->     - **Nunca decidir pela `confianca`** (limiar, desempate, alarme): o que ela mede na TypeSafe não está confirmado, e ela só é conferida na faixa. Se precisar de um número, usar `probabilidades[escolha]`, que é conferido contra as outras.
-> - **(c)** Medir no gabarito (`npm run ia:avaliar`, com a categoria esperada dos 17 casos) a concordância do Jev. Isso **exige** a `TYPESAFE_API_KEY` e liberar na rede do ambiente `api.typesafe.ai`, `typesafe.ai` e `docs.typesafe.ai`, os três bloqueados em 26/09. Sem isso, preço, qualidade em português e retenção seguem não confirmados (`A62`).
-> - **(d)** Pendências da lista abaixo, a partir da 11. A 29 (`logLevel: 'warn'` explícito em `clienteAnthropic`, porque a opção explícita vence `ANTHROPIC_LOG`) foi estudada e é pequena. Anotada para ela: o SDK da Anthropic também lê `ANTHROPIC_BASE_URL` do ambiente, o que mudaria para onde o texto vai; decidir se fixa.
+> - ~~**(a) Abrir o PR da fase 2**~~ — **mesclado no #142** (29/09), com três rodadas de revisão técnica e três de segurança, ambas aprovadas.
+> - ~~**(b) Fase 3, segunda opinião na ingestão**~~ — **feita no PR da fase 3** (`feat/jev-3-sombra-na-ingestao`). É `servicos/segunda-opiniao.ts`, em modo sombra:
+>   - as perguntas são constantes e dizem que o bloco é dado; uma varredura recusa `classificar(` fora do arquivo;
+>   - a opinião é gravada como evento `segunda_opiniao` na mesma transação, antes de `criarItens`, só com códigos e números, e sem a `confianca`;
+>   - a opinião para no resto do lote (credencial, teto, disjuntor, 3 falhas seguidas ou 60 s somados) e deixa um evento com o motivo em código; texto vazio não é classificado;
+>   - as descrições das categorias estão em `core/config.ts`, e o prompt saiu idêntico;
+>   - a régua da concordância é `core/ia/concordancia.ts`.
+>
+>   Ficam abertos, das anotações do #142:
+>   - `PerfilDoClassificador` não tem `ehSemCredito`: 402/429 viram falha comum até o disjuntor abrir. Decidir se isso basta.
+>   - **Antes de ligar o Jev no assistente:** a trava `CLASSIFICADOR_PARA_DADO_REAL` olha só `INGESTAO_ADAPTER` (já escrito no `§ H.4` item 35). O uso no assistente precisa de trava própria.
+>   - **Nunca decidir pela `confianca`** (limiar, desempate, alarme). Se precisar de um número, usar `probabilidades[escolha]`.
+> - **(c) PAUSADO pelo `A63` (29/09): sem orçamento para a chave da TypeSafe; o dono avisa quando puder investir. Até lá, o Jev fica desligado por padrão e roda só com o `mock`.** Medir no gabarito (`npm run ia:avaliar`, com a categoria esperada dos 17 casos) a concordância do Jev, com a mesma régua da trilha (`concordanciaDeCategoria`). Isso **exige** a `TYPESAFE_API_KEY` e liberar na rede do ambiente `api.typesafe.ai`, `typesafe.ai` e `docs.typesafe.ai`, os três bloqueados em 26/09. Sem isso, preço, qualidade em português e retenção seguem não confirmados (`A62`). **Depende da pendência 35:** o gabarito é o segundo uso do classificador.
+> - **(d) — o passo atual.** Só com recursos gratuitos (`A63`). Pendências da lista abaixo, a partir da 11. A 29 (`logLevel: 'warn'` explícito em `clienteAnthropic`, porque a opção explícita vence `ANTHROPIC_LOG`) foi estudada e é pequena. Anotada para ela: o SDK da Anthropic também lê `ANTHROPIC_BASE_URL` do ambiente, o que mudaria para onde o texto vai; decidir se fixa.
 >
 > **4. A pergunta do dono de 29/09 e a resposta dada: "focar o trabalho pesado no Jev para diminuir os erros da IA local?"**
 > - O Jev **não gera texto nem extrai campos** (nome, CPF, liga). Ele responde perguntas fechadas com probabilidade. Não substitui a IA local, mas pode **tirar dela a parte que ele faz bem**: categoria, suspeita, "é rotina?", "há mais de uma pessoa?".
@@ -152,7 +149,12 @@
 
 > *H. Novas em 29/09 (revisões do #142), anteriores a ele:*
 > 32. **A hora de volta do disjuntor sai mascarada.** A mensagem de `LimiteDeConsumoAtingido` passa por `resumoDeTransporte`, e a máscara de 5+ dígitos come a data ISO: sai "suspensas até [número]T01:37:24.478Z". Acontece em `ia-estruturada.ts` (≈251), `assistente-modelo.ts` (≈161) e `classificador-externo.ts`. `ports/consumo.ts` promete essa mensagem inteira na tela. Para o classificador, ela ainda diz "a IA falhou N vezes" (`core/ia/consumo.ts` ≈138).
-> 33. **`modeloUsado` da IA sem forma conferida.** `ia-anthropic`, `ia-gemini` (`resposta.modelVersion`, ≈222) e `ia-local` gravam em `UsoDaIa.modelo` (`VARCHAR(191)`, na chave primária) o nome que o fornecedor devolveu. Um nome longo derruba a gravação, e a chamada some da conta do teto diário. O #142 corrigiu isso no classificador (`NOME_DE_MODELO`); falta levar a mesma regra aos adaptadores de IA.
+> 33. **`modeloUsado` da IA sem forma conferida.** `ia-anthropic`, `ia-gemini` (`resposta.modelVersion`, ≈222) e `ia-local` gravam em `UsoDaIa.modelo` (`VARCHAR(191)`, na chave primária) o nome que o fornecedor devolveu. Um nome longo derruba a gravação, e a chamada some da conta do teto diário. O #142 corrigiu isso no classificador, e o #143 subiu a regra para a política comum (`ehNomeDeModelo` em `classificador-externo.ts`); falta levar a mesma regra aos adaptadores de IA.
+
+> *I. Novas em 29/09 (revisões do #143):*
+> 34. **Colisões somem da trilha quando o lote para.** `registrarColisoes` roda depois do laço de `sincronizar`; se a IA derruba o lote (`InterpretacaoIndisponivelError`), as colisões vistas até ali ficam só no log. A parada da segunda opinião já é gravada antes do `throw` (#143); fazer o mesmo com as colisões.
+> 35. **Perguntas ao classificador por tipo, não por varredura.** Hoje a garantia "a pergunta é do código" é uma varredura por texto em `segunda-opiniao.test.ts`, que ignora comentários sem apagar strings. Ela pega as formas comuns, inclusive regex literal, `${…}` em template e desestruturação em várias linhas, que foram casos das rodadas de revisão do #143. Ainda escapam dela o nome montado em tempo de execução (`c['classi' + 'ficar']`) e o texto de JSX fora de string. Toda varredura por texto pode falhar em formas que ninguém listou. O remédio de fundo é a porta aceitar só um conjunto de perguntas *marcado* (tipo *branded*, construído só num módulo de perguntas). Fazer antes do segundo uso do classificador (gabarito ou assistente).
+> 36. **Medição × custo não batem um a um.** Uma opinião paga e descartada (corrida de unicidade, transação abortada) aparece no `UsoDaIa`, mas não deixa evento `segunda_opiniao`. Levar em conta ao ler a medição do modo sombra.
 
 > *Decidido de propósito — não é pendência:* o gestor vê "ausente hoje" na Minha fila (tela de quem executa); payload de item ilegível trava a revisão daquele item com 500 e o id na mensagem do log; login, troca de senha e desativação esperam milissegundos por uma confirmação de distribuição em curso; `A34` (e-mails suspeitos sem item) é a fase 4.
 >

@@ -13,6 +13,7 @@ import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { prepararConteudoExterno, validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
 import type { ResumoIngestao } from '../core/tipos'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
+import type { ClassificadorPort } from '../ports/classificador'
 import { FalhaDeInterpretacao, InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { AvisoDaBusca, IngestaoPort } from '../ports/ingestao'
 import { ATOR_SISTEMA, exigirPapel, type Ator } from '../servidor/ator'
@@ -26,6 +27,14 @@ import {
   registrarLog,
 } from '../servidor/observabilidade'
 import { auditar } from './auditoria'
+import {
+  colherSegundaOpiniao,
+  novoEstadoDaSegundaOpiniao,
+  registrarParada,
+  registrarSegundaOpiniao,
+  type EstadoDaSegundaOpiniao,
+  type OpiniaoColhida,
+} from './segunda-opiniao'
 
 export type { ResumoIngestao }
 
@@ -50,6 +59,14 @@ export interface DependenciasIngestao {
    * significa exatamente "os bytes não estão aqui".
    */
   armazenamento?: ArmazenamentoPort | undefined
+  /**
+   * A segunda opinião (`A62`), em modo sombra: opina, é gravada, e não muda
+   * nada no fluxo (`segunda-opiniao.ts`).
+   *
+   * Opcional, e `null` quer dizer "sem classificador" (`CLASSIFICADOR_ADAPTER`
+   * = `nenhum`, o padrão): o sistema funciona igual sem ela.
+   */
+  classificador?: ClassificadorPort | null | undefined
 }
 
 /**
@@ -285,6 +302,7 @@ export async function sincronizar(
 
   const avisos: AvisoDaBusca[] = []
   const colisoes: Colisao[] = []
+  const segundaOpiniao = novoEstadoDaSegundaOpiniao()
   const brutos = await deps.ingestao.buscarNovos({
     desde: new Date(Date.now() - JANELA_DE_RELEITURA_DIAS * 24 * 60 * 60 * 1000),
     jaProcessados: consultaDeProcessados(deps.banco),
@@ -353,7 +371,7 @@ export async function sincronizar(
       }
 
       const tentativasDoEmail = tentativas.get(email.messageId) ?? 0
-      const resultado = await processarUm(deps, email, correlacaoId, usuario, tentativasDoEmail)
+      const resultado = await processarUm(deps, email, correlacaoId, usuario, tentativasDoEmail, segundaOpiniao)
 
       // A checagem de existência acima é só economia de chamada de IA. Duas
       // sincronizações concorrentes podem passar por ela antes de qualquer uma
@@ -467,6 +485,19 @@ export async function sincronizar(
           // crítico da revisão do PR: ver `CAUSA_FALHA_DE_INTERPRETACAO`).
           detalhe: { causa: 'interpretacao_indisponivel' },
         })
+        // O lote para aqui, e a parada da segunda opinião — se houve — não
+        // pode sumir junto: no dia em que as duas camadas falham, a trilha
+        // perderia o motivo de uma delas (revisão técnica do #143). E se ESTA
+        // gravação falhar, o erro que sobe continua sendo o da IA: é ele que
+        // diz à tela o que consertar.
+        try {
+          await registrarParada(deps.banco, correlacaoId, segundaOpiniao)
+        } catch (aoRegistrar) {
+          registrarLog('erro', 'parada da segunda opinião não gravada', {
+            correlacaoId,
+            erro: mensagemDoErro(aoRegistrar),
+          })
+        }
         throw erro
       }
 
@@ -500,6 +531,7 @@ export async function sincronizar(
 
   resumo.repetidas = colisoes.length
   if (colisoes.length > 0) await registrarColisoes(deps.banco, correlacaoId, colisoes)
+  await registrarParada(deps.banco, correlacaoId, segundaOpiniao)
 
   await registrarEvento(deps.banco, {
     correlacaoId,
@@ -553,6 +585,7 @@ async function processarUm(
   correlacaoId: string,
   usuario: string,
   tentativasAnteriores: number,
+  estadoDaSegundaOpiniao: EstadoDaSegundaOpiniao,
 ): Promise<ResultadoDeUm | null> {
   // Depois do teto, a IA nem é chamada: é exatamente o que zera a cobrança do
   // achado C-11/N-13. A análise LOCAL (sem rede, sem custo) ainda roda — ela
@@ -566,6 +599,15 @@ async function processarUm(
   const suspeitoLocal = desistir
     ? prepararConteudoExterno(`${email.assunto}\n${email.corpo}`, TAMANHO_MAXIMO_CORPO).analise.suspeito
     : false
+
+  // A segunda opinião também fica FORA da transação, pelo mesmo motivo. Só
+  // quando houve interpretação: sem ela não há com o que comparar, e desistir
+  // (achado C-11/N-13) é justamente parar de pagar chamada por este e-mail.
+  // Nada do que ela devolve decide coisa alguma abaixo — modo sombra (`A62`).
+  const opiniao: OpiniaoColhida | null =
+    interpretacao && deps.classificador
+      ? await colherSegundaOpiniao(deps.classificador, email, estadoDaSegundaOpiniao, correlacaoId)
+      : null
 
   const anexosAvaliados = await Promise.all(
     email.anexos.map(async (anexo) => {
@@ -700,6 +742,15 @@ async function processarUm(
         },
         update: { processadoEm: new Date(), conteudoSuspeito },
       })
+
+      // Na MESMA transação do e-mail (invariante 14): se ela abortar — e é em
+      // `criarItens`, logo abaixo, que costuma abortar (categoria ausente) —,
+      // a trilha não afirma uma opinião sobre um e-mail que não entrou. Vem
+      // ANTES de `criarItens` de propósito: gravada depois de tudo, uma
+      // escrita por fora da transação passaria nos testes sem ninguém ver.
+      if (opiniao && interpretacao) {
+        await registrarSegundaOpiniao(tx, { correlacaoId, messageId: email.messageId, opiniao, interpretacao })
+      }
 
       // Sem interpretação não há `itens` para gravar — a desistência não
       // inventa estrutura que a IA nunca produziu.

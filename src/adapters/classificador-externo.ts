@@ -1,3 +1,4 @@
+import { ehNomeDeModelo } from '../core/ia/nome-de-modelo'
 import { analisarConteudo, delimitar } from '../core/seguranca/conteudo-nao-confiavel'
 import {
   LIMITE_PARA_FORNECEDOR_EXTERNO,
@@ -96,9 +97,8 @@ export class ClassificadorExterno implements ClassificadorPort {
         especieDoErro(erro) === 'validacao'
           ? resumoDeValidacao(erro)
           : resumoDeTransporte(erro instanceof Error ? erro.message : String(erro))
-      if (this.perfil.ehCredencialRecusada(erro) || erro instanceof LimiteDeConsumoAtingido) {
-        throw new ClassificadorIndisponivelError(causa)
-      }
+      if (erro instanceof LimiteDeConsumoAtingido) throw new ClassificadorIndisponivelError(causa, erro.motivo)
+      if (this.perfil.ehCredencialRecusada(erro)) throw new ClassificadorIndisponivelError(causa, 'credencial')
       registrarLog('aviso', 'chamada ao classificador falhou', { fornecedor: this.fornecedor, erro: causa })
       throw new FalhaDeClassificacao(causa)
     }
@@ -109,10 +109,21 @@ export class ClassificadorExterno implements ClassificadorPort {
       throw new FalhaDeClassificacao(problema)
     }
 
+    // O nome do modelo vem do fornecedor e vai para a trilha, que é para
+    // sempre. A forma é conferida AQUI, para todo fornecedor — não só no
+    // adaptador que lembrou de conferir (revisão de segurança do #143).
+    const modeloUsado = ehNomeDeModelo(bruto.modeloUsado) ? bruto.modeloUsado : this.modelo
+    if (modeloUsado !== bruto.modeloUsado) {
+      registrarLog('aviso', 'classificador devolveu um nome de modelo fora da forma; vale o pedido', {
+        fornecedor: this.fornecedor,
+        tamanho: bruto.modeloUsado.length,
+      })
+    }
+
     return {
       respostas: copiaConferida(pedido.perguntas, bruto.respostas),
       fornecedor: this.fornecedor,
-      modeloUsado: bruto.modeloUsado,
+      modeloUsado,
       mascarados: protegido.mascarados,
       cortado: protegido.cortado,
       suspeito,

@@ -1,6 +1,6 @@
 import type { z } from 'zod'
 
-import type { CategoriaCodigoSchema } from './esquemas'
+import type { CategoriaClassificavelSchema, CategoriaCodigoSchema } from './esquemas'
 import type { Categoria } from './tipos'
 
 /**
@@ -132,3 +132,30 @@ const LIMIARES_DE_CONFIANCA = new Map<string, number>(
 export function limiarConfiancaSemente(codigo: string): number {
   return LIMIARES_DE_CONFIANCA.get(codigo) ?? LIMIAR_CONFIANCA_PADRAO
 }
+
+/**
+ * O que cada categoria quer dizer, nas palavras que um MODELO lê.
+ *
+ * Fonte única para duas leituras: as instruções da interpretação
+ * (`adapters/ia-estruturada.ts`) e a pergunta de categoria da segunda opinião
+ * (`servicos/segunda-opiniao.ts`, `A62`). Com uma cópia em cada lugar, uma
+ * delas deriva, e a concordância medida em modo sombra passaria a medir a
+ * diferença entre dois textos, não entre dois modelos.
+ *
+ * Só as categorias que a IA pode atribuir (`CategoriaClassificavelSchema`):
+ * `INADIMP` e `ISENTO` são registro manual e não aparecem para modelo nenhum.
+ *
+ * Mudar uma linha muda o prompt da interpretação: a `versaoPrompt` de cada
+ * perfil de IA sobe junto, ou a trilha passa a atribuir a um prompt o que foi
+ * feito por outro.
+ */
+export const DESCRICAO_DAS_CATEGORIAS_PARA_IA: Readonly<
+  Record<z.infer<typeof CategoriaClassificavelSchema>, string>
+> = Object.freeze({
+  DOC_CADASTRO: 'envio de documentação de cadastro (diploma, certidão, comprovante).',
+  FICHA_CADASTRO: 'ficha de cadastro ou atualização cadastral.',
+  EMAIL_CADASTRO: 'dúvida ou solicitação geral sobre cadastro/associação que não seja documento nem ficha.',
+  LIGA: 'cadastro ou atualização de uma liga acadêmica em si.',
+  LIGANTE: 'pessoa vinculada a uma liga (estudante membro).',
+  EMAIL_LIGA: 'dúvida ou solicitação geral sobre liga que não seja cadastro de liga nem de ligante.',
+})
