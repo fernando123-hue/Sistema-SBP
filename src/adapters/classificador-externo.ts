@@ -153,8 +153,12 @@ const FOLGA = 0.02
  * oito categorias de `core/config.ts` podem desviar 0,04 (revisão técnica,
  * rodada 2 do #142). Uma folga fixa recusaria justamente a distribuição
  * espalhada, que é resposta boa.
+ *
+ * E tem TETO: sem ele, com 200 rótulos uma soma 0 passaria, e "soma 0 é
+ * contradição" deixaria de valer (rodada 3 do #142). 0,1 cobre 20 rótulos
+ * arredondados — mais do que qualquer pergunta de hoje.
  */
-const folgaDaSoma = (rotulos: number) => Math.max(FOLGA, 0.005 * rotulos)
+const folgaDaSoma = (rotulos: number) => Math.min(Math.max(FOLGA, 0.005 * rotulos), 0.1)
 
 /** Ponto flutuante: `Math.abs(1.02 - 1)` é 0,020000000000000018. */
 const RESIDUO_DE_CONTA = 1e-9

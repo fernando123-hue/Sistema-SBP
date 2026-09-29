@@ -238,20 +238,29 @@ describe('a política: a resposta é conferida contra a pergunta', () => {
 
     // A soma de n rótulos arredondados desvia até n × 0,005; a nota, em
     // proporção à escala.
-    it('aceita o arredondamento acumulado em muitos rótulos e em escala longa', async () => {
-      const seis = Object.fromEntries(['a', 'b', 'c', 'd', 'e', 'f'].map((rotulo) => [rotulo, null]))
-      await expect(
-        classificar(
-          {
-            muitos: {
-              tipo: 'escolha',
-              escolha: 'a',
-              confianca: 0.17,
-              probabilidades: { a: 0.17, b: 0.17, c: 0.17, d: 0.17, e: 0.17, f: 0.17 },
-            },
+    /** `n` rótulos, todos com a mesma probabilidade `p` — a distribuição espalhada. */
+    const espalhada = (n: number, p: number) => {
+      const rotulos = Array.from({ length: n }, (_, i) => `r${i}`)
+      return classificar(
+        {
+          muitos: {
+            tipo: 'escolha',
+            escolha: 'r0',
+            confianca: p,
+            probabilidades: Object.fromEntries(rotulos.map((rotulo) => [rotulo, p])),
           },
-          { muitos: { tipo: 'escolha', instrucoes: 'x', opcoes: seis } },
-        ),
+        },
+        { muitos: { tipo: 'escolha', instrucoes: 'x', opcoes: Object.fromEntries(rotulos.map((r) => [r, null])) } },
+      )
+    }
+
+    it('aceita o arredondamento acumulado em muitos rótulos e em escala longa', async () => {
+      // As 8 categorias de 1/8 escritas 0,13 somam 1,04: uma folga fixa de 0,02
+      // recusaria. E 2 rótulos somando 1,015 cabem no piso.
+      await expect(espalhada(8, 0.13)).resolves.toBeDefined()
+      await expect(espalhada(6, 0.17)).resolves.toBeDefined()
+      await expect(
+        classificar(escolha({ probabilidades: { anuidade: 0.915, cadastro: 0.1 } }), { categoria: CATEGORIA }),
       ).resolves.toBeDefined()
 
       const onze = Array.from({ length: 11 }, (_, nivel) => String(nivel))
@@ -262,6 +271,14 @@ describe('a política: a resposta é conferida contra a pergunta', () => {
           { escala: { tipo: 'nota', instrucoes: 'x', niveis: onze } },
         ),
       ).resolves.toBeDefined()
+    })
+
+    // A folga cresce com os rótulos, mas tem teto: com 30 rótulos, 0,15 de
+    // desvio não é arredondamento.
+    it('a folga da soma tem teto', async () => {
+      const erro = await espalhada(30, 0.85 / 30).catch((e: unknown) => e)
+      expect(erro).toBeInstanceOf(FalhaDeClassificacao)
+      expect((erro as Error).message).toMatch(/não somam 1/)
     })
 
     it('aceita o arredondamento do fornecedor e o empate', async () => {
@@ -525,10 +542,13 @@ describe('o adaptador da TypeSafe', () => {
   it('o prazo é o do SDK, 10 s, e é ele que vai na chamada', async () => {
     expect(TEMPO_LIMITE_MS).toBe(10_000)
     const prazo = vi.spyOn(AbortSignal, 'timeout')
-    trocarFetch(json({ error: 'x' }, 500))
-    await classificarComTypeSafe()
-    expect(prazo).toHaveBeenCalledWith(TEMPO_LIMITE_MS)
-    prazo.mockRestore()
+    try {
+      trocarFetch(json({ error: 'x' }, 500))
+      await classificarComTypeSafe()
+      expect(prazo).toHaveBeenCalledWith(TEMPO_LIMITE_MS)
+    } finally {
+      prazo.mockRestore()
+    }
   })
 
   // No primeiro contato com a API real, o código é o diagnóstico: "o tipo não

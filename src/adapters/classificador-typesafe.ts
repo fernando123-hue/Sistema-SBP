@@ -129,6 +129,10 @@ const ResultadoNoFioSchema = z.object({
  * primeiro contato com a API real, a diferença entre `invalid_type` e
  * `unrecognized_keys` no log é o diagnóstico (rodada 2 do #142: com o código
  * em `message`, tudo saía como `custom`).
+ *
+ * O issue NÃO tem os campos próprios de cada código (`keys`, `errors`…): leia-o
+ * só com `resumoDeValidacao`. `z.treeifyError` sobre um `invalid_union` sem
+ * `errors` lança (rodada 3 do #142).
  */
 function defeitoDeForma(caminho: (string | number)[], codigo: string): z.ZodError {
   return new z.ZodError([{ code: codigo, path: caminho, message: '' } as z.core.$ZodIssue])
@@ -168,6 +172,7 @@ function lerResultado(
   if (!NOME_DE_MODELO.test(envelope.data.model)) {
     // Troca de nome não é silenciosa: o tamanho diz o bastante, o valor não sai.
     registrarLog('aviso', 'a TypeSafe devolveu um nome de modelo fora da forma; vale o pedido', {
+      fornecedor: PERFIL_TYPESAFE.nome,
       tamanho: envelope.data.model.length,
     })
     return { respostas, modelo: null }
