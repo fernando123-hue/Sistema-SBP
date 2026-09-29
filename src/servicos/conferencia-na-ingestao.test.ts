@@ -6,6 +6,7 @@ import type { IngestaoPort } from '../ports/ingestao'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo, semearBase } from '../testes/apoio'
 import { sincronizar } from './ingestao'
+import { aprovarTodosPendentes } from './revisao'
 
 /**
  * A conferência do que a IA extraiu, na ingestão (pendência 17, `§ H.4` 40).
@@ -117,8 +118,9 @@ describe('conferência do que a IA extraiu, na ingestão', () => {
     })
   })
 
-  it('liga que o e-mail não menciona vai para a Revisão', async () => {
+  it('liga que o e-mail não menciona vai para a Revisão, e não nasce no banco', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
+    const antes = await banco.liga.count()
     await sincronizar(
       {
         banco,
@@ -135,6 +137,10 @@ describe('conferência do que a IA extraiu, na ingestão', () => {
       status: 'aguardando_revisao',
       revisao: { motivo: 'valor_fora_do_texto', campoIncerto: 'liga' },
     })
+    // Sem isto, a liga inventada virava linha em `Liga` — ou prendia o item ao
+    // lote de uma liga existente com nome parecido (revisões do #150).
+    expect(await banco.liga.count()).toBe(antes)
+    expect((await banco.item.findFirstOrThrow({ select: { ligaId: true } })).ligaId).toBeNull()
   })
 
   it('conteúdo suspeito continua vindo primeiro: é o motivo que a pessoa precisa ler antes', async () => {
@@ -153,5 +159,65 @@ describe('conferência do que a IA extraiu, na ingestão', () => {
     )
     const { revisao } = await revisaoDoUnicoItem()
     expect(revisao?.motivo).toBe('conteudo_suspeito')
+  })
+
+  it('confiança baixa com valor fora do texto: o motivo é o valor, que é o que o código viu', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    await sincronizar(
+      {
+        banco,
+        ingestao: email('baixa-e-fora@teste.local'),
+        ia: iaQueDevolve({ confianca: 0.5, campos: { nome: 'Fulana de Tal Sintética' } }),
+      },
+      base.operador,
+    )
+    expect((await revisaoDoUnicoItem()).revisao).toEqual({ motivo: 'valor_fora_do_texto', campoIncerto: 'nome' })
+  })
+
+  it('numa lista, o motivo é a lista, e o campo que não bateu continua apontado', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    await sincronizar(
+      {
+        banco,
+        ingestao: email('lista@teste.local', 'Ligantes:\n- Fulana Sintética\n- Beltrana Sintética'),
+        ia: iaQueDevolve(
+          { categoriaCodigo: 'LIGANTE', campos: { nome: 'Fulana Sintética' } },
+          { categoriaCodigo: 'LIGANTE', campos: { nome: 'Beltrana de Tal Sintética' } },
+        ),
+      },
+      base.operador,
+    )
+    const revisoes = await banco.revisao.findMany({
+      select: { motivo: true, campoIncerto: true },
+      orderBy: { item: { sequencia: 'asc' } },
+    })
+    expect(revisoes).toEqual([
+      { motivo: 'desdobramento', campoIncerto: null },
+      { motivo: 'desdobramento', campoIncerto: 'nome' },
+    ])
+  })
+
+  it('a aprovação em massa não aprova os dois motivos novos', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    await sincronizar(
+      {
+        banco,
+        ingestao: email('massa-nome@teste.local'),
+        ia: iaQueDevolve({ campos: { nome: 'Nome Inventado Sintético' } }),
+      },
+      base.operador,
+    )
+    await sincronizar(
+      {
+        banco,
+        ingestao: email('massa-cpf@teste.local', 'Nome: Fulana Sintética\nCPF: 111.444.777-36'),
+        ia: iaQueDevolve({ campos: { nome: 'Fulana Sintética', cpf: '111.444.777-36' } }),
+      },
+      base.operador,
+    )
+    expect(await aprovarTodosPendentes(banco, base.operador)).toEqual({
+      aprovados: 0,
+    })
+    expect(await banco.revisao.count({ where: { resolvidoEm: null } })).toBe(2)
   })
 })

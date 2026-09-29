@@ -55,13 +55,31 @@ const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutr
 }
 
 /**
- * O que o selo do campo diz. "Falta" é o campo que a IA não achou; nos dois
- * motivos da pendência 17 o campo EXISTE e o valor é que precisa ser
- * conferido contra o e-mail — dizer "falta" mandaria a pessoa procurar a
- * coisa errada.
+ * O que o selo do campo diz. "Falta" é o campo que a IA não achou; quando o
+ * campo EXISTE (tem valor na sugestão, ou é a liga citada) e o sistema aponta
+ * para ele, é o valor que precisa ser conferido contra o e-mail — dizer
+ * "falta" mandaria a pessoa procurar a coisa errada. Decidido pelo que a
+ * sugestão tem, e não pelo motivo: numa lista, o motivo é "vários itens" e o
+ * campo apontado continua sendo o que não bateu (revisão técnica do #150).
  */
-function seloDoCampo(motivo: string, campo: string): string {
-  return motivo === 'valor_fora_do_texto' || motivo === 'cpf_invalido' ? `confira: ${campo}` : `falta: ${campo}`
+function seloDoCampo(campo: string, sugestao: Sugestao): string {
+  const temValor = campo === 'liga' ? Boolean(sugestao.ligaMencionada) : Boolean(sugestao.campos?.[campo]?.trim())
+  return temValor ? `confira: ${campo}` : `falta: ${campo}`
+}
+
+interface Sugestao {
+  campos?: Record<string, string>
+  ligaMencionada?: string | null
+}
+
+/** A sugestão da IA gravada na revisão; ilegível vira vazia (a tela não cai por ela). */
+function lerSugestao(texto: string): Sugestao {
+  try {
+    const valor: unknown = JSON.parse(texto)
+    return valor !== null && typeof valor === 'object' ? (valor as Sugestao) : {}
+  } catch {
+    return {}
+  }
 }
 
 /**
@@ -287,8 +305,19 @@ export default function Revisao() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Selo tom={info.tom}>{info.texto}</Selo>
                     <SeloDeConfianca valor={item.confianca} limiar={item.limiarConfianca} />
-                    {item.campoIncerto ? <Selo>{seloDoCampo(item.motivo, item.campoIncerto)}</Selo> : null}
+                    {item.campoIncerto ? (
+                      <Selo>{seloDoCampo(item.campoIncerto, lerSugestao(item.sugestaoIa))}</Selo>
+                    ) : null}
                   </div>
+
+                  {/* A liga que a IA citou não é campo editável, e quando ela não
+                      bate com o e-mail o item fica sem liga: quem revisa precisa
+                      ver o nome para saber o que conferir (revisão técnica do #150). */}
+                  {item.campoIncerto === 'liga' && lerSugestao(item.sugestaoIa).ligaMencionada ? (
+                    <p className="mt-2 text-xs text-tinta-suave">
+                      liga citada pela IA: {lerSugestao(item.sugestaoIa).ligaMencionada}
+                    </p>
+                  ) : null}
 
                   <p className="mt-2 text-xs text-tinta-suave">
                     de {item.remetente ?? 'origem manual'}

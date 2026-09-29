@@ -224,7 +224,9 @@ describe('identidade de liga com o índice de lote', () => {
           messageId: 'liga-repetida@teste.local',
           remetente: 'contato@exemplo.test',
           assunto: 'Dois ligantes da mesma liga',
-          corpo: 'Seguem dois ligantes.\n',
+          // A liga está no texto: desde a pendência 17, liga que o e-mail não
+          // cita não vira identidade (`AT-51`).
+          corpo: 'Seguem dois ligantes da Liga Acadêmica de Pediatria do Vale.\n',
           recebidoEm: new Date(),
         }),
       ],

@@ -31,7 +31,10 @@ import { nomeDeCampoGravavel } from './nome-de-campo'
  *     casa com nada, porque cortaria um grupo ao meio.
  *
  * A pontuação é tratada como espaço, e isto vai um passo além da letra do
- * critério aprovado: "Silva," no texto é "Silva" no valor.
+ * critério aprovado: "Silva," no texto é "Silva" no valor. E um passo mais
+ * apertado: "ignorar espaços" vira "palavra por palavra", então "MariaSouza"
+ * e "Maria Souza" não casam — é o preço de barrar "Ana Souza" dentro de
+ * "Mariana Souza". Endereço de e-mail é exceção: comparado inteiro.
  *
  * ═══ O QUE ELA NÃO FAZ ═══
  *
@@ -58,10 +61,20 @@ export const TAMANHO_MINIMO_CONFERIDO = 3
 /**
  * Quantos números seguidos do texto podem se juntar para casar com um número
  * do valor. CPF formatado são 4 grupos, telefone com DDD até 4, data 3; 6 dá
- * folga e põe teto no custo — uma lista de mil números separados por espaço
- * não vira um milhão de junções.
+ * folga e põe teto no custo.
  */
 const MAIOR_JUNCAO_DE_NUMEROS = 6
+
+/**
+ * Quanto trabalho a conferência pode fazer por e-mail, em comparações de átomo.
+ *
+ * O texto é do remetente. "1 " repetido cem mil vezes, com uma lista de
+ * pessoas que a IA desdobra sozinha, levava dezenas de segundos de CPU
+ * síncrona e parava o servidor para todo mundo (revisões do #150). Dois
+ * milhões de passos são dezenas de milissegundos. Estourou, o valor conta como
+ * NÃO achado e o item vai para uma pessoa: falha fechada, nunca aprovação.
+ */
+export const PASSOS_POR_EMAIL = 2_000_000
 
 interface Atomo {
   readonly digitos: boolean
@@ -69,13 +82,18 @@ interface Atomo {
 }
 
 /**
- * Palavras e números, sem acento e em minúsculas. NFKD também desfaz a forma
- * de compatibilidade: dígito de largura cheia vira dígito comum.
+ * Sem acento, sem forma de compatibilidade, e em minúsculas que dobram de
+ * verdade: `toUpperCase` antes de `toLowerCase` faz "ß" virar "ss", como
+ * "STRASSE". O "°" (grau) escrito no lugar do "º" (ordinal) vira "o".
  */
+function dobrar(texto: string): string {
+  return texto.normalize('NFKD').replace(/\p{M}/gu, '').replace(/°/g, 'o').toUpperCase().toLowerCase()
+}
+
+/** Palavras e números. */
 function atomos(texto: string): Atomo[] {
-  const forma = texto.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
   const lista: Atomo[] = []
-  for (const achado of forma.matchAll(/\p{L}+|\p{Nd}+/gu)) {
+  for (const achado of dobrar(texto).matchAll(/\p{L}+|\p{Nd}+/gu)) {
     lista.push({ digitos: /^\p{Nd}/u.test(achado[0]), valor: achado[0] })
   }
   return lista
@@ -96,72 +114,124 @@ function atomosDoValor(valor: string): Atomo[] {
 }
 
 /**
+ * Endereço de e-mail é comparado INTEIRO, com a pontuação dele. Tratando
+ * pontuação como espaço, "ana@souza.exemplo.test" casava com
+ * "ana.souza@exemplo.test" — outro endereço, e alguém vai responder para ele
+ * (revisão técnica do #150).
+ */
+const ENDERECO = /[^\s<>()[\],;:"'`]+@[^\s<>()[\],;:"'`]+/gu
+
+function limparEndereco(endereco: string): string {
+  return endereco.replace(/^[.]+|[.]+$/g, '')
+}
+
+/**
  * O texto do e-mail preparado uma vez para conferir todos os valores dele.
- * Opaco para quem chama: a forma interna pode mudar sem mexer nos serviços.
+ * Carrega o orçamento de passos e a memória do e-mail: é por e-mail.
  */
 export interface TextoParaConferir {
   readonly atomos: readonly Atomo[]
   /** Onde cada palavra aparece — o ponto de partida de um valor que começa por palavra. */
   readonly porPalavra: ReadonlyMap<string, readonly number[]>
-  readonly posicoesDeNumero: readonly number[]
+  /** Onde cada número aparece, pelo valor dele. */
+  readonly porNumero: ReadonlyMap<string, readonly number[]>
+  readonly enderecos: ReadonlySet<string>
+  /** Resultado por valor já conferido neste e-mail: listas repetem valores. */
+  readonly memoria: Map<string, boolean>
+  orcamento: number
 }
 
 export function prepararTextoParaConferir(texto: string): TextoParaConferir {
   const lista = atomos(texto)
   const porPalavra = new Map<string, number[]>()
-  const posicoesDeNumero: number[] = []
+  const porNumero = new Map<string, number[]>()
   lista.forEach((atomo, posicao) => {
-    if (atomo.digitos) {
-      posicoesDeNumero.push(posicao)
-      return
-    }
-    const posicoes = porPalavra.get(atomo.valor)
+    const indice = atomo.digitos ? porNumero : porPalavra
+    const posicoes = indice.get(atomo.valor)
     if (posicoes) posicoes.push(posicao)
-    else porPalavra.set(atomo.valor, [posicao])
+    else indice.set(atomo.valor, [posicao])
   })
-  return { atomos: lista, porPalavra, posicoesDeNumero }
+  const enderecos = new Set(Array.from(dobrar(texto).matchAll(ENDERECO), (achado) => limparEndereco(achado[0])))
+  return { atomos: lista, porPalavra, porNumero, enderecos, memoria: new Map(), orcamento: PASSOS_POR_EMAIL }
 }
 
-/** O valor casa a partir do átomo `i` do texto? Laço, não recursão: um valor longo não estoura a pilha. */
-function casaAPartirDe(texto: readonly Atomo[], valor: readonly Atomo[], inicio: number): boolean {
-  // Pilha explícita de (posição no texto, posição no valor) — o número pode
-  // casar juntando 1, 2… grupos, e só o resto do valor diz qual serve.
-  const pendentes: [number, number][] = [[inicio, 0]]
-  while (pendentes.length > 0) {
-    const [i, k] = pendentes.pop()!
-    if (k === valor.length) return true
-    const alvo = valor[k]!
+/**
+ * O valor casa a partir do átomo `inicio` do texto? Cada comparação gasta um
+ * passo do orçamento; sem orçamento, "não casa".
+ *
+ * Linear: o número do valor casa com UMA junção de números seguidos do texto
+ * — a que tem o mesmo comprimento —, então não há escolha a explorar.
+ */
+function casaAPartirDe(texto: TextoParaConferir, valor: readonly Atomo[], inicio: number): boolean {
+  let i = inicio
+  for (const alvo of valor) {
     if (!alvo.digitos) {
-      const atual = texto[i]
-      if (atual && !atual.digitos && atual.valor === alvo.valor) pendentes.push([i + 1, k + 1])
+      texto.orcamento -= 1
+      const atual = texto.atomos[i]
+      if (texto.orcamento < 0 || !atual || atual.digitos || atual.valor !== alvo.valor) return false
+      i += 1
       continue
     }
     let junto = ''
+    let casou = false
     for (let n = 0; n < MAIOR_JUNCAO_DE_NUMEROS; n += 1) {
-      const atual = texto[i + n]
-      if (!atual?.digitos) break
+      texto.orcamento -= 1
+      const atual = texto.atomos[i + n]
+      if (texto.orcamento < 0 || !atual?.digitos) break
       junto += atual.valor
       if (!alvo.valor.startsWith(junto)) break
       if (junto.length === alvo.valor.length) {
-        pendentes.push([i + n + 1, k + 1])
+        i += n + 1
+        casou = true
         break
       }
     }
+    if (!casou) return false
   }
-  return false
+  return true
+}
+
+/**
+ * Onde um valor pode começar: as posições da primeira palavra, ou as do número
+ * que é começo do primeiro número do valor ("111" em "111.444.777-35").
+ * Gerador, e não lista: com cem mil "1" no texto, copiar as posições para
+ * cada valor já custava segundos, fora do orçamento (revisões do #150).
+ */
+function* inicios(texto: TextoParaConferir, primeiro: Atomo): Generator<number> {
+  if (!primeiro.digitos) {
+    yield* texto.porPalavra.get(primeiro.valor) ?? []
+    return
+  }
+  for (let tamanho = 1; tamanho <= primeiro.valor.length; tamanho += 1) {
+    yield* texto.porNumero.get(primeiro.valor.slice(0, tamanho)) ?? []
+  }
 }
 
 /** O valor aparece no texto? Valor curto demais conta como "aparece": não há o que provar. */
 export function valorEstaNoTexto(texto: TextoParaConferir, valor: string): boolean {
+  const lembrado = texto.memoria.get(valor)
+  if (lembrado !== undefined) return lembrado
+  const resultado = conferirValor(texto, valor)
+  texto.memoria.set(valor, resultado)
+  return resultado
+}
+
+function conferirValor(texto: TextoParaConferir, valor: string): boolean {
+  if (texto.orcamento < 0) return false
+  if (valor.includes('@')) return texto.enderecos.has(limparEndereco(dobrar(valor).trim()))
+
   const alvo = atomosDoValor(valor)
   const tamanho = alvo.reduce((total, atomo) => total + atomo.valor.length, 0)
   if (tamanho < TAMANHO_MINIMO_CONFERIDO) return true
 
-  const primeiro = alvo[0]!
-  const inicios = primeiro.digitos
-    ? texto.posicoesDeNumero.filter((posicao) => primeiro.valor.startsWith(texto.atomos[posicao]!.valor))
-    : (texto.porPalavra.get(primeiro.valor) ?? [])
-  return inicios.some((inicio) => casaAPartirDe(texto.atomos, alvo, inicio))
+  for (const inicio of inicios(texto, alvo[0]!)) {
+    // Cada início tentado custa um passo, mesmo o que falha na primeira
+    // comparação: é o que dá teto a "cem mil lugares onde poderia começar".
+    texto.orcamento -= 1
+    if (texto.orcamento < 0) return false
+    if (casaAPartirDe(texto, alvo, inicio)) return true
+  }
+  return false
 }
 
 /**
@@ -170,18 +240,26 @@ export function valorEstaNoTexto(texto: TextoParaConferir, valor: string): boole
  * Ordem: CPF que não confere vem antes de valor fora do texto — um CPF com
  * dígito errado copiado LITERALMENTE do e-mail (quem escreveu errou) também
  * precisa de uma pessoa (`A40`, resposta 26), e o motivo certo para ela é
- * "o CPF não confere", não "o valor não está no e-mail".
+ * "o CPF não confere", não "o valor não está no e-mail". Um "CPF" sem nenhum
+ * dígito ("não informado") não é tentativa de CPF: a conferência de texto
+ * cuida dele (revisão técnica do #150).
  *
  * A liga mencionada entra na conferência de texto: ela vira IDENTIDADE
- * (`resolverLiga`), e uma liga inventada nasceria no banco.
+ * (`resolverLiga`), e a ingestão não liga o item a uma liga que o e-mail não
+ * cita.
+ *
+ * O que ela prova é "aparece no texto", não "está completo nem é o certo":
+ * "(11) 98765" passa com "(11) 98765-4321" no e-mail, e um CPF de outra pessoa
+ * citada no texto também passa. Não é controle contra injeção — contra ela
+ * valem a suspeita e a Revisão (revisões do #150).
  */
 export function conferirExtracao(
   texto: TextoParaConferir,
   campos: Readonly<Record<string, string>>,
-  ligaMencionada: string | null = null,
+  ligaMencionada: string | null,
 ): ProblemaNaExtracao | null {
   for (const [campo, valor] of Object.entries(campos)) {
-    if (nomeDeCampoGravavel(campo) === 'cpf' && normalizarCpf(valor) === null) {
+    if (nomeDeCampoGravavel(campo) === 'cpf' && /\d/.test(valor) && normalizarCpf(valor) === null) {
       return { motivo: 'cpf_invalido', campo }
     }
   }

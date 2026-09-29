@@ -59,9 +59,23 @@ function arquivoDisfarcado(): Uint8Array<ArrayBuffer> {
   return Uint8Array.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00])
 }
 
+/**
+ * CPF sintético COM dígito verificador certo. Com 11 dígitos sorteados, ~99%
+ * não fechavam a conta, e desde a pendência 17 todo item com CPF ia para a
+ * Revisão com "CPF não confere" — a demonstração virava uma fila de erros que
+ * a operação real não teria (revisão técnica do #150). O CPF errado de
+ * propósito fica nos testes da conferência, não na caixa de demonstração.
+ */
 function cpfSintetico(sortear: () => number): string {
-  const digitos = Array.from({ length: 11 }, () => Math.floor(sortear() * 10)).join('')
-  return `${digitos.slice(0, 3)}.${digitos.slice(3, 6)}.${digitos.slice(6, 9)}-${digitos.slice(9)}`
+  const base = Array.from({ length: 9 }, () => Math.floor(sortear() * 10))
+  const digito = (numeros: number[]) => {
+    const soma = numeros.reduce((total, n, i) => total + n * (numeros.length + 1 - i), 0)
+    const resto = soma % 11
+    return resto < 2 ? 0 : 11 - resto
+  }
+  const primeiro = digito(base)
+  const todos = [...base, primeiro, digito([...base, primeiro])].join('')
+  return `${todos.slice(0, 3)}.${todos.slice(3, 6)}.${todos.slice(6, 9)}-${todos.slice(9)}`
 }
 
 const MODELOS: readonly Modelo[] = [

@@ -818,6 +818,12 @@ async function criarItens(
   },
 ): Promise<Omit<ResultadoDeUm, 'anexosRejeitados' | 'conteudoSuspeito' | 'naoInterpretado'>> {
   const { interpretacao } = contexto
+  // Um resultado por item, na mesma ordem. Se um dia a lista for filtrada
+  // entre a conferência e a gravação, um item ficaria sem conferência em
+  // silêncio — falha alta (invariante 7, revisão de segurança do #150).
+  if (contexto.problemasDaExtracao.length !== interpretacao.itens.length) {
+    throw new Error('a conferência da extração não corresponde aos itens da interpretação')
+  }
   // Uma leitura de `Liga` por LOTE, não por item — ver `indiceDeLigas`.
   const ligas = await indiceDeLigas(tx)
   // Quantas ligas NOVAS este e-mail ainda pode criar (achado N-12). Por e-mail,
@@ -850,7 +856,7 @@ async function criarItens(
     // perdido para sempre. É o defeito da planilha reconstruído aqui dentro.
     if (!categoria) throw new CategoriaDesconhecidaError(extraido.categoriaCodigo)
 
-    const problema = contexto.problemasDaExtracao[posicao] ?? null
+    const problema = contexto.problemasDaExtracao[posicao]!
     const motivo = decidirRevisao(
       extraido.confianca,
       categoria.limiarConfianca,
@@ -880,7 +886,16 @@ async function criarItens(
     // nome. `teto-de-ligas-novas.test.ts` trava isso: se um dia o
     // desdobramento deixar de ir para a revisão, o item sem liga passaria
     // aprovado sem ninguém ver, e o teste fica vermelho.
-    const ligaId = await resolverLiga(tx, ligas, extraido.ligaMencionada, orcamentoDeLigas)
+    // Liga que o e-mail não cita não vira identidade: o item fica sem liga
+    // (lote de um, inofensivo) e vai para a Revisão, com a menção no payload.
+    // Sem isto, a liga inventada nascia no banco, ou prendia o item ao lote de
+    // uma liga existente com nome parecido (revisões do #150).
+    const ligaId = await resolverLiga(
+      tx,
+      ligas,
+      problema?.campo === 'liga' ? null : extraido.ligaMencionada,
+      orcamentoDeLigas,
+    )
 
     const item = await tx.item.create({
       data: {
@@ -915,9 +930,10 @@ async function criarItens(
           itemId: item.id,
           motivo,
           // O campo que a pessoa precisa olhar: o que não bateu com o e-mail,
-          // quando é esse o motivo; senão, o primeiro que faltou.
-          campoIncerto:
-            problema && motivo === problema.motivo ? problema.campo : (extraido.camposAusentes[0] ?? null),
+          // mesmo quando o motivo principal é outro (numa lista de ligantes,
+          // o nome reescrito é justamente o que se perderia); senão, o
+          // primeiro que faltou (revisão técnica do #150).
+          campoIncerto: problema?.campo ?? extraido.camposAusentes[0] ?? null,
           sugestaoIa: serializar(extraido),
           confianca: extraido.confianca,
         },
@@ -1046,9 +1062,9 @@ export function decidirRevisao(
   conteudoSuspeito: boolean,
   anexoRejeitado: boolean,
   houveDesdobramento: boolean,
-  // Opcional só para os chamadores de antes da pendência 17; a ingestão
-  // sempre passa.
-  problemaNaExtracao: MotivoDaConferencia | null = null,
+  // Obrigatório: um chamador que esquecesse perderia a conferência em
+  // silêncio (revisão técnica do #150).
+  problemaNaExtracao: MotivoDaConferencia | null,
 ): MotivoRevisao | null {
   if (conteudoSuspeito) return 'conteudo_suspeito'
   if (anexoRejeitado) return 'anomalia'

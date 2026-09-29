@@ -62,17 +62,25 @@ function ligantesDeLigasDiferentes(quantas: number, marca: string): AiPort {
   }
 }
 
-const umEmail: IngestaoPort = {
-  nome: 'teste',
-  buscarNovos: async () => [
-    EmailBrutoSchema.parse({
-      messageId: 'muitas-ligas@teste.local',
-      remetente: 'contato@exemplo.test',
-      assunto: 'Lista com muitos nomes de liga',
-      corpo: 'Segue a lista.\n',
-      recebidoEm: new Date(),
-    }),
-  ],
+/**
+ * O e-mail cita as ligas que a IA vai devolver: desde a pendência 17, liga que
+ * o texto não menciona não vira identidade (`AT-51`), e o teto só se mede com
+ * ligas que existiriam de verdade.
+ */
+function umEmail(quantas: number, marca: string): IngestaoPort {
+  const citadas = Array.from({ length: quantas }, (_, indice) => `Liga Sintética ${marca} Número ${indice + 1}`)
+  return {
+    nome: 'teste',
+    buscarNovos: async () => [
+      EmailBrutoSchema.parse({
+        messageId: 'muitas-ligas@teste.local',
+        remetente: 'contato@exemplo.test',
+        assunto: 'Lista com muitos nomes de liga',
+        corpo: `Segue a lista.\n${citadas.join('\n')}\n`,
+        recebidoEm: new Date(),
+      }),
+    ],
+  }
 }
 
 describe('teto de ligas novas por e-mail', () => {
@@ -83,7 +91,7 @@ describe('teto de ligas novas por e-mail', () => {
 
     const antes = new Set((await banco.liga.findMany({ select: { id: true } })).map((liga) => liga.id))
 
-    await sincronizar({ banco, ingestao: umEmail, ia: ligantesDeLigasDiferentes(quantas, 'do teto') }, base.operador)
+    await sincronizar({ banco, ingestao: umEmail(quantas, 'do teto'), ia: ligantesDeLigasDiferentes(quantas, 'do teto') }, base.operador)
 
     const nascidas = (await banco.liga.findMany({ select: { id: true } })).filter(
       (liga) => !antes.has(liga.id),
@@ -109,7 +117,7 @@ describe('teto de ligas novas por e-mail', () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     const antes = new Set((await banco.liga.findMany({ select: { id: true } })).map((liga) => liga.id))
 
-    await sincronizar({ banco, ingestao: umEmail, ia: ligantesDeLigasDiferentes(2, 'comum') }, base.operador)
+    await sincronizar({ banco, ingestao: umEmail(2, 'comum'), ia: ligantesDeLigasDiferentes(2, 'comum') }, base.operador)
 
     const nascidas = (await banco.liga.findMany({ select: { id: true } })).filter(
       (liga) => !antes.has(liga.id),
@@ -122,7 +130,7 @@ describe('teto de ligas novas por e-mail', () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
 
     await sincronizar(
-      { banco, ingestao: umEmail, ia: ligantesDeLigasDiferentes(TETO_DE_LIGAS_NOVAS_POR_EMAIL + 1, 'do evento') },
+      { banco, ingestao: umEmail(TETO_DE_LIGAS_NOVAS_POR_EMAIL + 1, 'do evento'), ia: ligantesDeLigasDiferentes(TETO_DE_LIGAS_NOVAS_POR_EMAIL + 1, 'do evento') },
       base.operador,
     )
 
@@ -139,7 +147,7 @@ describe('teto de ligas novas por e-mail', () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
 
     await sincronizar(
-      { banco, ingestao: umEmail, ia: ligantesDeLigasDiferentes(TETO_DE_LIGAS_NOVAS_POR_EMAIL, 'no limite') },
+      { banco, ingestao: umEmail(TETO_DE_LIGAS_NOVAS_POR_EMAIL, 'no limite'), ia: ligantesDeLigasDiferentes(TETO_DE_LIGAS_NOVAS_POR_EMAIL, 'no limite') },
       base.operador,
     )
 

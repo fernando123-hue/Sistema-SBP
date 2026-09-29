@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { CASOS_DO_GABARITO } from './avaliacao/casos'
 import {
+  PASSOS_POR_EMAIL,
   conferirExtracao,
   prepararTextoParaConferir,
   valorEstaNoTexto,
@@ -99,25 +100,25 @@ describe('conferirExtracao', () => {
 
   it('CPF que não confere vai para a revisão, mesmo copiado literalmente do e-mail', () => {
     const comCpfErrado = prepararTextoParaConferir('Nome: Fulano Sintético\nCPF: 000.000.000-00')
-    expect(conferirExtracao(comCpfErrado, { nome: 'Fulano Sintético', cpf: '000.000.000-00' })).toEqual({
+    expect(conferirExtracao(comCpfErrado, { nome: 'Fulano Sintético', cpf: '000.000.000-00' }, null)).toEqual({
       motivo: 'cpf_invalido',
       campo: 'cpf',
     })
   })
 
   it('reconhece o campo de CPF escrito de outro jeito ("C.P.F.")', () => {
-    expect(conferirExtracao(texto, { 'C.P.F.': '123' })).toEqual({ motivo: 'cpf_invalido', campo: 'C.P.F.' })
+    expect(conferirExtracao(texto, { 'C.P.F.': '123' }, null)).toEqual({ motivo: 'cpf_invalido', campo: 'C.P.F.' })
   })
 
   it('CPF que não confere vem antes de valor fora do texto', () => {
-    expect(conferirExtracao(texto, { nome: 'Nome Inventado', cpf: '11144477736' })).toEqual({
+    expect(conferirExtracao(texto, { nome: 'Nome Inventado', cpf: '11144477736' }, null)).toEqual({
       motivo: 'cpf_invalido',
       campo: 'cpf',
     })
   })
 
   it('diz QUAL campo não está no e-mail', () => {
-    expect(conferirExtracao(texto, { nome: 'Mariana Souza', telefone: '(11) 91234-0000' })).toEqual({
+    expect(conferirExtracao(texto, { nome: 'Mariana Souza', telefone: '(11) 91234-0000' }, null)).toEqual({
       motivo: 'valor_fora_do_texto',
       campo: 'telefone',
     })
@@ -133,14 +134,53 @@ describe('o gabarito inteiro passa pela conferência de texto', () => {
   /**
    * As respostas esperadas do gabarito são, por definição, cópia literal do
    * e-mail. Se a conferência acusar alguma, a regra está apertada demais e
-   * mandaria para a Revisão o item que a IA leu certo.
+   * mandaria para a Revisão o item que a IA leu certo. Campo a campo: a
+   * conferência do item para no primeiro problema, e o CPF de teste
+   * `000.000.000-00` esconderia os outros campos (revisão técnica do #150).
+   *
+   * Cobre o que o gabarito tem: nomes, CPF e CRM. Telefone, e-mail, data e
+   * liga estão nos casos escritos acima.
    */
   it.each(CASOS_DO_GABARITO.map((caso) => [caso.id, caso] as const))('%s', (_id, caso) => {
     const doCaso = prepararTextoParaConferir(`${caso.email.assunto}\n${caso.email.corpo}`)
     for (const item of caso.esperado.itens) {
-      const problema = conferirExtracao(doCaso, item.campos ?? {})
-      expect(problema?.motivo === 'valor_fora_do_texto' ? problema : null).toBeNull()
+      for (const [campo, valor] of Object.entries(item.campos ?? {})) {
+        expect({ campo, valor, noTexto: valorEstaNoTexto(doCaso, valor) }).toEqual({ campo, valor, noTexto: true })
+      }
     }
+  })
+})
+
+describe('endereço de e-mail é comparado inteiro', () => {
+  const comEndereco = prepararTextoParaConferir('Contato: ana.souza@exemplo.test, obrigada.')
+
+  it('o endereço copiado passa, em maiúsculas ou com ponto final', () => {
+    expect(valorEstaNoTexto(comEndereco, 'Ana.Souza@Exemplo.test')).toBe(true)
+    expect(valorEstaNoTexto(comEndereco, 'ana.souza@exemplo.test.')).toBe(true)
+  })
+
+  it('outro endereço com as mesmas palavras não passa', () => {
+    for (const reescrito of [
+      'ana@souza.exemplo.test',
+      'ana-souza@exemplo.test',
+      'ana.souza@exemplo-test',
+      'anasouza@exemplo.test',
+    ]) {
+      expect({ reescrito, noTexto: valorEstaNoTexto(comEndereco, reescrito) }).toEqual({ reescrito, noTexto: false })
+    }
+  })
+})
+
+describe('caixa e símbolos que o critério manda ignorar', () => {
+  it('"ß" é "ss", e "°" escrito no lugar de "º" é o mesmo ordinal', () => {
+    const doTexto = prepararTextoParaConferir('Rua STRASSE, nº 12')
+    expect(valorEstaNoTexto(doTexto, 'Straße')).toBe(true)
+    expect(valorEstaNoTexto(doTexto, 'n° 12')).toBe(true)
+  })
+
+  it('"CPF" sem nenhum dígito não é CPF que não confere: é valor a conferir no texto', () => {
+    expect(conferirExtracao(texto, { cpf: 'não informado' }, null)).toEqual({ motivo: 'valor_fora_do_texto', campo: 'cpf' })
+    expect(conferirExtracao(texto, { cpf: '' }, null)).toBeNull()
   })
 })
 
@@ -150,9 +190,37 @@ describe('custo', () => {
     const grande = prepararTextoParaConferir(linha.repeat(2800))
     const inicio = performance.now()
     for (let i = 0; i < 1000; i += 1) {
-      conferirExtracao(grande, { nome: 'Fulano Sintético', cpf: '111.444.777-35', telefone: '11987654321' })
+      conferirExtracao(grande, { nome: 'Fulano Sintético', cpf: '111.444.777-35', telefone: '11987654321' }, null)
       valorEstaNoTexto(grande, 'Fulano Inexistente')
     }
     expect(performance.now() - inicio).toBeLessThan(5000)
+  })
+
+  /**
+   * O texto é do remetente. Cem mil "1" soltos e uma lista de pessoas que a
+   * IA desdobra sozinha levavam ~27 s de CPU síncrona, com o servidor parado
+   * para todos (revisões do #150). Com o índice por número e o orçamento de
+   * passos por e-mail, o tempo tem teto.
+   */
+  it('texto hostil com cem mil números iguais e 1.800 valores não trava o servidor', () => {
+    const hostil = prepararTextoParaConferir(`${'1 '.repeat(100_000)}CPF 111.444.777-35`)
+    const inicio = performance.now()
+    for (let i = 0; i < 1800; i += 1) valorEstaNoTexto(hostil, `1${String(i).padStart(10, '0')}`)
+    expect(performance.now() - inicio).toBeLessThan(2000)
+  })
+
+  it('texto hostil com valores longos que quase casam não trava o servidor', () => {
+    const hostil = prepararTextoParaConferir('a 1 '.repeat(50_000))
+    const quase = `${'a 1 '.repeat(499)}b`
+    const inicio = performance.now()
+    for (let i = 0; i < 25; i += 1) valorEstaNoTexto(hostil, `${quase} ${i}`)
+    expect(performance.now() - inicio).toBeLessThan(2000)
+  })
+
+  it('orçamento esgotado conta como NÃO achado: o item vai para uma pessoa', () => {
+    const doTexto = prepararTextoParaConferir('Nome: Fulana Sintética')
+    doTexto.orcamento = 0
+    expect(valorEstaNoTexto(doTexto, 'Fulana Sintética')).toBe(false)
+    expect(PASSOS_POR_EMAIL).toBeGreaterThan(0)
   })
 })

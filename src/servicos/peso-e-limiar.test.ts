@@ -122,8 +122,8 @@ describe('A12 — limiar de confiança por categoria', () => {
     // É a faixa inteira que o A12 move para a conferência humana.
     const confianca = 0.92
 
-    const noEmail = decidirRevisao(confianca, limiarConfiancaSemente('EMAIL_CADASTRO'), false, false, false, false)
-    const noDocumento = decidirRevisao(confianca, limiarConfiancaSemente('DOC_CADASTRO'), false, false, false, false)
+    const noEmail = decidirRevisao(confianca, limiarConfiancaSemente('EMAIL_CADASTRO'), false, false, false, false, null)
+    const noDocumento = decidirRevisao(confianca, limiarConfiancaSemente('DOC_CADASTRO'), false, false, false, false, null)
 
     expect(noEmail).toBeNull()
     expect(noDocumento).toBe('baixa_confianca')
