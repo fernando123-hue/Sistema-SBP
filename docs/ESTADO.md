@@ -34,7 +34,7 @@
 > - ~~**(b) Fase 3, segunda opinião na ingestão**~~ — **feita no PR da fase 3** (`feat/jev-3-sombra-na-ingestao`). É `servicos/segunda-opiniao.ts`, em modo sombra:
 >   - as perguntas são constantes e dizem que o bloco é dado; uma varredura recusa `classificar(` fora do arquivo;
 >   - a opinião é gravada como evento `segunda_opiniao` na mesma transação, antes de `criarItens`, só com códigos e números, e sem a `confianca`;
->   - classificador indisponível deixa um evento por lote; texto vazio não é classificado;
+>   - a opinião para no resto do lote (credencial, teto, disjuntor, 3 falhas seguidas ou 60 s somados) e deixa um evento com o motivo em código; texto vazio não é classificado;
 >   - as descrições das categorias estão em `core/config.ts`, e o prompt saiu idêntico;
 >   - a régua da concordância é `core/ia/concordancia.ts`.
 >
@@ -149,7 +149,12 @@
 
 > *H. Novas em 29/09 (revisões do #142), anteriores a ele:*
 > 32. **A hora de volta do disjuntor sai mascarada.** A mensagem de `LimiteDeConsumoAtingido` passa por `resumoDeTransporte`, e a máscara de 5+ dígitos come a data ISO: sai "suspensas até [número]T01:37:24.478Z". Acontece em `ia-estruturada.ts` (≈251), `assistente-modelo.ts` (≈161) e `classificador-externo.ts`. `ports/consumo.ts` promete essa mensagem inteira na tela. Para o classificador, ela ainda diz "a IA falhou N vezes" (`core/ia/consumo.ts` ≈138).
-> 33. **`modeloUsado` da IA sem forma conferida.** `ia-anthropic`, `ia-gemini` (`resposta.modelVersion`, ≈222) e `ia-local` gravam em `UsoDaIa.modelo` (`VARCHAR(191)`, na chave primária) o nome que o fornecedor devolveu. Um nome longo derruba a gravação, e a chamada some da conta do teto diário. O #142 corrigiu isso no classificador (`NOME_DE_MODELO`); falta levar a mesma regra aos adaptadores de IA.
+> 33. **`modeloUsado` da IA sem forma conferida.** `ia-anthropic`, `ia-gemini` (`resposta.modelVersion`, ≈222) e `ia-local` gravam em `UsoDaIa.modelo` (`VARCHAR(191)`, na chave primária) o nome que o fornecedor devolveu. Um nome longo derruba a gravação, e a chamada some da conta do teto diário. O #142 corrigiu isso no classificador, e o #143 subiu a regra para a política comum (`ehNomeDeModelo` em `classificador-externo.ts`); falta levar a mesma regra aos adaptadores de IA.
+
+> *I. Novas em 29/09 (revisões do #143):*
+> 34. **Colisões somem da trilha quando o lote para.** `registrarColisoes` roda depois do laço de `sincronizar`; se a IA derruba o lote (`InterpretacaoIndisponivelError`), as colisões vistas até ali ficam só no log. A parada da segunda opinião já é gravada antes do `throw` (#143); fazer o mesmo com as colisões.
+> 35. **Perguntas ao classificador por tipo, não por varredura.** Hoje a garantia "a pergunta é do código" é uma varredura por texto (`segunda-opiniao.test.ts`), que código escrito de propósito ainda contorna. O remédio de fundo é a porta aceitar só um conjunto de perguntas *marcado* (tipo *branded*, construído só num módulo de perguntas). Fazer antes do segundo uso do classificador (gabarito ou assistente).
+> 36. **Medição × custo não batem um a um.** Uma opinião paga e descartada (corrida de unicidade, transação abortada) aparece no `UsoDaIa`, mas não deixa evento `segunda_opiniao`. Levar em conta ao ler a medição do modo sombra.
 
 > *Decidido de propósito — não é pendência:* o gestor vê "ausente hoje" na Minha fila (tela de quem executa); payload de item ilegível trava a revisão daquele item com 500 e o id na mensagem do log; login, troca de senha e desativação esperam milissegundos por uma confirmação de distribuição em curso; `A34` (e-mails suspeitos sem item) é a fase 4.
 >

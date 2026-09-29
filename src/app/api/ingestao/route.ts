@@ -18,7 +18,8 @@ import { exigirAtor } from '../../../servidor/sessao'
  * Pedir um adapter não implementado falha em vez de rodar o mock em silêncio.
  *
  * Limite de taxa apertado: cada sincronização chama o modelo de IA uma vez por
- * e-mail novo. Com o adapter real, isso custa dinheiro.
+ * e-mail novo — e, com a segunda opinião ligada (`CLASSIFICADOR_ADAPTER`), o
+ * classificador também. Com os adapters reais, isso custa dinheiro.
  */
 export async function POST(): Promise<Response> {
   return rota(async () => {

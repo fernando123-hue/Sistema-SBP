@@ -118,6 +118,15 @@ export class FalhaDeClassificacao extends ErroOperacional {
 }
 
 /**
+ * Por que o classificador parou para todos, em vocabulário FECHADO.
+ *
+ * É o que vai para a trilha, que é append-only e sem retenção: a frase livre
+ * (`causa`) vem do fornecedor, resumida e mascarada, mas ainda pode citar nome
+ * e endereço — só o log a leva (revisão de segurança do #143).
+ */
+export type MotivoDeIndisponibilidade = 'credencial' | 'teto_diario' | 'disjuntor_aberto'
+
+/**
  * O classificador está fora para TODOS os textos: credencial recusada, teto
  * diário ou disjuntor. Parar de perguntar é mais barato que fracassar um a um.
  */
@@ -125,7 +134,10 @@ export class ClassificadorIndisponivelError extends ErroOperacional {
   readonly codigo = 'CLASSIFICADOR_INDISPONIVEL'
   readonly statusHttp = 503
 
-  constructor(readonly causa: string) {
+  constructor(
+    readonly causa: string,
+    readonly motivo: MotivoDeIndisponibilidade,
+  ) {
     super(`Classificador indisponível: ${causa}`)
   }
 }

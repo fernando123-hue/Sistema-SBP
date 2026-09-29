@@ -151,11 +151,11 @@ export function limiarConfiancaSemente(codigo: string): number {
  */
 export const DESCRICAO_DAS_CATEGORIAS_PARA_IA: Readonly<
   Record<z.infer<typeof CategoriaClassificavelSchema>, string>
-> = {
+> = Object.freeze({
   DOC_CADASTRO: 'envio de documentação de cadastro (diploma, certidão, comprovante).',
   FICHA_CADASTRO: 'ficha de cadastro ou atualização cadastral.',
   EMAIL_CADASTRO: 'dúvida ou solicitação geral sobre cadastro/associação que não seja documento nem ficha.',
   LIGA: 'cadastro ou atualização de uma liga acadêmica em si.',
   LIGANTE: 'pessoa vinculada a uma liga (estudante membro).',
   EMAIL_LIGA: 'dúvida ou solicitação geral sobre liga que não seja cadastro de liga nem de ligante.',
-}
+})

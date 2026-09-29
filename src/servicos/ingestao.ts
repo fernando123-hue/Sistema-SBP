@@ -30,7 +30,7 @@ import { auditar } from './auditoria'
 import {
   colherSegundaOpiniao,
   novoEstadoDaSegundaOpiniao,
-  registrarIndisponibilidade,
+  registrarParada,
   registrarSegundaOpiniao,
   type EstadoDaSegundaOpiniao,
   type OpiniaoColhida,
@@ -485,6 +485,10 @@ export async function sincronizar(
           // crítico da revisão do PR: ver `CAUSA_FALHA_DE_INTERPRETACAO`).
           detalhe: { causa: 'interpretacao_indisponivel' },
         })
+        // O lote para aqui, e a parada da segunda opinião — se houve — não
+        // pode sumir junto: no dia em que as duas camadas falham, a trilha
+        // perderia o motivo de uma delas (revisão técnica do #143).
+        await registrarParada(deps.banco, correlacaoId, segundaOpiniao)
         throw erro
       }
 
@@ -518,7 +522,7 @@ export async function sincronizar(
 
   resumo.repetidas = colisoes.length
   if (colisoes.length > 0) await registrarColisoes(deps.banco, correlacaoId, colisoes)
-  await registrarIndisponibilidade(deps.banco, correlacaoId, segundaOpiniao)
+  await registrarParada(deps.banco, correlacaoId, segundaOpiniao)
 
   await registrarEvento(deps.banco, {
     correlacaoId,
