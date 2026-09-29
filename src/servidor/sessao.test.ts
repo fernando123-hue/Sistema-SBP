@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { createHmac } from 'node:crypto'
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { limparCacheDeAmbiente } from './ambiente'
 import { PermissaoNegadaError, atorDaSessao, ehOProprio, exigirPapel } from './ator'
-import { lerCookie, montarCookie } from './sessao'
+import { avisarTrocaDaChaveEmCurso, lerCookie, montarCookie } from './sessao'
 import { verificarLimite } from './limite-de-taxa'
 
 /**
@@ -28,9 +30,19 @@ function definirSegredo(valor: string): void {
   limparCacheDeAmbiente()
 }
 
+function definirAnterior(valor: string): void {
+  process.env['SESSAO_SECRET_ANTERIOR'] = valor
+  limparCacheDeAmbiente()
+}
+
 beforeEach(() => {
   // `segredo()` lê do ambiente e exige no mínimo 16 caracteres.
   definirSegredo('segredo-de-teste-com-tamanho-suficiente')
+  definirAnterior('')
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('cookie de sessão', () => {
@@ -120,6 +132,209 @@ describe('cookie de sessão', () => {
     const cookie = montarCookie(COLABORADOR, 'operador', null)
     definirSegredo('outro-segredo-completamente-diferente')
     expect(lerCookie(cookie)).toBeNull()
+  })
+})
+
+describe('rotação do segredo de sessão com duas chaves (C-25)', () => {
+  /**
+   * Sem a chave anterior, trocar `SESSAO_SECRET` derruba todo mundo no meio do
+   * expediente — e o gesto de rotina fica caro o bastante para ninguém fazer.
+   * Com ela, o cookie emitido antes da troca continua valendo até expirar, e
+   * todo cookie novo sai com a chave nova.
+   */
+  const ANTIGO = 'segredo-de-teste-antigo-da-sessao'
+  const NOVO = 'segredo-de-teste-novo-da-sessao'
+
+  /**
+   * Um cookie da chave anterior nasce no processo ANTERIOR, antes de este
+   * subir com a chave nova — e `lerCookie` confere isso. Emitir com o relógio
+   * de agora, depois da subida, seria um cookie que não existe na vida real.
+   */
+  function emitirAntesDaSubida(papel: 'gestor' | 'colaborador' | 'operador'): string {
+    vi.useFakeTimers({ toFake: ['Date'], now: performance.timeOrigin - 60_000 })
+    try {
+      definirSegredo(ANTIGO)
+      return montarCookie(COLABORADOR, papel, null)
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+
+  it('cookie assinado com a chave anterior segue valendo depois da troca', () => {
+    const emitidoAntes = emitirAntesDaSubida('gestor')
+
+    definirSegredo(NOVO)
+    definirAnterior(ANTIGO)
+
+    expect(lerCookie(emitidoAntes)?.papel).toBe('gestor')
+  })
+
+  it('cookie novo sai com a chave nova, nunca com a anterior', () => {
+    definirSegredo(NOVO)
+    definirAnterior(ANTIGO)
+    const emitidoDepois = montarCookie(COLABORADOR, 'operador', null)
+
+    // Tirar a anterior não pode derrubar quem entrou depois da troca...
+    definirAnterior('')
+    expect(lerCookie(emitidoDepois)).not.toBeNull()
+    // ...e a chave anterior sozinha não confere o cookie novo.
+    definirSegredo(ANTIGO)
+    expect(lerCookie(emitidoDepois)).toBeNull()
+  })
+
+  it('sem a chave anterior, a troca derruba os cookies antigos — o gesto certo depois de um vazamento', () => {
+    const emitidoAntes = emitirAntesDaSubida('operador')
+
+    definirSegredo(NOVO)
+
+    expect(lerCookie(emitidoAntes)).toBeNull()
+  })
+
+  it('a chave anterior não confere carga adulterada', () => {
+    const original = emitirAntesDaSubida('colaborador')
+    definirSegredo(NOVO)
+    definirAnterior(ANTIGO)
+    // O original passa; é a adulteração que o derruba, não a forma.
+    expect(lerCookie(original)).not.toBeNull()
+
+    const [carga, assinatura] = original.split('.') as [string, string]
+    const adulterada = JSON.parse(Buffer.from(carga, 'base64url').toString()) as Record<string, unknown>
+    adulterada['papel'] = 'gestor'
+    const forjada = Buffer.from(JSON.stringify(adulterada)).toString('base64url')
+
+    expect(lerCookie(`${forjada}.${assinatura}`)).toBeNull()
+  })
+
+  it('a chave anterior deixa de valer sozinha 12h depois de o processo subir, mesmo com o relógio voltando', () => {
+    const DOZE_HORAS = 12 * 60 * 60 * 1000
+    definirSegredo(ANTIGO)
+    const emitidoAntes = montarCookie(COLABORADOR, 'operador', null)
+    const emitidoEm = Date.now()
+
+    // O processo "sobe" com a chave nova um segundo depois. Com o relógio
+    // falso, `performance.timeOrigin` é esse instante e `performance.now()`
+    // parte de zero.
+    vi.useFakeTimers({ toFake: ['Date', 'performance'], now: emitidoEm + 1000 })
+    definirSegredo(NOVO)
+    definirAnterior(ANTIGO)
+    expect(lerCookie(emitidoAntes)).not.toBeNull()
+
+    // Doze horas de processo, e o relógio de parede corrigido para trás (VM
+    // restaurada, relógio de hardware errado na subida): pelo relógio de
+    // parede o cookie ainda não venceu. Todo cookie legítimo da chave anterior
+    // já venceu de verdade, então quem a apresenta agora é forjado ou velho.
+    // O prazo da chave é do relógio monotônico, que não volta (revisões do #146).
+    vi.advanceTimersByTime(DOZE_HORAS + 1000)
+    vi.setSystemTime(emitidoEm + 2000)
+    expect(lerCookie(emitidoAntes)).toBeNull()
+
+    // O cookie da chave nova não tem prazo além da própria validade.
+    expect(lerCookie(montarCookie(COLABORADOR, 'operador', null))).not.toBeNull()
+  })
+
+  it('pela chave anterior, só passa cookie com a forma de um legítimo — o forjado não escapa do "sair"', () => {
+    const VALIDADE = 12 * 60 * 60 * 1000
+    // Assinado de fora, como faria quem tem a chave anterior vazada.
+    const forjar = (conteudo: Record<string, unknown>): string => {
+      const carga = Buffer.from(JSON.stringify(conteudo)).toString('base64url')
+      return `${carga}.${createHmac('sha256', ANTIGO).update(carga).digest('base64url')}`
+    }
+    const base = { colaboradorId: COLABORADOR, papel: 'gestor', senhaEm: null }
+    const antes = performance.timeOrigin - 60_000
+
+    definirSegredo(NOVO)
+    definirAnterior(ANTIGO)
+
+    // Legítimo: emitido antes de o processo subir, com a validade exata.
+    expect(lerCookie(forjar({ ...base, emitidoEm: antes, expiraEm: antes + VALIDADE }))).not.toBeNull()
+
+    // `emitidoEm` no futuro: nenhum "sair" (`sessoesInvalidasAntes`) o
+    // alcançaria. Um cookie legítimo da chave anterior nasceu antes da subida.
+    const depois = Date.now() + 60_000
+    expect(lerCookie(forjar({ ...base, emitidoEm: depois, expiraEm: depois + VALIDADE }))).toBeNull()
+
+    // Validade esticada: todo cookie legítimo tem exatamente 12h.
+    expect(lerCookie(forjar({ ...base, emitidoEm: antes, expiraEm: antes + 2 * VALIDADE }))).toBeNull()
+  })
+
+  /**
+   * O caso que motivou o aviso (2ª rodada do #146): a variável esquecida e o
+   * processo reiniciando sozinho. Aí todo cookie que chega é da chave atual,
+   * a anterior nunca é consultada, e um aviso pendurado em `lerCookie` não
+   * sairia nunca. O aviso tem de sair na SUBIDA, sem cookie nenhum.
+   */
+  describe('aviso na subida, sem depender de cookie', () => {
+    function capturarLog(): { saida: string[] } {
+      const saida: string[] = []
+      vi.spyOn(process.stdout, 'write').mockImplementation((pedaco: unknown) => {
+        saida.push(String(pedaco))
+        return true
+      })
+      return { saida }
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+      vi.useRealTimers()
+    })
+
+    it('com a variável definida, avisa ao subir, sem nenhuma chamada a lerCookie', () => {
+      const { saida } = capturarLog()
+      definirSegredo(NOVO)
+      definirAnterior(ANTIGO)
+
+      avisarTrocaDaChaveEmCurso()
+
+      const avisos = saida.filter((linha) => linha.includes('SESSAO_SECRET_ANTERIOR'))
+      expect(avisos).toHaveLength(1)
+      expect(avisos[0]).toMatch(/troca da chave de sessão em curso/)
+      expect(avisos[0]).toMatch(/"valeAte":"\d{4}-\d{2}-\d{2}T/)
+      expect(avisos[0]).toMatch(/adia o prazo/)
+      expect(avisos[0]).not.toContain(ANTIGO)
+    })
+
+    it('avisa de novo no instante em que a janela fecha, contado da subida, também sem cookie', () => {
+      vi.useFakeTimers({ toFake: ['Date', 'performance', 'setTimeout'] })
+      const { saida } = capturarLog()
+      definirSegredo(NOVO)
+      definirAnterior(ANTIGO)
+
+      // O processo já está de pé há 1 min quando avisa: o aviso de fechada
+      // tem de sair em 12h − 1 min, e não 12h depois do aviso (3ª rodada do #146).
+      vi.advanceTimersByTime(60_000)
+      avisarTrocaDaChaveEmCurso()
+      vi.advanceTimersByTime(12 * 60 * 60 * 1000 - 60_000 - 1000)
+      expect(saida.filter((linha) => /não confere mais/.test(linha))).toHaveLength(0)
+
+      vi.advanceTimersByTime(2000)
+      const fechada = saida.filter((linha) => /não confere mais/.test(linha))
+      expect(fechada).toHaveLength(1)
+      expect(fechada[0]).not.toContain(ANTIGO)
+    })
+
+    it('ler um cookie não avisa nada: o aviso é da subida', () => {
+      // O Next compila `sessao.ts` uma vez por camada; um aviso no caminho do
+      // cookie sairia de novo em cada cópia do módulo (3ª rodada do #146).
+      const { saida } = capturarLog()
+      definirSegredo(NOVO)
+      definirAnterior(ANTIGO)
+
+      lerCookie(montarCookie(COLABORADOR, 'operador', null).replace(/\.[^.]*$/, '.assinaturaInventada'))
+
+      expect(saida.filter((linha) => linha.includes('SESSAO_SECRET_ANTERIOR'))).toHaveLength(0)
+    })
+
+    it('sem a variável, não avisa nem agenda nada', () => {
+      vi.useFakeTimers({ toFake: ['Date', 'performance', 'setTimeout'] })
+      const { saida } = capturarLog()
+      definirSegredo(NOVO)
+
+      avisarTrocaDaChaveEmCurso()
+      vi.advanceTimersByTime(13 * 60 * 60 * 1000)
+
+      expect(saida.filter((linha) => linha.includes('SESSAO_SECRET_ANTERIOR'))).toHaveLength(0)
+      expect(vi.getTimerCount()).toBe(0)
+    })
   })
 })
 
