@@ -1,14 +1,15 @@
 # Estado do projeto — retomada
 
-Última atualização: **29/09/2026 — sessão em nuvem (Linux): #132 (pendência 10), #133 (teste da meia-noite) e #135 (Jev fase 1, camada de defesa do dado) e #141 (alerta do `fast-uri`) mesclados; Jev fase 2 pronta no branch `feat/jev-2-classificador`, sem PR ainda; #124 (docs) aberto e bloqueado.** Servidor da implantação é Linux (`A61`, só no #124). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Ver o primeiro bloco abaixo.
+Última atualização: **29/09/2026 — sessão em nuvem (Linux): #132 (pendência 10), #133 (teste da meia-noite) e #135 (Jev fase 1, camada de defesa do dado) e #141 (alerta do `fast-uri`), #142 (Jev fase 2) e #143 (Jev fase 3, modo sombra) mesclados; sem gasto com IA por decisão do dono (`A63`); #124 (docs) aberto e bloqueado.** Servidor da implantação é Linux (`A61`, só no #124). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Ver o primeiro bloco abaixo.
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 29/09/2026 — JEV (TYPESAFE) FASES 1 E 2; PENDÊNCIA 10 (este bloco vence os de baixo; o `git log` vence este)
+> ### 29/09/2026 — JEV (TYPESAFE) FASES 1 A 3; PENDÊNCIAS 10 E 29 (este bloco vence os de baixo; o `git log` vence este)
 >
 > **1. Onde está.**
-> - `main` com #132, #133 e #135 mesclados, além de tudo do bloco de 26/09.
-> - **Jev fase 2 pronta e NÃO publicada como PR:** branch `feat/jev-2-classificador`, já com a `main` mesclada e `verificar` verde (132 arquivos, 1533 testes). Traz:
+> - `main` com #132, #133, #135, #142 (Jev fase 2) e **#143 (Jev fase 3, modo sombra)** mesclados, além de tudo do bloco de 26/09.
+> - **`A63` (dono, 29/09): sem gasto com IA por enquanto.** Nenhuma chave paga; o trabalho segue com `mock`, IA local e a chave gratuita do Google. A medição do Jev, passo (c), fica pausada até o dono avisar.
+> - **Jev fase 2** (mesclada no #142). Traz:
 >   - `ports/classificador.ts`;
 >   - `adapters/classificador-externo.ts`, a política comum: camada de defesa, injeção e conferência da resposta;
 >   - `adapters/classificador-typesafe.ts`: `fetch` + Zod espelhando o SDK 0.6.0, sem dependência, sem repetição, sem redirecionamento e com endereço fixo;
@@ -43,7 +44,7 @@
 >   - **Antes de ligar o Jev no assistente:** a trava `CLASSIFICADOR_PARA_DADO_REAL` olha só `INGESTAO_ADAPTER` (já escrito no `§ H.4` item 35). O uso no assistente precisa de trava própria.
 >   - **Nunca decidir pela `confianca`** (limiar, desempate, alarme). Se precisar de um número, usar `probabilidades[escolha]`.
 > - **(c) PAUSADO pelo `A63` (29/09): sem orçamento para a chave da TypeSafe; o dono avisa quando puder investir. Até lá, o Jev fica desligado por padrão e roda só com o `mock`.** Medir no gabarito (`npm run ia:avaliar`, com a categoria esperada dos 17 casos) a concordância do Jev, com a mesma régua da trilha (`concordanciaDeCategoria`). Isso **exige** a `TYPESAFE_API_KEY` e liberar na rede do ambiente `api.typesafe.ai`, `typesafe.ai` e `docs.typesafe.ai`, os três bloqueados em 26/09. Sem isso, preço, qualidade em português e retenção seguem não confirmados (`A62`). **Depende da pendência 35:** o gabarito é o segundo uso do classificador.
-> - **(d) — o passo atual.** Só com recursos gratuitos (`A63`). Pendências da lista abaixo, a partir da 11. A 29 (`logLevel: 'warn'` explícito em `clienteAnthropic`, porque a opção explícita vence `ANTHROPIC_LOG`) foi estudada e é pequena. Anotada para ela: o SDK da Anthropic também lê `ANTHROPIC_BASE_URL` do ambiente, o que mudaria para onde o texto vai; decidir se fixa.
+> - **(d) — o passo atual.** Só com recursos gratuitos (`A63`). Pendências da lista abaixo, a partir da 11. **A 29 foi feita** (branch `fix/pendencia-29-log-do-sdk`): destino, credencial, log e API fixados no código dos dois SDKs, com um teste por variável de ambiente (`adapters/destino-do-sdk.test.ts`).
 >
 > **4. A pergunta do dono de 29/09 e a resposta dada: "focar o trabalho pesado no Jev para diminuir os erros da IA local?"**
 > - O Jev **não gera texto nem extrai campos** (nome, CPF, liga). Ele responde perguntas fechadas com probabilidade. Não substitui a IA local, mas pode **tirar dela a parte que ele faz bem**: categoria, suspeita, "é rotina?", "há mais de uma pessoa?".
@@ -143,7 +144,7 @@
 > 28. **Verde falso em `afastamentos.test.ts` (≈209 "crédito congela" e ≈261 "ausência em aberto").** Os dois testes só afirmam que a afastada recebeu zero; se a distribuição não fizesse nada, continuariam verdes. Falta a asserção positiva (alguém recebeu), como no teste de ≈175.
 
 > *G. Novas em 26/09 (revisões do #132):*
-> 29. **`ANTHROPIC_LOG=debug` joga o pedido inteiro no console.** Nesse modo o logger do próprio SDK (`formatRequestDetails`) escreve o corpo do e-mail e a resposta, por fora de `registrarLog`, `redigir` e `resumoDeTransporte`. Fixar `logLevel: 'warn'` no `clienteAnthropic` (a opção explícita vence a variável) ou recusar o valor em `servidor/ambiente.ts`.
+> 29. ~~**`ANTHROPIC_LOG=debug` joga o pedido inteiro no console.**~~ **Feita (29/09):** `clienteAnthropic` fixa `baseURL`, `authToken: null` e `logLevel: 'warn'`; `clienteGemini` fixa `baseUrl` e `vertexai: false` (o SDK do Google também lia `GOOGLE_GEMINI_BASE_URL` e `GOOGLE_GENAI_USE_VERTEXAI`). Resta `ANTHROPIC_CUSTOM_HEADERS`, que o SDK junta aos cabeçalhos sem opção que desligue; não muda destino nem log. Texto original: Nesse modo o logger do próprio SDK (`formatRequestDetails`) escreve o corpo do e-mail e a resposta, por fora de `registrarLog`, `redigir` e `resumoDeTransporte`. Fixar `logLevel: 'warn'` no `clienteAnthropic` (a opção explícita vence a variável) ou recusar o valor em `servidor/ambiente.ts`.
 > 30. **O Gemini reconhece "credencial recusada" só pelo texto** (`ia-gemini.ts`, `ehCredencialRecusada`: `PERMISSION_DENIED|UNAUTHENTICATED|API key not valid` sem olhar o status). Um 400 que citasse essas palavras vindas do e-mail pararia o lote inteiro. Exigir status 401/403.
 > 31. **O corte em 300 caracteres pode comer o `request_id`**, justamente quando a mensagem cita um trecho longo. Registrar `erro.requestID` (o SDK já expõe) como campo separado no log.
 
@@ -566,7 +567,7 @@ Estas preferências moravam só nas anotações do agente, que não viajam entre
 - **Pergunta sobre comportamento de tela vai com desenho** das opções lado a lado; texto sozinho não bastou.
 - **Todo texto que a equipe lê:** frase curta, dizendo o que aconteceu e o que fazer.
 - **Hipótese não vira regra em silêncio.** O que o agente assumir vai para `DECISOES.md § C`; o que é decisão dele vira pergunta objetiva, com opções e recomendação.
-- **Mesclar: autorizado, sempre no fim do ciclo** (16/09/2026, palavras dele: *"como estava fazendo durante todo o projeto, sempre revisando, checando e mesclando no final"*). Ou seja: branch → teste vermelho → correção → `npm run verificar` → revisão por agente **publicada no PR** → CI verde check a check → `gh pr merge --squash --delete-branch`. **Continua exigindo o ok dele, a cada vez:** apagar qualquer dado (inclusive sintético e local), trocar segredo, publicar fora do GitHub do projeto, e qualquer decisão de negócio.
+- **Mesclar: autorizado, sempre no fim do ciclo** (16/09/2026, palavras dele: *"como estava fazendo durante todo o projeto, sempre revisando, checando e mesclando no final"*). Ou seja: branch → teste vermelho → correção → `npm run verificar` → revisão por agente **publicada no PR** → CI verde check a check → `gh pr merge --squash --delete-branch`. **Reafirmado em 29/09/2026** (*"pode fazer merge sem precisar pedir minha confirmação"*): cumprido o `PROCESSO.md` do nível do PR, o agente mescla sem perguntar. **Continua exigindo o ok dele, a cada vez:** apagar qualquer dado (inclusive sintético e local), trocar segredo, publicar fora do GitHub do projeto, e qualquer decisão de negócio.
 - **Branch e PR sempre**, nunca direto na `main`; commits em português.
 - **Nunca digitar senha.** Telas com login se conferem pelo acesso local sem senha (`sbp-local`, contas `@exemplo.test`).
 - **Prova, não afirmação.** Teste visto **vermelho** contra o defeito antes da correção; mudança de tela **vista rodando**; CI lido **check a check** — `gh pr checks --watch` sai com código 0 quando termina de observar, **mesmo com check vermelho**, e isso já quase virou notícia falsa.

@@ -85,6 +85,9 @@ export const PERFIL_ANTHROPIC: PerfilDoFornecedor = {
  * rede (`forma-na-saida-estruturada.test.ts`). Em produção nada é passado, e a
  * chave vem de `ambiente()`.
  */
+/** O único destino do texto. Ver o comentário em `clienteAnthropic`. */
+export const ENDERECO_DA_API = 'https://api.anthropic.com'
+
 export function clienteAnthropic(
   opcoes: { chave?: string; fetch?: typeof fetch } = {},
 ): ClienteDeModelo {
@@ -100,8 +103,24 @@ export function clienteAnthropic(
   // valia aqui e era falsa no Gemini — e ninguém tinha como saber lendo o
   // código. Declarar em cada adapter o que ele de fato faz é o que torna a
   // afirmação do núcleo verificável nos dois.
+  //
+  // `baseURL`, `authToken` e `logLevel` EXPLÍCITOS pelo mesmo motivo, e com
+  // mais peso (pendência 29): sem eles, o SDK lê do ambiente
+  // `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` e `ANTHROPIC_LOG`. A primeira
+  // manda o corpo do e-mail para outro endereço; a última, em `debug`, escreve
+  // o pedido e a resposta inteiros no console (`formatRequestDetails`), por
+  // fora de `registrarLog`, `redigir` e `resumoDeTransporte`. Nas três, a opção
+  // passada aqui vence a variável — conferido na fonte do SDK 0.125. Para onde
+  // o texto vai e o que sai no log é decisão do código, nunca de uma variável
+  // esquecida na máquina.
+  //
+  // `ANTHROPIC_CUSTOM_HEADERS` não tem opção que a desligue: o SDK junta os
+  // cabeçalhos dela aos nossos. Ela não muda o destino nem o log.
   const cliente = new Anthropic({
     apiKey: chave,
+    authToken: null,
+    baseURL: ENDERECO_DA_API,
+    logLevel: 'warn',
     maxRetries: 2,
     timeout: TEMPO_LIMITE_MS,
     ...(opcoes.fetch ? { fetch: opcoes.fetch } : {}),

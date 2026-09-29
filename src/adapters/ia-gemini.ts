@@ -151,6 +151,9 @@ export const PERFIL_GEMINI: PerfilDoFornecedor = {
   },
 }
 
+/** O único destino do texto. Ver o comentário em `clienteGemini`. */
+export const ENDERECO_DA_API = 'https://generativelanguage.googleapis.com/'
+
 export function clienteGemini(): ClienteDeModelo {
   const chave = ambiente().GOOGLE_AI_KEY
   // `ambiente()` já recusa `IA_ADAPTER=gemini` sem chave; esta é a segunda
@@ -159,6 +162,13 @@ export function clienteGemini(): ClienteDeModelo {
 
   const cliente = new GoogleGenAI({
     apiKey: chave,
+    // DESTINO FIXO (pendência 29). Sem as duas linhas abaixo, o SDK lê do
+    // ambiente `GOOGLE_GEMINI_BASE_URL`, que manda o corpo do e-mail para outro
+    // endereço, e `GOOGLE_GENAI_USE_VERTEXAI`/`GOOGLE_GENAI_USE_ENTERPRISE`,
+    // que trocam a API gratuita pela Vertex (outro contrato, outro projeto,
+    // outra cobrança). A opção passada aqui vence as variáveis — conferido na
+    // fonte do SDK 2.21. Para onde o texto vai é decisão do código.
+    vertexai: false,
     // TETO DE TEMPO EXPLÍCITO.
     //
     // O núcleo declara, ao decidir não repetir falha de transporte, que "o SDK
@@ -171,7 +181,7 @@ export function clienteGemini(): ClienteDeModelo {
     // Um teto explícito transforma "pendurado para sempre" em falha de
     // transporte, que o sistema já sabe tratar — o e-mail vai para revisão
     // humana. É degradar do jeito certo em vez de travar.
-    httpOptions: { timeout: TEMPO_LIMITE_MS },
+    httpOptions: { timeout: TEMPO_LIMITE_MS, baseUrl: ENDERECO_DA_API },
   })
 
   return {
