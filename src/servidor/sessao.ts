@@ -88,81 +88,58 @@ function segredo(): string {
  * pausada o monotônico não anda — é o de parede que fecha (2ª rodada do #146).
  *
  * Cada reinício reabre a janela, inclusive os automáticos (deploy, queda,
- * `Restart=always`). Por isso a rotação em curso aparece no log, e apagar a
- * variável continua sendo o passo final da troca.
+ * `Restart=always`). Por isso a rotação em curso aparece no log a cada subida
+ * (`avisarTrocaDaChaveEmCurso`), e apagar a variável continua sendo o passo
+ * final da troca.
  */
 function segredoAnterior(): string | undefined {
-  const config = ambiente()
-  const valor = config.SESSAO_SECRET_ANTERIOR
+  const valor = ambiente().SESSAO_SECRET_ANTERIOR
   if (valor === undefined) return undefined
-  if (performance.now() >= VALIDADE_SEGUNDOS * 1000) {
-    avisarJanelaFechada(config)
-    return undefined
-  }
-  avisarJanelaAberta(config)
+  if (performance.now() >= VALIDADE_SEGUNDOS * 1000) return undefined
   return valor
 }
 
 /**
  * Avisa, NA SUBIDA do processo, que há uma troca de chave em curso — e agenda
- * o aviso de janela fechada para o instante em que ela fecha.
+ * o aviso de janela fechada para o instante em que o relógio monotônico a
+ * fecha.
  *
- * O aviso preguiçoso em `segredoAnterior` não bastava: ele só sai quando
- * chega um cookie que a chave atual não confere. No caso que motivou o aviso
- * — a variável esquecida e o processo reiniciando sozinho —, todo cookie é da
- * chave atual, a anterior nunca é consultada, e o log ficava calado
- * (2ª rodada de revisão do #146). Chamado uma vez por `instrumentation-node.ts`.
+ * O aviso morava em `segredoAnterior` e só saía quando chegava um cookie que
+ * a chave atual não conferia. No caso que motivou o aviso — a variável
+ * esquecida e o processo reiniciando sozinho —, todo cookie é da chave atual,
+ * a anterior nunca é consultada, e o log ficava calado (2ª rodada do #146).
+ * Ele saiu de lá de vez: o Next compila este arquivo uma vez por camada
+ * (instrumentação, rota), e cada cópia repetiria o aviso (3ª rodada do #146).
  *
- * O `setTimeout` é `unref`: não segura o processo vivo ao parar. Ele também
- * corrige o `valeAte` impresso na subida, que é o horário PREVISTO pelo
- * relógio de parede: o aviso de fechada sai quando o monotônico fecha a janela.
+ * Chamado por `instrumentation-node.ts`, que garante uma chamada por processo.
+ * O `setTimeout` é `unref`: não segura o processo vivo ao parar. O `valeAte`
+ * impresso é o horário PREVISTO pelo relógio de parede; o aviso de fechada
+ * sai quando o monotônico fecha a janela.
  */
 export function avisarTrocaDaChaveEmCurso(): void {
-  const config = ambiente()
-  if (config.SESSAO_SECRET_ANTERIOR === undefined) return
+  if (ambiente().SESSAO_SECRET_ANTERIOR === undefined) return
   const restanteMs = VALIDADE_SEGUNDOS * 1000 - performance.now()
   if (restanteMs <= 0) {
-    avisarJanelaFechada(config)
+    avisarJanelaFechada()
     return
   }
-  avisarJanelaAberta(config)
+  registrarLog('aviso', 'SESSAO_SECRET_ANTERIOR definida: troca da chave de sessão em curso', {
+    subidaEm: new Date(performance.timeOrigin),
+    valeAte: new Date(performance.timeOrigin + VALIDADE_SEGUNDOS * 1000),
+    // Com a variável esquecida e o processo reiniciando antes de 12h, o aviso
+    // de fechada nunca sai e o `valeAte` anda a cada subida: a frase diz isso
+    // (revisão de segurança, 3ª rodada do #146).
+    passo: 'apague a variável e reinicie depois desse horário; cada reinício antes dele adia o prazo por mais 12h',
+  })
   setTimeout(() => {
-    const atual = ambiente()
-    if (atual.SESSAO_SECRET_ANTERIOR !== undefined) avisarJanelaFechada(atual)
+    if (ambiente().SESSAO_SECRET_ANTERIOR !== undefined) avisarJanelaFechada()
   }, restanteMs).unref()
 }
 
-function avisarJanelaAberta(config: object): void {
-  avisarUmaVez(config, 'aberta', 'SESSAO_SECRET_ANTERIOR definida: troca da chave de sessão em curso', {
-    valeAte: new Date(performance.timeOrigin + VALIDADE_SEGUNDOS * 1000),
-    passo: 'depois desse horário, apague a variável e reinicie',
-  })
-}
-
-function avisarJanelaFechada(config: object): void {
-  avisarUmaVez(config, 'fechada', 'SESSAO_SECRET_ANTERIOR ainda definida, e não confere mais nenhum cookie', {
+function avisarJanelaFechada(): void {
+  registrarLog('aviso', 'SESSAO_SECRET_ANTERIOR ainda definida, e não confere mais nenhum cookie', {
     passo: 'apague a variável e reinicie: cada reinício reabre a janela por 12h',
   })
-}
-
-/**
- * Um aviso de cada tipo por configuração carregada — na prática, por processo.
- * Um por cookie encheria o log durante as 12h da troca. A chave é o objeto do
- * ambiente, e o valor do segredo nunca vai ao log.
- */
-const avisosDaTroca = new WeakMap<object, Set<'aberta' | 'fechada'>>()
-
-function avisarUmaVez(
-  config: object,
-  tipo: 'aberta' | 'fechada',
-  mensagem: string,
-  contexto: Record<string, unknown>,
-): void {
-  const dados = avisosDaTroca.get(config) ?? new Set()
-  if (dados.has(tipo)) return
-  dados.add(tipo)
-  avisosDaTroca.set(config, dados)
-  registrarLog('aviso', mensagem, contexto)
 }
 
 /** Assina SEMPRE com a chave atual: a anterior só confere. */

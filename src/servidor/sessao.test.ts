@@ -257,49 +257,6 @@ describe('rotação do segredo de sessão com duas chaves (C-25)', () => {
     expect(lerCookie(forjar({ ...base, emitidoEm: antes, expiraEm: antes + 2 * VALIDADE }))).toBeNull()
   })
 
-  it('a rotação em curso aparece no log uma vez por processo, sem o valor da chave', () => {
-    const saida: string[] = []
-    vi.spyOn(process.stdout, 'write').mockImplementation((pedaco: unknown) => {
-      saida.push(String(pedaco))
-      return true
-    })
-    try {
-      definirSegredo(NOVO)
-      definirAnterior(ANTIGO)
-      lerCookie(montarCookie(COLABORADOR, 'operador', null).replace(/\.[^.]*$/, '.assinaturaInventada'))
-      lerCookie(montarCookie(COLABORADOR, 'operador', null).replace(/\.[^.]*$/, '.outraInventada'))
-    } finally {
-      vi.restoreAllMocks()
-    }
-
-    const avisos = saida.filter((linha) => linha.includes('SESSAO_SECRET_ANTERIOR'))
-    expect(avisos).toHaveLength(1)
-    expect(avisos[0]).toMatch(/"valeAte":"\d{4}-\d{2}-\d{2}T/)
-    expect(avisos[0]).not.toContain(ANTIGO)
-  })
-
-  it('a janela fechada com a variável ainda definida também aparece no log, uma vez', () => {
-    const saida: string[] = []
-    vi.useFakeTimers({ toFake: ['Date', 'performance'] })
-    vi.spyOn(process.stdout, 'write').mockImplementation((pedaco: unknown) => {
-      saida.push(String(pedaco))
-      return true
-    })
-    try {
-      definirSegredo(NOVO)
-      definirAnterior(ANTIGO)
-      vi.advanceTimersByTime(12 * 60 * 60 * 1000 + 1000)
-      lerCookie(montarCookie(COLABORADOR, 'operador', null).replace(/\.[^.]*$/, '.assinaturaInventada'))
-      lerCookie(montarCookie(COLABORADOR, 'operador', null).replace(/\.[^.]*$/, '.outraInventada'))
-    } finally {
-      vi.restoreAllMocks()
-    }
-
-    const avisos = saida.filter((linha) => linha.includes('SESSAO_SECRET_ANTERIOR'))
-    expect(avisos).toHaveLength(1)
-    expect(avisos[0]).toMatch(/não confere mais/)
-  })
-
   /**
    * O caso que motivou o aviso (2ª rodada do #146): a variável esquecida e o
    * processo reiniciando sozinho. Aí todo cookie que chega é da chave atual,
@@ -332,17 +289,21 @@ describe('rotação do segredo de sessão com duas chaves (C-25)', () => {
       expect(avisos).toHaveLength(1)
       expect(avisos[0]).toMatch(/troca da chave de sessão em curso/)
       expect(avisos[0]).toMatch(/"valeAte":"\d{4}-\d{2}-\d{2}T/)
+      expect(avisos[0]).toMatch(/adia o prazo/)
       expect(avisos[0]).not.toContain(ANTIGO)
     })
 
-    it('avisa de novo no instante em que a janela fecha, também sem cookie', () => {
+    it('avisa de novo no instante em que a janela fecha, contado da subida, também sem cookie', () => {
       vi.useFakeTimers({ toFake: ['Date', 'performance', 'setTimeout'] })
       const { saida } = capturarLog()
       definirSegredo(NOVO)
       definirAnterior(ANTIGO)
 
+      // O processo já está de pé há 1 min quando avisa: o aviso de fechada
+      // tem de sair em 12h − 1 min, e não 12h depois do aviso (3ª rodada do #146).
+      vi.advanceTimersByTime(60_000)
       avisarTrocaDaChaveEmCurso()
-      vi.advanceTimersByTime(12 * 60 * 60 * 1000 - 1000)
+      vi.advanceTimersByTime(12 * 60 * 60 * 1000 - 60_000 - 1000)
       expect(saida.filter((linha) => /não confere mais/.test(linha))).toHaveLength(0)
 
       vi.advanceTimersByTime(2000)
@@ -351,15 +312,16 @@ describe('rotação do segredo de sessão com duas chaves (C-25)', () => {
       expect(fechada[0]).not.toContain(ANTIGO)
     })
 
-    it('o aviso da subida e o da leitura de cookie não se repetem entre si', () => {
+    it('ler um cookie não avisa nada: o aviso é da subida', () => {
+      // O Next compila `sessao.ts` uma vez por camada; um aviso no caminho do
+      // cookie sairia de novo em cada cópia do módulo (3ª rodada do #146).
       const { saida } = capturarLog()
       definirSegredo(NOVO)
       definirAnterior(ANTIGO)
 
-      avisarTrocaDaChaveEmCurso()
       lerCookie(montarCookie(COLABORADOR, 'operador', null).replace(/\.[^.]*$/, '.assinaturaInventada'))
 
-      expect(saida.filter((linha) => linha.includes('troca da chave de sessão em curso'))).toHaveLength(1)
+      expect(saida.filter((linha) => linha.includes('SESSAO_SECRET_ANTERIOR'))).toHaveLength(0)
     })
 
     it('sem a variável, não avisa nem agenda nada', () => {

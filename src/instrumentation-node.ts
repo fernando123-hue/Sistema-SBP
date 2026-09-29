@@ -30,10 +30,18 @@ const MINUTOS_ENTRE_TENTATIVAS = 15
  *
  * Na subida, e não na primeira leitura de cookie: com a variável esquecida e o
  * processo reiniciando sozinho, nenhum cookie da chave anterior chega, e o
- * aviso nunca sairia (2ª rodada de revisão do #146). Como a limpeza, nenhum
- * erro aqui derruba o servidor — mas um ambiente inválido nem chega aqui.
+ * aviso nunca sairia (2ª rodada de revisão do #146).
+ *
+ * Como a limpeza, nenhum erro aqui derruba o servidor. Um ambiente inválido
+ * CHEGA aqui — nada o valida antes de `register` — e aparece como falha do
+ * aviso; por isso as mensagens de `ambiente()` nunca levam valor de segredo.
  */
 export async function avisarTrocaDaChaveDeSessao(): Promise<void> {
+  // O modo de desenvolvimento pode chamar `register` de novo ao recarregar:
+  // sem a marca, cada recarga repetiria o aviso e agendaria outro temporizador.
+  const marca = globalThis as typeof globalThis & { avisoDaTrocaDeSessaoFeito?: boolean }
+  if (marca.avisoDaTrocaDeSessaoFeito === true) return
+  marca.avisoDaTrocaDeSessaoFeito = true
   try {
     const { avisarTrocaDaChaveEmCurso } = await import('./servidor/sessao')
     avisarTrocaDaChaveEmCurso()
