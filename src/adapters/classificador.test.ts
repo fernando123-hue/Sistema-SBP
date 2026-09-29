@@ -691,6 +691,13 @@ describe('a fábrica e a trava de dado real', () => {
     expect(criarClassificadorPort()?.fornecedor).toBe('mock')
   })
 
+  // O fallback do nome de modelo na política é esta variável: ela tem de ter a
+  // mesma forma, ou o aviso "fora da forma" dispararia a cada chamada.
+  it('CLASSIFICADOR_MODELO fora da forma de nome de modelo falha na partida', () => {
+    vi.stubEnv('CLASSIFICADOR_MODELO', 'jev latest')
+    expect(() => ambiente()).toThrow(/CLASSIFICADOR_MODELO/)
+  })
+
   it('"typesafe" sem chave falha na partida', () => {
     vi.stubEnv('CLASSIFICADOR_ADAPTER', 'typesafe')
     for (const vazia of ['', '   ']) {

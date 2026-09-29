@@ -3,7 +3,8 @@ import { z } from 'zod'
 import type { Pergunta, Resposta } from '../ports/classificador'
 import { ambiente } from '../servidor/ambiente'
 import { registrarLog } from '../servidor/observabilidade'
-import { ehNomeDeModelo, type ClienteDeClassificacao, type PerfilDoClassificador } from './classificador-externo'
+import { ehNomeDeModelo } from '../core/ia/nome-de-modelo'
+import type { ClienteDeClassificacao, PerfilDoClassificador } from './classificador-externo'
 
 /**
  * Classificador — Jev, da TypeSafe AI (`DECISOES.md § A62`).

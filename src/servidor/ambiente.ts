@@ -3,6 +3,8 @@ import { join } from 'node:path'
 
 import { z } from 'zod'
 
+import { ehNomeDeModelo } from '../core/ia/nome-de-modelo'
+
 /**
  * Configuração de ambiente.
  *
@@ -71,7 +73,12 @@ const AmbienteSchema = z.object({
    */
   CLASSIFICADOR_ADAPTER: z.enum(['nenhum', 'mock', 'typesafe']).default('nenhum'),
   /** Vazio = o padrão do fornecedor (`jev-latest` na TypeSafe). */
-  CLASSIFICADOR_MODELO: z.string().default(''),
+  CLASSIFICADOR_MODELO: z
+    .string()
+    .default('')
+    .refine((modelo) => modelo === '' || ehNomeDeModelo(modelo), {
+      message: 'CLASSIFICADOR_MODELO precisa ser um nome de modelo (letras, números e . : / - _, até 100)',
+    }),
   /** Chave da TypeSafe. O nome é o que o SDK oficial deles lê. */
   TYPESAFE_API_KEY: z.string().optional(),
   /**

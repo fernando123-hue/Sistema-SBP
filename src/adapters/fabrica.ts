@@ -1,5 +1,6 @@
 import { ErroOperacional } from '../core/erros'
 import { LIMITES_PADRAO } from '../core/ia/consumo'
+import { ehNomeDeModelo } from '../core/ia/nome-de-modelo'
 import { inicioDoDia } from '../core/util/datas'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { AssistentePort } from '../ports/assistente'
@@ -182,7 +183,14 @@ function controlarClassificacao(cliente: ClienteDeClassificacao, fornecedor: str
   const opcoes = opcoesDeConsumo(fornecedor, 'classificacao')
   return {
     perguntar: (pedido) =>
-      chamarComControle(opcoes, pedido.modelo, () => cliente.perguntar(pedido), (resposta) => resposta.modeloUsado),
+      chamarComControle(
+        opcoes,
+        pedido.modelo,
+        () => cliente.perguntar(pedido),
+        // `UsoDaIa.modelo` é chave primária: um nome fora da forma, de qualquer
+        // fornecedor, derrubaria a gravação e a chamada sumiria do teto.
+        (resposta) => (ehNomeDeModelo(resposta.modeloUsado) ? resposta.modeloUsado : pedido.modelo),
+      ),
   }
 }
 

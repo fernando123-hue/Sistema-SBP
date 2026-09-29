@@ -487,8 +487,17 @@ export async function sincronizar(
         })
         // O lote para aqui, e a parada da segunda opinião — se houve — não
         // pode sumir junto: no dia em que as duas camadas falham, a trilha
-        // perderia o motivo de uma delas (revisão técnica do #143).
-        await registrarParada(deps.banco, correlacaoId, segundaOpiniao)
+        // perderia o motivo de uma delas (revisão técnica do #143). E se ESTA
+        // gravação falhar, o erro que sobe continua sendo o da IA: é ele que
+        // diz à tela o que consertar.
+        try {
+          await registrarParada(deps.banco, correlacaoId, segundaOpiniao)
+        } catch (aoRegistrar) {
+          registrarLog('erro', 'parada da segunda opinião não gravada', {
+            correlacaoId,
+            erro: mensagemDoErro(aoRegistrar),
+          })
+        }
         throw erro
       }
 

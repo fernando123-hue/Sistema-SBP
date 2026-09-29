@@ -1,3 +1,4 @@
+import { ehNomeDeModelo } from '../core/ia/nome-de-modelo'
 import { analisarConteudo, delimitar } from '../core/seguranca/conteudo-nao-confiavel'
 import {
   LIMITE_PARA_FORNECEDOR_EXTERNO,
@@ -128,16 +129,6 @@ export class ClassificadorExterno implements ClassificadorPort {
       suspeito,
     }
   }
-}
-
-/**
- * A forma de um nome de modelo: identificador curto, sem espaço. Cabe no
- * `VARCHAR(191)` de `UsoDaIa.modelo` (chave primária) e não carrega frase.
- * Exportada para o adaptador conferir antes do `UsoDaIa`, que ele alimenta
- * antes de a resposta chegar aqui.
- */
-export function ehNomeDeModelo(nome: string): boolean {
-  return /^[\w.:/-]{1,100}$/.test(nome)
 }
 
 /**
