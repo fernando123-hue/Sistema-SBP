@@ -1,8 +1,8 @@
 /**
  * O que o servidor liga ao subir.
  *
- * Hoje, uma coisa: a limpeza diária de `A17` — "a limpeza roda sozinha, uma vez
- * por dia". O Next chama `register` uma vez por instância de servidor, e em
+ * Hoje, duas coisas: a limpeza diária de `A17` — "a limpeza roda sozinha, uma
+ * vez por dia" — e o aviso de troca da chave de sessão em curso (`AT-50`). O Next chama `register` uma vez por instância de servidor, e em
  * todos os runtimes: por isso este arquivo só decide SE liga, e o que só existe
  * em Node (banco, `process.stderr`, temporizador) mora em
  * `instrumentation-node.ts`, carregado apenas no runtime Node — o padrão da
@@ -15,6 +15,7 @@ export async function register(): Promise<void> {
   // pode nem ser o de produção.
   if (process.env.NEXT_PHASE === 'phase-production-build') return
 
-  const { agendarLimpezaDiaria } = await import('./instrumentation-node')
+  const { agendarLimpezaDiaria, avisarTrocaDaChaveDeSessao } = await import('./instrumentation-node')
+  await avisarTrocaDaChaveDeSessao()
   await agendarLimpezaDiaria()
 }

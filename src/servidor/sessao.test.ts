@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { limparCacheDeAmbiente } from './ambiente'
 import { PermissaoNegadaError, atorDaSessao, ehOProprio, exigirPapel } from './ator'
-import { lerCookie, montarCookie } from './sessao'
+import { avisarTrocaDaChaveEmCurso, lerCookie, montarCookie } from './sessao'
 import { verificarLimite } from './limite-de-taxa'
 
 /**
@@ -298,6 +298,81 @@ describe('rotação do segredo de sessão com duas chaves (C-25)', () => {
     const avisos = saida.filter((linha) => linha.includes('SESSAO_SECRET_ANTERIOR'))
     expect(avisos).toHaveLength(1)
     expect(avisos[0]).toMatch(/não confere mais/)
+  })
+
+  /**
+   * O caso que motivou o aviso (2ª rodada do #146): a variável esquecida e o
+   * processo reiniciando sozinho. Aí todo cookie que chega é da chave atual,
+   * a anterior nunca é consultada, e um aviso pendurado em `lerCookie` não
+   * sairia nunca. O aviso tem de sair na SUBIDA, sem cookie nenhum.
+   */
+  describe('aviso na subida, sem depender de cookie', () => {
+    function capturarLog(): { saida: string[] } {
+      const saida: string[] = []
+      vi.spyOn(process.stdout, 'write').mockImplementation((pedaco: unknown) => {
+        saida.push(String(pedaco))
+        return true
+      })
+      return { saida }
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+      vi.useRealTimers()
+    })
+
+    it('com a variável definida, avisa ao subir, sem nenhuma chamada a lerCookie', () => {
+      const { saida } = capturarLog()
+      definirSegredo(NOVO)
+      definirAnterior(ANTIGO)
+
+      avisarTrocaDaChaveEmCurso()
+
+      const avisos = saida.filter((linha) => linha.includes('SESSAO_SECRET_ANTERIOR'))
+      expect(avisos).toHaveLength(1)
+      expect(avisos[0]).toMatch(/troca da chave de sessão em curso/)
+      expect(avisos[0]).toMatch(/"valeAte":"\d{4}-\d{2}-\d{2}T/)
+      expect(avisos[0]).not.toContain(ANTIGO)
+    })
+
+    it('avisa de novo no instante em que a janela fecha, também sem cookie', () => {
+      vi.useFakeTimers({ toFake: ['Date', 'performance', 'setTimeout'] })
+      const { saida } = capturarLog()
+      definirSegredo(NOVO)
+      definirAnterior(ANTIGO)
+
+      avisarTrocaDaChaveEmCurso()
+      vi.advanceTimersByTime(12 * 60 * 60 * 1000 - 1000)
+      expect(saida.filter((linha) => /não confere mais/.test(linha))).toHaveLength(0)
+
+      vi.advanceTimersByTime(2000)
+      const fechada = saida.filter((linha) => /não confere mais/.test(linha))
+      expect(fechada).toHaveLength(1)
+      expect(fechada[0]).not.toContain(ANTIGO)
+    })
+
+    it('o aviso da subida e o da leitura de cookie não se repetem entre si', () => {
+      const { saida } = capturarLog()
+      definirSegredo(NOVO)
+      definirAnterior(ANTIGO)
+
+      avisarTrocaDaChaveEmCurso()
+      lerCookie(montarCookie(COLABORADOR, 'operador', null).replace(/\.[^.]*$/, '.assinaturaInventada'))
+
+      expect(saida.filter((linha) => linha.includes('troca da chave de sessão em curso'))).toHaveLength(1)
+    })
+
+    it('sem a variável, não avisa nem agenda nada', () => {
+      vi.useFakeTimers({ toFake: ['Date', 'performance', 'setTimeout'] })
+      const { saida } = capturarLog()
+      definirSegredo(NOVO)
+
+      avisarTrocaDaChaveEmCurso()
+      vi.advanceTimersByTime(13 * 60 * 60 * 1000)
+
+      expect(saida.filter((linha) => linha.includes('SESSAO_SECRET_ANTERIOR'))).toHaveLength(0)
+      expect(vi.getTimerCount()).toBe(0)
+    })
   })
 })
 

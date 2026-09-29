@@ -25,6 +25,25 @@ import type { ArmazenamentoPort } from './ports/armazenamento'
 
 const MINUTOS_ENTRE_TENTATIVAS = 15
 
+/**
+ * Avisa no log, na subida, que `SESSAO_SECRET_ANTERIOR` está definida (`AT-50`).
+ *
+ * Na subida, e não na primeira leitura de cookie: com a variável esquecida e o
+ * processo reiniciando sozinho, nenhum cookie da chave anterior chega, e o
+ * aviso nunca sairia (2ª rodada de revisão do #146). Como a limpeza, nenhum
+ * erro aqui derruba o servidor — mas um ambiente inválido nem chega aqui.
+ */
+export async function avisarTrocaDaChaveDeSessao(): Promise<void> {
+  try {
+    const { avisarTrocaDaChaveEmCurso } = await import('./servidor/sessao')
+    avisarTrocaDaChaveEmCurso()
+  } catch (erro) {
+    process.stderr.write(
+      `o aviso de troca da chave de sessão NÃO foi feito (${erro instanceof Error ? erro.message : String(erro)})\n`,
+    )
+  }
+}
+
 export async function agendarLimpezaDiaria(): Promise<void> {
   // O modo de desenvolvimento pode chamar `register` de novo ao recarregar.
   // Dois temporizadores não duplicariam a limpeza (a trava é no banco), mas

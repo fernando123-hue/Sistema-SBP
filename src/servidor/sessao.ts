@@ -81,8 +81,11 @@ function segredo(): string {
  * processo, não do cookie.
  *
  * `performance.now()` é o tempo desde a subida pelo relógio MONOTÔNICO: um
- * relógio de parede corrigido para trás (VM restaurada, relógio de hardware
- * errado na subida) não estica a janela (revisões do #146).
+ * relógio de parede corrigido para trás (relógio de hardware errado na
+ * subida) não estica a janela (revisões do #146). A janela fecha pelo
+ * PRIMEIRO dos dois relógios: o monotônico, aqui, e o de parede, pela trava
+ * de forma de `lerCookie` (`expiraEm` preso a `timeOrigin + 12h`). Numa VM
+ * pausada o monotônico não anda — é o de parede que fecha (2ª rodada do #146).
  *
  * Cada reinício reabre a janela, inclusive os automáticos (deploy, queda,
  * `Restart=always`). Por isso a rotação em curso aparece no log, e apagar a
@@ -93,16 +96,53 @@ function segredoAnterior(): string | undefined {
   const valor = config.SESSAO_SECRET_ANTERIOR
   if (valor === undefined) return undefined
   if (performance.now() >= VALIDADE_SEGUNDOS * 1000) {
-    avisarUmaVez(config, 'fechada', 'SESSAO_SECRET_ANTERIOR ainda definida, e não confere mais nenhum cookie', {
-      passo: 'apague a variável e reinicie: cada reinício reabre a janela por 12h',
-    })
+    avisarJanelaFechada(config)
     return undefined
   }
+  avisarJanelaAberta(config)
+  return valor
+}
+
+/**
+ * Avisa, NA SUBIDA do processo, que há uma troca de chave em curso — e agenda
+ * o aviso de janela fechada para o instante em que ela fecha.
+ *
+ * O aviso preguiçoso em `segredoAnterior` não bastava: ele só sai quando
+ * chega um cookie que a chave atual não confere. No caso que motivou o aviso
+ * — a variável esquecida e o processo reiniciando sozinho —, todo cookie é da
+ * chave atual, a anterior nunca é consultada, e o log ficava calado
+ * (2ª rodada de revisão do #146). Chamado uma vez por `instrumentation-node.ts`.
+ *
+ * O `setTimeout` é `unref`: não segura o processo vivo ao parar. Ele também
+ * corrige o `valeAte` impresso na subida, que é o horário PREVISTO pelo
+ * relógio de parede: o aviso de fechada sai quando o monotônico fecha a janela.
+ */
+export function avisarTrocaDaChaveEmCurso(): void {
+  const config = ambiente()
+  if (config.SESSAO_SECRET_ANTERIOR === undefined) return
+  const restanteMs = VALIDADE_SEGUNDOS * 1000 - performance.now()
+  if (restanteMs <= 0) {
+    avisarJanelaFechada(config)
+    return
+  }
+  avisarJanelaAberta(config)
+  setTimeout(() => {
+    const atual = ambiente()
+    if (atual.SESSAO_SECRET_ANTERIOR !== undefined) avisarJanelaFechada(atual)
+  }, restanteMs).unref()
+}
+
+function avisarJanelaAberta(config: object): void {
   avisarUmaVez(config, 'aberta', 'SESSAO_SECRET_ANTERIOR definida: troca da chave de sessão em curso', {
     valeAte: new Date(performance.timeOrigin + VALIDADE_SEGUNDOS * 1000),
     passo: 'depois desse horário, apague a variável e reinicie',
   })
-  return valor
+}
+
+function avisarJanelaFechada(config: object): void {
+  avisarUmaVez(config, 'fechada', 'SESSAO_SECRET_ANTERIOR ainda definida, e não confere mais nenhum cookie', {
+    passo: 'apague a variável e reinicie: cada reinício reabre a janela por 12h',
+  })
 }
 
 /**
@@ -188,7 +228,10 @@ export function lerCookie(valor: string | undefined): Conteudo | null {
     // este processo subir com a chave nova, e com a validade exata. Um forjado
     // com a chave vazada podia pôr `emitidoEm` no futuro e escapar de todo
     // "sair" (`sessoesInvalidasAntes`) feito durante a troca (revisão de
-    // segurança do #146). Nenhum cookie legítimo paga nada por isso.
+    // segurança do #146). Com um processo só (`A61`), nenhum cookie legítimo
+    // paga nada por isso; com o relógio corrigido para trás entre os dois
+    // processos, ou instâncias sobrepostas na troca, a pessoa entra de novo
+    // uma vez (2ª rodada do #146).
     if (
       chave === 'anterior' &&
       !(
