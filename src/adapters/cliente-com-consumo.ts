@@ -6,22 +6,24 @@ import {
   type EstadoDoDisjuntor,
   type LimitesDeConsumo,
 } from '../core/ia/consumo'
-import { LimiteDeConsumoAtingido, type RegistroDeConsumo } from '../ports/consumo'
+import { LimiteDeConsumoAtingido, type RegistroDeConsumo, type TarefaDeIa } from '../ports/consumo'
 import { codigoDoPrisma } from '../servidor/conflito'
 import { registrarLog } from '../servidor/observabilidade'
 import { especieDoErro, type ClienteDeModelo } from './fornecedor'
 
 /**
- * Teto diário e disjuntor em volta de qualquer `ClienteDeModelo` (`A54`, C-06).
+ * Teto diário e disjuntor em volta de qualquer chamada a fornecedor de IA
+ * (`A54`, C-06): de um `ClienteDeModelo` por `comControleDeConsumo`, e de
+ * qualquer outra forma — o classificador do `A62` — por `chamarComControle`.
  *
  * ═══ POR QUE AQUI, E NÃO DENTRO DE CADA ADAPTER ═══
  *
  * "Quanto se aceita gastar" e "o fornecedor está fora do ar" são decisões
  * DESTE sistema, não de um fornecedor — a mesma razão que mantém as três
  * camadas contra injeção em `ia-estruturada.ts`. Escrito uma vez, em volta do
- * cliente, vale para Anthropic, Gemini e servidor local, e para as duas
- * tarefas de IA (interpretar e-mail e responder pergunta), sem que nenhum
- * adapter saiba que isto existe.
+ * cliente, vale para Anthropic, Gemini, servidor local e TypeSafe, e para as
+ * três tarefas de IA (interpretar e-mail, responder pergunta e classificar),
+ * sem que nenhum adapter saiba que isto existe.
  *
  * ═══ O DISJUNTOR MORA NA MEMÓRIA, E ISSO É ESCOLHA ═══
  *
@@ -52,67 +54,83 @@ export function esquecerDisjuntores(): void {
 
 export interface OpcoesDeConsumo {
   fornecedor: string
-  tarefa: 'interpretacao' | 'assistente'
+  tarefa: TarefaDeIa
   registro: RegistroDeConsumo
   limites?: LimitesDeConsumo
 }
 
 export function comControleDeConsumo(cliente: ClienteDeModelo, opcoes: OpcoesDeConsumo): ClienteDeModelo {
+  return {
+    gerar: (pedido) =>
+      chamarComControle(opcoes, pedido.modelo, () => cliente.gerar(pedido), (resultado) => resultado.modeloUsado),
+  }
+}
+
+/**
+ * O teto e o disjuntor em volta de UMA chamada, de qualquer forma.
+ *
+ * Existe separado de `comControleDeConsumo` porque o classificador (`A62`) não
+ * é um `ClienteDeModelo` — pergunta e resposta têm outra forma —, e o que
+ * "quanto se aceita gastar" e "o fornecedor está fora" decidem não depende da
+ * forma da chamada. Uma política só, escrita uma vez.
+ */
+export async function chamarComControle<T>(
+  opcoes: OpcoesDeConsumo,
+  modeloPedido: string,
+  chamar: () => Promise<T>,
+  modeloDe: (resultado: T) => string,
+): Promise<T> {
   const limites = opcoes.limites ?? LIMITES_PADRAO
 
-  return {
-    async gerar(pedido) {
-      // A CONTAGEM VEM ANTES, E O ESTADO DO DISJUNTOR DEPOIS.
-      //
-      // A leitura da contagem agora pode DEMORAR em vez de abortar: quando o
-      // pool está saturado, ela espera o tempo do pool e só então devolve
-      // `null`. Ler o disjuntor antes desse `await` decidiria com um retrato
-      // de segundos atrás — outra chamada pode tê-lo aberto no meio. É o
-      // mesmo perigo que este arquivo já descreve e corrigiu na GRAVAÇÃO
-      // (`anotarNoDisjuntor`, abaixo); aqui a janela era pequena e passou a
-      // ser grande. Achado BAIXO da revisão de segurança do PR #86.
-      //
-      // SEM TETO (0), A CONTAGEM NÃO DECIDE NADA, E NÃO É LIDA. Sem banco,
-      // cada leitura esperava ~10 s pelo pool para devolver um número que
-      // `impedimentoParaChamar` descarta — medido em 25/09/2026 com o gabarito
-      // na máquina da IA local. A gravação do uso, abaixo, continua.
-      const chamadasHoje = limites.tetoDiarioDeChamadas > 0 ? await contarSemDerrubar(opcoes) : null
-      const estado = disjuntores.get(opcoes.fornecedor) ?? DISJUNTOR_FECHADO
-      const impedimento = impedimentoParaChamar({
-        estado,
-        chamadasHoje,
-        agora: new Date(),
-        limites,
-      })
+  // A CONTAGEM VEM ANTES, E O ESTADO DO DISJUNTOR DEPOIS.
+  //
+  // A leitura da contagem agora pode DEMORAR em vez de abortar: quando o
+  // pool está saturado, ela espera o tempo do pool e só então devolve
+  // `null`. Ler o disjuntor antes desse `await` decidiria com um retrato
+  // de segundos atrás — outra chamada pode tê-lo aberto no meio. É o
+  // mesmo perigo que este arquivo já descreve e corrigiu na GRAVAÇÃO
+  // (`anotarNoDisjuntor`, abaixo); aqui a janela era pequena e passou a
+  // ser grande. Achado BAIXO da revisão de segurança do PR #86.
+  //
+  // SEM TETO (0), A CONTAGEM NÃO DECIDE NADA, E NÃO É LIDA. Sem banco,
+  // cada leitura esperava ~10 s pelo pool para devolver um número que
+  // `impedimentoParaChamar` descarta — medido em 25/09/2026 com o gabarito
+  // na máquina da IA local. A gravação do uso, abaixo, continua.
+  const chamadasHoje = limites.tetoDiarioDeChamadas > 0 ? await contarSemDerrubar(opcoes) : null
+  const estado = disjuntores.get(opcoes.fornecedor) ?? DISJUNTOR_FECHADO
+  const impedimento = impedimentoParaChamar({
+    estado,
+    chamadasHoje,
+    agora: new Date(),
+    limites,
+  })
 
-      if (impedimento) {
-        // Não é registrado como chamada: nada foi pedido ao fornecedor, e
-        // contar isto inflaria justamente o número que decide o teto.
-        registrarLog('aviso', 'chamada à IA impedida pelo controle de consumo', {
-          fornecedor: opcoes.fornecedor,
-          tarefa: opcoes.tarefa,
-          motivo: impedimento.motivo,
-        })
-        throw new LimiteDeConsumoAtingido(impedimento.motivo, impedimento.mensagem)
-      }
+  if (impedimento) {
+    // Não é registrado como chamada: nada foi pedido ao fornecedor, e
+    // contar isto inflaria justamente o número que decide o teto.
+    registrarLog('aviso', 'chamada à IA impedida pelo controle de consumo', {
+      fornecedor: opcoes.fornecedor,
+      tarefa: opcoes.tarefa,
+      motivo: impedimento.motivo,
+    })
+    throw new LimiteDeConsumoAtingido(impedimento.motivo, impedimento.mensagem)
+  }
 
-      const inicio = Date.now()
-      try {
-        const resultado = await cliente.gerar(pedido)
-        anotarNoDisjuntor(opcoes.fornecedor, 'ok', limites)
-        // O modelo REAL usado, não o apelido pedido: é ele que tem preço.
-        await anotar(opcoes, resultado.modeloUsado, 'ok', Date.now() - inicio)
-        return resultado
-      } catch (erro) {
-        // Falha de FORMA não abre o disjuntor: o fornecedor respondeu, quem
-        // errou foi a resposta. Suspender a IA inteira por dois e-mails
-        // difíceis seguidos seria trocar um problema pequeno por um grande.
-        const conta = especieDoErro(erro) === 'transporte' ? 'falha' : 'ok'
-        anotarNoDisjuntor(opcoes.fornecedor, conta, limites)
-        await anotar(opcoes, pedido.modelo, 'falha', Date.now() - inicio)
-        throw erro
-      }
-    },
+  const inicio = Date.now()
+  try {
+    const resultado = await chamar()
+    anotarNoDisjuntor(opcoes.fornecedor, 'ok', limites)
+    // O modelo REAL usado, não o apelido pedido: é ele que tem preço.
+    await anotar(opcoes, modeloDe(resultado), 'ok', Date.now() - inicio)
+    return resultado
+  } catch (erro) {
+    // Falha de FORMA não abre o disjuntor: o fornecedor respondeu, quem
+    // errou foi a resposta. Suspender a IA inteira por dois e-mails
+    // difíceis seguidos seria trocar um problema pequeno por um grande.
+    const conta = especieDoErro(erro) === 'transporte' ? 'falha' : 'ok'
+    anotarNoDisjuntor(opcoes.fornecedor, conta, limites)
+    await anotar(opcoes, modeloPedido, 'falha', Date.now() - inicio)
+    throw erro
   }
 }
 

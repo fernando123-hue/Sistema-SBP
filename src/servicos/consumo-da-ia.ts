@@ -1,4 +1,5 @@
 import { hojeIso } from '../core/util/datas'
+import type { TarefaDeIa } from '../ports/consumo'
 import { codigoDoPrisma, comNovaTentativaEmConflito } from '../servidor/conflito'
 import type { Banco } from '../servidor/prisma'
 
@@ -15,7 +16,7 @@ import type { Banco } from '../servidor/prisma'
  * pergunta que ele responde ("dá para gastar menos?") não é da equipe.
  */
 
-export type TarefaDeIa = 'interpretacao' | 'assistente'
+export type { TarefaDeIa }
 
 export interface ChamadaRegistrada {
   fornecedor: string

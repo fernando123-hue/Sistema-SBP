@@ -1,6 +1,12 @@
 import { ErroOperacional } from '../core/erros'
 
 /**
+ * Para que a IA foi chamada. `classificacao` é a segunda opinião (`A62`): ela
+ * conta no MESMO teto do fornecedor, porque a conta é do fornecedor.
+ */
+export type TarefaDeIa = 'interpretacao' | 'assistente' | 'classificacao'
+
+/**
  * Onde a contagem de uso da IA é guardada e lida.
  *
  * Existe como port porque o invólucro de consumo (`adapters/cliente-com-consumo.ts`)
@@ -13,7 +19,7 @@ export interface RegistroDeConsumo {
   registrar(chamada: {
     fornecedor: string
     modelo: string
-    tarefa: 'interpretacao' | 'assistente'
+    tarefa: TarefaDeIa
     resultado: 'ok' | 'falha'
     duracaoMs: number
   }): Promise<void>
