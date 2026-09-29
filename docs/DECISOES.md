@@ -826,6 +826,13 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
 35. **Ligar dado real no Jev exige quais condições?** *(26/09/2026, `A62`, revisão de segurança do #135)* A camada de defesa tira CPF, e-mail, link, telefone e número de CRM, mas **nomes, endereços e dado de saúde ficam** no texto, e não há acordo empresarial com a TypeSafe. Opções, que podem ser combinadas: (a) termos escritos da TypeSafe dizendo que não treina com o conteúdo, o prazo de retenção e o país onde o dado fica; (b) parecer do encarregado de dados da associação, ou um relatório de impacto (RIPD); (c) só depois de o modo sombra, com dado sintético, mostrar ganho no gabarito; (d) **nenhum dado real no Jev nesta fase** — só dado sintético, e a pergunta volta depois do modo sombra. **Todas, algumas, ou outra?** Até a resposta, a chave de dado real fica desligada: a fase 2 cria a trava `CLASSIFICADOR_PARA_DADO_REAL.typesafe = false` em `servidor/ambiente.ts`, pelo mesmo mecanismo da `IA_PARA_DADO_REAL` do `A56(e)` — ligar o Jev com caixa de e-mail real **falha na partida**, e trocar a linha é a decisão.
 
+36. **"Divisão de trabalho": a categoria passa a vir do Jev, e a IA local fica só com a extração?** *(29/09/2026, pergunta do dono sobre `A62`)*
+    - **O que o Jev faz:** responde perguntas fechadas com probabilidade (categoria, suspeita, "é rotina?", "há mais de uma pessoa?"). **Não extrai campos.**
+    - **O que a IA local ganharia:** o modelo de 8 GB ficaria só com a extração, que é mais literal. O código conferiria cada valor contra o texto (pendência 17), e a divergência iria para uma pessoa.
+    - **Por que a resposta espera:** mudar de quem é a categoria muda o fluxo, e o `A62` pede medição antes. As etapas são o modo sombra (a fase 3 registra a concordância) e o gabarito com a categoria esperada, e isso exige a `TYPESAFE_API_KEY` e a rede liberada.
+    - **Opções:** (a) sim, depois de medido, se o Jev acertar a categoria pelo menos tanto quanto a IA atual no gabarito; (b) só como segunda opinião, em que a discordância vai para uma pessoa e a IA local continua dona da categoria; (c) outra.
+    - **Depende do item 35** para valer com e-mail real.
+
 ### AT-36 — O gabarito da IA: respostas escritas pelo agente, cinco dimensões de peso igual *(17/09/2026)*
 
 **O que existe:** `src/core/avaliacao/` (nota, pura, e `casos.ts` com 17 e-mails sintéticos e a resposta esperada de cada um), `src/servicos/avaliacao-da-ia.ts` (roda qualquer `AiPort`, um caso por vez) e `npm run ia:avaliar` (`-- --json` para guardar). Passo 3 do plano de `A56`; lacuna nº 1 de `docs/arquitetura/2026-09-14-avaliacao-arquitetura-cognitiva.md`.
