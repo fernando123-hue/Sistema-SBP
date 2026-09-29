@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { AvisoParaATela } from '../core/aviso-do-gestor'
+import { ehTela, ROTULO_DA_TELA } from '../core/telas'
 import { api, mensagemDoErro } from './api'
 import { AvisoDoDia } from './aviso-do-gestor'
 import { Botao, juntar } from './matrizes'
@@ -51,13 +52,14 @@ interface RespostaDaApi {
   origem: string
 }
 
-const ROTULO_DA_TELA: Record<string, string> = {
-  '/distribuicao': 'Distribuição',
-  '/revisao': 'Revisão',
-  '/caixa': 'Caixa de entrada',
-  '/fila': 'Minha fila',
-  '/painel': 'Painel',
-  '/acesso': 'Acesso',
+/**
+ * O rótulo vem de `core/telas.ts`, a mesma fonte da navegação (pendência 7):
+ * esta era a terceira cópia à mão, e renomear uma tela deixaria o "Ir para …"
+ * com o nome velho. Tela fora da lista aparece crua — a resposta já passou
+ * pela conferência do servidor, então isso seria defeito, e crua ele aparece.
+ */
+function rotuloDaTela(caminho: string): string {
+  return ehTela(caminho) ? ROTULO_DA_TELA[caminho] : caminho
 }
 
 /** Perguntas prontas por papel. Campo em branco não ensina ninguém a perguntar. */
@@ -333,7 +335,7 @@ export function Assistente({ papel }: { papel: string }) {
                     href={troca.telaSugerida}
                     className="inline-flex min-h-9 items-center rounded-md border border-borda-forte px-2.5 text-xs font-medium hover:bg-papel-fundo"
                   >
-                    Ir para {ROTULO_DA_TELA[troca.telaSugerida] ?? troca.telaSugerida}
+                    Ir para {rotuloDaTela(troca.telaSugerida)}
                   </a>
                 ) : null}
                 {/* Quem respondeu aparece sempre. O sistema não finge que um modelo

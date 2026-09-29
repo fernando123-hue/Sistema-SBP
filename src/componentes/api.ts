@@ -20,8 +20,12 @@ export class ErroDaApi extends Error {
     mensagem: string,
     readonly status: number,
     readonly correlacaoId?: string,
+    causa?: unknown,
   ) {
-    super(mensagem)
+    // `cause`: a frase da tela é genérica de propósito, e o motivo real não
+    // pode sumir com ela — `fetch` rejeita com `TypeError` também por defeito
+    // de código (cabeçalho inválido, URL malformada), não só por rede caída.
+    super(mensagem, causa === undefined ? undefined : { cause: causa })
     this.name = 'ErroDaApi'
   }
 }
@@ -64,6 +68,19 @@ export function observarAtividade(ouvinte: (ocupado: boolean) => void): () => vo
   }
 }
 
+/**
+ * O que a pessoa lê quando o sistema não respondeu com uma frase própria.
+ *
+ * Antes era "Falha na requisição (404)." — engenharia na tela de quem atende
+ * associado. Os casos reais: a página HTML de 404 do servidor de telas no lugar
+ * do envelope (pendência 16), resposta vazia, e a rede fora do ar, que chegava
+ * como "Failed to fetch", em inglês. O status não some: fica em
+ * `ErroDaApi.status` (a tela de entrada o lê), vai ao fim da frase como código
+ * (`mensagemDoErro`) e ao console do navegador com a causa — sem isso, um 500
+ * de verdade e o Wi-Fi caindo ficariam iguais para todo mundo.
+ */
+export const SEM_RESPOSTA_LEGIVEL = 'Não foi possível falar com o sistema. Atualize a tela e tente de novo.'
+
 async function requisitar<T>(
   caminho: string,
   opcoes: { metodo?: string; corpo?: unknown } = {},
@@ -87,7 +104,15 @@ async function requisitar<T>(
   // falha de rede deixaria a marca respirando para sempre, afirmando um
   // trabalho que não existe mais.
   try {
-    const resposta = await fetch(`/api${caminho}`, inicializacao)
+    // Status 0 é a convenção do próprio navegador para "não houve resposta".
+    const resposta = await fetch(`/api${caminho}`, inicializacao).catch((causa: unknown) => {
+      // Trocar de tela com pedido em voo também cai aqui — o Chromium o aborta
+      // como o mesmo `TypeError: Failed to fetch`, sem `AbortError` para
+      // filtrar. É esperado, e a tela não mostra nada (as telas descartam
+      // resposta de efeito já desmontado); a linha vale quando a tela reclama.
+      console.error('Sem resposta do sistema', { caminho, causa })
+      throw new ErroDaApi(SEM_RESPOSTA_LEGIVEL, 0, undefined, causa)
+    })
 
     const envelope = (await resposta.json().catch(() => null)) as Envelope<T> | null
 
@@ -106,11 +131,17 @@ async function requisitar<T>(
         }
       }
 
-      throw new ErroDaApi(
-        envelope?.erro ?? `Falha na requisição (${resposta.status}).`,
-        resposta.status,
-        envelope?.correlacaoId,
-      )
+      // `typeof` e não `??`: envelope com `erro: ''` viraria tarja vazia.
+      const frase = typeof envelope?.erro === 'string' && envelope.erro.trim() !== '' ? envelope.erro : null
+      if (frase === null) {
+        console.error('Resposta do sistema sem erro legível', {
+          caminho,
+          status: resposta.status,
+          tipo: resposta.headers.get('content-type'),
+          correlacaoId: envelope?.correlacaoId,
+        })
+      }
+      throw new ErroDaApi(frase ?? SEM_RESPOSTA_LEGIVEL, resposta.status, envelope?.correlacaoId)
     }
 
     return envelope.dados as T
@@ -133,7 +164,12 @@ export const api = {
 
 export function mensagemDoErro(erro: unknown): string {
   if (erro instanceof ErroDaApi) {
-    return erro.correlacaoId ? `${erro.message} (ref. ${erro.correlacaoId.slice(0, 8)})` : erro.message
+    if (erro.correlacaoId) return `${erro.message} (ref. ${erro.correlacaoId.slice(0, 8)})`
+    // Sem referência do servidor, o código é o único número que a pessoa pode
+    // repassar a quem investiga: "deu 500" e "deu 404" são defeitos diferentes.
+    // Status 0 (nada respondeu) não tem código a mostrar.
+    if (erro.message === SEM_RESPOSTA_LEGIVEL && erro.status > 0) return `${erro.message} (código ${erro.status})`
+    return erro.message
   }
   if (erro instanceof Error) return erro.message
   return 'Erro inesperado.'

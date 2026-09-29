@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { DESCRICAO_DAS_CATEGORIAS_PARA_IA } from '../core/config'
 import {
   ItemExtraidoSchema,
   LIMITE_CAMPOS_POR_ITEM,
@@ -12,6 +13,7 @@ import {
 } from '../core/esquemas'
 import { prepararConteudoExterno } from '../core/seguranca/conteudo-nao-confiavel'
 import { resumoDeValidacao } from '../core/seguranca/resumo-de-validacao'
+import { resumoDeTransporte } from '../core/seguranca/resumo-de-transporte'
 import { LimiteDeConsumoAtingido } from '../ports/consumo'
 import { FalhaDeInterpretacao, InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import { ambiente } from '../servidor/ambiente'
@@ -110,12 +112,9 @@ export const INSTRUCOES = `Você classifica e-mails da Secretaria de Atendimento
 Sua única tarefa é LER e ESTRUTURAR. Você não decide quem recebe o trabalho, não divide carga entre pessoas, não calcula nada e não altera nada. Essas decisões são de um algoritmo determinístico que roda depois de você.
 
 CATEGORIAS
-- DOC_CADASTRO: envio de documentação de cadastro (diploma, certidão, comprovante).
-- FICHA_CADASTRO: ficha de cadastro ou atualização cadastral.
-- EMAIL_CADASTRO: dúvida ou solicitação geral sobre cadastro/associação que não seja documento nem ficha.
-- LIGA: cadastro ou atualização de uma liga acadêmica em si.
-- LIGANTE: pessoa vinculada a uma liga (estudante membro).
-- EMAIL_LIGA: dúvida ou solicitação geral sobre liga que não seja cadastro de liga nem de ligante.
+${Object.entries(DESCRICAO_DAS_CATEGORIAS_PARA_IA)
+  .map(([codigo, descricao]) => `- ${codigo}: ${descricao}`)
+  .join('\n')}
 
 DESDOBRAMENTO
 Um e-mail que lista várias pessoas vale um item POR PESSOA — trinta ligantes listados são trinta itens, não um. Um e-mail sobre um assunto só é um item. Nunca invente pessoas que não estão no texto: se a lista está truncada ou ilegível, devolva o que dá para ler e registre isso em "observacao".
@@ -240,14 +239,15 @@ export class InterpretadorEstruturado implements AiPort {
 
       // Sobe inteiro, sem virar falha deste e-mail: o laço de ingestão
       // reconhece este erro e para o lote em vez de repetir o mesmo fracasso
-      // uma vez por mensagem.
-      if (this.perfil.ehCredencialRecusada(erro)) throw new InterpretacaoIndisponivelError(causa)
+      // uma vez por mensagem. A MENSAGEM, porém, vai resumida: este ramo é
+      // escolhido por texto, e daqui ela chega ao log e à tela (#132).
+      if (this.perfil.ehCredencialRecusada(erro)) throw new InterpretacaoIndisponivelError(resumoDeTransporte(causa))
 
       // Teto diário atingido, disjuntor aberto (`A54`) ou conta sem crédito:
       // o problema não é deste e-mail, e tentar o próximo custaria o mesmo
       // fracasso duzentas vezes — que é exatamente o que o achado C-06 mediu.
       if (erro instanceof LimiteDeConsumoAtingido || this.perfil.ehSemCredito?.(erro) === true) {
-        throw new InterpretacaoIndisponivelError(causa)
+        throw new InterpretacaoIndisponivelError(resumoDeTransporte(causa))
       }
 
       const especie = especieDoErro(erro)
@@ -261,9 +261,11 @@ export class InterpretadorEstruturado implements AiPort {
       // política de retenção (invariante 11), vai só o resumo estrutural.
       //
       // Falha de TRANSPORTE é texto do fornecedor (`timeout`, `503`,
-      // `RESOURCE_EXHAUSTED`), não do remetente, e é o que a operação precisa
-      // ler para saber o que arrumar. Essa vai inteira.
-      const paraRegistrar = especie === 'validacao' ? resumoDeValidacao(erro) : causa
+      // `RESOURCE_EXHAUSTED`), e é o que a operação precisa ler para saber o
+      // que arrumar. Vai quase inteira: curta, e com e-mail e número de
+      // documento mascarados — o corpo de erro da API pode citar um trecho do
+      // que recebeu (`resumoDeTransporte`, pendência 10).
+      const paraRegistrar = especie === 'validacao' ? resumoDeValidacao(erro) : resumoDeTransporte(causa)
 
       registrarLog(
         'aviso',

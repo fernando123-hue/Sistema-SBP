@@ -10,6 +10,18 @@ import {
 } from '../core/util/datas'
 import type { Banco } from '../servidor/prisma'
 
+/**
+ * Quantas vezes uma pessoa consulta o Painel por minuto (pendência 9).
+ *
+ * Cada consulta faz três leituras sobre um período que quem pede escolhe
+ * (por categoria, por pessoa — contagens por colaborador — e a conservação).
+ * A tela pede uma vez ao abrir e, com a espera nos campos de data, uma vez por
+ * período escolhido; trinta por minuto é folga larga, e barra chamadas em
+ * paralelo multiplicando o custo — mesmo raciocínio do C-21. Vale por
+ * processo: o limitador guarda as janelas na memória (`limite-de-taxa.ts`).
+ */
+export const CONSULTAS_DO_PAINEL_POR_MINUTO = 30
+
 export type { LinhaPainel, LinhaPorPessoa }
 
 /** Janela padrão da conferência de conservação exibida no painel. */

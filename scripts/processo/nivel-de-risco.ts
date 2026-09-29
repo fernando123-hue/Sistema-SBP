@@ -44,6 +44,14 @@ const REGRAS: readonly Regra[] = [
   { nivel: 3, padrao: /^src\/core\/seguranca\//, motivo: 'defesas contra conteúdo externo' },
   { nivel: 3, padrao: /^src\/core\/assistente\//, motivo: 'o que o assistente pode dizer a cada papel' },
   { nivel: 3, padrao: /^src\/core\/esquemas\.ts$/, motivo: 'validação da entrada' },
+  // As descrições das categorias moram aqui desde a fase 3 do Jev (`A62`): são
+  // texto do prompt da interpretação E da pergunta que sai para o fornecedor
+  // externo. Antes elas viviam em `adapters/ia-estruturada.ts`, nível 3; sem
+  // esta linha, mudar o prompt passaria a ser nível 2 (revisão do #143).
+  { nivel: 3, padrao: /^src\/core\/config\.ts$/, motivo: 'texto que o modelo lê e que sai para fornecedor externo' },
+  // O outro texto que sai para o fornecedor: as perguntas da segunda opinião,
+  // que definem o que o modo sombra mede (revisão técnica do #143).
+  { nivel: 3, padrao: /^src\/servicos\/segunda-opiniao\.ts$/, motivo: 'perguntas que saem para fornecedor externo' },
   { nivel: 2, padrao: /^src\/core\//, motivo: 'regra de negócio' },
   { nivel: 2, padrao: /^src\/servicos\//, motivo: 'regra de negócio com banco' },
   { nivel: 1, padrao: /^src\/app\//, motivo: 'tela' },

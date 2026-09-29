@@ -112,7 +112,7 @@ const MENCAO_LIGA = new RegExp(
     `(${PALAVRA}(?:${ESPACO}(?:d[aeo]s?${ESPACO})?${PALAVRA})*)`,
 )
 
-function classificar(texto: string): { categoria: ItemExtraido['categoriaCodigo']; confianca: number } {
+function categoriaPorPalavraChave(texto: string): { categoria: ItemExtraido['categoriaCodigo']; confianca: number } {
   for (const regra of REGRAS) {
     if (regra.termos.some((termo) => termo.test(texto))) {
       return { categoria: regra.categoria, confianca: regra.confianca }
@@ -182,7 +182,7 @@ export class IaMock implements AiPort {
     // Conteúdo externo passa pelas três camadas ANTES de qualquer análise.
     const { analise } = prepararConteudoExterno(bruto, TAMANHO_MAXIMO_CORPO)
 
-    const { categoria, confianca } = classificar(bruto)
+    const { categoria, confianca } = categoriaPorPalavraChave(bruto)
     const ligaMencionada = detectarLiga(bruto)
     const camposBase = extrairCampos(bruto)
 

@@ -27,6 +27,30 @@ export function arredondar(valor: number): number {
   return Math.round(valor * FATOR) / FATOR
 }
 
+/**
+ * Número de TELA, em português: vírgula decimal, ponto de milhar (pendência 4).
+ *
+ * Só para exibição — nunca volta para cálculo. Resíduo de ponto flutuante que
+ * arredonda para zero sai "0,00", e não "-0,00", que pareceria dívida.
+ * `sinal`: positivo com "+", zero sem sinal (crédito no Painel).
+ * `enxuto`: sem zeros à direita ("52", "3,5") — para frase corrida, como a
+ * narrativa da rodada; tabela e número solto ficam com as casas fixas.
+ */
+export function decimal(
+  valor: number,
+  opcoes: { casas?: number; sinal?: boolean; enxuto?: boolean } = {},
+): string {
+  const casas = opcoes.casas ?? 2
+  // `Number('5e-3')`, e não `0.5 * 10 ** -casas`: a potência é inexata em
+  // algumas casas (4 e 5), e o limiar tem de ser exatamente meio último dígito.
+  const limpo = Math.abs(valor) < Number(`5e-${casas + 1}`) ? 0 : valor
+  return limpo.toLocaleString('pt-BR', {
+    minimumFractionDigits: opcoes.enxuto ? 0 : casas,
+    maximumFractionDigits: casas,
+    signDisplay: opcoes.sinal ? 'exceptZero' : 'auto',
+  })
+}
+
 /** `-1` se a < b, `1` se a > b, `0` se equivalentes dentro do epsilon. */
 export function compararNumero(a: number, b: number): -1 | 0 | 1 {
   const delta = a - b

@@ -3,6 +3,8 @@ import { join } from 'node:path'
 
 import { z } from 'zod'
 
+import { ehNomeDeModelo } from '../core/ia/nome-de-modelo'
+
 /**
  * Configuração de ambiente.
  *
@@ -63,6 +65,22 @@ const AmbienteSchema = z.object({
    * inventar um e guardá-lo como se protegesse alguma coisa.
    */
   IA_LOCAL_CHAVE: z.string().optional(),
+  /**
+   * Classificador de segunda opinião (`A62`). **`nenhum` é o padrão**: sem
+   * ele o sistema funciona igual, só sem a segunda opinião. É uma variável
+   * separada de `IA_ADAPTER` porque é OUTRO fornecedor, com outra decisão de
+   * dado — e a trava `CLASSIFICADOR_PARA_DADO_REAL` abaixo é por fornecedor.
+   */
+  CLASSIFICADOR_ADAPTER: z.enum(['nenhum', 'mock', 'typesafe']).default('nenhum'),
+  /** Vazio = o padrão do fornecedor (`jev-latest` na TypeSafe). */
+  CLASSIFICADOR_MODELO: z
+    .string()
+    .default('')
+    .refine((modelo) => modelo === '' || ehNomeDeModelo(modelo), {
+      message: 'CLASSIFICADOR_MODELO precisa ser um nome de modelo (letras, números e . : / - _, até 100)',
+    }),
+  /** Chave da TypeSafe. O nome é o que o SDK oficial deles lê. */
+  TYPESAFE_API_KEY: z.string().optional(),
   /**
    * Teto de chamadas à IA por dia, por fornecedor (`A54`, achado C-06).
    *
@@ -300,6 +318,23 @@ export function ambiente(): Ambiente {
     throw new Error(`IA_ADAPTER="${resultado.data.IA_ADAPTER}" exige ${exigida} configurada.`)
   }
 
+  // O SDK da Anthropic junta os cabeçalhos de `ANTHROPIC_CUSTOM_HEADERS` aos
+  // do pedido DEPOIS dos de autenticação: a variável troca a chave (o e-mail
+  // processado na conta de outra organização), põe de volta um `Authorization`
+  // e muda `anthropic-version` e `anthropic-beta`, sem que nada no código diga
+  // isso (pendência 29, revisões do #144). Máquina configurada para um gateway
+  // de modelo costuma ter a variável, com o segredo do gateway dentro.
+  //
+  // Só com `IA_ADAPTER=anthropic`: nos outros casos o SDK nem é construído, e
+  // a mesma variável pode existir na máquina para outra ferramenta. A mensagem
+  // não repete o valor, porque ele costuma carregar segredo.
+  if (resultado.data.IA_ADAPTER === 'anthropic' && (process.env['ANTHROPIC_CUSTOM_HEADERS'] ?? '').trim() !== '') {
+    throw new Error(
+      'ANTHROPIC_CUSTOM_HEADERS está definida, e com IA_ADAPTER="anthropic" ela trocaria a chave e os cabeçalhos ' +
+        'que vão com o texto do e-mail. Apague a variável deste processo antes de subir o sistema.',
+    )
+  }
+
   // O servidor local não tem credencial na tabela acima, mas tem duas
   // exigências próprias, e as duas falham na partida em vez de na primeira
   // chamada ao modelo.
@@ -318,6 +353,25 @@ export function ambiente(): Ambiente {
     }
     const recusa = motivoDeEnderecoLocalInvalido(resultado.data.IA_LOCAL_URL)
     if (recusa) throw new Error(`IA_LOCAL_URL ${recusa}`)
+  }
+
+  if (resultado.data.CLASSIFICADOR_ADAPTER === 'typesafe' && !resultado.data.TYPESAFE_API_KEY?.trim()) {
+    throw new Error('CLASSIFICADOR_ADAPTER="typesafe" exige TYPESAFE_API_KEY configurada.')
+  }
+
+  // A mesma trava da IA, para o classificador (`A62`, `§ H.4` item 35): o Jev
+  // não recebe e-mail de associado enquanto o dono não decidir as condições.
+  // A camada de defesa do dado roda sempre, mas nome e endereço passam por
+  // ela — por isso a decisão é do dono, e não desta camada.
+  if (
+    resultado.data.INGESTAO_ADAPTER !== 'mock' &&
+    !CLASSIFICADOR_PARA_DADO_REAL[resultado.data.CLASSIFICADOR_ADAPTER]
+  ) {
+    throw new Error(
+      `INGESTAO_ADAPTER="${resultado.data.INGESTAO_ADAPTER}" lê e-mail real, e ` +
+        `CLASSIFICADOR_ADAPTER="${resultado.data.CLASSIFICADOR_ADAPTER}" não pode recebê-lo ` +
+        '(decisão A62, pendente em DECISOES.md § H.4 item 35). Use CLASSIFICADOR_ADAPTER="nenhum".',
+    )
   }
 
   // Caixa real = e-mail real de associado (achado N-17). A IA simulada
@@ -410,6 +464,25 @@ const IA_PARA_DADO_REAL = {
   // de configurar o endereço.
   local: false,
 } as const satisfies Record<z.infer<typeof AmbienteSchema>['IA_ADAPTER'], boolean>
+
+/**
+ * Quais classificadores podem receber e-mail real de associado (`A62`).
+ *
+ * Mesmo desenho de `IA_PARA_DADO_REAL`: lista de PERMISSÃO amarrada ao enum,
+ * e trocar uma linha é a decisão.
+ *
+ * - `nenhum`: nada sai da casa.
+ * - `mock`: não sai da casa, mas daria opinião inventada sobre e-mail real, e
+ *   a discordância mandaria item de verdade à revisão por causa de um dublê.
+ * - `typesafe`: nasce `false`. Sem acordo empresarial, e nome e endereço
+ *   atravessam a camada de defesa. Quem troca esta linha é o dono, com a
+ *   resposta do `§ H.4` item 35 registrada.
+ */
+const CLASSIFICADOR_PARA_DADO_REAL = {
+  nenhum: true,
+  mock: false,
+  typesafe: false,
+} as const satisfies Record<z.infer<typeof AmbienteSchema>['CLASSIFICADOR_ADAPTER'], boolean>
 
 /**
  * Por que o endereço do modelo local não pode ser público (`A56 (f)`).

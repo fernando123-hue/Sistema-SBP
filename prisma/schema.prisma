@@ -972,11 +972,12 @@ model ContagemDeBusca {
 model UsoDaIa {
   /// Dia da operação, `YYYY-MM-DD`, no fuso de Brasília.
   dia            String
-  /// Valor de `IA_ADAPTER`: anthropic | gemini | local | mock.
+  /// Valor de `IA_ADAPTER` (anthropic | gemini | local | mock) ou de
+  /// `CLASSIFICADOR_ADAPTER` (typesafe).
   fornecedor     String
   /// O modelo que o fornecedor disse ter usado.
   modelo         String
-  /// interpretacao | assistente
+  /// interpretacao | assistente | classificacao
   tarefa         String
   chamadas       Int    @default(0)
   /// Chamadas que terminaram em erro — do fornecedor (fora do ar, cota) ou
