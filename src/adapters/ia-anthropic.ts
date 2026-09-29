@@ -80,6 +80,9 @@ export const PERFIL_ANTHROPIC: PerfilDoFornecedor = {
   },
 }
 
+/** O único destino do texto. Ver o comentário em `clienteAnthropic`. */
+export const ENDERECO_DA_API = 'https://api.anthropic.com'
+
 /**
  * `chave` e `fetch` só existem para o teste exercitar o SDK de verdade sem
  * rede (`forma-na-saida-estruturada.test.ts`). Em produção nada é passado, e a
@@ -100,8 +103,37 @@ export function clienteAnthropic(
   // valia aqui e era falsa no Gemini — e ninguém tinha como saber lendo o
   // código. Declarar em cada adapter o que ele de fato faz é o que torna a
   // afirmação do núcleo verificável nos dois.
+  //
+  // `baseURL`, `authToken` e `logLevel` EXPLÍCITOS pelo mesmo motivo, e com
+  // mais peso (pendência 29): sem eles, o SDK lê do ambiente
+  // `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` e `ANTHROPIC_LOG`. A primeira
+  // manda o corpo do e-mail para outro endereço; a última, em `debug`, escreve
+  // o pedido e a resposta inteiros no console (`formatRequestDetails`), por
+  // fora de `registrarLog`, `redigir` e `resumoDeTransporte`. Nas três, a opção
+  // passada aqui vence a variável — conferido na fonte do SDK 0.125. Para onde
+  // o texto vai e o que sai no log é decisão do código, nunca de uma variável
+  // esquecida na máquina.
+  //
+  // `ANTHROPIC_CUSTOM_HEADERS` é a quarta, e a pior de ver: o destino não
+  // muda, mas os cabeçalhos dela entram DEPOIS dos de autenticação e trocam a
+  // `x-api-key` (o e-mail processado na conta de outra organização) ou põem
+  // de volta o `Authorization` que `authToken: null` tirou (revisões do
+  // #144). A tranca principal é `ambiente()`, que recusa subir com ela e
+  // `IA_ADAPTER=anthropic`. Esta é a segunda: `defaultHeaders` explícito vence
+  // o da variável, cabeçalho por cabeçalho, e `null` apaga. Ela só cobre a
+  // credencial — cabeçalho que não conhecemos passaria, e é por isso que a
+  // primeira tranca existe. O `authorization: null` daqui também apaga o que
+  // `ANTHROPIC_AUTH_TOKEN` poria: são duas trancas no mesmo cabeçalho, de
+  // propósito. Tirar só `authToken: null` não fica vermelho em teste nenhum,
+  // porque o `authorization: null` cobre o mesmo cabeçalho; tirar
+  // `authorization: null` fica vermelho no teste de `ANTHROPIC_CUSTOM_HEADERS`;
+  // tirar as duas, também no de `ANTHROPIC_AUTH_TOKEN`.
   const cliente = new Anthropic({
     apiKey: chave,
+    authToken: null,
+    defaultHeaders: { 'x-api-key': chave, authorization: null },
+    baseURL: ENDERECO_DA_API,
+    logLevel: 'warn',
     maxRetries: 2,
     timeout: TEMPO_LIMITE_MS,
     ...(opcoes.fetch ? { fetch: opcoes.fetch } : {}),
