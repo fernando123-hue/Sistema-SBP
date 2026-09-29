@@ -4,7 +4,52 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 29/09/2026, fim da noite — PARADA PARA AS INSTRUÇÕES NOVAS DO DONO (este bloco vence os de baixo; o `git log` vence este)
+> ### 29/09/2026, depois da parada — INVESTIGAÇÃO DAS INSTRUÇÕES NOVAS (JEV + CONTA DO DONO) ENTREGUE; AGUARDA O DONO (este bloco vence os de baixo)
+>
+> **1. O que foi feito.** Os dois pedidos novos do dono foram investigados **sem mudar código**:
+> - "todo o potencial do Jev";
+> - "Autonomous Operations + SBP Control Center".
+>
+> O resultado está em `docs/arquitetura/2026-09-29-jev-harness-e-operacao-autonoma.md`. As decisões que só o dono pode tomar estão em `DECISOES.md § H.4`, itens **37 a 48**.
+>
+> **2. A rede continua bloqueando a TypeSafe.** `api.typesafe.ai` e `docs.typesafe.ai` deram **403** em 29/09, como em 26/09. Nenhum número do Jev foi medido; o documento diz isso onde importa.
+>
+> **3. Rota recomendada** (Parte III do documento). Nenhum dos passos 1 a 5 gasta com IA:
+> - **passo 1:** pendência 17 (conferência de literalidade + DV do CPF), com o critério do `§ H.4` 40;
+> - **passo 2:** Harness puro em `core/harness/`, sem mudar comportamento;
+> - **passo 3:** registro por chamada de IA, com latência e versões;
+> - **passo 4:** ingestão em segundo plano, porque a IA local leva dezenas de segundos por e-mail;
+> - **passo 5:** Jev em paralelo e o relatório sombra × desfecho.
+>
+> Depois vêm o ator próprio (`§ H.4` 7) e o papel `dono`, e só então o Control Center.
+>
+> **4. Respostas do dono no mesmo dia** (registradas no `§ H.4`):
+> - 37: sinal de IA só aumenta o cuidado até calibrar;
+> - 41: avisos só dentro do sistema, por enquanto;
+> - 45: a conta dele é separada da gestão, e o papel **não** se chama "dono" (nome a escolher).
+>
+> Ele perguntou se o sistema vive sem o Jev e se dá para ter um "Jev próprio". A resposta está na **Parte IV** do documento e nos itens novos **47 e 48**.
+>
+> **5. MUDANÇA DE RUMO NO MESMO DIA — LINHA DE CHEGADA DO PROTÓTIPO (vence os itens acima).**
+>
+> O dono pediu foco para **terminar o protótipo** e medo de evoluir sem fim. Ficou valendo `DIRECAO.md`, *Linha de chegada do protótipo*:
+> - **pronto** = equipe usando com e-mail real, em paralelo com a planilha, por 2 semanas;
+> - **código que falta:**
+>   - fechar #146 e #147;
+>   - pendência 17 (critério: `§ H.4` 40);
+>   - pendência 37;
+>   - a sincronização em segundo plano, só se a medição do tempo por e-mail mandar;
+> - **o resto é TI, servidor e decisões do dono.**
+>
+> Jev, Harness, Control Center, operação autônoma e "Jev próprio" ficam **congelados** até o fim da rodada paralela. Nome do papel da conta do dono: **"Supervisor do sistema"** (`§ H.4` 45), também congelado.
+>
+> **Regra:** ideia nova vai para a lista abaixo e não vira trabalho, a menos que bloqueie a rodada paralela, seja defeito ou seja risco de segurança ou de dado real.
+>
+> **Depois do protótipo (lista; não é trabalho agora):**
+> - tudo da Parte III do documento de arquitetura de 29/09;
+> - pendências fora do item 1 acima.
+>
+> ### 29/09/2026, fim da noite — PARADA PARA AS INSTRUÇÕES NOVAS DO DONO (anterior; o item 0 dele foi feito no bloco acima)
 >
 > **0. PRIMEIRO, antes de qualquer código.** O dono vai passar **instruções novas sobre o Jev e sobre como quer que funcione a conta dele no sistema**. O que ele pediu:
 > - **Priorizar:** comparar as instruções novas com o trabalho estacionado abaixo e dizer a ele qual vem primeiro, com o motivo. Recomendação já dada: as instruções novas primeiro. Os dois PRs abertos estão parados em ponto seguro, e cada um leva uma sessão curta para fechar.
