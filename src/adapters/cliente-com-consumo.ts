@@ -79,6 +79,21 @@ export async function chamarComControle<T>(
   modeloDe: (resultado: T) => string,
 ): Promise<T> {
   const limites = opcoes.limites ?? LIMITES_PADRAO
+
+  // A CONTAGEM VEM ANTES, E O ESTADO DO DISJUNTOR DEPOIS.
+  //
+  // A leitura da contagem agora pode DEMORAR em vez de abortar: quando o
+  // pool está saturado, ela espera o tempo do pool e só então devolve
+  // `null`. Ler o disjuntor antes desse `await` decidiria com um retrato
+  // de segundos atrás — outra chamada pode tê-lo aberto no meio. É o
+  // mesmo perigo que este arquivo já descreve e corrigiu na GRAVAÇÃO
+  // (`anotarNoDisjuntor`, abaixo); aqui a janela era pequena e passou a
+  // ser grande. Achado BAIXO da revisão de segurança do PR #86.
+  //
+  // SEM TETO (0), A CONTAGEM NÃO DECIDE NADA, E NÃO É LIDA. Sem banco,
+  // cada leitura esperava ~10 s pelo pool para devolver um número que
+  // `impedimentoParaChamar` descarta — medido em 25/09/2026 com o gabarito
+  // na máquina da IA local. A gravação do uso, abaixo, continua.
   const chamadasHoje = limites.tetoDiarioDeChamadas > 0 ? await contarSemDerrubar(opcoes) : null
   const estado = disjuntores.get(opcoes.fornecedor) ?? DISJUNTOR_FECHADO
   const impedimento = impedimentoParaChamar({
@@ -89,6 +104,8 @@ export async function chamarComControle<T>(
   })
 
   if (impedimento) {
+    // Não é registrado como chamada: nada foi pedido ao fornecedor, e
+    // contar isto inflaria justamente o número que decide o teto.
     registrarLog('aviso', 'chamada à IA impedida pelo controle de consumo', {
       fornecedor: opcoes.fornecedor,
       tarefa: opcoes.tarefa,
@@ -101,9 +118,13 @@ export async function chamarComControle<T>(
   try {
     const resultado = await chamar()
     anotarNoDisjuntor(opcoes.fornecedor, 'ok', limites)
+    // O modelo REAL usado, não o apelido pedido: é ele que tem preço.
     await anotar(opcoes, modeloDe(resultado), 'ok', Date.now() - inicio)
     return resultado
   } catch (erro) {
+    // Falha de FORMA não abre o disjuntor: o fornecedor respondeu, quem
+    // errou foi a resposta. Suspender a IA inteira por dois e-mails
+    // difíceis seguidos seria trocar um problema pequeno por um grande.
     const conta = especieDoErro(erro) === 'transporte' ? 'falha' : 'ok'
     anotarNoDisjuntor(opcoes.fornecedor, conta, limites)
     await anotar(opcoes, modeloPedido, 'falha', Date.now() - inicio)
