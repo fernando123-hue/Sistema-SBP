@@ -836,7 +836,8 @@ model AvisoVisto {
 model Revisao {
   id           String    @id @default(cuid())
   itemId       String
-  /// baixa_confianca | campo_ausente | duplicata_suspeita | anomalia | conteudo_suspeito
+  /// baixa_confianca | campo_ausente | duplicata_suspeita | anomalia | conteudo_suspeito | desdobramento
+  /// | valor_fora_do_texto | cpf_invalido
   motivo       String
   campoIncerto String?
   /// JSON

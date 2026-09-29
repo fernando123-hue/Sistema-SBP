@@ -14,6 +14,12 @@ import { prepararConteudoExterno, validarAnexo } from '../core/seguranca/conteud
 import type { ResumoIngestao } from '../core/tipos'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { ClassificadorPort } from '../ports/classificador'
+import {
+  conferirExtracao,
+  prepararTextoParaConferir,
+  type MotivoDaConferencia,
+  type ProblemaNaExtracao,
+} from '../core/conferencia-da-extracao'
 import { FalhaDeInterpretacao, InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { AvisoDaBusca, IngestaoPort } from '../ports/ingestao'
 import { ATOR_SISTEMA, exigirPapel, type Ator } from '../servidor/ator'
@@ -600,6 +606,13 @@ async function processarUm(
     ? prepararConteudoExterno(`${email.assunto}\n${email.corpo}`, TAMANHO_MAXIMO_CORPO).analise.suspeito
     : false
 
+  // A conferência do que a IA extraiu contra o texto (pendência 17) também
+  // fica FORA da transação: é conta sobre o texto, e não precisa segurar lock.
+  // Um problema por item, na ordem dos itens.
+  const problemasDaExtracao: (ProblemaNaExtracao | null)[] = interpretacao
+    ? conferirItens(email, interpretacao)
+    : []
+
   // A segunda opinião também fica FORA da transação, pelo mesmo motivo. Só
   // quando houve interpretação: sem ela não há com o que comparar, e desistir
   // (achado C-11/N-13) é justamente parar de pagar chamada por este e-mail.
@@ -759,6 +772,7 @@ async function processarUm(
             emailId: registro.id,
             messageId: email.messageId,
             interpretacao,
+            problemasDaExtracao,
             anexosRejeitados,
             correlacaoId,
             usuario,
@@ -793,6 +807,8 @@ async function criarItens(
     emailId: string
     messageId: string
     interpretacao: Interpretacao
+    /** Um por item, na mesma ordem — `conferirItens`. */
+    problemasDaExtracao: readonly (ProblemaNaExtracao | null)[]
     anexosRejeitados: number
     correlacaoId: string
     usuario: string
@@ -831,6 +847,7 @@ async function criarItens(
     // perdido para sempre. É o defeito da planilha reconstruído aqui dentro.
     if (!categoria) throw new CategoriaDesconhecidaError(extraido.categoriaCodigo)
 
+    const problema = contexto.problemasDaExtracao[posicao] ?? null
     const motivo = decidirRevisao(
       extraido.confianca,
       categoria.limiarConfianca,
@@ -845,6 +862,7 @@ async function criarItens(
       // e N unidades de carga entravam aprovadas sem ninguém olhar. Uma
       // assinatura numerada no rodapé viraria três itens de trabalho.
       interpretacao.itens.length > 1,
+      problema?.motivo ?? null,
     )
 
     // A liga vira IDENTIDADE aqui, e não no motor (`A4`).
@@ -893,7 +911,10 @@ async function criarItens(
         data: {
           itemId: item.id,
           motivo,
-          campoIncerto: extraido.camposAusentes[0] ?? null,
+          // O campo que a pessoa precisa olhar: o que não bateu com o e-mail,
+          // quando é esse o motivo; senão, o primeiro que faltou.
+          campoIncerto:
+            problema && motivo === problema.motivo ? problema.campo : (extraido.camposAusentes[0] ?? null),
           sugestaoIa: serializar(extraido),
           confianca: extraido.confianca,
         },
@@ -1022,11 +1043,31 @@ export function decidirRevisao(
   conteudoSuspeito: boolean,
   anexoRejeitado: boolean,
   houveDesdobramento: boolean,
+  // Opcional só para os chamadores de antes da pendência 17; a ingestão
+  // sempre passa.
+  problemaNaExtracao: MotivoDaConferencia | null = null,
 ): MotivoRevisao | null {
   if (conteudoSuspeito) return 'conteudo_suspeito'
   if (anexoRejeitado) return 'anomalia'
+  // Desdobramento antes da conferência: quem revisa um desdobramento olha
+  // todos os itens e todos os campos de qualquer jeito, e o motivo que ele
+  // precisa ler é "quantos itens", que é decisão de carga.
   if (houveDesdobramento) return 'desdobramento'
+  // Antes da confiança: a confiança é a própria IA que dá; o valor fora do
+  // texto é o código que viu (pendência 17). Confiança alta não o dispensa.
+  if (problemaNaExtracao) return problemaNaExtracao
   if (confianca < limiar) return 'baixa_confianca'
   if (temCampoAusente) return 'campo_ausente'
   return null
+}
+
+/**
+ * A conferência da pendência 17 para todos os itens de um e-mail: o texto é
+ * preparado uma vez. O texto é o que o modelo leu — assunto e corpo
+ * (`adapters/ia-estruturada.ts`) —, então um valor que só existe no nome de um
+ * anexo conta como fora do texto.
+ */
+function conferirItens(email: EmailBruto, interpretacao: Interpretacao): (ProblemaNaExtracao | null)[] {
+  const texto = prepararTextoParaConferir(`${email.assunto}\n${email.corpo}`)
+  return interpretacao.itens.map((item) => conferirExtracao(texto, item.campos, item.ligaMencionada))
 }

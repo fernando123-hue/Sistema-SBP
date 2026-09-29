@@ -50,6 +50,18 @@ const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutr
   anomalia: { texto: 'anomalia', tom: 'alerta' },
   conteudo_suspeito: { texto: 'conteúdo suspeito', tom: 'alerta' },
   desdobramento: { texto: 'e-mail gerou vários itens', tom: 'atencao' },
+  valor_fora_do_texto: { texto: 'dado não encontrado no e-mail', tom: 'atencao' },
+  cpf_invalido: { texto: 'CPF não confere', tom: 'atencao' },
+}
+
+/**
+ * O que o selo do campo diz. "Falta" é o campo que a IA não achou; nos dois
+ * motivos da pendência 17 o campo EXISTE e o valor é que precisa ser
+ * conferido contra o e-mail — dizer "falta" mandaria a pessoa procurar a
+ * coisa errada.
+ */
+function seloDoCampo(motivo: string, campo: string): string {
+  return motivo === 'valor_fora_do_texto' || motivo === 'cpf_invalido' ? `confira: ${campo}` : `falta: ${campo}`
 }
 
 /**
@@ -229,7 +241,7 @@ export default function Revisao() {
             ? 'Carregando…'
             : estado === 'vazia'
               ? 'Nada aguardando decisão humana.'
-              : `${totalPendentes} itens em que a IA não teve certeza suficiente.`
+              : `${totalPendentes} itens para conferir antes de ir para a fila de alguém.`
         }
       />
 
@@ -275,7 +287,7 @@ export default function Revisao() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Selo tom={info.tom}>{info.texto}</Selo>
                     <SeloDeConfianca valor={item.confianca} limiar={item.limiarConfianca} />
-                    {item.campoIncerto ? <Selo>falta: {item.campoIncerto}</Selo> : null}
+                    {item.campoIncerto ? <Selo>{seloDoCampo(item.motivo, item.campoIncerto)}</Selo> : null}
                   </div>
 
                   <p className="mt-2 text-xs text-tinta-suave">
