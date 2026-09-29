@@ -93,93 +93,155 @@ describe('as perguntas', () => {
 /**
  * O fonte com os COMENTÁRIOS em branco — e só eles.
  *
- * A primeira versão tirava comentários por regex, que não conhece strings:
- * um `//` dentro de uma string (uma URL) apagava o resto da linha, e a chamada
- * que estivesse ali sumia da varredura (revisões do #143). Este leitor anda
- * caractere a caractere e sabe quando está em string, template ou comentário;
- * barra invertida fora de string (expressão regular) pula o caractere
- * seguinte, para `/a\/\//` não parecer comentário.
+ * A primeira versão tirava comentários por regex, que não conhece strings: um
+ * `//` dentro de uma URL apagava o resto da linha, e a chamada que estivesse
+ * ali sumia da varredura. A segunda não conhecia expressão regular nem `${…}`
+ * de template: uma regex com `/*` ou com aspa dentro trocava o estado do
+ * leitor e escondia código (revisões do #143). Esta anda caractere a
+ * caractere e acompanha comentário, string, template (com `${…}` aninhado) e
+ * expressão regular — decidida como o próprio analisador de JavaScript
+ * decide: `/` depois de operador, abertura ou palavra como `return` começa
+ * uma regex; depois de valor, é divisão.
  *
- * O TypeScript instalado (7, nativo) não expõe mais a árvore em JavaScript
- * senão por uma API marcada como instável — e um teste de segurança não se
- * apoia em API instável. O erro possível deste leitor é para o lado seguro:
- * texto de string continua contando, então sobra falso positivo, nunca uma
- * chamada escondida.
+ * O TypeScript instalado (7, nativo) não expõe a árvore em JavaScript senão
+ * por uma API marcada como instável, e um teste de segurança não se apoia em
+ * API instável. O que este leitor NÃO resolve está escrito na pendência 35:
+ * nome montado em tempo de execução (`c['classi' + 'ficar']`) e texto de JSX
+ * fora de string. O remédio de fundo é o tipo marcado, não um leitor melhor.
  */
 function semComentarios(fonte: string): string {
   let saida = ''
-  let estado: 'codigo' | 'linha' | 'bloco' | "'" | '"' | '`' = 'codigo'
+  let estado: 'codigo' | 'linha' | 'bloco' | 'regex' | "'" | '"' | '`' = 'codigo'
+  // Para cada `${` aberto, quantas `{` de código ainda faltam fechar dentro dele.
+  const expressoesDeTemplate: number[] = []
+  let naClasseDaRegex = false
+  let ultimoSignificativo = ''
+
+  // `/` começa regex depois de operador, abertura, vírgula, início ou palavra
+  // que precede expressão; depois de valor (nome, número, `)`, `]`), é divisão.
+  const comecaRegex = () =>
+    ultimoSignificativo === '' ||
+    '(,=:[!&|?{};+-*%<>~^'.includes(ultimoSignificativo) ||
+    /\b(?:return|typeof|case|do|else|in|of|void|delete|throw|new|yield|await)\s*$/.test(saida)
+
   for (let i = 0; i < fonte.length; i++) {
     const c = fonte[i]!
     const proximo = fonte[i + 1]
-    if (estado === 'linha') {
-      if (c === '\n') {
-        estado = 'codigo'
+    switch (estado) {
+      case 'linha':
+        if (c === '\n') {
+          estado = 'codigo'
+          saida += c
+        } else saida += ' '
+        break
+      case 'bloco':
+        if (c === '*' && proximo === '/') {
+          estado = 'codigo'
+          saida += '  '
+          i++
+        } else saida += c === '\n' ? c : ' '
+        break
+      case 'regex':
         saida += c
-      } else saida += ' '
-    } else if (estado === 'bloco') {
-      if (c === '*' && proximo === '/') {
-        estado = 'codigo'
-        saida += '  '
-        i++
-      } else saida += c === '\n' ? c : ' '
-    } else if (estado === 'codigo') {
-      if (c === '/' && proximo === '/') {
-        estado = 'linha'
-        saida += '  '
-        i++
-      } else if (c === '/' && proximo === '*') {
-        estado = 'bloco'
-        saida += '  '
-        i++
-      } else if (c === '\\') {
-        saida += c + (proximo ?? '')
-        i++
-      } else {
-        if (c === "'" || c === '"' || c === '`') estado = c
+        if (c === '\\') {
+          saida += proximo ?? ''
+          i++
+        } else if (c === '[') naClasseDaRegex = true
+        else if (c === ']') naClasseDaRegex = false
+        else if ((c === '/' && !naClasseDaRegex) || c === '\n') {
+          // Regex não atravessa linha: a quebra também devolve ao código.
+          estado = 'codigo'
+          ultimoSignificativo = ')'
+        }
+        break
+      case "'":
+      case '"':
         saida += c
-      }
-    } else {
-      // Dentro de string ou template: tudo conta, e só a aspa certa, não
-      // escapada, fecha.
-      if (c === '\\') {
-        saida += c + (proximo ?? '')
-        i++
-      } else {
-        if (c === estado) estado = 'codigo'
-        saida += c
-      }
+        if (c === '\\') {
+          saida += proximo ?? ''
+          i++
+        } else if (c === estado || c === '\n') {
+          estado = 'codigo'
+          ultimoSignificativo = ')'
+        }
+        break
+      case '`':
+        if (c === '\\') {
+          saida += c + (proximo ?? '')
+          i++
+        } else if (c === '$' && proximo === '{') {
+          saida += '${'
+          i++
+          expressoesDeTemplate.push(0)
+          estado = 'codigo'
+          ultimoSignificativo = '{'
+        } else {
+          saida += c
+          if (c === '`') {
+            estado = 'codigo'
+            ultimoSignificativo = ')'
+          }
+        }
+        break
+      case 'codigo':
+        if (c === '/' && proximo === '/') {
+          estado = 'linha'
+          saida += '  '
+          i++
+        } else if (c === '/' && proximo === '*') {
+          estado = 'bloco'
+          saida += '  '
+          i++
+        } else if (c === '/' && comecaRegex()) {
+          estado = 'regex'
+          naClasseDaRegex = false
+          saida += c
+        } else if (c === '}' && expressoesDeTemplate.length > 0 && expressoesDeTemplate.at(-1) === 0) {
+          // Fecha o `${…}` e volta ao texto do template.
+          expressoesDeTemplate.pop()
+          estado = '`'
+          saida += c
+        } else {
+          saida += c
+          if (c === "'" || c === '"' || c === '`') estado = c
+          else if (expressoesDeTemplate.length > 0 && c === '{') expressoesDeTemplate[expressoesDeTemplate.length - 1]!++
+          else if (expressoesDeTemplate.length > 0 && c === '}') expressoesDeTemplate[expressoesDeTemplate.length - 1]!--
+          if (!/\s/.test(c)) ultimoSignificativo = /[\w$]/.test(c) ? 'a' : c
+        }
+        break
     }
   }
   return saida
 }
 
-/** Linha que DEFINE o método (a porta, a política): `classificar(pedido: …`. */
-const DEFINICAO = /^\s*(?:async\s+)?classificar\s*\(\s*\w+\s*:/
-
 /**
- * As formas de CÓDIGO de chegar ao método: acesso (`.`/`?.`, que cobre
- * `.call`/`.apply`/`.bind` e `Reflect.apply(c.classificar…)`), chamada direta,
- * chave em texto (`c['classificar']`) e desestruturação, com ou sem apelido.
- * A palavra solta não conta: "classificar" é verbo em português, e aparece em
- * frase de tela e em padrão de detecção.
+ * A ASSINATURA que define o método (a porta, a política): `classificar(pedido: …`.
+ * Só o nome da assinatura sai da contagem — o resto da linha continua sendo
+ * lido, para uma chamada colada na mesma linha não se esconder atrás dela.
  */
-const USO = [
-  /(?:\.|\?\.)\s*classificar\b/g,
-  /\bclassificar\s*\(/g,
-  /['"`]classificar['"`]/g,
-  /[{,]\s*classificar\s*[,}:]/g,
-]
+const ASSINATURA = /^(\s*(?:async\s+)?)classificar(\s*\(\s*\w+\s*:)/gm
 
 /**
- * Em quantas linhas o método aparece como código, fora de comentário e fora
- * das linhas que o definem.
+ * Quantas vezes o método aparece como CÓDIGO — contadas por ocorrência, não
+ * por linha: acesso (`.`/`?.`, que cobre `.call`/`.apply`/`.bind` e
+ * `Reflect.apply(c.classificar…)`), chamada direta, chave em texto
+ * (`c['classificar']`) e desestruturação (com ou sem apelido, mesmo quebrada
+ * em várias linhas). A palavra solta não conta: "classificar" é verbo em
+ * português, e aparece em frase de tela e em padrão de detecção.
  */
 function usosDeClassificar(fonte: string): number {
-  return semComentarios(fonte)
-    .split('\n')
-    .filter((linha) => !DEFINICAO.test(linha))
-    .filter((linha) => USO.some((forma) => new RegExp(forma.source).test(linha))).length
+  const codigo = semComentarios(fonte).replace(ASSINATURA, '$1__assinatura__$2')
+  let usos = 0
+  for (const achado of codigo.matchAll(/\bclassificar\b/g)) {
+    const antes = codigo.slice(Math.max(0, achado.index - 40), achado.index).trimEnd()
+    const depois = codigo.slice(achado.index + 'classificar'.length).trimStart()
+    const acesso = /(?:\.|\?\.)$/.test(antes)
+    const chamada = depois.startsWith('(')
+    const chaveEmTexto = /['"`]$/.test(antes) && /^['"`]/.test(depois)
+    const desestruturacao = /[{,]$/.test(antes) && /^[,}:]/.test(depois)
+    if (acesso || chamada || chaveEmTexto || desestruturacao) usos++
+  }
+  return usos
 }
 
 describe('varredura: só este módulo pergunta ao classificador', () => {
@@ -209,8 +271,30 @@ describe('varredura: só este módulo pergunta ao classificador', () => {
       'const { classificar: perguntar } = c; perguntar({})',
       'const f = c.classificar; f.apply(c, [{}])',
       'Reflect.apply(c.classificar, c, [{}])',
+      // Rodada 3 do #143: regex literal e `${…}` confundiam o leitor.
+      "const r = /'/; const u = 'https://x'; await c.classificar({})",
+      "const r = /'/\nconst u = 'https://x'; await c.classificar({})",
+      'const r = /[/*]/\nawait c.classificar({})\nconst s = /[*/]/',
+      'const r = /[/*]/\nawait c.classificar({ texto, perguntas: outras })\n/** doc */',
+      "const t = `${'`'}`; const u = 'https://x'; await c.classificar({})",
+      'const t = `a ${ { x: 1 }.x } b`; const u = "https://x"; await c.classificar({})',
+      'const {\n  classificar: perguntar,\n} = c\nawait perguntar({})',
+      'const {\n  outro,\n  classificar,\n} = c',
+      'return /x/.test(s) ? c.classificar({}) : null',
+      'const metade = total / 2; const u = "https://x"; c.classificar({})',
     ]
     for (const trecho of pegas) expect(usosDeClassificar(trecho), trecho).toBeGreaterThan(0)
+
+    // Por ocorrência, não por linha: uma assinatura ou uma chamada legítima
+    // não escondem outra chamada na mesma linha.
+    expect(
+      usosDeClassificar('classificar(p: Pedido) { return c.classificar({ texto: p.texto, perguntas: outras }) }'),
+    ).toBe(1)
+    expect(
+      usosDeClassificar(
+        'await c.classificar({ texto, perguntas: PERGUNTAS_DA_INGESTAO }) ?? c.classificar({ texto, perguntas: outras })',
+      ),
+    ).toBe(2)
 
     const ignoradas = [
       '// c.classificar({ texto })',
