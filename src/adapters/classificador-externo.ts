@@ -110,7 +110,7 @@ export class ClassificadorExterno implements ClassificadorPort {
     }
 
     return {
-      respostas: bruto.respostas,
+      respostas: copiaConferida(pedido.perguntas, bruto.respostas),
       fornecedor: this.fornecedor,
       modeloUsado: bruto.modeloUsado,
       mascarados: protegido.mascarados,
@@ -141,17 +141,41 @@ function conferirPerguntas(perguntas: Readonly<Record<string, Pergunta>>): void 
 const ehProbabilidade = (valor: number) => Number.isFinite(valor) && valor >= 0 && valor <= 1
 
 /**
+ * Folga das contas de coerência. As probabilidades vêm arredondadas pelo
+ * fornecedor; 0,02 aceita o arredondamento e recusa a contradição (uma soma 2,
+ * uma escolha com 1% contra 99% do outro rótulo).
+ */
+const FOLGA = 0.02
+
+/**
  * O que está errado na resposta, em palavras NOSSAS — ou `null`.
  *
  * A frase cita o nome da pergunta e o tipo do defeito, nunca o valor que veio:
  * um rótulo inventado pelo modelo pode ser um trecho do e-mail.
+ *
+ * Forma e faixa não bastam: uma resposta pode ter cada número entre 0 e 1 e
+ * ainda assim se contradizer — "anuidade" escolhida com 1% de probabilidade,
+ * rótulos que somam 2. A fase 3 compara a `escolha` com a interpretação; uma
+ * escolha que as próprias probabilidades desmentem viraria concordância ou
+ * discordância falsa. Incoerente é forma errada, e forma errada falha alto
+ * (invariante 7), nunca vira opinião.
+ *
+ * A `confianca` só é conferida na faixa: o que ela mede na TypeSafe (a
+ * probabilidade do escolhido? outra conta?) não está confirmado (`A62`), e
+ * inventar a regra aqui recusaria toda resposta boa se o palpite errasse.
  */
 function problemaNasRespostas(
   perguntas: Readonly<Record<string, Pergunta>>,
   respostas: Readonly<Record<string, Resposta>>,
 ): string | null {
+  // Resposta a pergunta que ninguém fez: a chave é do fornecedor, e pode ser
+  // um trecho do e-mail ou uma ordem. Não segue — e a frase não a cita.
+  if (Object.keys(respostas).some((nome) => !Object.hasOwn(perguntas, nome))) {
+    return 'veio resposta a uma pergunta que não foi feita'
+  }
+
   for (const [nome, pergunta] of Object.entries(perguntas)) {
-    const resposta = respostas[nome]
+    const resposta = Object.hasOwn(respostas, nome) ? respostas[nome] : undefined
     if (!resposta) return `a pergunta "${nome}" ficou sem resposta`
     if (resposta.tipo !== pergunta.tipo) return `a pergunta "${nome}" voltou com outro tipo de resposta`
 
@@ -171,19 +195,77 @@ function problemaNasRespostas(
     if (recebidas.length !== esperadas.length || recebidas.some((chave) => !esperadas.includes(chave))) {
       return `a pergunta "${nome}" voltou com rótulos diferentes dos perguntados`
     }
-    if (Object.values(resposta.probabilidades).some((valor) => !ehProbabilidade(valor))) {
+    const probabilidades = esperadas.map((rotulo) => resposta.probabilidades[rotulo]!)
+    if (probabilidades.some((valor) => !ehProbabilidade(valor))) {
       return `a pergunta "${nome}" voltou com probabilidade fora de 0 a 1`
     }
+    const soma = probabilidades.reduce((total, valor) => total + valor, 0)
+    if (Math.abs(soma - 1) > FOLGA) return `a pergunta "${nome}" voltou com probabilidades que não somam 1`
 
-    if (resposta.tipo === 'escolha' && !esperadas.includes(resposta.escolha)) {
-      return `a pergunta "${nome}" voltou com um rótulo que não foi perguntado`
+    if (resposta.tipo === 'escolha') {
+      if (!esperadas.includes(resposta.escolha)) {
+        return `a pergunta "${nome}" voltou com um rótulo que não foi perguntado`
+      }
+      // Empate aceito: dois rótulos com a mesma probabilidade, qualquer um serve.
+      const maior = Math.max(...probabilidades)
+      if (resposta.probabilidades[resposta.escolha]! < maior - FOLGA) {
+        return `a pergunta "${nome}" voltou com uma escolha que as probabilidades desmentem`
+      }
     }
     if (resposta.tipo === 'nota') {
       const maior = esperadas.length - 1
       if (!Number.isFinite(resposta.nota) || resposta.nota < 0 || resposta.nota > maior) {
         return `a pergunta "${nome}" voltou com nota fora da escala`
       }
+      // A nota é a ESPERADA (`ports/classificador.ts`): a média dos níveis
+      // pesada pelas probabilidades. Folga proporcional à escala.
+      const esperada = probabilidades.reduce((total, valor, nivel) => total + valor * nivel, 0)
+      if (Math.abs(resposta.nota - esperada) > FOLGA * maior) {
+        return `a pergunta "${nome}" voltou com uma nota que as probabilidades desmentem`
+      }
     }
   }
   return null
+}
+
+/**
+ * A resposta refeita campo a campo, só com o que foi perguntado e conferido.
+ *
+ * `problemaNasRespostas` já recusou pergunta a mais; copiar em vez de
+ * repassar é a segunda tranca, e a que vale se alguém um dia afrouxar a
+ * primeira: o que sai daqui para a fase 3 (e dali para a trilha, que é
+ * append-only e sem retenção) são nomes que NÓS escrevemos, rótulos que NÓS
+ * escrevemos e números — nenhum campo que o fornecedor tenha acrescentado.
+ */
+function copiaConferida(
+  perguntas: Readonly<Record<string, Pergunta>>,
+  respostas: Readonly<Record<string, Resposta>>,
+): Record<string, Resposta> {
+  const copia: Record<string, Resposta> = {}
+  for (const [nome, pergunta] of Object.entries(perguntas)) {
+    const resposta = respostas[nome]!
+    if (resposta.tipo === 'sim_ou_nao') {
+      copia[nome] = { tipo: 'sim_ou_nao', probabilidadeDeSim: resposta.probabilidadeDeSim }
+      continue
+    }
+    const rotulos =
+      pergunta.tipo === 'escolha'
+        ? Object.keys(pergunta.opcoes)
+        : pergunta.tipo === 'nota'
+          ? pergunta.niveis.map((_, indice) => String(indice))
+          : []
+    const probabilidades = Object.fromEntries(rotulos.map((rotulo) => [rotulo, resposta.probabilidades[rotulo]!]))
+    copia[nome] =
+      resposta.tipo === 'escolha'
+        ? {
+            tipo: 'escolha',
+            // O rótulo NOSSO, não a string que veio: são iguais (já conferido),
+            // mas assim nenhuma string do fornecedor sai daqui.
+            escolha: rotulos.find((rotulo) => rotulo === resposta.escolha)!,
+            confianca: resposta.confianca,
+            probabilidades,
+          }
+        : { tipo: 'nota', nota: resposta.nota, confianca: resposta.confianca, probabilidades }
+  }
+  return copia
 }

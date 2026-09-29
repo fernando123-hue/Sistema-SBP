@@ -12,16 +12,18 @@ import { registrarLog } from '../servidor/observabilidade'
 import { especieDoErro, type ClienteDeModelo } from './fornecedor'
 
 /**
- * Teto diário e disjuntor em volta de qualquer `ClienteDeModelo` (`A54`, C-06).
+ * Teto diário e disjuntor em volta de qualquer chamada a fornecedor de IA
+ * (`A54`, C-06): de um `ClienteDeModelo` por `comControleDeConsumo`, e de
+ * qualquer outra forma — o classificador do `A62` — por `chamarComControle`.
  *
  * ═══ POR QUE AQUI, E NÃO DENTRO DE CADA ADAPTER ═══
  *
  * "Quanto se aceita gastar" e "o fornecedor está fora do ar" são decisões
  * DESTE sistema, não de um fornecedor — a mesma razão que mantém as três
  * camadas contra injeção em `ia-estruturada.ts`. Escrito uma vez, em volta do
- * cliente, vale para Anthropic, Gemini e servidor local, e para as duas
- * tarefas de IA (interpretar e-mail e responder pergunta), sem que nenhum
- * adapter saiba que isto existe.
+ * cliente, vale para Anthropic, Gemini, servidor local e TypeSafe, e para as
+ * três tarefas de IA (interpretar e-mail, responder pergunta e classificar),
+ * sem que nenhum adapter saiba que isto existe.
  *
  * ═══ O DISJUNTOR MORA NA MEMÓRIA, E ISSO É ESCOLHA ═══
  *

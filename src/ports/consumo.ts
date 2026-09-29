@@ -1,18 +1,18 @@
 import { ErroOperacional } from '../core/erros'
 
 /**
+ * Para que a IA foi chamada. `classificacao` é a segunda opinião (`A62`): ela
+ * conta no MESMO teto do fornecedor, porque a conta é do fornecedor.
+ */
+export type TarefaDeIa = 'interpretacao' | 'assistente' | 'classificacao'
+
+/**
  * Onde a contagem de uso da IA é guardada e lida.
  *
  * Existe como port porque o invólucro de consumo (`adapters/cliente-com-consumo.ts`)
  * é infraestrutura de fronteira e não deve saber o que é Prisma. Quem liga os
  * dois é `fabrica.ts`, que é o lugar do sistema onde a fiação mora.
  */
-/**
- * Para que a IA foi chamada. `classificacao` é a segunda opinião (`A62`): ela
- * conta no MESMO teto do fornecedor, porque a conta é do fornecedor.
- */
-export type TarefaDeIa = 'interpretacao' | 'assistente' | 'classificacao'
-
 export interface RegistroDeConsumo {
   /** Quantas chamadas este fornecedor já fez hoje, somando modelos e tarefas. */
   chamadasDoDia(fornecedor: string): Promise<number>

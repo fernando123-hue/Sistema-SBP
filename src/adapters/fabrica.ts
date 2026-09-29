@@ -155,7 +155,7 @@ export function criarAssistentePort(): AssistentePort {
  * `ClassificadorExterno`. O dublê também passa por ela.
  *
  * A trava de dado real não mora aqui: é `ambiente()`, que recusa na partida
- * `typesafe` com caixa de e-mail real (`CLASSIFICADOR_PARA_DADO_REAL`).
+ * `typesafe` — e o dublê — com caixa de e-mail real (`CLASSIFICADOR_PARA_DADO_REAL`).
  */
 export function criarClassificadorPort(): ClassificadorPort | null {
   const { CLASSIFICADOR_ADAPTER: nome, CLASSIFICADOR_MODELO: modelo } = ambiente()

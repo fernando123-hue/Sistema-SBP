@@ -331,7 +331,7 @@ export function ambiente(): Ambiente {
     if (recusa) throw new Error(`IA_LOCAL_URL ${recusa}`)
   }
 
-  if (resultado.data.CLASSIFICADOR_ADAPTER === 'typesafe' && !resultado.data.TYPESAFE_API_KEY) {
+  if (resultado.data.CLASSIFICADOR_ADAPTER === 'typesafe' && !resultado.data.TYPESAFE_API_KEY?.trim()) {
     throw new Error('CLASSIFICADOR_ADAPTER="typesafe" exige TYPESAFE_API_KEY configurada.')
   }
 

@@ -1,4 +1,5 @@
 import { hojeIso } from '../core/util/datas'
+import type { TarefaDeIa } from '../ports/consumo'
 import { codigoDoPrisma, comNovaTentativaEmConflito } from '../servidor/conflito'
 import type { Banco } from '../servidor/prisma'
 
@@ -14,8 +15,6 @@ import type { Banco } from '../servidor/prisma'
  * teto olha a tabela direto. Um painel de uso de IA por dia viraria meta, e a
  * pergunta que ele responde ("dá para gastar menos?") não é da equipe.
  */
-
-import type { TarefaDeIa } from '../ports/consumo'
 
 export type { TarefaDeIa }
 

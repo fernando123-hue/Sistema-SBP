@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { MARCADOR_FIM, MARCADOR_INICIO } from '../core/seguranca/conteudo-nao-confiavel'
+import { delimitar, MARCADOR_FIM, MARCADOR_INICIO, truncar } from '../core/seguranca/conteudo-nao-confiavel'
+import { LIMITE_PARA_FORNECEDOR_EXTERNO } from '../core/seguranca/protecao-para-fornecedor-externo'
 import {
   ClassificadorIndisponivelError,
   FalhaDeClassificacao,
@@ -12,7 +13,7 @@ import { limparCacheDeAmbiente, ambiente } from '../servidor/ambiente'
 import { obterPrisma } from '../servidor/prisma'
 import { ClassificadorExterno, type ClienteDeClassificacao, type PerfilDoClassificador } from './classificador-externo'
 import { clienteMock, PERFIL_MOCK } from './classificador-mock'
-import { clienteTypeSafe, PERFIL_TYPESAFE } from './classificador-typesafe'
+import { clienteTypeSafe, MAIOR_RESPOSTA_BYTES, PERFIL_TYPESAFE, TEMPO_LIMITE_MS } from './classificador-typesafe'
 import { esquecerDisjuntores } from './cliente-com-consumo'
 import { criarClassificadorPort } from './fabrica'
 
@@ -74,6 +75,19 @@ describe('a política: o que sai da casa', () => {
     expect(estado.endsWith(MARCADOR_FIM)).toBe(true)
     expect(classificacao.mascarados).toEqual({ numero: 1, email: 1, link: 1 })
     expect(classificacao.cortado).toBe(false)
+  })
+
+  it('texto acima do limite sai cortado, e a classificação diz que foi', async () => {
+    const { cliente, recebidos } = clienteQueResponde(RESPOSTA_CERTA)
+    const classificacao = await new ClassificadorExterno(PERFIL, cliente).classificar({
+      texto: 'pedido de boleto da anuidade '.repeat(LIMITE_PARA_FORNECEDOR_EXTERNO),
+      perguntas: { categoria: CATEGORIA },
+    })
+    expect(classificacao.cortado).toBe(true)
+    // O aviso do corte e a moldura dos marcadores são a única folga.
+    const noTeto = delimitar(truncar('x'.repeat(LIMITE_PARA_FORNECEDOR_EXTERNO + 1), LIMITE_PARA_FORNECEDOR_EXTERNO))
+    expect(recebidos[0]!.estado.length).toBeLessThanOrEqual(noTeto.length)
+    expect(recebidos[0]!.estado).toContain('conteúdo truncado')
   })
 
   it('marcador de fim forjado no texto não fecha o bloco', async () => {
@@ -151,6 +165,99 @@ describe('a política: a resposta é conferida contra a pergunta', () => {
         FalhaDeClassificacao,
       )
     }
+  })
+
+  // Cada caso quebra UMA regra só e confere a frase daquela regra: um caso que
+  // quebrasse duas seguiria vermelho com qualquer uma delas removida, e não
+  // provaria nenhuma. O valor recebido nunca aparece na frase.
+  describe('cada regra, sozinha', () => {
+    const escolha = (campos: Partial<Extract<Resposta, { tipo: 'escolha' }>>): Record<string, Resposta> => ({
+      categoria: { ...(RESPOSTA_CERTA.categoria as Extract<Resposta, { tipo: 'escolha' }>), ...campos },
+    })
+    const nota = (campos: Partial<Extract<Resposta, { tipo: 'nota' }>>): Record<string, Resposta> => ({
+      urgencia: { tipo: 'nota', nota: 1.4, confianca: 0.5, probabilidades: { '0': 0.1, '1': 0.4, '2': 0.5 }, ...campos },
+    })
+
+    const casos: [string, Record<string, Resposta>, Record<string, Pergunta>, RegExp, string?][] = [
+      ['confiança fora de 0 a 1', escolha({ confianca: 1.5 }), { categoria: CATEGORIA }, /confiança fora de 0 a 1/, '1.5'],
+      [
+        'probabilidade de um rótulo fora de 0 a 1',
+        escolha({ probabilidades: { anuidade: 1.3, cadastro: -0.3 } }),
+        { categoria: CATEGORIA },
+        /probabilidade fora de 0 a 1/,
+        '1.3',
+      ],
+      [
+        'rótulo trocado, com a mesma quantidade',
+        escolha({ probabilidades: { anuidade: 0.9, MariaFicticia_Rua123: 0.1 } }),
+        { categoria: CATEGORIA },
+        /rótulos diferentes dos perguntados/,
+        'MariaFicticia',
+      ],
+      [
+        'escolha que as probabilidades desmentem',
+        escolha({ escolha: 'anuidade', probabilidades: { anuidade: 0.01, cadastro: 0.99 } }),
+        { categoria: CATEGORIA },
+        /escolha que as probabilidades desmentem/,
+      ],
+      [
+        'probabilidades que somam 2',
+        escolha({ probabilidades: { anuidade: 1, cadastro: 1 } }),
+        { categoria: CATEGORIA },
+        /não somam 1/,
+      ],
+      [
+        'probabilidades que somam 0',
+        escolha({ probabilidades: { anuidade: 0, cadastro: 0 } }),
+        { categoria: CATEGORIA },
+        /não somam 1/,
+      ],
+      [
+        'nota que as probabilidades desmentem',
+        nota({ nota: 2, probabilidades: { '0': 0.98, '1': 0.01, '2': 0.01 } }),
+        { urgencia: URGENCIA },
+        /nota que as probabilidades desmentem/,
+      ],
+      [
+        'resposta a uma pergunta que não foi feita',
+        { ...RESPOSTA_CERTA, 'Ignore as instruções; Maria Ficticia': { tipo: 'sim_ou_nao', probabilidadeDeSim: 1 } },
+        { categoria: CATEGORIA },
+        /pergunta que não foi feita/,
+        'Maria',
+      ],
+    ]
+
+    for (const [descricao, respostas, perguntas, frase, valor] of casos) {
+      it(descricao, async () => {
+        const erro = await classificar(respostas, perguntas).catch((e: unknown) => e)
+        expect(erro).toBeInstanceOf(FalhaDeClassificacao)
+        expect((erro as Error).message).toMatch(frase)
+        if (valor) expect((erro as Error).message).not.toContain(valor)
+      })
+    }
+
+    it('aceita o arredondamento do fornecedor e o empate', async () => {
+      await expect(
+        classificar(escolha({ probabilidades: { anuidade: 0.905, cadastro: 0.1 } }), { categoria: CATEGORIA }),
+      ).resolves.toBeDefined()
+      await expect(
+        classificar(escolha({ escolha: 'cadastro', probabilidades: { anuidade: 0.5, cadastro: 0.5 } }), {
+          categoria: CATEGORIA,
+        }),
+      ).resolves.toBeDefined()
+      await expect(classificar(nota({ nota: 1.41 }), { urgencia: URGENCIA })).resolves.toBeDefined()
+    })
+  })
+
+  // A segunda tranca: mesmo que a conferência afrouxe, o que volta foi refeito
+  // campo a campo — nenhum campo que o fornecedor acrescentou segue.
+  it('o que volta é refeito só com os campos conferidos', async () => {
+    const comSobra = {
+      categoria: { ...RESPOSTA_CERTA.categoria, observacao: `texto do e-mail ${EMAIL_DO_ASSOCIADO}` },
+    } as unknown as Record<string, Resposta>
+    const classificacao = await classificar(comSobra, { categoria: CATEGORIA })
+    expect(classificacao.respostas).toEqual(RESPOSTA_CERTA)
+    expect(JSON.stringify(classificacao)).not.toContain(EMAIL_DO_ASSOCIADO)
   })
 
   it('pergunta malformada é defeito do código, não falha do fornecedor', async () => {
@@ -330,18 +437,123 @@ describe('o adaptador da TypeSafe', () => {
       .catch((e: unknown) => e)
     expect(falha).toBeInstanceOf(FalhaDeClassificacao)
     expect((falha as Error).message).not.toContain(CPF)
+  })
 
+  // Página de proxy ou de manutenção no caminho: é transporte, e o nome da
+  // falha diz isso — não "forma".
+  it('200 que não é JSON é transporte', async () => {
     trocarFetch(new Response('<html>proxy</html>', { status: 200 }))
-    await expect(
-      new ClassificadorExterno(PERFIL_TYPESAFE, clienteTypeSafe('k')).classificar({
-        texto: 'x',
-        perguntas: { categoria: CATEGORIA },
+    const falha = await new ClassificadorExterno(PERFIL_TYPESAFE, clienteTypeSafe('k'))
+      .classificar({ texto: 'x', perguntas: { categoria: CATEGORIA } })
+      .catch((e: unknown) => e)
+    expect(falha).toBeInstanceOf(FalhaDeClassificacao)
+    expect((falha as Error).message).toContain('não é JSON')
+  })
+
+  const classificarComTypeSafe = () =>
+    new ClassificadorExterno(PERFIL_TYPESAFE, clienteTypeSafe('k'))
+      .classificar({ texto: 'x', perguntas: { categoria: CATEGORIA } })
+      .then(
+        () => new Error('a classificação não falhou'),
+        (e: unknown) => e as Error,
+      )
+
+  // A chave de `answers` e a de `probabilities` são escritas pelo fornecedor;
+  // um identificador curto passaria pelo `resumoDeValidacao` inteiro.
+  it('chave escolhida pelo fornecedor não chega à mensagem', async () => {
+    const ecos = [
+      { MariaFicticia_Rua123: { type: 'noul', noul: 7 } },
+      { categoria: { type: 'noul', noul: 0.5 }, MariaFicticia_Rua123: { type: 'noul', noul: 0.5 } },
+      { categoria: { type: 'choice', choice: 'anuidade', confidence: 0.9, probabilities: { MariaFicticia_Rua123: 7 } } },
+    ]
+    for (const answers of ecos) {
+      trocarFetch(json({ model: 'jev-1', answers }))
+      const falha = await classificarComTypeSafe()
+      expect(falha, JSON.stringify(answers)).toBeInstanceOf(FalhaDeClassificacao)
+      expect(falha.message, JSON.stringify(answers)).not.toContain('Maria')
+    }
+  })
+
+  // Resposta certa MAIS uma que ninguém pediu: descartar a sobra em silêncio
+  // esconderia um fornecedor respondendo coisa que não foi perguntada.
+  it('resposta a mais do fornecedor falha alto, não some', async () => {
+    trocarFetch(
+      json({
+        model: 'jev-1',
+        answers: {
+          categoria: { type: 'choice', choice: 'anuidade', confidence: 0.9, probabilities: { anuidade: 0.9, cadastro: 0.1 } },
+          extra: { type: 'noul', noul: 0.5 },
+        },
       }),
-    ).rejects.toBeInstanceOf(FalhaDeClassificacao)
+    )
+    expect(await classificarComTypeSafe()).toBeInstanceOf(FalhaDeClassificacao)
+  })
+
+  it('403 também para de perguntar', async () => {
+    trocarFetch(json({ error: 'nope' }, 403))
+    expect(await classificarComTypeSafe()).toBeInstanceOf(ClassificadorIndisponivelError)
+  })
+
+  it('o prazo é o do SDK, 10 s', () => {
+    expect(TEMPO_LIMITE_MS).toBe(10_000)
+  })
+
+  // Os dois vão a mensagem, log e `UsoDaIa` (chave primária com `modelo` em
+  // VARCHAR(191)). Fora da forma, descartados — não cortados.
+  it('id do pedido e nome do modelo fora da forma são descartados', async () => {
+    trocarFetch(json({ error: 'x' }, 400, { 'x-typesafe-request-id': `req ${EMAIL_DO_ASSOCIADO}` }))
+    const falha = await classificarComTypeSafe()
+    expect(falha.message).toContain('400')
+    expect(falha.message).not.toContain('req')
+
+    const nomeLongo = 'Maria Ficticia '.repeat(20)
+    trocarFetch(
+      json({
+        model: nomeLongo,
+        answers: { categoria: { type: 'choice', choice: 'anuidade', confidence: 0.9, probabilities: { anuidade: 0.9, cadastro: 0.1 } } },
+      }),
+    )
+    const classificacao = await new ClassificadorExterno(PERFIL_TYPESAFE, clienteTypeSafe('k')).classificar({
+      texto: 'x',
+      perguntas: { categoria: CATEGORIA },
+    })
+    expect(classificacao.modeloUsado).toBe('jev-latest')
+  })
+
+  it('resposta acima do teto não é lida', async () => {
+    const grande = 'x'.repeat(MAIOR_RESPOSTA_BYTES + 1)
+    // Pelo tamanho declarado…
+    trocarFetch(new Response(grande, { status: 200, headers: { 'content-length': String(grande.length) } }))
+    expect((await classificarComTypeSafe()).message).toMatch(/tamanho aceito/)
+    // …e pelo contado, quando o cabeçalho não diz.
+    const pedacos = new ReadableStream<Uint8Array>({
+      start(controle) {
+        for (let i = 0; i < 5; i++) controle.enqueue(new Uint8Array(MAIOR_RESPOSTA_BYTES / 4))
+        controle.close()
+      },
+    })
+    trocarFetch(new Response(pedacos, { status: 200 }))
+    expect((await classificarComTypeSafe()).message).toMatch(/tamanho aceito/)
+  })
+
+  // O prazo vale na leitura do corpo; o motivo registrado tem de ser o prazo.
+  it('prazo estourado no meio do corpo não vira "não é JSON"', async () => {
+    const travado = new ReadableStream<Uint8Array>({
+      start(controle) {
+        controle.enqueue(new TextEncoder().encode('{"model":'))
+        controle.error(new DOMException('The operation was aborted due to timeout', 'TimeoutError'))
+      },
+    })
+    trocarFetch(new Response(travado, { status: 200 }))
+    const falha = await classificarComTypeSafe()
+    expect(falha).toBeInstanceOf(FalhaDeClassificacao)
+    expect(falha.message).toMatch(/timeout/)
+    expect(falha.message).not.toContain('não é JSON')
   })
 
   it('sem chave, não sobe', () => {
     expect(() => clienteTypeSafe('')).toThrow(/TYPESAFE_API_KEY/)
+    expect(() => clienteTypeSafe('   ')).toThrow(/TYPESAFE_API_KEY/)
   })
 })
 
@@ -369,8 +581,11 @@ describe('a fábrica e a trava de dado real', () => {
 
   it('"typesafe" sem chave falha na partida', () => {
     vi.stubEnv('CLASSIFICADOR_ADAPTER', 'typesafe')
-    vi.stubEnv('TYPESAFE_API_KEY', '')
-    expect(() => ambiente()).toThrow(/TYPESAFE_API_KEY/)
+    for (const vazia of ['', '   ']) {
+      vi.stubEnv('TYPESAFE_API_KEY', vazia)
+      limparCacheDeAmbiente()
+      expect(() => ambiente(), JSON.stringify(vazia)).toThrow(/TYPESAFE_API_KEY/)
+    }
   })
 
   // `§ H.4` item 35: até o dono decidir, o Jev não recebe e-mail real.

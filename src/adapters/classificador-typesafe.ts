@@ -36,7 +36,7 @@ const ENDERECO = 'https://api.typesafe.ai/v1/systemone'
  * O prazo do SDK. Classificar é rápido; uma chamada que passa disto está
  * presa, e o item não pode esperar uma opinião que é só complemento.
  */
-const TEMPO_LIMITE_MS = 10_000
+export const TEMPO_LIMITE_MS = 10_000
 
 export const PERFIL_TYPESAFE: PerfilDoClassificador = {
   nome: 'typesafe',
@@ -51,6 +51,23 @@ export const PERFIL_TYPESAFE: PerfilDoClassificador = {
 }
 
 /**
+ * Maior resposta aceita. Uma resposta boa, com meia dúzia de perguntas, tem
+ * poucas centenas de bytes; o teto é mil vezes isso. Sem ele, em 10 s um
+ * fornecedor com defeito (ou um proxy no meio) enche a memória do servidor.
+ */
+export const MAIOR_RESPOSTA_BYTES = 256 * 1024
+
+/**
+ * Forma de um id de pedido e de um nome de modelo. Os dois vêm do fornecedor
+ * e vão para mensagem, log e `UsoDaIa` (cuja chave primária tem `modelo` em
+ * `VARCHAR(191)`: um nome maior derrubaria a gravação, e a chamada sumiria da
+ * conta do teto diário). Fora da forma, o valor é descartado — não cortado:
+ * um pedaço de texto estranho continua estranho.
+ */
+const ID_DO_PEDIDO = /^[A-Za-z0-9_-]{1,64}$/
+const NOME_DE_MODELO = /^[\w.:/-]{1,100}$/
+
+/**
  * O erro da API, **sem o corpo**. O corpo de erro pode citar o que recebeu, e
  * o que recebeu é texto de e-mail (mascarado, mas nome fica). O status diz o
  * que arrumar; o id do pedido é o que o suporte deles pede.
@@ -60,7 +77,8 @@ class FalhaDaTypeSafe extends Error {
     readonly status: number,
     idDoPedido: string | null,
   ) {
-    super(`a TypeSafe respondeu ${status}${idDoPedido ? ` (pedido ${idDoPedido})` : ''}`)
+    const id = idDoPedido && ID_DO_PEDIDO.test(idDoPedido) ? idDoPedido : null
+    super(`a TypeSafe respondeu ${status}${id ? ` (pedido ${id})` : ''}`)
   }
 }
 
@@ -84,12 +102,65 @@ const RespostaNoFioSchema = z.discriminatedUnion('type', [
   }),
 ])
 
+/**
+ * O envelope, com as respostas ainda SEM validar. Elas são validadas uma a
+ * uma, depois de conferido que as chaves são as perguntas — ver `lerResultado`.
+ */
 const ResultadoNoFioSchema = z.object({
-  model: z.string().min(1),
-  answers: z.record(z.string(), RespostaNoFioSchema),
+  model: z.string(),
+  answers: z.record(z.string(), z.unknown()),
   // Lido para validar a forma; o registro de uso conta chamadas, não tokens.
   usage: z.object({ input_tokens: z.number(), output_tokens: z.number() }).optional(),
 })
+
+/**
+ * Defeito de forma com o caminho que NÓS escolhemos.
+ *
+ * Um `ZodError` sobre `answers` traria no caminho a chave que o fornecedor
+ * escreveu — e `resumoDeValidacao` deixa passar identificador de até 40
+ * caracteres (`MariaFicticia_Rua123` passa). Aqui a chave de `answers` já foi
+ * conferida contra as perguntas, e o caminho para no nome do campo do NOSSO
+ * esquema: a chave de `probabilities` embaixo dele, também do fornecedor,
+ * nunca entra. Só o código do defeito é copiado; `message`, `input` e o resto
+ * do issue ficam para trás.
+ */
+function defeitoDeForma(caminho: (string | number)[], codigo: string): z.ZodError {
+  return new z.ZodError([{ code: 'custom', path: caminho, message: codigo } as z.core.$ZodIssue])
+}
+
+function lerResultado(
+  corpo: unknown,
+  perguntas: Readonly<Record<string, Pergunta>>,
+): { respostas: Record<string, Resposta>; modelo: string | null } {
+  const envelope = ResultadoNoFioSchema.safeParse(corpo)
+  if (!envelope.success) {
+    const problema = envelope.error.issues[0]!
+    // O caminho do envelope tem só campos nossos até `answers`; o que vem
+    // depois é chave do fornecedor.
+    const caminho = problema.path.slice(0, 1).map((segmento) => (typeof segmento === 'symbol' ? '?' : segmento))
+    throw defeitoDeForma(caminho, problema.code)
+  }
+
+  const nomes = Object.keys(envelope.data.answers)
+  const perguntadas = Object.keys(perguntas)
+  if (nomes.length !== perguntadas.length || nomes.some((nome) => !Object.hasOwn(perguntas, nome))) {
+    throw defeitoDeForma(['answers'], 'respostas_diferentes_das_perguntas')
+  }
+
+  const respostas: Record<string, Resposta> = {}
+  for (const nome of perguntadas) {
+    const dada = RespostaNoFioSchema.safeParse(envelope.data.answers[nome])
+    if (!dada.success) {
+      const problema = dada.error.issues[0]!
+      const campo = problema.path[0]
+      throw defeitoDeForma(['answers', nome, ...(typeof campo === 'string' ? [campo] : [])], problema.code)
+    }
+    respostas[nome] = doFio(dada.data)
+  }
+
+  const modelo = NOME_DE_MODELO.test(envelope.data.model) ? envelope.data.model : null
+  return { respostas, modelo }
+}
 
 function paraOFio(pergunta: Pergunta): unknown {
   switch (pergunta.tipo) {
@@ -129,10 +200,39 @@ function doFio(resposta: z.infer<typeof RespostaNoFioSchema>): Resposta {
   }
 }
 
+/**
+ * O corpo, lido até `MAIOR_RESPOSTA_BYTES`. Acima disso a leitura é cancelada
+ * — pelo tamanho declarado, antes de ler, ou pelo contado, durante.
+ *
+ * O prazo (`AbortSignal.timeout`) vale também aqui: um corpo que trava no meio
+ * rejeita com `TimeoutError`, e ele sobe como é. Não passa pelo "não é JSON"
+ * abaixo, que registraria o motivo errado.
+ */
+async function lerComTeto(resposta: Response): Promise<string> {
+  const declarado = Number(resposta.headers.get('content-length'))
+  if (declarado > MAIOR_RESPOSTA_BYTES) throw new Error('a resposta da TypeSafe passa do tamanho aceito')
+  if (!resposta.body) return ''
+
+  const leitor = resposta.body.getReader()
+  const partes: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await leitor.read()
+    if (done) break
+    total += value.byteLength
+    if (total > MAIOR_RESPOSTA_BYTES) {
+      await leitor.cancel()
+      throw new Error('a resposta da TypeSafe passa do tamanho aceito')
+    }
+    partes.push(value)
+  }
+  return new TextDecoder().decode(Buffer.concat(partes))
+}
+
 export function clienteTypeSafe(chave: string | undefined = ambiente().TYPESAFE_API_KEY): ClienteDeClassificacao {
   // `ambiente()` já recusa `CLASSIFICADOR_ADAPTER=typesafe` sem chave; esta é
   // a segunda tranca, para quem construir o cliente direto.
-  if (!chave) throw new Error('TYPESAFE_API_KEY ausente: o classificador da TypeSafe não pode subir.')
+  if (!chave?.trim()) throw new Error('TYPESAFE_API_KEY ausente: o classificador da TypeSafe não pode subir.')
 
   return {
     async perguntar({ estado, perguntas, modelo }) {
@@ -158,28 +258,26 @@ export function clienteTypeSafe(chave: string | undefined = ambiente().TYPESAFE_
       })
 
       if (!resposta.ok) {
-        throw Object.assign(
-          new FalhaDaTypeSafe(resposta.status, resposta.headers.get('x-typesafe-request-id')),
-          { status: resposta.status },
-        )
+        throw new FalhaDaTypeSafe(resposta.status, resposta.headers.get('x-typesafe-request-id'))
       }
 
+      const texto = await lerComTeto(resposta)
       let corpo: unknown
       try {
-        corpo = await resposta.json()
+        corpo = JSON.parse(texto)
       } catch {
+        // 200 que não é JSON é TRANSPORTE, de propósito: é a página de um
+        // proxy ou de manutenção no caminho, não uma resposta do Jev com a
+        // forma errada. Conta no disjuntor — se durar, parar de perguntar é
+        // o certo. (Na IA é o contrário, e lá faz sentido: o texto do modelo
+        // chegou, e só o formato falhou.)
         throw new Error('a resposta da TypeSafe não é JSON')
       }
 
-      // `parse`, não `safeParse`: o `ZodError` é o sinal de FORMA para
-      // `especieDoErro`, e a política o resume sem o valor recebido.
-      const resultado = ResultadoNoFioSchema.parse(corpo)
-      return {
-        respostas: Object.fromEntries(
-          Object.entries(resultado.answers).map(([nome, dada]) => [nome, doFio(dada)]),
-        ),
-        modeloUsado: resultado.model,
-      }
+      // `lerResultado` lança `ZodError` — o sinal de FORMA para
+      // `especieDoErro` —, com caminho só de nomes nossos.
+      const resultado = lerResultado(corpo, perguntas)
+      return { respostas: resultado.respostas, modeloUsado: resultado.modelo ?? modelo }
     },
   }
 }
