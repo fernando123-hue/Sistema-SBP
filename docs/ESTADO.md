@@ -1,6 +1,6 @@
 # Estado do projeto — retomada
 
-Última atualização: **29/09/2026 — sessão em nuvem (Linux): #132 (pendência 10), #133 (teste da meia-noite) e #135 (Jev fase 1, camada de defesa do dado) e #141 (alerta do `fast-uri`), #142 (Jev fase 2) e #143 (Jev fase 3, modo sombra) mesclados; sem gasto com IA por decisão do dono (`A63`); #124 (docs) aberto e bloqueado.** Servidor da implantação é Linux (`A61`, só no #124). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Ver o primeiro bloco abaixo.
+Última atualização: **29/09/2026 — sessão em nuvem (Linux): #132 (pendência 10), #133 (teste da meia-noite) e #135 (Jev fase 1, camada de defesa do dado) e #141 (alerta do `fast-uri`), #142 (Jev fase 2) e #143 (Jev fase 3, modo sombra) mesclados; sem gasto com IA por decisão do dono (`A63`); #124 (docs) aberto e bloqueado.** Servidor da implantação é Linux (`A61`). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Ver o primeiro bloco abaixo.
 
 > ## ▶ Próxima sessão: comece aqui
 >
@@ -22,7 +22,7 @@
 >
 >   O visto vermelho foi feito plantando três defeitos: sem camada de defesa, sem conferência e trava ligada. Os três são pegos.
 > - **#141** (28–29/09): `fast-uri` 3.1.6 → 3.1.8. Dois alertas altos novos (GHSA-qw65-cvwx-89v3, GHSA-58mr-gqgx-xq4g) deixavam a auditoria vermelha em todo PR. É dependência só de desenvolvimento, via `prisma → ajv`. O lockfile foi editado à mão: o npm desta nuvem reescrevia metadados. As duas revisões aprovaram. **Se a auditoria voltar a ficar vermelha num PR que não mexe em dependência, é alerta novo: corrigir num PR próprio.**
-> - Abertos: **#124** (docs de 25/09; o classificador de permissões recusou que o agente o atualizasse — o dono mescla) e Dependabot #78–#81 (pendência 12).
+> - Aberto: Dependabot #78–#81 (pendência 12). O **#124** (docs de 25/09 e a decisão `A61`, servidor Linux) foi mesclado em 29/09, depois de resolvido o conflito com a `main`, com a autorização de mesclar reafirmada pelo dono.
 > - Worktree `/home/user/sbp-p29` (branch `fix/pendencia-29-log-do-sdk`) criado **sem mudança nenhuma** — pode apagar ou reaproveitar.
 >
 > **2. Feito nesta sessão.** Cada item teve teste visto vermelho, revisões por agente publicadas no PR e CI lido:
@@ -74,6 +74,27 @@
 > **4. Como esta sessão trabalhou (vale repetir).** Um branch e uma pasta (`git worktree`) por pendência, em `/home/user/sbp-*`, com `node_modules` copiado por hardlink (`cp -al`) — o Next recusa link simbólico. MySQL 8.4 em Docker na porta 3307 (`dockerd &`, `docker run -d --name sbp-mysql -e MYSQL_ALLOW_EMPTY_PASSWORD=yes -p 3307:3306 mysql:8.4`, e criar `sbp`, `sbp_teste`, `sbp_sombra` com `utf8mb4_0900_as_cs`). `SESSAO_SECRET` de teste com 16+ caracteres na linha de comando. Base de desenvolvimento `sbp` preenchida com `npm run db:seed` e `npm run demo`. Tela vista com o Playwright global (`$(npm root -g)/playwright`) e conferida pela árvore de acessibilidade. **Nunca rodar duas suítes ao mesmo tempo** (mesma base de teste). **Nunca `pkill -f`** (mata o próprio shell): matar por PID. Revisões: um agente técnico e um de segurança por PR (só leitura), o texto publicado **sem edição** com uma nota do autor no topo dizendo o destino de cada achado.
 >
 > **5. Decisões abertas com o dono:** as do bloco de 25/09 abaixo, mais: mesclar o #124; a pendência 6 (NVDA).
+>
+> ### 25/09/2026, fim da noite — RETOMADA NA NUVEM; #122 MESCLADO, #123 PRONTO; LINUX DECIDIDO (anterior; ficou no #124, mesclado em 29/09 depois de resolvido o conflito com a `main`; o próximo passo dele foi seguido)
+>
+> **1. Onde está:** `main` com #120 a #122 mesclados. **#123 (pendência 3) aberto, CI verde e revisões publicadas — o classificador de permissões recusou a mesclagem pelo agente ("mesclar sem revisão"); fica para o dono mesclar.** Este PR de docs também. Dependabot #78 a #81 seguem sem avaliar. A sessão da máquina Windows parou no meio da pendência 3 por limite de uso; esta sessão (nuvem, Linux, MySQL 8.4 em contêiner) conferiu o que ela deixou e continuou.
+>
+> **2. Conferido e feito nesta sessão:**
+> - **Conferência do que a sessão interrompida deixou:** `main` íntegra (typecheck limpo, 1379 de 1379 em Linux antes de qualquer mudança). #120 e #121 mesclados; #122 aberto com as duas revisões publicadas, mas com "(link a seguir)" no corpo — por isso o *Processo* estava vermelho.
+> - **#122 fechado** (nível 3): o MÉDIO da revisão técnica (o teste novo deixava uma linha em `UsoDaIa` na base de teste — conferido: 1 linha sem a limpeza, 0 com ela) corrigido; `main` mesclada; links no corpo; CI verde; mesclado. Confirmação ao vivo do defeito: o `db:seed` da `main` antiga ficou pendurado depois de gravar, exatamente como o PR descreve.
+> - **#123 — pendência 3 refeita do zero (aberto, pronto).** O trabalho dela na máquina Windows (`src/componentes/api.test.ts`, criado e não commitado) **nunca chegou ao GitHub**. Refeito aqui com teste vermelho, visto na tela e duas revisões (a técnica pediu mudanças na 1ª rodada — causa descartada e status sem log —, corrigidas; 2ª rodada aprovou).
+> - **Decisão do dono `A61`: o servidor da implantação é Linux**; o Windows é só a máquina de desenvolvimento. Quando os dois divergirem, vale o Linux (o CI).
+>
+> **3. ⚠ NA MÁQUINA WINDOWS, antes de qualquer coisa:** a cópia local tem mudanças **não commitadas** da sessão interrompida que **não devem ir para o repositório**: `src/componentes/api.test.ts` (substituído pelo do #123) e a **linha provisória em `src/adapters/ia-local.ts`** (estrutura forçada, feita "só para medir"). Descartar as duas (`git status` para ver; `git restore src/adapters/ia-local.ts` e apagar o `api.test.ts` solto), `git switch main && git pull`, e apagar as pastas temporárias de worktree que sobrarem.
+>
+> **4. PRÓXIMO PASSO:** as pendências do item 4 do bloco de 24/09, na ordem, a partir da **2** (a 1 saiu no #120; a 3 está no #123 — conferir que foi mesclado). A 20 depende do dono.
+>
+> **5. Anotado nesta sessão:**
+> - **Resultado da medição da pendência 18** (feita na máquina Windows em 25/09, noite; lido das capturas daquela sessão, não medido aqui): com o `qwen2.5:1.5b`, nota **0,78** (0,76 na medição anterior), 2 falhas — `ligantes-tres` e `ligantes-dois-tracos`. **A estrutura forçada deu resultado idêntico caso a caso**: o 1.5b já acerta a forma. A causa das duas falhas é de **entendimento**: o modelo junta os três ligantes num item só e devolve `campos` como lista de pares `{chave, valor}` com chave repetida, estourando o limite de 30 campos por item — e o sistema recusa corretamente e manda para revisão humana. Correção provável: um exemplo na instrução, em PR próprio e medido antes e depois. **Isto corrige o `A59`** onde ele diz que forma forçada "é a correção da causa real" — ela não muda nada neste modelo.
+> - **`next dev` escreve no `CLAUDE.md`:** ao subir, o Next 16 anexa um bloco `nextjs-agent-rules` ao `CLAUDE.md` (e o texto do bloco sugere commitá-lo). Não foi commitado — mexer nas regras dos agentes é decisão do dono. **Pendência 23 (somar à lista do item 4 de 24/09):** decidir entre `agentRules: false` no `next.config` (nível 3, configuração) ou aceitar o bloco no `CLAUDE.md`; até lá, quem subir `npm run dev` desfaz o bloco antes de commitar (`git checkout -- CLAUDE.md`).
+> - Tela vista nesta sessão em largura de computador (1366 px), seguindo o `A60`.
+>
+> **6. Decisões abertas com o dono:** as do bloco de baixo, mais a pendência 23.
 >
 > ### 25/09/2026, noite — IA LOCAL MEDIDA; DOCUMENTO DE SEGURANÇA (anterior; o próximo passo dele foi seguido — pendências 1 a 10 e 23)
 >
@@ -127,7 +148,7 @@
 >
 > *D. Novas em 25/09 (IA local e segurança):*
 > 17. **Conferir por código que cada valor extraído pela IA aparece no texto do e-mail** antes de aprovar o item direto; o que não aparecer vai para a Revisão. Hoje a nota de confiança é a própria IA que dá, e o modelo local escolhido tem literalidade 0,69 (`A59`). Proposto no documento de segurança de 25/09 — decidir o critério (igualdade exata? normalizada?) antes de codar.
-> 18. **Forma forçada no servidor local** (esquema JSON no pedido do `ia-local.ts`, em vez de só `json_object`) — **é a correção da causa real das falhas de forma** (`A59`). Medir no Ollama desta máquina Windows (instalado em 25/09 com o dono de acordo, só o `qwen2.5:1.5b`, só em `127.0.0.1`) antes e depois, pelo gabarito.
+> 18. **Forma forçada no servidor local** (esquema JSON no pedido do `ia-local.ts`, em vez de só `json_object`) — **é a correção da causa real das falhas de forma** (`A59`). Medir no Ollama desta máquina Windows (instalado em 25/09 com o dono de acordo, só o `qwen2.5:1.5b`, só em `127.0.0.1`) antes e depois, pelo gabarito. **Medido (25/09, fim da noite): idêntico caso a caso no 1.5b — ver item 5 do primeiro bloco.** O que resta é a falha de entendimento (ligantes num item só); próximo passo, exemplo na instrução, medido.
 > 19. ~~Janela de contexto do Ollama não registrada~~ — **medida e descartada** (25/09, noite): 8192 na máquina Debian, 4096 aqui, pedidos de ~1,1 mil tokens, nenhum corte (`A59`).
 > 20. **Repositório público** (`gh repo view` em 25/09: `PUBLIC`), com nomes reais da equipe em `CONTEXTO.md` e `ENGENHARIA_REVERSA…`. Dono: voltar a privado. Depois: chave de implantação só de leitura para a máquina Debian (a cópia de lá é tarball), e trocar os nomes reais por fictícios nesses dois arquivos (PR de docs).
 >
