@@ -1,10 +1,53 @@
 # Estado do projeto — retomada
 
-Última atualização: **29/09/2026, noite — ponto de parada combinado com o dono.** Mesclados hoje: #143 (Jev fase 3, modo sombra), #144 (pendência 29) e #124 (`A61`, servidor Linux). Sem gasto com IA (`A63`). A ordem de trabalho combinada está no primeiro bloco abaixo. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **29/09/2026, fim da noite — ponto de parada pedido pelo dono, que tem instruções novas sobre o Jev e sobre a conta dele no sistema.** Três trabalhos da pendência 11 ficaram estacionados em ponto seguro (dois PRs abertos, um desenho decidido). **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 29/09/2026, noite — PONTO DE PARADA; A ORDEM COMBINADA COM O DONO (este bloco vence os de baixo; o `git log` vence este)
+> ### 29/09/2026, fim da noite — PARADA PARA AS INSTRUÇÕES NOVAS DO DONO (este bloco vence os de baixo; o `git log` vence este)
+>
+> **0. PRIMEIRO, antes de qualquer código.** O dono vai passar **instruções novas sobre o Jev e sobre como quer que funcione a conta dele no sistema**. O que ele pediu:
+> - **Priorizar:** comparar as instruções novas com o trabalho estacionado abaixo e dizer a ele qual vem primeiro, com o motivo. Recomendação já dada: as instruções novas primeiro. Os dois PRs abertos estão parados em ponto seguro, e cada um leva uma sessão curta para fechar.
+> - **Analisar com cuidado** e, se preciso, **pesquisar sobre o Jev** (TypeSafe AI) antes de seguir. O que já se sabe está no `A62`. Da última vez, `api.typesafe.ai`, `typesafe.ai` e `docs.typesafe.ai` estavam **bloqueados pela rede desta nuvem** (26/09): tentar de novo e, se continuar bloqueado, dizer isso a ele em vez de inventar.
+> - **Conversar com ele sobre toda dúvida e toda recomendação importante.** O que for pequeno pode seguir sem perguntar.
+> - Lembrar a ele o que está em vigor e pode ser afetado pelas instruções novas:
+>   - `A63`: sem gasto com IA, Jev desligado até ele avisar;
+>   - a trava `CLASSIFICADOR_PARA_DADO_REAL`, com o `§ H.4` item 35 em aberto;
+>   - a segunda opinião em modo sombra (fase 3, #143).
+>
+>   "A conta dele" é possivelmente a conta de gestor no sistema; perguntar se não ficar claro.
+>
+> **1. Onde está.**
+> - `main`: sem mudança de código desde #145, apenas este PR de docs.
+> - **Aberto, #146 — rotação da sessão com duas chaves** (pendência 11, parte 3), branch `feat/pendencia-11-rotacao-da-sessao`, head `ecc17f6`.
+>   - Duas revisões na 1ª rodada; todos os achados corrigidos.
+>   - A **2ª rodada pediu mudança: achado 1 (MÉDIO)**. O aviso no log só sai quando chega cookie da chave anterior, então não sai no caso que o motivou: variável esquecida e processo reiniciando sozinho.
+>   - **Falta:**
+>     - emitir o aviso na subida, por `instrumentation-node.ts` → uma função exportada de `sessao.ts`, com `setTimeout(12h − performance.now()).unref()` para o aviso de janela fechada;
+>     - um teste que o veja sair **sem** chamar `lerCookie`, visto vermelho antes;
+>     - os três informativos da 2ª rodada, só texto no comentário de `sessao.ts` e no `AT-50`: a janela fecha pelo primeiro dos dois relógios; relógio corrigido para trás ou processos sobrepostos custam uma reentrada; `valeAte` é o horário previsto;
+>     - `verificar`, 3ª rodada de revisão, os links das revisões no corpo (as seções "Revisão técnica" e "Revisão de segurança" ainda dizem "(link a seguir)"), CI lido, mesclar.
+>   - Os comentários de revisão já publicados no PR são o registro completo.
+> - **Aberto, #147 — índice `[situacao, etapa, referencia, criadoEm]` em `EventoProcessamento`** (pendência 11, parte 2), branch `perf/pendencia-11-indice-do-rastro`, head `aa3707a`, pasta `/home/user/sbp-p11-indice`.
+>   - Medido com 500 mil eventos: a leitura feita a cada entrada com e-mail inexistente caiu de 1962 ms para 0,11 ms. Com 2 s, ela também quebrava o piso de tempo da entrada e dizia pelo relógio se o e-mail tinha conta.
+>   - Revisões de banco e de segurança publicadas, achados corrigidos, `verificar` verde (138 arquivos, 1610 testes, numa base própria, `sbp_indice_teste`).
+>   - **Falta:** os links das revisões no corpo, o CI lido e mesclar.
+>   - **Depois do #146:** `git merge origin/main` e, no `ESTADO.md`, riscar a parte 2 da pendência 11 e acrescentar as pendências 40 e 41 (texto no último comentário do #147).
+> - **Decidido, sem código ainda — pendência 11, parte 1 (alerta por volume, `AT-45`).**
+>   - **Decisão do dono (29/09): o alerta vai no aviso do dia da gestora (`A17`)**, a mesma caixa que avisa quando a limpeza falha. Texto aprovado: "Muitas tentativas de entrada recusadas nas últimas 24 horas. Se não foi ninguém da equipe, avise o TI." Aparece só acima de um corte, sem número e sem nome de pessoa (invariante 10).
+>   - Registrar como `A64` no PR dela.
+>   - Desenho levantado nesta sessão:
+>     - contar em 24h as linhas de `LogAuditoria` com `entrada_recusada`, `entrada_recusada_conta_bloqueada` e `entrada_recusada_sem_acesso`, mais os eventos `falha/autenticacao` com `referencia` nula (e-mail inexistente);
+>     - corte provisório de **20**, registrado em `§ C` como hipótese;
+>     - uma chave nova no aviso (lista nova em `core/aviso-do-gestor.ts`, com a bolinha de "o que mudou");
+>     - a contagem no serviço, a regra pura no `core`;
+>     - tela vista rodando.
+> - **Pastas:** `/home/user/Sistema-SBP` (no branch do #146), `/home/user/sbp-p11-indice` (#147) e `/home/user/sbp-docs` (este PR). Bases MySQL descartáveis desta sessão: `sbp_medida` (500 mil eventos, para medir), `sbp_mig` e `sbp_indice_teste`; pode apagar.
+> - O Docker para quando a sessão dorme: `dockerd &`, depois `docker start sbp-mysql`.
+>
+> **2. Anotado nesta sessão (já no #146, entra com ele):** pendências **38** (`SESSAO_SECRET` × `BUSCA_SECRET` sem comparação na partida) e **39** (`emitidoEm` no futuro aceito pela chave atual). As 40 e 41 estão descritas no último comentário do #147.
+>
+> ### 29/09/2026, noite — PONTO DE PARADA; A ORDEM COMBINADA COM O DONO (anterior; a ordem de trabalho dele continua valendo depois das instruções novas)
 >
 > **1. Onde está.**
 > - `main` verde: 137 arquivos e 1609 testes.
