@@ -22,6 +22,13 @@ export default defineConfig({
       // o repositório e roda os testes sem este segredo no `.env` vê tudo
       // vermelho por um motivo que não é defeito.
       BUSCA_SECRET: 'teste-nao-e-segredo-so-para-cpf-sintetico',
+      // `ambiente()` recusa subir com esta variável e `IA_ADAPTER=anthropic`
+      // (pendência 29). Numa máquina com o Claude Code apontado para um
+      // gateway ela existe, e cinco testes que ligam a Anthropic por outro
+      // motivo ficavam vermelhos sem defeito (revisão técnica do #144).
+      // Vazia, a recusa e o SDK a ignoram; o teste que a liga de propósito
+      // usa `vi.stubEnv`.
+      ANTHROPIC_CUSTOM_HEADERS: '',
     },
     globalSetup: ['./src/testes/preparar-banco.ts'],
     // Uma base compartilhada por toda a suíte: arquivos de teste rodam em

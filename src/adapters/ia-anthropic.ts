@@ -124,8 +124,10 @@ export function clienteAnthropic(
   // credencial — cabeçalho que não conhecemos passaria, e é por isso que a
   // primeira tranca existe. O `authorization: null` daqui também apaga o que
   // `ANTHROPIC_AUTH_TOKEN` poria: são duas trancas no mesmo cabeçalho, de
-  // propósito. Tirar só uma não fica vermelho em teste nenhum; tirar as duas,
-  // fica.
+  // propósito. Tirar só `authToken: null` não fica vermelho em teste nenhum,
+  // porque o `authorization: null` cobre o mesmo cabeçalho; tirar
+  // `authorization: null` fica vermelho no teste de `ANTHROPIC_CUSTOM_HEADERS`;
+  // tirar as duas, também no de `ANTHROPIC_AUTH_TOKEN`.
   const cliente = new Anthropic({
     apiKey: chave,
     authToken: null,

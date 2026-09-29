@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk'
 import { afterAll, afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
@@ -73,6 +74,18 @@ function apiFalsa() {
   }
   return { chamadas: () => chamadas, fetch: falso as unknown as typeof fetch }
 }
+
+// Canário do arranjo acima (revisão técnica do #144). Se um dia o vitest
+// deixar de isolar os arquivos (`isolate: false` é sugestão que ele mesmo
+// imprime, por velocidade), o cache do logger pode vir de outro arquivo, e o
+// teste de baixo passaria cego a `warn`/`error`. Um `logLevel` inválido faz o
+// construtor avisar pelo logger do próprio SDK: se o espião não vir o aviso,
+// o arranjo quebrou — e fica vermelho aqui, em vez de calado.
+it('o espião vê o que o logger do SDK escreve em warn', () => {
+  new Anthropic({ apiKey: 'chave-de-teste', authToken: null, logLevel: 'nivel-invalido' as never })
+
+  expect(escrito.some((linha) => linha.includes('ClientOptions.logLevel'))).toBe(true)
+})
 
 it('ANTHROPIC_LOG=debug não escreve o pedido no console, em nível nenhum', async () => {
   vi.stubEnv('ANTHROPIC_LOG', 'debug')
