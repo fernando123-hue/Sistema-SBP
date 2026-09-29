@@ -1,6 +1,7 @@
 import {
   criarAiPort,
   criarArmazenamentoPort,
+  criarClassificadorPort,
   criarIngestaoPort,
 } from '../../../adapters/fabrica'
 import { hojeIso, sequenciaDeDatas } from '../../../core/util/datas'
@@ -39,6 +40,8 @@ export async function POST(): Promise<Response> {
         }),
         ia: criarAiPort(),
         armazenamento: criarArmazenamentoPort(),
+        // `null` com `CLASSIFICADOR_ADAPTER=nenhum`, o padrão: sem segunda opinião.
+        classificador: criarClassificadorPort(),
       },
       ator,
     )
