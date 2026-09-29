@@ -293,6 +293,36 @@ describe('o adaptador da TypeSafe', () => {
     ).rejects.toBeInstanceOf(ClassificadorIndisponivelError)
   })
 
+  // Pendência 30: o texto do erro pode vir do remetente. Só o status para o lote.
+  it('palavra de credencial no corpo de um 400 NÃO para de perguntar', async () => {
+    trocarFetch(json({ error: { message: 'Unauthorized: API key not valid (PERMISSION_DENIED)' } }, 400))
+    await expect(
+      new ClassificadorExterno(PERFIL_TYPESAFE, clienteTypeSafe('k')).classificar({
+        texto: 'x',
+        perguntas: { categoria: CATEGORIA },
+      }),
+    ).rejects.toBeInstanceOf(FalhaDeClassificacao)
+  })
+
+  // Sem repetição: uma falha é "sem opinião para este texto", e custa UMA chamada.
+  // O redirecionamento não é seguido — com `redirect: 'manual'` ele chega aqui
+  // como resposta 3xx e vira falha, sem segundo POST.
+  it('falha e redirecionamento custam uma chamada só', async () => {
+    for (const resposta of [
+      json({ error: 'fora do ar' }, 503),
+      new Response(null, { status: 307, headers: { location: 'https://outro.exemplo.test/v1/systemone' } }),
+    ]) {
+      const chamadas = trocarFetch(resposta)
+      await expect(
+        new ClassificadorExterno(PERFIL_TYPESAFE, clienteTypeSafe('k')).classificar({
+          texto: 'x',
+          perguntas: { categoria: CATEGORIA },
+        }),
+      ).rejects.toBeInstanceOf(FalhaDeClassificacao)
+      expect(chamadas).toHaveLength(1)
+    }
+  })
+
   it('resposta fora da forma vira falha deste texto, sem o que veio', async () => {
     trocarFetch(json({ model: 'jev-1', answers: { categoria: { type: 'choice', choice: CPF } } }))
     const falha = await new ClassificadorExterno(PERFIL_TYPESAFE, clienteTypeSafe('k'))
@@ -354,6 +384,17 @@ describe('a fábrica e a trava de dado real', () => {
       limparCacheDeAmbiente()
       expect(() => ambiente(), adaptador).toThrow(/não pode recebê-lo/)
     }
+  })
+
+  // O outro lado da trava: sem ele, uma trava que recusasse TUDO passaria no
+  // teste acima e impediria a caixa real de subir.
+  it('"nenhum" com caixa de e-mail real sobe', () => {
+    vi.stubEnv('CLASSIFICADOR_ADAPTER', 'nenhum')
+    vi.stubEnv('INGESTAO_ADAPTER', 'graph')
+    vi.stubEnv('IA_ADAPTER', 'anthropic')
+    vi.stubEnv('ANTHROPIC_API_KEY', 'chave-de-teste')
+    expect(() => ambiente()).not.toThrow()
+    expect(criarClassificadorPort()).toBeNull()
   })
 
   it('"typesafe" com dado sintético sobe, e conta no uso da IA como classificação', async () => {
