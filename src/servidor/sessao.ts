@@ -6,6 +6,7 @@ import { PapelSchema, type Papel } from '../core/esquemas'
 import { acessoLocalHabilitado, ehContaSintetica } from './acesso-local'
 import { ambiente } from './ambiente'
 import { atorDaSessao, type Ator } from './ator'
+import { registrarLog } from './observabilidade'
 import { obterPrisma } from './prisma'
 
 /**
@@ -77,19 +78,51 @@ function segredo(): string {
  * subir com a chave nova, e vale 12h: passado esse prazo, contado da subida
  * do processo, nenhum cookie legítimo depende dela. Um forjado com a chave
  * vazada depende — e ele escolhe o próprio `expiraEm`. Por isso o prazo é do
- * processo, não do cookie, e vale mesmo que a variável seja esquecida no
- * ambiente. Reiniciar com ela ainda lá reabre a janela: apagar a variável
- * continua sendo o passo final da troca.
+ * processo, não do cookie.
  *
- * `performance.timeOrigin` é o instante, no relógio de parede, em que o
- * processo começou. Um ajuste do relógio depois disso desloca o fim da janela
- * na mesma medida — o acerto do NTP são segundos, não horas.
+ * `performance.now()` é o tempo desde a subida pelo relógio MONOTÔNICO: um
+ * relógio de parede corrigido para trás (VM restaurada, relógio de hardware
+ * errado na subida) não estica a janela (revisões do #146).
+ *
+ * Cada reinício reabre a janela, inclusive os automáticos (deploy, queda,
+ * `Restart=always`). Por isso a rotação em curso aparece no log, e apagar a
+ * variável continua sendo o passo final da troca.
  */
 function segredoAnterior(): string | undefined {
-  const valor = ambiente().SESSAO_SECRET_ANTERIOR
+  const config = ambiente()
+  const valor = config.SESSAO_SECRET_ANTERIOR
   if (valor === undefined) return undefined
-  if (Date.now() >= performance.timeOrigin + VALIDADE_SEGUNDOS * 1000) return undefined
+  if (performance.now() >= VALIDADE_SEGUNDOS * 1000) {
+    avisarUmaVez(config, 'fechada', 'SESSAO_SECRET_ANTERIOR ainda definida, e não confere mais nenhum cookie', {
+      passo: 'apague a variável e reinicie: cada reinício reabre a janela por 12h',
+    })
+    return undefined
+  }
+  avisarUmaVez(config, 'aberta', 'SESSAO_SECRET_ANTERIOR definida: troca da chave de sessão em curso', {
+    valeAte: new Date(performance.timeOrigin + VALIDADE_SEGUNDOS * 1000),
+    passo: 'depois desse horário, apague a variável e reinicie',
+  })
   return valor
+}
+
+/**
+ * Um aviso de cada tipo por configuração carregada — na prática, por processo.
+ * Um por cookie encheria o log durante as 12h da troca. A chave é o objeto do
+ * ambiente, e o valor do segredo nunca vai ao log.
+ */
+const avisosDaTroca = new WeakMap<object, Set<'aberta' | 'fechada'>>()
+
+function avisarUmaVez(
+  config: object,
+  tipo: 'aberta' | 'fechada',
+  mensagem: string,
+  contexto: Record<string, unknown>,
+): void {
+  const dados = avisosDaTroca.get(config) ?? new Set()
+  if (dados.has(tipo)) return
+  dados.add(tipo)
+  avisosDaTroca.set(config, dados)
+  registrarLog('aviso', mensagem, contexto)
 }
 
 /** Assina SEMPRE com a chave atual: a anterior só confere. */
@@ -105,10 +138,11 @@ function confere(carga: string, assinatura: string, chave: string): boolean {
   return timingSafeEqual(esperada, recebida)
 }
 
-function conferirAssinatura(carga: string, assinatura: string): boolean {
-  if (confere(carga, assinatura, segredo())) return true
+/** Qual chave conferiu a assinatura — a anterior pede conferências a mais em `lerCookie`. */
+function conferirAssinatura(carga: string, assinatura: string): 'atual' | 'anterior' | null {
+  if (confere(carga, assinatura, segredo())) return 'atual'
   const anterior = segredoAnterior()
-  return anterior !== undefined && confere(carga, assinatura, anterior)
+  return anterior !== undefined && confere(carga, assinatura, anterior) ? 'anterior' : null
 }
 
 export function montarCookie(
@@ -138,7 +172,8 @@ export function lerCookie(valor: string | undefined): Conteudo | null {
 
   const carga = valor.slice(0, separador)
   const assinatura = valor.slice(separador + 1)
-  if (!conferirAssinatura(carga, assinatura)) return null
+  const chave = conferirAssinatura(carga, assinatura)
+  if (chave === null) return null
 
   try {
     const conteudo = JSON.parse(Buffer.from(carga, 'base64url').toString()) as Conteudo
@@ -149,6 +184,20 @@ export function lerCookie(valor: string | undefined): Conteudo | null {
     // versão; aceitar manteria de pé exatamente os cookies que a mudança
     // existe para poder derrubar.
     if (typeof conteudo.emitidoEm !== 'number') return null
+    // Pela chave anterior, só a forma de um cookie legítimo: emitido antes de
+    // este processo subir com a chave nova, e com a validade exata. Um forjado
+    // com a chave vazada podia pôr `emitidoEm` no futuro e escapar de todo
+    // "sair" (`sessoesInvalidasAntes`) feito durante a troca (revisão de
+    // segurança do #146). Nenhum cookie legítimo paga nada por isso.
+    if (
+      chave === 'anterior' &&
+      !(
+        conteudo.emitidoEm < performance.timeOrigin &&
+        conteudo.expiraEm - conteudo.emitidoEm === VALIDADE_SEGUNDOS * 1000
+      )
+    ) {
+      return null
+    }
     // `local` só vale como `true` exato; qualquer outro valor é tratado como
     // sessão comum, que é a que recebe MENOS permissão, não mais.
     const { local, ...resto } = conteudo

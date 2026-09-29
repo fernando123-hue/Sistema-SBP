@@ -415,11 +415,17 @@ export function ambiente(): Ambiente {
   }
 
   // Igual à atual, a troca não aconteceu: quem configurou acha que rotacionou,
-  // e o segredo antigo segue assinando tudo. Falha alto em qualquer ambiente.
-  if (resultado.data.SESSAO_SECRET_ANTERIOR === resultado.data.SESSAO_SECRET) {
+  // e o segredo antigo segue assinando tudo. Contida uma na outra, a nova foi
+  // derivada da velha ("<velha>-v2"), e quem tiver a velha adivinha a nova —
+  // a mesma regra do C-25 entre sessão e anexos. A contenção pega também a
+  // cópia com um espaço sobrando, que a igualdade deixava passar (revisões do
+  // #146). Falha alto em qualquer ambiente.
+  const anterior = resultado.data.SESSAO_SECRET_ANTERIOR
+  const atual = resultado.data.SESSAO_SECRET
+  if (anterior !== undefined && (anterior.includes(atual) || atual.includes(anterior))) {
     throw new Error(
-      'SESSAO_SECRET_ANTERIOR igual a SESSAO_SECRET: a troca da chave de sessão não aconteceu. ' +
-        'Ponha em SESSAO_SECRET o segredo novo, ou apague SESSAO_SECRET_ANTERIOR.',
+      'SESSAO_SECRET_ANTERIOR igual a SESSAO_SECRET, ou uma contida na outra: a troca da chave de sessão ' +
+        'não aconteceu, ou a nova foi derivada da anterior. Gere a nova com o seu próprio crypto.randomUUID().',
     )
   }
 
@@ -484,12 +490,23 @@ export function ambiente(): Ambiente {
     // A saída que a mensagem dá é apagar a anterior, nunca trocar a dos
     // anexos: trocar a dos anexos torna ilegível todo documento gravado
     // (`AT-13`); apagar a anterior custa uma reentrada por pessoa.
-    const anterior = resultado.data.SESSAO_SECRET_ANTERIOR
     if (anterior !== undefined && (anexos.includes(anterior) || anterior.includes(anexos))) {
       throw new Error(
         'SESSAO_SECRET_ANTERIOR igual a ANEXOS_SECRET, ou um contido no outro, em NODE_ENV=production: ' +
           'durante a troca, a chave dos anexos abriria sessão. Apague SESSAO_SECRET_ANTERIOR ' +
           '(cada pessoa entra de novo uma vez); não troque ANEXOS_SECRET, que tornaria os anexos ilegíveis.',
+      )
+    }
+
+    // O mesmo com a da busca, que foi feita para nunca trocar (`A23(b)`) e
+    // por isso vive muito mais que uma chave de sessão (revisão de segurança
+    // do #146). A saída é a mesma: apagar a anterior, nunca trocar a da busca.
+    const busca = resultado.data.BUSCA_SECRET
+    if (anterior !== undefined && (busca.includes(anterior) || anterior.includes(busca))) {
+      throw new Error(
+        'SESSAO_SECRET_ANTERIOR igual a BUSCA_SECRET, ou uma contida na outra, em NODE_ENV=production: ' +
+          'durante a troca, a chave da busca abriria sessão. Apague SESSAO_SECRET_ANTERIOR ' +
+          '(cada pessoa entra de novo uma vez); não troque BUSCA_SECRET, que quebraria a busca por CPF.',
       )
     }
   }

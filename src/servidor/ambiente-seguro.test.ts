@@ -237,6 +237,30 @@ describe('chave anterior da sessão, para rotacionar sem derrubar todo mundo (C-
     expect(() => ambiente()).toThrow(/SESSAO_SECRET_ANTERIOR/)
   })
 
+  it('com espaço sobrando, igual à atual continua recusada — a cópia com aspas ou do systemd leva o espaço', () => {
+    vi.stubEnv('SESSAO_SECRET_ANTERIOR', `${FORTE} `)
+    expect(() => ambiente()).toThrow(/SESSAO_SECRET_ANTERIOR/)
+  })
+
+  it('a nova derivada da anterior por concatenação é recusada — quem tem a velha adivinharia a nova', () => {
+    vi.stubEnv('SESSAO_SECRET_ANTERIOR', FORTE)
+    vi.stubEnv('SESSAO_SECRET', `${FORTE}-v2`)
+    expect(() => ambiente()).toThrow(/SESSAO_SECRET_ANTERIOR/)
+  })
+
+  it('em produção, igual ou contida na da busca é recusada — a chave que nunca troca abriria sessão', () => {
+    // Independente da atual: senão quem recusaria seria a regra da atual.
+    const busca = randomUUID()
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('BUSCA_SECRET', busca)
+    vi.stubEnv('SESSAO_SECRET_ANTERIOR', busca)
+    expect(() => ambiente()).toThrow(/SESSAO_SECRET_ANTERIOR.*BUSCA_SECRET/)
+
+    limparCacheDeAmbiente()
+    vi.stubEnv('SESSAO_SECRET_ANTERIOR', `${busca}-velha`)
+    expect(() => ambiente()).toThrow(/SESSAO_SECRET_ANTERIOR.*BUSCA_SECRET/)
+  })
+
   it('em produção, igual ou contida na dos anexos é recusada — a chave dos anexos abriria sessão', () => {
     const anexos = randomUUID()
     vi.stubEnv('NODE_ENV', 'production')
