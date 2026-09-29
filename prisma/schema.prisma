@@ -927,7 +927,14 @@ model EventoProcessamento {
   criadoEm     DateTime  @default(now())
 
   @@index([correlacaoId])
-  @@index([situacao, etapa])
+  /// Serve às três leituras da tabela por tipo de evento: o teto do rastro de
+  /// entrada recusada e de permissão negada (`referencia` + `criadoEm`) e as
+  /// tentativas anteriores da ingestão (`referencia IN`). Com só
+  /// `[situacao, etapa]`, cada uma lia todas as linhas do tipo — medido com
+  /// 500 mil eventos: 2 s por tentativa de entrada com e-mail inexistente, que
+  /// é justamente o que quem ataca repete (pendência 11). Substitui o
+  /// `[situacao, etapa]`, que é prefixo deste.
+  @@index([situacao, etapa, referencia, criadoEm])
 }
 
 /// Quantas buscas por CPF ou matrícula cada pessoa fez no dia, e quantas não
