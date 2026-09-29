@@ -49,6 +49,26 @@
 > - tudo da Parte III do documento de arquitetura de 29/09;
 > - pendências fora do item 1 acima.
 >
+> **6. FEITO NA MESMA NOITE, depois da linha de chegada.**
+> - Mesclados:
+>   - **#149**: a investigação e a linha de chegada;
+>   - **#146**: rotação da sessão, com o aviso da troca na subida do servidor (3ª rodada);
+>   - **#147**: índice do rastro; pendências 40, 41 e 42 anotadas.
+> - **#150 aberto: pendência 17** (`AT-51`). Valor fora do texto e CPF que não confere vão para a Revisão. Teste visto vermelho, 1651 testes verdes, visto rodando. Revisões técnica e de segurança pedidas.
+> - **O dono pediu foco na experiência de uso** ("diminuir toda a resistência, que sintam mais resultado com menos esforço"). O levantamento de atrito, com as telas vistas rodando como operadora, colaboradora e gestora, está na página https://claude.ai/artifact/NL4m8qY6LZjwuSLvJSeWgm (privada, do dono). Cinco atritos, cada um com a tela de hoje e as opções:
+>   1. uma lista de ligantes vira dezenas de cartões na Revisão: 57 de 58 itens foram para a Revisão numa busca de teste;
+>   2. a Revisão pede para conferir, mas não mostra o e-mail, e o selo "99%" contradiz o motivo;
+>   3. a Minha fila tem 34 cartões iguais e 68 cliques para concluir uma liga, sem os dados que a IA já leu;
+>   4. depois da busca, a Distribuição não diz que 57 esperam conferência;
+>   5. nada mostra o ganho.
+>
+>   **Aguardando a escolha do dono** (sugestão: `1A · 2A+2B · 3A+3B · 4A · 5B`). Isso entra na linha de chegada: a rodada paralela só funciona se a equipe quiser usar. Um PR por item.
+> - **Próximo:**
+>   - fechar o #150 (revisões, links, CI, mesclar);
+>   - pendência 37;
+>   - os itens de tela que o dono escolher;
+>   - medir no Ollama o tempo por e-mail e o efeito da pendência 17 (junto da 18).
+>
 > ### 29/09/2026, fim da noite — PARADA PARA AS INSTRUÇÕES NOVAS DO DONO (anterior; o item 0 dele foi feito no bloco acima)
 >
 > **0. PRIMEIRO, antes de qualquer código.** O dono vai passar **instruções novas sobre o Jev e sobre como quer que funcione a conta dele no sistema**. O que ele pediu:
