@@ -10,7 +10,7 @@
 > - "todo o potencial do Jev";
 > - "Autonomous Operations + SBP Control Center".
 >
-> O resultado está em `docs/arquitetura/2026-09-29-jev-harness-e-operacao-autonoma.md`. As decisões que só o dono pode tomar estão em `DECISOES.md § H.4`, itens **37 a 46**.
+> O resultado está em `docs/arquitetura/2026-09-29-jev-harness-e-operacao-autonoma.md`. As decisões que só o dono pode tomar estão em `DECISOES.md § H.4`, itens **37 a 48**.
 >
 > **2. A rede continua bloqueando a TypeSafe.** `api.typesafe.ai` e `docs.typesafe.ai` deram **403** em 29/09, como em 26/09. Nenhum número do Jev foi medido; o documento diz isso onde importa.
 >
@@ -23,7 +23,14 @@
 >
 > Depois vêm o ator próprio (`§ H.4` 7) e o papel `dono`, e só então o Control Center.
 >
-> **4. Antes de codar:** conversar com o dono sobre a rota e os itens 37 a 46. Ele pediu para ser consultado em toda recomendação importante. Os PRs #146 e #147 seguem parados em ponto seguro (bloco de baixo).
+> **4. Respostas do dono no mesmo dia** (registradas no `§ H.4`):
+> - 37: sinal de IA só aumenta o cuidado até calibrar;
+> - 41: avisos só dentro do sistema, por enquanto;
+> - 45: a conta dele é separada da gestão, e o papel **não** se chama "dono" (nome a escolher).
+>
+> Ele perguntou se o sistema vive sem o Jev e se dá para ter um "Jev próprio". A resposta está na **Parte IV** do documento e nos itens novos **47 e 48**.
+>
+> **5. Antes de codar:** conversar com o dono sobre a rota e os itens ainda abertos (38 a 40, 42 a 44, 46 a 48). Ele pediu para ser consultado em toda recomendação importante. Os PRs #146 e #147 seguem parados em ponto seguro (bloco de baixo).
 >
 > ### 29/09/2026, fim da noite — PARADA PARA AS INSTRUÇÕES NOVAS DO DONO (anterior; o item 0 dele foi feito no bloco acima)
 >

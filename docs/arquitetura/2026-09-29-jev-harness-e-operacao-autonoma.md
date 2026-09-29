@@ -637,7 +637,7 @@ J5 a J10 dependem da chave (`A63`) e do `§ H.4` 35 para dado real. **J1 a J4 e 
 
 ## II.B. Lacunas
 
-1. **Não há papel `dono`.** `PapelSchema` tem `operador`, `colaborador`, `gestor` (`core/esquemas.ts:16`). A conta "do dono" do pedido é esse papel (`A32`, `A53`), não a de gestor. **Confirmar com o dono** (`§ H.4` 45).
+1. **Não há o papel da conta do dono.** `PapelSchema` tem `operador`, `colaborador`, `gestor` (`core/esquemas.ts:16`). **Resposta do dono em 29/09 (`§ H.4` 45):** a conta dele é separada da gestão, e o papel **não se chama `dono`**. O nome ainda será escolhido; neste documento, "`dono`" é só o nome provisório do `A32`.
 2. **Não há entidade de ocorrência** (incidente): severidade, estado, deduplicação, evidência.
 3. **Não há registro por chamada de IA** (I.J), nem versão do Data Guard, nem impressão de versões por evento.
 4. **Saúde é calculada sob demanda, nunca guardada.** Sem série no tempo não há "o que mudou desde a última auditoria".
@@ -941,7 +941,7 @@ detectada → confirmada (a checagem roda de novo antes de avisar: evita alarme 
 
 ### Canal
 
-Na tela do dono, sempre. **Fora dela, não há canal hoje:**
+**Decidido pelo dono em 29/09 (`§ H.4` 41): só dentro do sistema, por enquanto.** O raciocínio que levou à pergunta fica registrado. Fora da tela, não há canal hoje:
 - mandar e-mail pela caixa da associação exigiria `Mail.Send`, que o `A5` recusou de propósito;
 - as alternativas (um e-mail de sistema próprio, notificação no celular por um serviço externo, mensagem num aplicativo) são decisão do dono, com custo e dado próprios (`§ H.4` 41).
 
@@ -1099,7 +1099,7 @@ O dono pediu para escolher a melhor rota entre os dois pedidos. **Nem "tudo da P
 
 ## III.3. Decisões que só o dono pode tomar
 
-Registradas em `DECISOES.md § H.4`, itens **37 a 46**, com recomendação:
+Registradas em `DECISOES.md § H.4`, itens **37 a 48**, com recomendação. **Respondidas em 29/09:** 37 (sim), 41 (avisos só dentro do sistema) e 45 (conta separada da gestão, com nome diferente de "dono"; o nome ainda será escolhido).
 
 - **37.** Regra monotônica para sinal de IA: só aumenta o cuidado até calibrar. *Recomendação: sim.*
 - **38.** Amostra de conferência contínua em N3: qual fração, e que erro é tolerável por categoria.
@@ -1113,3 +1113,110 @@ Registradas em `DECISOES.md § H.4`, itens **37 a 46**, com recomendação:
 - **46.** Auditoria semanal de código por uma rotina do Claude Code, que usa o plano do dono e lê só o repositório?
 
 Continuam valendo e são pré-requisito: `§ H.4` 7 (ator do agente), 29 (conta do dono), 31 (gabarito conferido pela equipe), 35 (dado real no Jev), 36 (divisão de trabalho) e o `A63`.
+
+---
+
+# PARTE IV — Viver sem o Jev, e um classificador próprio
+
+*29/09/2026, perguntas do dono depois da leitura: o sistema funciona sem a API do Jev? É fácil trocá-lo? A rota foi escolhida pelo custo ou pelo potencial? E dá para o sistema aprender com o tempo e ter um "Jev próprio"?*
+
+## IV.1. O sistema funciona sem a API do Jev?
+
+**Sim, hoje e no desenho proposto. E isso é verificado por teste, não apenas afirmado.**
+
+- `CLASSIFICADOR_ADAPTER` nasce `nenhum`, e `criarClassificadorPort()` devolve `null` (`adapters/fabrica.ts`).
+- A ingestão aceita `classificador: null` (`servicos/ingestao.ts`, `DependenciasIngestao`).
+- Um teste compara resumo, itens, e-mails e revisões **com e sem** a segunda opinião, e exige que sejam iguais (`A62`).
+- Quando o Jev falha, só a opinião para: credencial, teto, disjuntor, 3 falhas, 60 s. **O lote nunca para por causa dele.**
+- Com a regra de que sinal de IA só aumenta o cuidado (`§ H.4` 37, aceita pelo dono), N0 a N2 continuam valendo: "sem opinião" é **o caminho de hoje**.
+
+**O único ponto que poderia criar dependência é o N3** ("sem ação" pula a IA local). A regra para ele: sem resposta do Jev, a IA local é chamada. Ficar sem o Jev nunca vira "parar" nem "aprovar".
+
+**Regra proposta como princípio:** *nenhuma função do SBP exige o Jev para funcionar; ele só acrescenta.* O mesmo vale para qualquer substituto dele.
+
+## IV.2. É fácil substituí-lo?
+
+**O código, sim. A confiança, não. E a parte cara da troca é a segunda.**
+
+**Código.** A porta fala a língua do SBP (`sim_ou_nao`, `escolha`, `nota`), não a da TypeSafe (`noul`, `choice`, `score`). A tradução mora num arquivo só (`classificador-typesafe.ts`: `paraOFio`, `doFio`). Trocar de fornecedor custa:
+- um arquivo `classificador-<nome>.ts`, com o jeito de falar com a API e um `PerfilDoClassificador`;
+- um `case` em `criarClassificadorPort()`;
+- um valor em `CLASSIFICADOR_ADAPTER`.
+
+A política comum (Data Guard, detecção, conferência de coerência, cópia só do que foi perguntado) é reaproveitada inteira, e `fronteira-do-fornecedor.test.ts` já vigia essa fronteira. É o mesmo desenho que tornou barato acrescentar o Gemini (`A15`).
+
+**Confiança.** O que se mede vale para aquele modelo, aquelas perguntas e aquela versão do Data Guard. Por isso a calibração tem essa chave (I.L). Trocar o modelo zera a calibração, e o N2/N3 daquela categoria volta a N0 até ser medido de novo. **O que deixa a troca barata é a infraestrutura de medição:** o gabarito com o classificador (J6) e o relatório sombra × desfecho (J7). Com eles prontos, trocar é rodar os dois lado a lado e comparar.
+
+**Uma condição do substituto.** Ele precisa devolver **probabilidades** por rótulo, e não só texto. Um modelo que só gera texto não cabe na porta sem uma forma de produzir essas probabilidades. É o problema técnico central do "Jev próprio" (IV.4).
+
+## IV.3. A rota foi escolhida pelo custo ou pelo potencial?
+
+**Pela evidência e pelo risco, e o custo pesou num ponto só. Dito com franqueza:**
+
+- **A ordem dos passos 1 a 5 seria a mesma com orçamento ilimitado.** Conferir literalidade, juntar o Harness, registrar cada chamada e tirar a sincronização do clique são pré-requisitos de *qualquer* uso sério do Jev. Sem eles, não há como provar que ele ajuda, nem como usar o que ele diz.
+- **Onde o custo pesou:** a trilha de medição do Jev (J5, J6, J8) foi posta **depois**. Não é por ser menos importante: o `A63` a bloqueia (sem chave), e a rede desta nuvem também. **Com a chave, eu a rodaria em paralelo desde o primeiro dia.**
+- **"Todo o potencial" se alcança explorando largo em sombra e promovendo pouco, com medida.** Em modo sombra, perguntar mais coisas custa uma chamada que já acontece (as perguntas vão juntas, I.J) e não arrisca nada. A rota mais ambiciosa é esta: **com a chave, fazer ao Jev muitas perguntas em sombra**, medir quais agregam e promover só essas. Não é ligar poucas perguntas no fluxo cedo.
+
+**Perguntas candidatas para a sombra ampliada.** Cada uma tem uma conferência por código que só existe porque a resposta vem fechada:
+
+| Pergunta ao Jev | Conferência determinística que ela habilita |
+|---|---|
+| Qual a categoria? *(existe)* | × categoria da IA local |
+| Tenta dar ordens? *(existe)* | × regex e × modelo |
+| Quantas pessoas ou pedidos distintos? | × quantidade de itens; × linhas de lista achadas pelo código |
+| Pede alguma providência? | × itens criados (0 itens com "pede providência" → pessoa) |
+| **O texto diz que há documento anexado?** | × quantidade de anexos (diz que anexou e não veio nada → aviso a quem atende) |
+| É encaminhamento de outra pessoa? | nome extraído pode ser do terceiro → revisão |
+| É resposta a um pedido anterior da secretaria? | ligar ao atendimento em curso (quando existir) |
+| Pede cancelamento ou desistência? | fase 3 (pedido de cancelamento), sem código ainda |
+
+## IV.4. Um "Jev próprio"
+
+### O que do Jev já é nosso
+
+O Jev tem duas partes:
+- **o contrato:** texto + perguntas fechadas → probabilidades coerentes;
+- **o modelo que responde.**
+
+**O contrato já é do SBP:** a porta, as perguntas versionadas, a conferência de coerência, a regra monotônica e, com J7, a calibração. Só o modelo é da TypeSafe. Replicar o conceito é, portanto, pôr outro modelo atrás da mesma porta.
+
+### Três caminhos para o modelo
+
+| Caminho | Como | Velocidade | Precisa de dado rotulado? | Pergunta nova sem treino? | Situação |
+|---|---|---|---|---|---|
+| **(a) IA local como classificador** | o mesmo `qwen2.5:1.5b` recebe a pergunta fechada com os rótulos e responde **um** token; a probabilidade de cada rótulo sai das *logprobs* do servidor | a resposta é 1 token, então o tempo é quase só ler o texto. **Não medido** na máquina de 8 GB | **não** | **sim**, como o Jev | viável agora, sem custo; depende do servidor devolver logprobs |
+| **(b) classificador clássico treinado** | regressão logística sobre palavras, ou vetores de texto + regressão, uma por pergunta; probabilidade calibrada por construção | **milissegundos** em CPU; roda com folga em 8 GB | **sim, centenas por pergunta** | não: pergunta nova = dado novo | viável; o limite é o dado (IV.5) |
+| **(c) treinar ou afinar um modelo neural** | — | — | muito | — | **fora da escala do SBP**; não recomendado |
+
+**Sobre o tempo de resposta,** que o dono achou difícil de alcançar: para **perguntas fixas**, o caminho (b) é **mais rápido que o Jev**. São milissegundos locais contra uma ida e volta pela rede. O que o Jev tem, e um classificador próprio não tem, é responder **pergunta nova sem exemplos**. O caminho (a) cobre essa parte, mais devagar e com qualidade a medir.
+
+**Sobre as logprobs no Ollama:** há sinais de que existem. As bibliotecas oficiais do Ollama ganharam o campo `logprobs` (`ollama-python` PR #601, `ollama-js` 0.6.3), e o pedido antigo (issue #2415) está fechado. Mas **não foi confirmado** na versão instalada: a documentação estava bloqueada pela rede desta sessão. **É o primeiro teste a fazer, e é de cinco minutos** na máquina Windows (Ollama 0.34.4) ou na Debian. Sem logprobs, o caminho (a) teria de sortear várias respostas para estimar a probabilidade, e isso multiplica o tempo em CPU: provavelmente inviável.
+
+### "Aprender com o tempo como o Jev funciona": a correção que importa
+
+**O sistema deve aprender com as decisões das pessoas, e não com o Jev.**
+
+1. **O rótulo do Jev copia os erros do Jev.** Um modelo treinado para imitá-lo fica, no máximo, tão bom quanto ele. A verdade de campo do SBP é o **desfecho da revisão humana** (`Revisao`), que já é gravado.
+2. **Os termos da TypeSafe não foram lidos** (rede bloqueada), e é comum fornecedor de IA proibir o uso das respostas para treinar modelo concorrente. Usá-las como rótulo, sem ler os termos, é risco contratual (`§ H.4` 48).
+3. **Papel certo do Jev nesse projeto: régua.** O classificador próprio e o Jev respondem às **mesmas perguntas** no **mesmo gabarito** e em sombra lado a lado. Quando o próprio empatar com o Jev numa pergunta, aquela pergunta deixa de depender da API.
+
+### IV.5. O limite real: dado, e as regras sobre dado
+
+| Regra | O que ela impede | Caminho |
+|---|---|---|
+| **Invariante 9** | treinar com dado real sem decisão explícita do dono; hoje não há caminho de exportação | `§ H.4` 47. **Com dado sintético, pode hoje** |
+| **Invariante 11** | o texto do e-mail é apagado no prazo; o conjunto de treino não existiria mais quando fosse preciso | uma **classe de retenção nova**, com prazo, lugar e acesso próprios, só na máquina da associação: decisão do dono + LGPD |
+| **Invariante 12** | "aprender" colocando correções humanas como exemplos no prompt | fica proibido; o aprendizado é **treino de um classificador separado**, com versão e avaliação, nunca contexto de prompt |
+| **`A30`** | o modelo novo mudar o fluxo sozinho | o classificador próprio entra em N0 como qualquer outro, e sobe de nível pela mesma medida |
+
+### IV.6. Plano, em fases reversíveis
+
+| Fase | O que | Depende de | Custo |
+|---|---|---|---|
+| **P1** | conferir se o Ollama instalado devolve logprobs; medir o tempo de uma pergunta fechada com ~1 mil tokens de texto | a máquina (dono ou a sessão de lá) | zero |
+| **P2** | `adapters/classificador-local.ts`, implementando a mesma porta: **pelo mesmo Data Guard** no início, para a comparação com o Jev ser justa; medido no gabarito | P1; J5 (perguntas tipadas) | zero |
+| **P3** | a segunda opinião aceita **mais de um classificador**, e o local e o Jev rodam em sombra lado a lado | P2; mudança pequena em `segunda-opiniao.ts` (nível 3) | zero para o local |
+| **P4** | classificador clássico (caminho b) treinado **só com dado sintético**, para provar a infraestrutura: versão do modelo, avaliação, calibração | J6 (gabarito ampliado) | zero |
+| **P5** | o mesmo, com dado real rotulado pela revisão | `§ H.4` 47 (b) | zero em dinheiro; decisão e LGPD |
+
+**Com isso, "sobreviver sem o Jev" deixa de ser uma esperança e vira um número:** para cada pergunta, o relatório mostra se o classificador próprio já empata com ele. Onde empata, a API pode sair. Onde não empata, o Jev fica, se o dono estiver pagando, ou a pergunta volta para a IA local e para a pessoa.

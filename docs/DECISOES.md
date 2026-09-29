@@ -835,9 +835,9 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
     - **Opções:** (a) sim, depois de medido, se o Jev acertar a categoria pelo menos tanto quanto a IA atual no gabarito; (b) só como segunda opinião, em que a discordância vai para uma pessoa e a IA local continua dona da categoria; (c) outra.
     - **Depende do item 35** para valer com e-mail real.
 
-**Itens 37 a 46: da investigação de 29/09/2026 sobre o Jev, o Harness e a operação autônoma** (`docs/arquitetura/2026-09-29-jev-harness-e-operacao-autonoma.md`). Nenhum tem resposta assumida. Os passos 1 a 5 da rota (Parte III do documento) não dependem deles.
+**Itens 37 a 46: da investigação de 29/09/2026 sobre o Jev, o Harness e a operação autônoma** (`docs/arquitetura/2026-09-29-jev-harness-e-operacao-autonoma.md`). Os itens 37, 41 e 45 foram respondidos pelo dono em 29/09 (marcados abaixo); os outros seguem sem resposta assumida. Os passos 1 a 5 da rota (Parte III do documento) não dependem deles.
 
-37. **Sinal de IA só aumenta o cuidado até ser calibrado?** *(seção I.F)* A proposta é uma "regra monotônica":
+37. ✅ **RESPONDIDO pelo dono em 29/09/2026: sim.** Nas palavras dele: "vamos manter assim até calibrarmos o JEV". Vale para todo sinal de IA, e não só para o Jev, até existir calibração medida. *Texto original da pergunta:* **Sinal de IA só aumenta o cuidado até ser calibrado?** *(seção I.F)* A proposta é uma "regra monotônica":
     - uma resposta do Jev ou da IA pode mandar um item para mais verificação ou para uma pessoa;
     - ela só pode **dispensar** verificação ou revisão (nível N3) com calibração medida naquela categoria, com decisão do dono e com amostra de conferência.
 
@@ -851,17 +851,33 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 40. **Critério da conferência de literalidade** (pendência 17, passo 1 da rota). *(seção I.G)*
     - **Proposta:** o valor extraído precisa aparecer no texto depois de normalizar caixa, espaço e acento; número se compara só pelos dígitos. CPF com dígito verificador errado vai para a revisão.
     - **Efeito a saber antes:** com a literalidade de 0,69 do modelo local (`A59`), mais itens irão para a revisão. São itens que hoje passam aprovados com valor possivelmente errado. O número exato sai do gabarito antes de ligar.
-41. **Aviso fora do sistema: qual canal?** *(seção II.J)* Ocorrência crítica aparece na tela do dono, mas não há como avisar fora dela. Mandar e-mail pela caixa da associação exige permissão de envio, que o `A5` recusou de propósito. As opções são um e-mail próprio do sistema, notificação no celular por serviço externo ou só a tela e o relatório. Cada uma tem custo e dado próprios.
+41. ✅ **RESPONDIDO pelo dono em 29/09/2026: os avisos ficam só dentro do sistema, por enquanto.** Nada de e-mail, celular ou serviço externo; a pergunta volta se ele pedir. *Texto original da pergunta:* **Aviso fora do sistema: qual canal?** *(seção II.J)* Ocorrência crítica aparece na tela do dono, mas não há como avisar fora dela. Mandar e-mail pela caixa da associação exige permissão de envio, que o `A5` recusou de propósito. As opções são um e-mail próprio do sistema, notificação no celular por serviço externo ou só a tela e o relatório. Cada uma tem custo e dado próprios.
 42. **O agente de desenvolvimento pode mesclar sozinho?** *(seção II.I)* Não há proteção de branch (plano do GitHub), então um check vermelho não segura o botão. **Recomendação:** nada automático agora; no máximo documentação (nível 0) depois. Arquivos de governança (`CLAUDE.md`, `PROCESSO.md`, `scripts/processo/`, `.github/`, travas, política) **nunca**, com trava no CI.
 43. **Que contenção o sistema aplica sozinho numa ocorrência crítica?** *(seção II.J)* **Proposta:** só coisas que **desligam**: a IA externa, o Jev e a ingestão automática. Efeito: o trabalho vai para pessoa ou fica no Outlook. Religar é sempre o dono. Nada que apague, reverta dado ou mexa em acesso.
 44. **O assistente administrativo pode devolver uma tela com o valor já preenchido?** *(seção II.F)* O invariante 13 permite "no máximo o nome de uma tela". Para "mude a auditoria para quinzenal", a proposta é abrir a tela de configuração com "quinzenal" marcado e o dono confirmar. É uma extensão do invariante. **Segunda pergunta:** quando houver orçamento, esse assistente pode usar IA paga com dado só agregado, sem pessoa e sem e-mail?
-45. **"Minha conta" é o papel `dono` do `A32`/`A53`?** *(seção II.B)* A leitura desta investigação é que sim, separado da conta de gestão (`A53`). Isso responde parte do item 29. **Pergunta complementar:** o gestor vê alguma parte do Control Center (por exemplo, a saúde da operação)?
+45. ✅ **RESPONDIDO em parte pelo dono em 29/09/2026: a conta dele é separada da conta de gestão, e o papel NÃO se chama "dono".** O nome do papel ainda precisa ser escolhido; o `A32` e o `A53` usavam `dono` como nome provisório. A pergunta complementar abaixo (o gestor vê parte do Control Center?) segue aberta. *Texto original da pergunta:* **"Minha conta" é o papel `dono` do `A32`/`A53`?** *(seção II.B)* A leitura desta investigação é que sim, separado da conta de gestão (`A53`). Isso responde parte do item 29. **Pergunta complementar:** o gestor vê alguma parte do Control Center (por exemplo, a saúde da operação)?
 46. **Auditoria semanal de código por uma rotina do Claude Code?** *(seção II.E)* A parte do servidor é só código e não custa nada. A parte que lê código, testes, dependências e documentação seria uma rotina do Claude Code:
     - usa o plano do dono;
     - lê só o repositório, nunca a base de produção;
     - entrega o relatório como issue ou PR de documentação.
 
     **A frequência dessa rotina é configurada no claude.ai, não no SBP.**
+47. **Classificador próprio treinado com texto real de e-mail?** *(29/09/2026, pergunta do dono sobre um "Jev próprio"; documento, Parte IV)* Um classificador treinado na casa só fica bom com exemplos reais: e-mails com a decisão que a revisão humana tomou. Isso esbarra em duas regras:
+    - **invariante 9:** treinar com dado real exige decisão explícita do dono, e hoje não existe caminho de exportação para isso;
+    - **invariante 11:** o texto do e-mail é apagado no prazo de retenção; um conjunto de treino com texto real seria uma **classe nova de retenção**, com prazo, lugar e acesso próprios.
+
+    **Opções:**
+    - (a) só dado sintético, por ora (permitido hoje);
+    - (b) texto real, só na máquina da associação, nunca exportado, com prazo próprio e análise de LGPD (encarregado de dados ou RIPD);
+    - (c) outra.
+
+    **Recomendação:** (a) agora; decidir (b) depois de o classificador próprio provar valor no gabarito sintético.
+48. **Usar as respostas do Jev como rótulo para treinar o classificador próprio?** *(29/09/2026, documento, Parte IV)*
+    - Os termos da TypeSafe não foram lidos: estavam bloqueados pela rede.
+    - É comum fornecedor de IA proibir o uso das respostas para treinar modelo concorrente.
+    - Um rótulo copiado do Jev ensina também os erros dele. A verdade de campo do SBP é o desfecho da revisão humana.
+
+    **Recomendação:** não. O Jev serve de **régua de comparação** no mesmo gabarito, nunca de professor. Se um dia for professor, só depois de lidos os termos.
 
 ### AT-36 — O gabarito da IA: respostas escritas pelo agente, cinco dimensões de peso igual *(17/09/2026)*
 
