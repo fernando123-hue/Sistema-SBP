@@ -1,10 +1,48 @@
 # Estado do projeto — retomada
 
-Última atualização: **29/09/2026 — sessão em nuvem (Linux): #132 (pendência 10), #133 (teste da meia-noite) e #135 (Jev fase 1, camada de defesa do dado) e #141 (alerta do `fast-uri`), #142 (Jev fase 2) e #143 (Jev fase 3, modo sombra) mesclados; sem gasto com IA por decisão do dono (`A63`); #124 (docs) aberto e bloqueado.** Servidor da implantação é Linux (`A61`). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Ver o primeiro bloco abaixo.
+Última atualização: **29/09/2026, noite — ponto de parada combinado com o dono.** Mesclados hoje: #143 (Jev fase 3, modo sombra), #144 (pendência 29) e #124 (`A61`, servidor Linux). Sem gasto com IA (`A63`). A ordem de trabalho combinada está no primeiro bloco abaixo. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 29/09/2026 — JEV (TYPESAFE) FASES 1 A 3; PENDÊNCIAS 10 E 29 (este bloco vence os de baixo; o `git log` vence este)
+> ### 29/09/2026, noite — PONTO DE PARADA; A ORDEM COMBINADA COM O DONO (este bloco vence os de baixo; o `git log` vence este)
+>
+> **1. Onde está.**
+> - `main` verde: 137 arquivos e 1609 testes.
+> - Mesclados hoje: #143 (Jev fase 3, modo sombra), #144 (pendência 29: destino, credencial e log dos SDKs de IA fixados no código) e #124 (`A61`).
+> - Nenhum PR do agente aberto. Só os do Dependabot, #78 a #81 (pendência 12).
+> - Nenhuma pasta de trabalho além do clone principal: as 14 dos PRs já mesclados foram removidas depois de conferido que nada ficou sem estar no GitHub.
+> - MySQL de teste: contêiner `sbp-mysql`, porta 3307. Se a sessão dormiu: `dockerd &`, depois `docker start sbp-mysql`.
+>
+> **2. Decisões do dono nesta noite.**
+> - **Mesclar sem pedir confirmação**, desde que o `PROCESSO.md` do nível do PR esteja cumprido (ver *Como o dono prefere trabalhar*).
+> - **`A63`:** sem gasto com IA. O Jev fica desligado até ele avisar.
+> - **Repositório aberto de propósito, por enquanto,** para o ChatGPT ter acesso. Fica privado quando tudo estiver pronto (pendência 20). Não insistir nisso. Se ele pedir, dá para trocar antes os nomes reais por fictícios em `CONTEXTO.md` e `ENGENHARIA_REVERSA…`; o histórico continua com os nomes até o repositório ficar privado.
+> - **A IA local JÁ ESTÁ DEFINIDA:** `qwen2.5:1.5b-instruct-q4_K_M` (`A59`).
+>   - Medida na máquina Debian da empresa (nota 0,76) e na máquina Windows do dono (0,78).
+>   - **Não é pendência de escolha.** O agente errou nisso em 29/09 e o dono corrigiu.
+>   - O que resta dela é melhoria: a pendência 18, um exemplo na instrução para os ligantes, medido antes e depois. A medição exige Ollama, que esta nuvem não tem; combinar com o dono onde medir.
+>   - A trava `IA_PARA_DADO_REAL.local = false` só o dono destrava (`A56 (e)`).
+>
+> **3. A ORDEM COMBINADA (29/09).**
+> - **(1) Pendências gratuitas e técnicas** da lista abaixo, em ordem numérica: 11, 12, 13, 14, 15, 16, 17, 18, 25, 26, 27, 28, 30, 31, 32, 33, 34, 35, 36 e 37.
+>   - A 18 depende de medição com Ollama.
+>   - Um PR por pendência, com o processo de sempre: teste visto vermelho, `verificar`, revisões por agente publicadas no PR, CI lido check a check, mesclar.
+> - **(2) Design e experiência do usuário**, se o dono não tiver investido até lá.
+>   - Entram nesta fase as pendências de tela: 6 (NVDA), 21, 22 e 24.
+>   - Antes de desenhar, perguntar ao dono, com desenho das opções lado a lado e linguagem simples (ver *Como o dono prefere trabalhar*).
+> - **(3) Antes de ligar na empresa:**
+>   - repositório privado (pendência 20);
+>   - TI da associação: Microsoft 365, com `Mail.Read` só da caixa e o `GRAPH_LER_DESDE` no dia de ligar (`AT-35`); servidor Linux (`A61`): distribuição, versão e `lower_case_table_names` do MySQL;
+>   - decisão do dono sobre dado real na IA local;
+>   - `§ H.4`, itens abertos 30, 32, 35 e 36, e `AT-42`.
+>
+> **4. Primeira ação da próxima sessão:**
+> - ler este bloco;
+> - `git switch main && git pull`;
+> - `npm run verificar`, com `SESSAO_SECRET` de 16+ caracteres na linha de comando;
+> - começar pela pendência 11.
+>
+> ### 29/09/2026 — JEV (TYPESAFE) FASES 1 A 3; PENDÊNCIAS 10 E 29 (anterior; os passos dele foram feitos ou pausados pelo `A63`)
 >
 > **1. Onde está.**
 > - `main` com #132, #133, #135, #142 (Jev fase 2) e **#143 (Jev fase 3, modo sombra)** mesclados, além de tudo do bloco de 26/09.
@@ -150,7 +188,7 @@
 > 17. **Conferir por código que cada valor extraído pela IA aparece no texto do e-mail** antes de aprovar o item direto; o que não aparecer vai para a Revisão. Hoje a nota de confiança é a própria IA que dá, e o modelo local escolhido tem literalidade 0,69 (`A59`). Proposto no documento de segurança de 25/09 — decidir o critério (igualdade exata? normalizada?) antes de codar.
 > 18. **Forma forçada no servidor local** (esquema JSON no pedido do `ia-local.ts`, em vez de só `json_object`) — **é a correção da causa real das falhas de forma** (`A59`). Medir no Ollama desta máquina Windows (instalado em 25/09 com o dono de acordo, só o `qwen2.5:1.5b`, só em `127.0.0.1`) antes e depois, pelo gabarito. **Medido (25/09, fim da noite): idêntico caso a caso no 1.5b — ver item 5 do primeiro bloco.** O que resta é a falha de entendimento (ligantes num item só); próximo passo, exemplo na instrução, medido.
 > 19. ~~Janela de contexto do Ollama não registrada~~ — **medida e descartada** (25/09, noite): 8192 na máquina Debian, 4096 aqui, pedidos de ~1,1 mil tokens, nenhum corte (`A59`).
-> 20. **Repositório público** (`gh repo view` em 25/09: `PUBLIC`), com nomes reais da equipe em `CONTEXTO.md` e `ENGENHARIA_REVERSA…`. Dono: voltar a privado. Depois: chave de implantação só de leitura para a máquina Debian (a cópia de lá é tarball), e trocar os nomes reais por fictícios nesses dois arquivos (PR de docs).
+> 20. **Repositório público** (`gh repo view` em 25/09: `PUBLIC`), com nomes reais da equipe em `CONTEXTO.md` e `ENGENHARIA_REVERSA…`. Dono: voltar a privado. **Decisão do dono (29/09):** fica aberto de propósito, por enquanto, para o ChatGPT ter acesso; ele volta a privado quando tudo estiver pronto. Depois: chave de implantação só de leitura para a máquina Debian (a cópia de lá é tarball), e trocar os nomes reais por fictícios nesses dois arquivos (PR de docs).
 >
 > *E. Novas em 25/09, noite (revisão do #123):*
 > 21. **Frase repetida quando embutida:** `app/senha/page.tsx` (≈42) monta "Não foi possível sair: ${mensagemDoErro(…)} Você continua conectado." e, sem resposta do sistema, sai "Não foi possível sair: Não foi possível falar com o sistema. …"; o mesmo em `app/entrar/page.tsx` (≈64, "Acesso local indisponível: …"). Legível, mas redundante.
