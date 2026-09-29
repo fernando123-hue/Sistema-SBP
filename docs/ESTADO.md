@@ -1,10 +1,58 @@
 # Estado do projeto — retomada
 
-Última atualização: **26/09/2026, madrugada — sessão em nuvem (Linux) resolveu as pendências 2, 3, 4, 5, 7, 8, 9 e 23 (#122 a #131 mesclados); #132 e #133 abertos esperando revisão; #124 (docs) aberto e bloqueado.** Servidor da implantação é Linux (decisão do dono, registrada no #124 como `A61`). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Ver o primeiro bloco abaixo.
+Última atualização: **29/09/2026 — sessão em nuvem (Linux): #132 (pendência 10), #133 (teste da meia-noite) e #135 (Jev fase 1, camada de defesa do dado) mesclados; Jev fase 2 pronta no branch `feat/jev-2-classificador`, sem PR ainda; #124 (docs) aberto e bloqueado.** Servidor da implantação é Linux (`A61`, só no #124). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Ver o primeiro bloco abaixo.
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 26/09/2026, madrugada — PENDÊNCIAS EM SEQUÊNCIA, NA NUVEM (este bloco vence os de baixo; o `git log` vence este)
+> ### 29/09/2026 — JEV (TYPESAFE) FASES 1 E 2; PENDÊNCIA 10 (este bloco vence os de baixo; o `git log` vence este)
+>
+> **1. Onde está.**
+> - `main` com #132, #133 e #135 mesclados, além de tudo do bloco de 26/09.
+> - **Jev fase 2 pronta e NÃO publicada como PR:** branch `feat/jev-2-classificador`, já com a `main` mesclada e `verificar` verde (132 arquivos, 1533 testes). Traz:
+>   - `ports/classificador.ts`;
+>   - `adapters/classificador-externo.ts`, a política comum: camada de defesa, injeção e conferência da resposta;
+>   - `adapters/classificador-typesafe.ts`: `fetch` + Zod espelhando o SDK 0.6.0, sem dependência, sem repetição, sem redirecionamento e com endereço fixo;
+>   - `adapters/classificador-mock.ts`;
+>   - `criarClassificadorPort()` na fábrica;
+>   - variáveis `CLASSIFICADOR_ADAPTER` (padrão `nenhum`), `CLASSIFICADOR_MODELO` e `TYPESAFE_API_KEY`;
+>   - trava `CLASSIFICADOR_PARA_DADO_REAL` (typesafe com caixa real **falha na partida**);
+>   - `chamarComControle` generalizado em `cliente-com-consumo.ts` (mesmo teto e disjuntor, tarefa `classificacao`);
+>   - `fronteira-do-fornecedor.test.ts`, que agora também guarda `classificador-*.ts`.
+>
+>   O visto vermelho foi feito plantando três defeitos: sem camada de defesa, sem conferência e trava ligada. Os três são pegos.
+> - Abertos: **#124** (docs de 25/09; o classificador de permissões recusou que o agente o atualizasse — o dono mescla) e Dependabot #78–#81 (pendência 12).
+> - Worktree `/home/user/sbp-p29` (branch `fix/pendencia-29-log-do-sdk`) criado **sem mudança nenhuma** — pode apagar ou reaproveitar.
+>
+> **2. Feito nesta sessão.** Cada item teve teste visto vermelho, revisões por agente publicadas no PR e CI lido:
+> - **#132, pendência 10.** A mensagem de transporte da IA, inclusive a dos erros "indisponível", passa por `resumoDeTransporte`: corte prévio, teto, e-mail, CRM e número mascarados. Nenhum SDK ecoa o pedido (conferido na fonte).
+> - **#133.** O teste do expurgo parte do dia gravado.
+> - **#135, Jev fase 1** (`A62`, `AT-49`, `§ H.4` item 35). `core/seguranca/protecao-para-fornecedor-externo.ts` normaliza e tira link (mesmo colado), e-mail, número de conselho/matrícula e sequências de 5+ dígitos, com teto antes e depois do NFKC. **Quatro rodadas de revisão técnica e de segurança**, com dois ReDoS (16 s e 1,9 s) e uma regressão de link colado achados e corrigidos. As duas revisões aprovaram na quarta. Pior caso medido: 62 ms.
+>
+> **3. PRÓXIMO PASSO, nesta ordem.**
+> - **(a) Abrir o PR da fase 2** a partir de `feat/jev-2-classificador`, no nível 3: corpo no formato do #135, revisão técnica e de segurança por agentes, CI, mesclar. No corpo: ainda não há chamador, então nada sai da casa; o "visto rodando" é pelos testes com `fetch` trocado.
+> - **(b) Fase 3, segunda opinião na ingestão.** Em `servicos/ingestao.ts`, `processarUm`, depois da interpretação e FORA da transação, perguntar ao classificador (quando existir) a categoria (`escolha` entre os códigos) e a suspeita (`sim_ou_nao`) numa chamada só. Detalhes:
+>   - As descrições das categorias hoje só existem no prompt de `ia-estruturada.ts`; mover para `core/config.ts` e usar nos dois.
+>   - Guardar a opinião (códigos e probabilidades, nunca texto) num evento `dominio` próprio, **na mesma transação** (invariante 14).
+>   - Começar em **modo sombra**: registra concordância, não muda o fluxo. Discordância → Revisão só por decisão do dono depois de medido.
+>   - `ClassificadorIndisponivelError` para de perguntar no lote; nunca para o lote.
+>   - Aplicar a camada ao assunto e aos nomes de anexo também.
+>   - Anotações das revisões do #135: limite padrão; texto vazio não é classificado e gera evento.
+> - **(c)** Medir no gabarito (`npm run ia:avaliar`, com a categoria esperada dos 17 casos) a concordância do Jev. Isso **exige** a `TYPESAFE_API_KEY` e liberar na rede do ambiente `api.typesafe.ai`, `typesafe.ai` e `docs.typesafe.ai`, os três bloqueados em 26/09. Sem isso, preço, qualidade em português e retenção seguem não confirmados (`A62`).
+> - **(d)** Pendências da lista abaixo, a partir da 11. A 29 (`logLevel: 'warn'` explícito em `clienteAnthropic`, porque a opção explícita vence `ANTHROPIC_LOG`) foi estudada e é pequena. Anotada para ela: o SDK da Anthropic também lê `ANTHROPIC_BASE_URL` do ambiente, o que mudaria para onde o texto vai; decidir se fixa.
+>
+> **4. A pergunta do dono de 29/09 e a resposta dada: "focar o trabalho pesado no Jev para diminuir os erros da IA local?"**
+> - O Jev **não gera texto nem extrai campos** (nome, CPF, liga). Ele responde perguntas fechadas com probabilidade. Não substitui a IA local, mas pode **tirar dela a parte que ele faz bem**: categoria, suspeita, "é rotina?", "há mais de uma pessoa?".
+> - A IA local ficaria só com a extração, uma tarefa menor e mais literal, onde um modelo de 1,5B erra menos. O código confere cada valor extraído contra o texto (pendência 17), e o que divergir vai para uma pessoa. É a proposta **"divisão de trabalho"**, registrada como `§ H.4` item 36.
+> - Custo baixo pelo que foi lido (não confirmado): a camada de defesa não custa nada, e o Jev cobra por token de entrada.
+> - O caminho é **medir antes de mudar o fluxo** (`A62`, `DIRECAO.md`): primeiro o modo sombra e o gabarito, depois a decisão.
+>
+> **5. Como esta sessão trabalhou.**
+> - Igual ao bloco de 26/09: um worktree por assunto, `node_modules` por `cp -al`, MySQL 8.4 em Docker na porta 3307, uma suíte por vez, matar processo por PID.
+> - **O Docker para quando a sessão dorme:** `dockerd &`, depois `docker start sbp-mysql`.
+> - `SESSAO_SECRET=teste-nao-e-segredo-local` na linha de comando.
+> - Revisões por agente: texto publicado sem edição, com nota do autor, e uma resposta por rodada com o destino de cada achado.
+>
+> ### 26/09/2026, madrugada — PENDÊNCIAS EM SEQUÊNCIA, NA NUVEM (anterior; o próximo passo dele foi seguido — #132, #133 fechados)
 >
 > **1. Onde está.** `main` com #120 a #131 mesclados. **PRs abertos, nesta ordem de prioridade:**
 > - **#132 — pendência 10** (erro de transporte da IA mascarado no log). Código pronto, `verificar` verde (1466), teste visto vermelho. **Faltam:** revisão técnica e de segurança por agentes (nível 3), links no corpo, CI lido, mesclar.
