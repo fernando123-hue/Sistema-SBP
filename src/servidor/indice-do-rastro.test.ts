@@ -34,6 +34,10 @@ describe('índice das leituras do rastro', () => {
         FROM information_schema.STATISTICS
        WHERE TABLE_SCHEMA = DATABASE()
          AND TABLE_NAME = 'EventoProcessamento'
+         -- Índice invisível o otimizador ignora, e prefixo parcial de coluna
+         -- não serve de igualdade: nenhum dos dois conta (revisão do #147).
+         AND IS_VISIBLE = 'YES'
+         AND SUB_PART IS NULL
        ORDER BY INDEX_NAME, SEQ_IN_INDEX`
 
     const porIndice = new Map<string, string[]>()

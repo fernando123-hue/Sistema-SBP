@@ -57,6 +57,9 @@ async function avisarCredencialIlegivel(
   })
 
   const jaAvisado = await banco.eventoProcessamento.findFirst({
+    // `situacao`, `etapa` e `referencia` juntas: é o índice
+    // [situacao, etapa, referencia, criadoEm]. Sem uma delas, a leitura
+    // varre a tabela, que só cresce (pendência 11).
     where: {
       dominio: DOMINIO_ATUAL,
       etapa: 'autenticacao',
@@ -174,6 +177,11 @@ async function registrarRecusaSemAcesso(
   }
 
   const recente = await banco.eventoProcessamento.findFirst({
+    // `situacao`, `etapa` e `referencia: null` juntas: é o índice
+    // [situacao, etapa, referencia, criadoEm]. Esta leitura roda a cada
+    // tentativa com e-mail inexistente, sem sessão; sem o índice, custava 2 s
+    // com 500 mil eventos, passava do piso de tempo da entrada e deixava o
+    // relógio dizer se o e-mail tem conta (pendência 11, revisão do #147).
     where: {
       dominio: DOMINIO_ATUAL,
       etapa: 'autenticacao',
