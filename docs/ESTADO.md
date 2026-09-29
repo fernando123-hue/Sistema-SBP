@@ -1,6 +1,6 @@
 # Estado do projeto — retomada
 
-Última atualização: **29/09/2026 — sessão em nuvem (Linux): #132 (pendência 10), #133 (teste da meia-noite) e #135 (Jev fase 1, camada de defesa do dado) mesclados; Jev fase 2 pronta no branch `feat/jev-2-classificador`, sem PR ainda; #124 (docs) aberto e bloqueado.** Servidor da implantação é Linux (`A61`, só no #124). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Ver o primeiro bloco abaixo.
+Última atualização: **29/09/2026 — sessão em nuvem (Linux): #132 (pendência 10), #133 (teste da meia-noite) e #135 (Jev fase 1, camada de defesa do dado) e #141 (alerta do `fast-uri`) mesclados; Jev fase 2 pronta no branch `feat/jev-2-classificador`, sem PR ainda; #124 (docs) aberto e bloqueado.** Servidor da implantação é Linux (`A61`, só no #124). **O repositório está PÚBLICO** (contra o `A38`) — ação do dono. Ver o primeiro bloco abaixo.
 
 > ## ▶ Próxima sessão: comece aqui
 >
@@ -20,6 +20,7 @@
 >   - `fronteira-do-fornecedor.test.ts`, que agora também guarda `classificador-*.ts`.
 >
 >   O visto vermelho foi feito plantando três defeitos: sem camada de defesa, sem conferência e trava ligada. Os três são pegos.
+> - **#141** (28–29/09): `fast-uri` 3.1.6 → 3.1.8. Dois alertas altos novos (GHSA-qw65-cvwx-89v3, GHSA-58mr-gqgx-xq4g) deixavam a auditoria vermelha em todo PR. É dependência só de desenvolvimento, via `prisma → ajv`. O lockfile foi editado à mão: o npm desta nuvem reescrevia metadados. As duas revisões aprovaram. **Se a auditoria voltar a ficar vermelha num PR que não mexe em dependência, é alerta novo: corrigir num PR próprio.**
 > - Abertos: **#124** (docs de 25/09; o classificador de permissões recusou que o agente o atualizasse — o dono mescla) e Dependabot #78–#81 (pendência 12).
 > - Worktree `/home/user/sbp-p29` (branch `fix/pendencia-29-log-do-sdk`) criado **sem mudança nenhuma** — pode apagar ou reaproveitar.
 >
