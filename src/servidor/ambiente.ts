@@ -327,6 +327,25 @@ export function ambiente(): Ambiente {
     }
   }
 
+  // `NODE_TLS_REJECT_UNAUTHORIZED=0` desliga a verificação de certificado do
+  // PROCESSO INTEIRO: o texto do e-mail indo para a IA, o banco, o Graph.
+  // Qualquer proxy no caminho abre o TLS e lê tudo, sem erro nenhum — é a
+  // degradação calada que o invariante 7 proíbe (pendência 37, revisão de
+  // segurança do #144). Proxy corporativo que inspeciona TLS é legítimo, e o
+  // caminho dele é `NODE_EXTRA_CA_CERTS` com o certificado da empresa.
+  //
+  // Mesmo sinal positivo do C-12, acima: só desenvolvimento libera, porque um
+  // servidor publicado com `NODE_ENV` herdado como `test` também é produção.
+  // Compara com '0' exato porque é só esse valor que o Node trata como
+  // "desligado".
+  if (process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0' && resultado.data.NODE_ENV !== 'development') {
+    throw new Error(
+      `NODE_TLS_REJECT_UNAUTHORIZED=0 com NODE_ENV=${resultado.data.NODE_ENV} desliga a verificação de TLS de ` +
+        'todo o processo, e o texto dos e-mails ficaria legível para quem estiver no caminho. Apague a variável; ' +
+        'se a rede da empresa inspeciona TLS, aponte NODE_EXTRA_CA_CERTS para o certificado dela.',
+    )
+  }
+
   // Todo adapter real de IA exige chave. Descobrir isso na primeira chamada ao
   // modelo, em produção, seria tarde demais.
   //

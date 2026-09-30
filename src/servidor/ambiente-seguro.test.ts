@@ -58,6 +58,32 @@ describe('caixa real exige IA própria para dado real (N-17)', () => {
   })
 })
 
+describe('verificação de TLS desligada só em desenvolvimento (pendência 37)', () => {
+  it.each(['production', 'test'])('NODE_TLS_REJECT_UNAUTHORIZED=0 com NODE_ENV=%s é recusado', (nodeEnv) => {
+    vi.stubEnv('NODE_ENV', nodeEnv)
+    vi.stubEnv('NODE_TLS_REJECT_UNAUTHORIZED', '0')
+    expect(() => ambiente()).toThrow(/NODE_TLS_REJECT_UNAUTHORIZED/)
+  })
+
+  it('a recusa aponta o caminho legítimo para proxy corporativo', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('NODE_TLS_REJECT_UNAUTHORIZED', '0')
+    expect(() => ambiente()).toThrow(/NODE_EXTRA_CA_CERTS/)
+  })
+
+  it('em desenvolvimento, NODE_TLS_REJECT_UNAUTHORIZED=0 continua subindo', () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('NODE_TLS_REJECT_UNAUTHORIZED', '0')
+    expect(() => ambiente()).not.toThrow()
+  })
+
+  it.each(['1', ''])('NODE_TLS_REJECT_UNAUTHORIZED=%j em produção sobe: a verificação está ligada', (valor) => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('NODE_TLS_REJECT_UNAUTHORIZED', valor)
+    expect(() => ambiente()).not.toThrow()
+  })
+})
+
 describe('produção recusa segredo público (N-18)', () => {
   it.each([
     ['SESSAO_SECRET', 'ci-nao-e-segredo-so-para-o-banco-efemero'],
