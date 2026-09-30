@@ -103,7 +103,7 @@ describe('resposta sem erro legível', () => {
     // (cabeçalho inválido, URL malformada), que também rejeita com TypeError.
     expect(erro.cause).toBeInstanceOf(TypeError)
     expect(registro).toHaveBeenCalledWith('Sem resposta do sistema', expect.objectContaining({ caminho: '/fila' }))
-    // A marca para de respirar: a requisição que falhou não fica "em voo".
+    // A faixa da marca para: a requisição que falhou não fica "em voo".
     expect(sinais.at(-1)).toBe(false)
   })
 })

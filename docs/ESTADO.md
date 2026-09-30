@@ -1,10 +1,27 @@
 # Estado do projeto — retomada
 
-Última atualização: **30/09/2026, ~03:30 UTC — parada pedida pelo dono para limpar o contexto (`/clear`).** O #150 (pendência 17) está na 4ª rodada de revisão; o visual SBP (parte 1) está pronto em commit local, esperando o #150 mesclar. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **30/09/2026, tarde — #150 e #151 mesclados; logotipo oficial em PR (#152).** **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 30/09/2026, manhã — #150 MESCLADO; VISUAL SBP EM PR (este bloco vence todos os de baixo)
+> ### 30/09/2026, tarde — #151 MESCLADO; LOGOTIPO OFICIAL EM PR (este bloco vence todos os de baixo)
+>
+> **1. #151 (visual SBP, parte 1): MESCLADO** (`6152296`). O item 2 do bloco de baixo está superado.
+>
+> **2. #152 — o logotipo passa a ser a arte oficial (`A66`): PR aberto** a partir de `claude/bold-wright-h08gk6`.
+> - Pedido do dono: "o P do sistema está todo bugado". Uma primeira correção do P desenhado em código chegou perto, mas não ficou igual. **O dono decidiu usar o logotipo original** e parar de reconstruir.
+> - `public/marca-sbp.png` (136 × 163, a arte que ele mandou). `src/core/marca/` foi apagado.
+> - Nível 3 (`src/componentes/`): precisa de revisão técnica **e** de segurança publicadas, com os links no corpo.
+> - `verificar`: 141 arquivos, 1726 testes.
+> - **Pedir ao dono:** o SVG oficial, ou uma versão maior da arte. A atual fica um pouco borrada em tela de alta resolução.
+>
+> **3. Visual, parte 2 — decidido pelo dono (`A67`):** chegaram as telas do Stitch em tamanho real (resumo do que elas trazem no `A67`; as imagens não ficam no repositório). Azul do logotipo como cor principal, laranja só em alerta, **sempre claro por enquanto**, e **começa pelos atritos**: primeiro a Revisão com o e-mail ao lado do que a IA leu (atrito 2), depois a Minha fila em lista e detalhe (atrito 3). Um PR por tela. O `A67` lista também o que do modelo **não** entra sem decisão própria.
+>
+> **4. Pergunta aberta ao dono:** a escolha completa dos itens da página de atritos (sugestão `1A · 2A+2B · 3A+3B · 4A · 5B`). A ordem 2 → 3 já foi decidida.
+>
+> **5. Depois:** pendência 37; medir no Ollama (junto da 18).
+>
+> ### 30/09/2026, manhã — #150 MESCLADO; VISUAL SBP EM PR (anterior; o #151 foi mesclado)
 >
 > **Se a pasta `/home/user/Sistema-SBP` tiver `RETOMAR-AQUI.md`, leia-o antes:** ele tem o estado da máquina (pastas, processos, relatórios em arquivo) que não cabe num documento versionado.
 >
@@ -999,6 +1016,8 @@ e cada uma corrompe uma métrica.
 **Lição que continua valendo:** rodar em lotes de DUAS. A máquina tem 4 núcleos; sete em paralelo enfileira e estoura o limite antes de qualquer uma terminar.
 
 ### 3. O contorno da marca é reconstrução, não o oficial
+
+> **Superado em 30/09/2026 pelo `A66`:** o logotipo passou a ser a arte oficial, como imagem (`public/marca-sbp.png`), e `src/core/marca/` foi apagado.
 
 Só existe o PNG do logotipo. `src/core/marca/contorno.ts` descreve a letra como união e subtração de retângulos arredondados, com as proporções medidas sobre a arte.
 

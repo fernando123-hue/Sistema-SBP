@@ -25,11 +25,10 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
   const [saindo, setSaindo] = useState(false)
   const [erroAoSair, setErroAoSair] = useState<string | null>(null)
   /**
-   * A marca respira enquanto há requisição em voo.
+   * A faixa na base da marca pulsa enquanto há requisição em voo.
    *
    * O sinal vem de `api.ts`, que já é a porta única de toda tela — nenhuma
-   * delas precisa avisar nada. Substitui um indicador genérico por um que É a
-   * identidade, e reflete um fato, não uma métrica.
+   * delas precisa avisar nada. Reflete um fato, não uma métrica.
    */
   const [ocupado, setOcupado] = useState(false)
   useEffect(() => observarAtividade(setOcupado), [])
@@ -96,10 +95,10 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
         className="foco-para-dentro group flex items-center gap-3 px-4 py-2 lg:flex-col lg:items-start lg:py-0 lg:pb-5"
       >
         {/*
-          O bloco leva o nome da SBP como TEXTO (lido pelo leitor de tela); o P
-          é decoração. "Atendimento ao Associado" completa o nome do link. Na
-          barra estreita, o bloco reduzido não tem o nome, e ele vai só para o
-          leitor de tela.
+          O bloco completo leva o nome da SBP no `alt` da arte (lido pelo leitor
+          de tela). "Atendimento ao Associado" completa o nome do link. Na
+          barra estreita, o bloco reduzido é só o P, decorativo, e o nome vai
+          só para o leitor de tela.
         */}
         <span className="hidden lg:block">
           <BlocoDaMarca altura={132} comNome ocupado={ocupado} />
