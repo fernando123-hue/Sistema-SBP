@@ -2572,7 +2572,7 @@ Ele não é sobre este sistema. O que transfere é **arquitetura, não tecnologi
 
 - **"Spec declarativo como IR; código como saída derivada."** É o ativo central
   que ele identifica naquele projeto. Aqui: o arranjo dos P's é dado puro em
-  `core/marca/`, determinístico e testável; o SVG é *build*.
+  `core/marca/`, determinístico e testável; o SVG é *build*. *(Superado pelo `A66`: `core/marca/` foi apagado em 30/09/2026.)*
 - **"Pivô por peça + registros nomeados."** Cada P tem um `<g>` que é o alvo da
   animação, separado do `<text>` que é o glifo. O laço nunca toca no glifo.
 - **"A IR nunca importa o motor; dependência só aponta para dentro."** É a
@@ -2634,6 +2634,8 @@ fixa. Um logotipo que se rearranja a cada carregamento não é um logotipo; e
    passaria despercebido.
 
 #### O contorno é reconstrução — e está isolado de propósito
+
+> *Superado pelo `A66`: `core/marca/` foi apagado em 30/09/2026, e o logotipo é a arte oficial em imagem.*
 
 Só existe o PNG do logotipo. `core/marca/contorno.ts` descreve a letra como união
 e subtração de retângulos arredondados, com proporções medidas sobre a arte. Isso

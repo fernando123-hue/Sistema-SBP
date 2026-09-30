@@ -40,8 +40,8 @@ export class ErroDaApi extends Error {
  * capaz de responder "o sistema está trabalhando agora?" sem que cada tela
  * precise avisar, e sem inventar um estado global paralelo.
  *
- * Existe para a marca poder respirar enquanto há trabalho em voo: um indicador
- * que É a identidade, em vez de um genérico ao lado dela. Não é métrica, não é
+ * Existe para a faixa na base da marca pulsar enquanto há trabalho em voo
+ * (`componentes/marca.tsx`). Não é métrica, não é
  * gravado e não vira número de painel — é o fato mais efêmero que existe no
  * sistema, e morre no instante em que a resposta chega.
  *
@@ -101,7 +101,7 @@ async function requisitar<T>(
 
   // `finally` e não decremento no fim do corpo: requisição que estoura — rede
   // caída, aborto — precisa liberar o contador do mesmo jeito. Sem isto, uma
-  // falha de rede deixaria a marca respirando para sempre, afirmando um
+  // falha de rede deixaria a faixa da marca pulsando para sempre, afirmando um
   // trabalho que não existe mais.
   try {
     // Status 0 é a convenção do próprio navegador para "não houve resposta".

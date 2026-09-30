@@ -11,9 +11,9 @@
  * original. Identidade visual não se aproxima; ou é a marca, ou não é.
  *
  * O arquivo é `public/marca-sbp.png`, 136 × 163, tirado da arte que o dono
- * mandou. Só os pixels de borda que eram resto do recorte da página (uma
- * faixa cinza em cima, uma linha embaixo, uma coluna branca à direita) foram
- * repintados no azul do próprio logotipo. Quando houver o SVG oficial, a
+ * mandou. Só os pixels de borda que eram resto do recorte da página (duas
+ * linhas cinza em cima, uma linha embaixo, uma coluna branca à direita)
+ * foram repintados no azul do próprio logotipo. Quando houver o SVG oficial, a
  * troca é o arquivo e as constantes de tamanho abaixo.
  *
  * ═══ DUAS FORMAS, PELO TAMANHO ═══
@@ -35,21 +35,32 @@
  */
 
 /** Tamanho da arte, em pixels. */
-const LARGURA_DA_ARTE = 136
-const ALTURA_DA_ARTE = 163
+export const LARGURA_DA_ARTE = 136
+export const ALTURA_DA_ARTE = 163
 
 /**
- * O P dentro da arte, em pixels: o bojo inteiro e a haste até o pé, sem o
- * nome que fica ao lado da haste. É o recorte da forma reduzida.
+ * O P dentro da arte, em pixels, medido na imagem (`marca.test.ts` confere
+ * contra os pixels): o bojo inteiro e a haste até o pé, sem o nome ao lado
+ * da haste. É o recorte da forma reduzida. Limites exclusivos à direita e
+ * embaixo.
+ *
+ * A primeira versão tinha a borda esquerda em 35 — o P começa em 33 — e
+ * comia duas colunas da letra (revisão técnica do #152).
  */
-const P_NA_ARTE = {
-  esquerda: 35,
-  direita: 108,
-  topo: 33,
+export const P_NA_ARTE = {
+  esquerda: 33,
+  direita: 105,
+  topo: 34,
+  /** Primeira linha abaixo do bojo: dali para baixo só a haste é do P. */
   fimDoBojo: 97,
-  /** Borda direita da haste, abaixo do bojo — logo antes de "sociedade". */
-  direitaDaHaste: 55,
-  pe: 125,
+  /** No vão entre a haste (até a coluna 50) e "sociedade" (a partir da 55). */
+  direitaDaHaste: 53,
+  /**
+   * O pé da haste: a linha 124 é o vão vazio antes de "de pediatria", que
+   * começa logo abaixo, alinhado à esquerda do P. Cortar mais baixo traria
+   * o topo dessas letras para dentro do P.
+   */
+  pe: 124,
 } as const
 
 /** Altura do P em relação ao bloco reduzido. */

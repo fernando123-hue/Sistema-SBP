@@ -1015,6 +1015,8 @@ e cada uma corrompe uma métrica.
 
 ### 3. O contorno da marca é reconstrução, não o oficial
 
+> **Superado em 30/09/2026 pelo `A66`:** o logotipo passou a ser a arte oficial, como imagem (`public/marca-sbp.png`), e `src/core/marca/` foi apagado.
+
 Só existe o PNG do logotipo. `src/core/marca/contorno.ts` descreve a letra como união e subtração de retângulos arredondados, com as proporções medidas sobre a arte.
 
 **É o ÚNICO arquivo que muda quando o SVG oficial chegar.** O arranjo, a física e o desenho só perguntam `dentroDoP()` — nada mais no sistema sabe qual é a forma da letra. Pedir o SVG à SBP é barato e melhora a fidelidade de graça.
