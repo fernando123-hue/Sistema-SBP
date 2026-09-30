@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type CSSProperties } from 'react'
 
 import { ALTURA, LARGURA } from '../core/marca/contorno'
 import { PARTICULAS_DA_MARCA } from '../core/marca/especificacao'
@@ -83,9 +83,11 @@ export interface MarcaProps {
    */
   readonly ocupado?: boolean
   readonly className?: string
+  /** Posição dentro do bloco da marca (`BlocoDaMarca`). */
+  readonly estilo?: CSSProperties
 }
 
-export function Marca({ altura = 26, ocupado = false, className }: MarcaProps) {
+export function Marca({ altura = 26, ocupado = false, className, estilo }: MarcaProps) {
   const svg = useRef<SVGSVGElement>(null)
   const grupos = useRef<(SVGGElement | null)[]>([])
   // O estado do ponteiro vive em ref, não em estado do React: ele muda a cada
@@ -267,7 +269,7 @@ export function Marca({ altura = 26, ocupado = false, className }: MarcaProps) {
       aria-hidden="true"
       focusable="false"
       className={className}
-      style={{ overflow: 'visible', color: 'currentColor' }}
+      style={{ overflow: 'visible', color: 'currentColor', ...estilo }}
     >
       {PARTICULAS_DA_MARCA.map((p, i) => (
         // Dois elementos por peça, e a separação é o que torna isto um objeto:
@@ -298,5 +300,86 @@ export function Marca({ altura = 26, ocupado = false, className }: MarcaProps) {
         </g>
       ))}
     </svg>
+  )
+}
+
+/**
+ * O logotipo da SBP como ele é: o P branco dentro do bloco azul da marca.
+ *
+ * ═══ DUAS FORMAS, PELO TAMANHO ═══
+ *
+ * - **Completa** (`comNome`): o P e, ao lado da haste, "sociedade brasileira
+ *   de pediatria" em três linhas, com as iniciais em negrito — como na arte
+ *   oficial. É a da tela de entrada, onde a marca tem espaço.
+ * - **Reduzida**: só o P no bloco. É a da barra: com a altura da barra, o
+ *   nome sairia com uns cinco pixels, e letra que ninguém lê não é marca, é
+ *   ruído. O nome acessível do link vem do texto ao lado, como antes.
+ *
+ * O nome é TEXTO, não desenho: fica nítido em qualquer tamanho, e o leitor de
+ * tela o lê — por isso ele não é `aria-hidden`, ao contrário do P.
+ *
+ * As proporções partem da arte oficial (136 × 163 px): o P ocupa 80% da altura,
+ * perto da borda esquerda, e o nome começa logo depois da haste, na parte de
+ * baixo, passando da largura do bojo. É uma reconstrução; quando houver o SVG
+ * oficial, a troca é aqui e em `core/marca/contorno.ts`.
+ */
+export interface BlocoDaMarcaProps {
+  /** Altura do bloco em pixels. */
+  readonly altura: number
+  /** Com o nome da SBP ao lado da haste (forma completa). */
+  readonly comNome?: boolean
+  readonly ocupado?: boolean
+  readonly className?: string
+}
+
+/**
+ * Na forma completa, o bloco é quase quadrado: o nome passa do bojo, e em
+ * 136 × 163 (a arte oficial) "de pediatria" quebrava em duas linhas com a
+ * fonte do sistema.
+ */
+const PROPORCAO_COMPLETA = 0.95
+/** Na reduzida, o P centrado num bloco quadrado. */
+const PROPORCAO_REDUZIDA = 1
+/** Altura do P em relação ao bloco. */
+const P_NO_BLOCO_COMPLETO = 0.8
+const P_NO_BLOCO_REDUZIDO = 0.72
+
+export function BlocoDaMarca({ altura, comNome = false, ocupado = false, className }: BlocoDaMarcaProps) {
+  const largura = Math.round(altura * (comNome ? PROPORCAO_COMPLETA : PROPORCAO_REDUZIDA))
+  const alturaDoP = Math.round(altura * (comNome ? P_NO_BLOCO_COMPLETO : P_NO_BLOCO_REDUZIDO))
+  const larguraDoP = (alturaDoP * LARGURA) / ALTURA
+  // Uma unidade do contorno, em pixels: o nome se posiciona em relação à haste.
+  const unidade = alturaDoP / ALTURA
+
+  return (
+    <span
+      className={['relative inline-block shrink-0 bg-marca text-sobre-marca', className].filter(Boolean).join(' ')}
+      style={{ width: largura, height: altura }}
+    >
+      <Marca
+        altura={alturaDoP}
+        ocupado={ocupado}
+        className="absolute"
+        estilo={
+          comNome
+            ? { left: Math.round(largura * 0.14), top: Math.round(altura * 0.06) }
+            : { left: Math.round((largura - larguraDoP) / 2), top: Math.round((altura - alturaDoP) / 2) }
+        }
+      />
+      {comNome ? (
+        <span
+          className="absolute leading-[1.08] font-medium tracking-tight whitespace-nowrap lowercase"
+          style={{
+            left: Math.round(largura * 0.14 + 26 * unidade),
+            top: Math.round(altura * 0.06 + 64 * unidade),
+            fontSize: Math.max(8, Math.round(10.2 * unidade)),
+          }}
+        >
+          <span className="block"><b className="font-extrabold">s</b>ociedade</span>
+          <span className="block"><b className="font-extrabold">b</b>rasileira</span>
+          <span className="block">de <b className="font-extrabold">p</b>ediatria</span>
+        </span>
+      ) : null}
+    </span>
   )
 }

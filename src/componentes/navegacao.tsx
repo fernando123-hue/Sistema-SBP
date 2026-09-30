@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 import { Assistente } from './assistente'
-import { Marca } from './marca'
+import { BlocoDaMarca } from './marca'
 import { api, mensagemDoErro, observarAtividade } from './api'
 import { PAPEIS_DA_TELA, ROTULO_DA_TELA, TELAS, telaInicial } from '../core/telas'
 import { juntar } from './matrizes'
@@ -69,77 +69,72 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
   }
 
   return (
-    <header className="border-b border-borda bg-papel">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-        <Link
-          href={telaInicial(papel)}
-          className="flex items-center gap-2 text-sm font-semibold tracking-tight"
-        >
-          {/*
-            A marca é decorativa (`aria-hidden` dentro do componente) e o nome
-            acessível do link continua vindo do texto ao lado. Para quem navega
-            por áudio nada mudou; para quem enxerga, a identidade entrou.
-          */}
-          <Marca altura={24} ocupado={ocupado} />
-          <span>
-            SBP <span className="font-normal text-tinta-fraca">· Atendimento</span>
-          </span>
-        </Link>
+    // ═══ MENU LATERAL ═══
+    //
+    // A identidade da SBP (30/09/2026, pedido do dono, referência feita no
+    // Stitch): o bloco azul da marca encostado no alto, como no site da SBP,
+    // as telas numa coluna, e quem está logado embaixo. O sistema é só para
+    // computador (`A60`), e a coluna devolve a altura inteira da tela ao
+    // trabalho — a barra de cima comia uma faixa de todas as telas.
+    <aside className="sticky top-0 flex h-dvh w-60 shrink-0 flex-col border-r border-borda bg-papel">
+      <Link href={telaInicial(papel)} className="group flex flex-col gap-3 px-4 pb-5">
+        {/*
+          O bloco leva o nome da SBP como TEXTO (lido pelo leitor de tela); o P
+          é decoração. "Atendimento ao Associado" completa o nome do link.
+        */}
+        <BlocoDaMarca altura={132} comNome ocupado={ocupado} />
+        <span className="text-sm leading-tight font-semibold text-tinta group-hover:text-acento">
+          Atendimento ao Associado
+        </span>
+      </Link>
 
-        <nav aria-label="Principal" className="order-3 -mx-1 w-full overflow-x-auto sm:order-2 sm:w-auto">
-          <ul className="flex gap-1">
-            {visiveis.map((destino) => {
-              const ativo = caminho.startsWith(destino.href)
-              return (
-                <li key={destino.href}>
-                  <Link
-                    href={destino.href}
-                    aria-current={ativo ? 'page' : undefined}
-                    className={juntar(
-                      'inline-block rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors',
-                      ativo
-                        ? 'bg-acento-claro font-medium text-acento-escuro'
-                        : 'text-tinta-suave hover:bg-papel-fundo hover:text-tinta',
-                    )}
-                  >
-                    {destino.rotulo}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </nav>
+      <nav aria-label="Principal" className="flex-1 overflow-y-auto px-3">
+        <ul className="flex flex-col gap-0.5">
+          {visiveis.map((destino) => {
+            const ativo = caminho.startsWith(destino.href)
+            return (
+              <li key={destino.href}>
+                <Link
+                  href={destino.href}
+                  aria-current={ativo ? 'page' : undefined}
+                  className={juntar(
+                    'flex items-center rounded-md border-l-[3px] px-3 py-2 text-sm transition-colors',
+                    ativo
+                      ? 'border-acento bg-acento-claro font-semibold text-acento-escuro'
+                      : 'border-transparent text-tinta-suave hover:bg-papel-fundo hover:text-tinta',
+                  )}
+                >
+                  {destino.rotulo}
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </nav>
 
-        <div className="order-2 ml-auto flex items-center gap-2 sm:order-3">
-          {/* A ajuda vive aqui, e não flutuando sobre a página: ver o comentário
-              em `assistente.tsx`. Ao lado do nome porque é onde a pessoa já
-              olha quando quer alguma coisa sobre si, não sobre o trabalho. */}
-          <Assistente papel={papel} />
-          <span className="text-right text-xs leading-tight">
-            <span className="block font-medium">{nome}</span>
+      <div className="flex flex-col gap-3 border-t border-borda px-4 py-4">
+        {/* A ajuda abre um painel fixo no canto da tela (`assistente.tsx`):
+            o botão pode morar aqui, junto de quem está logado. */}
+        <Assistente papel={papel} />
+        <div className="flex items-end justify-between gap-2">
+          <span className="min-w-0 text-xs leading-tight">
+            <span className="block truncate font-medium text-tinta">{nome}</span>
             <span className="block text-tinta-fraca">{papel}</span>
           </span>
-          {/* Alvo de toque de 44 px no celular, como o `Botao` garante: com
-              ~26 px, "sair" no balcão compartilhado era o controle mais fácil
-              de errar — e sair errado é a sessão de pé para a próxima pessoa. */}
           <button
             onClick={() => void sair()}
             disabled={saindo}
-            className="min-h-11 rounded-md px-3 text-xs text-tinta-suave hover:bg-papel-fundo hover:text-tinta disabled:opacity-50 sm:min-h-9 sm:px-2"
+            className="min-h-9 rounded-md px-2 text-xs text-tinta-suave hover:bg-papel-fundo hover:text-tinta disabled:opacity-50"
           >
             {saindo ? 'saindo…' : 'sair'}
           </button>
         </div>
+        {erroAoSair ? (
+          <div role="alert" className="rounded-md border border-alerta/40 bg-alerta-claro px-3 py-2 text-xs text-alerta">
+            Não foi possível sair: {erroAoSair} <strong>Você continua conectado.</strong> Tente de novo.
+          </div>
+        ) : null}
       </div>
-
-      {erroAoSair ? (
-        <div
-          role="alert"
-          className="border-t border-alerta/40 bg-alerta-claro px-4 py-2 text-sm text-alerta"
-        >
-          Não foi possível sair: {erroAoSair} <strong>Você continua conectado.</strong> Tente de novo.
-        </div>
-      ) : null}
-    </header>
+    </aside>
   )
 }

@@ -27,26 +27,42 @@ export default async function LayoutRaiz({ children }: { children: React.ReactNo
   // vale por construção, e a API tem a sua própria em `exigirAtor`.
   const conteudo = perfil?.precisaTrocarSenha ? <Senha /> : children
 
+  /*
+    Faixa do acesso local sem senha. Fica no layout, e não numa tela, para
+    aparecer em TODAS enquanto a sessão local estiver aberta: quem olha um
+    print precisa saber que aquela sessão não passou por senha. Com o menu
+    lateral, ela mora na coluna do conteúdo: acima dele, empurrava o rodapé do
+    menu para fora da tela.
+  */
+  const faixaDoAcessoLocal = perfil?.acessoLocal ? (
+    <div
+      role="status"
+      className="border-b border-atencao/40 bg-atencao-claro px-4 py-2 text-center text-sm font-medium text-atencao"
+    >
+      Acesso local sem senha (desenvolvimento) — só contas sintéticas. Desligue ao terminar.
+    </div>
+  ) : null
+
   return (
     <html lang="pt-BR">
       <body className="min-h-dvh">
-        {/*
-          Faixa do acesso local sem senha. Fica no layout, e não numa tela, para
-          aparecer em TODAS enquanto a sessão local estiver aberta: quem olha um
-          print precisa saber que aquela sessão não passou por senha.
-        */}
-        {perfil?.acessoLocal ? (
-          <div
-            role="status"
-            className="border-b border-atencao/40 bg-atencao-claro px-4 py-2 text-center text-sm font-medium text-atencao"
-          >
-            Acesso local sem senha (desenvolvimento) — só contas sintéticas. Desligue ao terminar.
-          </div>
-        ) : null}
         {perfil && !perfil.precisaTrocarSenha ? (
-          <Navegacao nome={perfil.nome} papel={perfil.papel} />
-        ) : null}
-        <main className="mx-auto w-full max-w-6xl px-4 py-6">{conteudo}</main>
+          // Menu lateral e conteúdo lado a lado (`navegacao.tsx`).
+          <div className="flex min-h-dvh">
+            <Navegacao nome={perfil.nome} papel={perfil.papel} />
+            <div className="min-w-0 flex-1">
+              {faixaDoAcessoLocal}
+              <main className="px-8 py-7">
+                <div className="mx-auto w-full max-w-6xl">{conteudo}</div>
+              </main>
+            </div>
+          </div>
+        ) : (
+          <>
+            {faixaDoAcessoLocal}
+            <main className="mx-auto w-full max-w-6xl px-4 py-6">{conteudo}</main>
+          </>
+        )}
       </body>
     </html>
   )
