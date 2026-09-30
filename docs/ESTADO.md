@@ -4,30 +4,23 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 30/09/2026, ~03:30 UTC — PARADA PARA `/clear` (este bloco vence todos os de baixo)
+> ### 30/09/2026, manhã — #150 MESCLADO; VISUAL SBP EM PR (este bloco vence todos os de baixo)
 >
 > **Se a pasta `/home/user/Sistema-SBP` tiver `RETOMAR-AQUI.md`, leia-o antes:** ele tem o estado da máquina (pastas, processos, relatórios em arquivo) que não cabe num documento versionado.
 >
-> **1. #150 — pendência 17 (`AT-51`), branch `claude/bold-wright-h08gk6`.**
-> - Cinco rodadas de revisão técnica e quatro de segurança, todas publicadas no PR com a nota do autor (o destino de cada achado). Os links estão no corpo do PR.
-> - A 5ª técnica, sobre `1cd576c`, **aprovou com ressalvas só de documentação**, tratadas no `AT-51`. A 4ª de segurança, sobre `7f73ac4..1cd576c`, **aprovou com ressalvas**. Os dois achados baixos dela foram corrigidos no commit seguinte, com teste visto vermelho, e o achado anterior ao PR virou a pendência 44.
-> - Todas as correções têm teste visto vermelho, ou prova por mutação quando o código já existia. `npm run verificar` local: 141 arquivos, 1741 testes.
-> - **Falta:** a conferência do revisor de segurança sobre o commit que corrigiu os achados da 4ª rodada; os links no corpo do PR; ler o CI check por check; mesclar.
+> **1. #150 — pendência 17 (`AT-51`): MESCLADO** (`030eeab`).
+> - Cinco rodadas técnicas e quatro de segurança, mais a conferência das correções finais, todas publicadas no PR.
+> - `verificar`: 141 arquivos, 1743 testes. CI verde.
+> - Ficou para depois a pendência 44 (a chave da liga perde letras que a conferência vê), que é decisão.
 >
-> **2. Visual SBP, parte 1 (`A65`, `AT-52`, `§ H.4` 49) — NÃO está no GitHub.**
-> - É um commit local, `e89dbf3`, no branch `trabalho/marca`, pasta `/home/user/sbp-marca`, baseado na `main` `a612ef1`. Cópia: `/home/user/Sistema-SBP/.claude/reviews/retomar/visual-sbp-parte1.patch` (fora do git), com as capturas nos dois temas.
+> **2. Visual SBP, parte 1 (`A65`, `AT-52`, `§ H.4` 49): PR aberto** a partir de `claude/bold-wright-h08gk6`, recomeçado da `main` depois do #150.
 > - Conteúdo:
 >   - logotipo oficial (P de P's sobre o `#0D024C`, "**s**ociedade **b**rasileira de **p**ediatria");
 >   - paleta no índigo da marca, com contraste medido;
 >   - menu lateral;
 >   - correção do tema escuro, que **sobrescrevia o claro em todo computador** (`AT-52`).
-> - `npm run verificar`: 139 arquivos, 1633 testes, verdes.
-> - **Depois que o #150 mesclar:**
->   - recomeçar `claude/bold-wright-h08gk6` a partir da `main`;
->   - aplicar o commit, resolvendo o conflito esperado no `DECISOES.md` (o `AT-52` entra perto do `AT-51`);
->   - rodar `verificar`;
->   - abrir o PR. É **nível 3** (`src/componentes/`): pede revisão técnica **e** de segurança.
-> - Mostrar as capturas ao dono.
+> - É **nível 3** (`src/componentes/`): precisa de revisão técnica **e** de segurança publicadas, com os links no corpo.
+> - As capturas nos dois temas estão em `/home/user/Sistema-SBP/.claude/reviews/retomar/capturas-visual/`, fora do git. Mostrá-las ao dono.
 >
 > **3. Perguntas abertas ao dono, sem resposta ainda:**
 > - (a) a escolha dos itens de tela da página de atritos (item 6 abaixo; sugestão `1A · 2A+2B · 3A+3B · 4A · 5B`);
@@ -369,6 +362,7 @@
 > 42. **`IA_LOCAL_URL` inválida é repetida por inteiro na mensagem de erro** (revisão de segurança, 3ª rodada do #146, achado 3). `motivoDeEnderecoLocalInvalido()` em `servidor/ambiente.ts` escreve `não é um endereço válido: "${valor}"`; um endereço com usuário e senha que `new URL` recusa (um espaço a mais) vai ao log inteiro. A trava de credencial embutida, logo abaixo, existe justamente para não repetir o valor. Trocar por uma frase sem o valor, com teste.
 > 43. **Qualquer `vitest run`, até de um arquivo de teste puro, apaga e recria a base `sbp_teste`** (aviso da revisão de segurança, 3ª rodada do #150). O `globalSetup` de `vitest.config.ts` (`src/testes/preparar-banco.ts`) roda `prisma migrate reset --force` sempre. Dois `vitest` ao mesmo tempo, em pastas diferentes, derrubam a suíte um do outro com "Database `sbp_teste` does not exist", sem defeito no código; foi o que aconteceu com as 40 falhas da suíte do visual em 30/09. Até corrigir: nunca dois `vitest` na mesma máquina. Correção: pular o reset quando nenhum arquivo escolhido usa banco, ou uma config só para testes puros.
 > 44. **A chave da liga perde letras e dígitos que a conferência viu** (revisão de segurança, 4ª rodada do #150, achado 3; anterior ao #150). `chaveDaLiga` (`core/ligas.ts`) usa NFD e `[^a-z0-9]`; a conferência usa NFKD e `\p{L}`/`\p{Nd}`. "Liga de Cardiologia ①" e "… ②" viram a mesma chave, "Liga Pediatria Ⅱ" vira "liga pediatria", e 146.998 pontos de código somem da chave. Efeito: duas ligas diferentes se unem sem ninguém ver, que é o erro que `ligas.ts` existe para evitar. Raro em texto de secretaria brasileira. Saídas: mandar para a Revisão, sem identidade, a liga cuja chave perde letra ou dígito; ou alinhar a chave ao `dobrar`, o que muda chave de liga existente e é decisão (`§ C` ou `§ H.4`).
+> 45. **Toda tela abre com o foco no botão "Ajuda"** (revisão técnica do #151, achado 7; anterior ao #151). O efeito de `aberto` em `componentes/assistente.tsx` roda na montagem com `aberto = false` e devolve o foco ao gatilho. No menu lateral, o primeiro Tab vai para "sair", e as telas só se alcançam com Shift+Tab. O contorno aparece em toda captura. Correção: pular a devolução de foco na primeira execução do efeito (um ref "já abriu alguma vez").
 
 > *Decidido de propósito — não é pendência:* o gestor vê "ausente hoje" na Minha fila (tela de quem executa); payload de item ilegível trava a revisão daquele item com 500 e o id na mensagem do log; login, troca de senha e desativação esperam milissegundos por uma confirmação de distribuição em curso; `A34` (e-mails suspeitos sem item) é a fase 4.
 >

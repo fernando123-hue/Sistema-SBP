@@ -9,30 +9,37 @@
   (nunca decorativa) e nenhuma animação que atrapalhe quem está com pressa.
 */
 
+/*
+  A paleta segue a identidade da SBP (30/09/2026, pedido do dono): o azul
+  índigo da marca (#0D024C, matiz ~285 em oklch) tinge os neutros e o acento,
+  no lugar do cinza-azulado genérico de antes. Todo par de texto e fundo foi
+  medido antes de entrar: o mais apertado é tinta-fraca, que mede 5,1:1 sobre
+  o fundo no claro e 6,3:1 sobre o papel no escuro — acima do mínimo AA de
+  4,5:1. Dois pares que ainda não existem em tela ficam abaixo de 5:1 e não
+  devem ser usados sem medir: tinta-fraca sobre acento-claro (~4,6:1) e sobre
+  borda (~4,2:1 no claro) (revisão técnica do #151).
+*/
 @theme {
-  --color-tinta: oklch(0.21 0.02 250);
-  --color-tinta-suave: oklch(0.45 0.02 250);
+  --color-tinta: oklch(0.22 0.06 285);
+  --color-tinta-suave: oklch(0.45 0.045 285);
   /*
    * Medido: a 0.62 este token dava 3,53:1 sobre o papel e 3,24:1 sobre o fundo
    * — abaixo do mínimo AA de 4,5:1 para texto normal, e ele é usado quase só em
    * 12px: o rótulo de TODA métrica do painel, os rótulos da tela de entrada, os
-   * cabeçalhos de tabela e os cartões do celular. A 0.53 mede 4,69:1.
-   *
-   * O tema escuro já media 6,01:1 e não muda. Duas correções de contraste
-   * anteriores (--color-sobre-acento e --color-atencao) tinham deixado este de
-   * fora.
+   * cabeçalhos de tabela e os cartões do celular. Na paleta índigo, a 0.52
+   * mede 5,55:1 sobre o papel e 5,11:1 sobre o fundo.
    */
-  --color-tinta-fraca: oklch(0.53 0.015 250);
+  --color-tinta-fraca: oklch(0.52 0.035 285);
 
-  --color-papel: oklch(0.99 0.002 250);
-  --color-papel-fundo: oklch(0.96 0.005 250);
-  --color-borda: oklch(0.9 0.008 250);
-  --color-borda-forte: oklch(0.82 0.01 250);
+  --color-papel: oklch(1 0 0);
+  --color-papel-fundo: oklch(0.972 0.008 285);
+  --color-borda: oklch(0.91 0.014 285);
+  --color-borda-forte: oklch(0.82 0.022 285);
 
-  /* Acento único. Ação principal e estado ativo. */
-  --color-acento: oklch(0.48 0.11 235);
-  --color-acento-claro: oklch(0.94 0.03 235);
-  --color-acento-escuro: oklch(0.38 0.1 235);
+  /* Acento único, o índigo da SBP clareado para ser botão. Ação principal e estado ativo. */
+  --color-acento: oklch(0.38 0.17 285);
+  --color-acento-claro: oklch(0.94 0.035 285);
+  --color-acento-escuro: oklch(0.3 0.15 285);
   /*
     Cor do TEXTO sobre o acento.
     Existe porque o botão principal usava `text-white` fixo: no tema escuro o
@@ -40,7 +47,15 @@
     de 4,5:1. Era o botão mais apertado do sistema (Confirmar, Concluir,
     Aprovar) e ficava quase ilegível à noite, justo no celular.
   */
-  --color-sobre-acento: oklch(0.99 0.005 235);
+  --color-sobre-acento: oklch(0.99 0.005 285);
+
+  /*
+    O azul da marca da SBP, medido na arte oficial (#0D024C). É IDENTIDADE,
+    não cor de interface: não muda no tema escuro, e não vira fundo de botão
+    nem de aviso — só o bloco do logotipo o usa (`componentes/marca.tsx`).
+  */
+  --color-marca: #0d024c;
+  --color-sobre-marca: #ffffff;
 
   /* Semânticas. Cada uma tem um sentido só, em todo o sistema. */
   --color-ok: oklch(0.45 0.12 155);
@@ -58,22 +73,32 @@
   --radius-cartao: 0.625rem;
 }
 
+/*
+  ═══ O TEMA ESCURO NUNCA TINHA FUNCIONADO COMO TEMA ═══
+
+  Estava escrito como `@media (prefers-color-scheme: dark) { @theme { … } }`. O
+  Tailwind 4 tira o `@theme` de dentro do `@media` e emite as variáveis direto
+  em `:root` — então as cores escuras sobrescreviam as claras em TODO
+  computador, e o sistema sempre abriu escuro (visto no CSS gerado em
+  30/09/2026). Variável comum dentro do `@media`, fora de camada, vence as do
+  `@theme` só quando o computador pede o escuro.
+*/
 @media (prefers-color-scheme: dark) {
-  @theme {
-    --color-tinta: oklch(0.95 0.005 250);
-    --color-tinta-suave: oklch(0.78 0.015 250);
-    --color-tinta-fraca: oklch(0.68 0.015 250);
+  :root {
+    --color-tinta: oklch(0.95 0.008 285);
+    --color-tinta-suave: oklch(0.8 0.02 285);
+    --color-tinta-fraca: oklch(0.7 0.025 285);
 
-    --color-papel: oklch(0.22 0.012 250);
-    --color-papel-fundo: oklch(0.17 0.012 250);
-    --color-borda: oklch(0.32 0.014 250);
-    --color-borda-forte: oklch(0.42 0.016 250);
+    --color-papel: oklch(0.23 0.035 285);
+    --color-papel-fundo: oklch(0.18 0.035 285);
+    --color-borda: oklch(0.33 0.035 285);
+    --color-borda-forte: oklch(0.43 0.04 285);
 
-    --color-acento: oklch(0.72 0.11 235);
-    --color-acento-claro: oklch(0.3 0.05 235);
-    --color-acento-escuro: oklch(0.82 0.1 235);
+    --color-acento: oklch(0.76 0.11 285);
+    --color-acento-claro: oklch(0.33 0.07 285);
+    --color-acento-escuro: oklch(0.86 0.08 285);
     /* No escuro o acento é claro, então o texto sobre ele tem de ser escuro. */
-    --color-sobre-acento: oklch(0.18 0.02 250);
+    --color-sobre-acento: oklch(0.18 0.04 285);
 
     --color-ok: oklch(0.78 0.13 155);
     --color-ok-claro: oklch(0.28 0.05 155);
@@ -106,6 +131,17 @@ body {
   outline: 2px solid var(--color-acento);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/*
+  Contorno para DENTRO, para o que encosta na borda da janela (o link da marca,
+  no alto do menu): para fora, a borda de cima saía cortada. Fora de camada e
+  mais específico que a regra acima, que também é fora de camada — um
+  utilitário do Tailwind (`focus-visible:outline-offset-*`) fica em camada e
+  PERDE para ela (revisão técnica do #151).
+*/
+.foco-para-dentro:focus-visible {
+  outline-offset: -3px;
 }
 
 @media (prefers-reduced-motion: reduce) {

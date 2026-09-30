@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
 import { Assistente } from './assistente'
-import { Marca } from './marca'
+import { BlocoDaMarca } from './marca'
 import { api, mensagemDoErro, observarAtividade } from './api'
 import { PAPEIS_DA_TELA, ROTULO_DA_TELA, TELAS, telaInicial } from '../core/telas'
 import { juntar } from './matrizes'
@@ -69,54 +69,85 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
   }
 
   return (
-    <header className="border-b border-borda bg-papel">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-        <Link
-          href={telaInicial(papel)}
-          className="flex items-center gap-2 text-sm font-semibold tracking-tight"
-        >
-          {/*
-            A marca é decorativa (`aria-hidden` dentro do componente) e o nome
-            acessível do link continua vindo do texto ao lado. Para quem navega
-            por áudio nada mudou; para quem enxerga, a identidade entrou.
-          */}
-          <Marca altura={24} ocupado={ocupado} />
-          <span>
-            SBP <span className="font-normal text-tinta-fraca">· Atendimento</span>
-          </span>
-        </Link>
+    // ═══ MENU LATERAL ═══
+    //
+    // A identidade da SBP (30/09/2026, pedido do dono, referência feita no
+    // Stitch): o bloco azul da marca encostado no alto, como no site da SBP,
+    // as telas numa coluna, e quem está logado embaixo. O sistema é só para
+    // computador (`A60`), e a coluna devolve a altura inteira da tela ao
+    // trabalho — a barra de cima comia uma faixa de todas as telas.
+    //
+    // Abaixo de 1024 px — janela estreita ou zoom alto, que é critério de
+    // acessibilidade também no computador — a coluna vira barra de cima, com o
+    // bloco reduzido e as telas quebrando linha. Com a coluna fixa, a 400% de
+    // zoom não sobrava nenhuma tela visível e o conteúdo ficava com 80 px
+    // (revisão técnica do #151). Na coluna, ela rola INTEIRA: rolando só a
+    // lista, marca e rodapé comiam as telas em janela baixa.
+    //
+    // `relative z-30`: o `sticky` cria contexto de empilhamento, e o painel da
+    // Ajuda (fixo, `z-40`, filho deste aside) passava por BAIXO de elemento
+    // semitransparente da página (revisão de segurança do #151).
+    <aside className="relative z-30 flex w-full flex-col border-b border-borda bg-papel lg:sticky lg:top-0 lg:h-dvh lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:border-r lg:border-b-0">
+      <Link
+        href={telaInicial(papel)}
+        // Contorno de foco para DENTRO (`.foco-para-dentro`, em `globals.css`):
+        // o bloco encosta no alto da janela, e o contorno para fora saía
+        // cortado (revisão técnica do #151).
+        className="foco-para-dentro group flex items-center gap-3 px-4 py-2 lg:flex-col lg:items-start lg:py-0 lg:pb-5"
+      >
+        {/*
+          O bloco leva o nome da SBP como TEXTO (lido pelo leitor de tela); o P
+          é decoração. "Atendimento ao Associado" completa o nome do link. Na
+          barra estreita, o bloco reduzido não tem o nome, e ele vai só para o
+          leitor de tela.
+        */}
+        <span className="hidden lg:block">
+          <BlocoDaMarca altura={132} comNome ocupado={ocupado} />
+        </span>
+        <span className="lg:hidden">
+          <BlocoDaMarca altura={48} ocupado={ocupado} />
+        </span>
+        <span className="text-sm leading-tight font-semibold text-tinta group-hover:text-acento">
+          <span className="sr-only lg:hidden">Sociedade Brasileira de Pediatria — </span>
+          Atendimento ao Associado
+        </span>
+      </Link>
 
-        <nav aria-label="Principal" className="order-3 -mx-1 w-full overflow-x-auto sm:order-2 sm:w-auto">
-          <ul className="flex gap-1">
-            {visiveis.map((destino) => {
-              const ativo = caminho.startsWith(destino.href)
-              return (
-                <li key={destino.href}>
-                  <Link
-                    href={destino.href}
-                    aria-current={ativo ? 'page' : undefined}
-                    className={juntar(
-                      'inline-block rounded-md px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors',
-                      ativo
-                        ? 'bg-acento-claro font-medium text-acento-escuro'
-                        : 'text-tinta-suave hover:bg-papel-fundo hover:text-tinta',
-                    )}
-                  >
-                    {destino.rotulo}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </nav>
+      <nav aria-label="Principal" className="px-3 lg:flex-1">
+        {/* `py-1`: o contorno de foco do primeiro item saía cortado em cima. */}
+        <ul className="flex flex-wrap gap-0.5 py-1 lg:flex-col lg:flex-nowrap">
+          {visiveis.map((destino) => {
+            const ativo = caminho.startsWith(destino.href)
+            return (
+              <li key={destino.href}>
+                <Link
+                  href={destino.href}
+                  aria-current={ativo ? 'page' : undefined}
+                  className={juntar(
+                    'flex items-center rounded-md border-l-[3px] px-3 py-2 text-sm transition-colors',
+                    ativo
+                      ? 'border-acento bg-acento-claro font-semibold text-acento-escuro'
+                      : 'border-transparent text-tinta-suave hover:bg-papel-fundo hover:text-tinta',
+                  )}
+                >
+                  {destino.rotulo}
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </nav>
 
-        <div className="order-2 ml-auto flex items-center gap-2 sm:order-3">
-          {/* A ajuda vive aqui, e não flutuando sobre a página: ver o comentário
-              em `assistente.tsx`. Ao lado do nome porque é onde a pessoa já
-              olha quando quer alguma coisa sobre si, não sobre o trabalho. */}
-          <Assistente papel={papel} />
-          <span className="text-right text-xs leading-tight">
-            <span className="block font-medium">{nome}</span>
+      <div className="flex flex-wrap items-center gap-3 border-t border-borda px-4 py-3 lg:flex-col lg:flex-nowrap lg:items-stretch lg:py-4">
+        {/* A ajuda abre um painel fixo no canto da tela (`assistente.tsx`):
+            o botão pode morar aqui, junto de quem está logado. */}
+        <Assistente papel={papel} />
+        <div className="flex items-end justify-between gap-2">
+          <span className="min-w-0 text-xs leading-tight">
+            {/* Inteiro, sem reticências: no computador compartilhado, a pessoa
+                confere quem está logado antes de agir, e dois nomes com o mesmo
+                começo ficavam iguais (revisão de segurança do #151). */}
+            <span className="block font-medium break-words text-tinta">{nome}</span>
             <span className="block text-tinta-fraca">{papel}</span>
           </span>
           {/* Alvo de toque de 44 px no celular, como o `Botao` garante: com
@@ -125,21 +156,17 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
           <button
             onClick={() => void sair()}
             disabled={saindo}
-            className="min-h-11 rounded-md px-3 text-xs text-tinta-suave hover:bg-papel-fundo hover:text-tinta disabled:opacity-50 sm:min-h-9 sm:px-2"
+            className="min-h-11 shrink-0 rounded-md px-3 text-xs text-tinta-suave hover:bg-papel-fundo hover:text-tinta disabled:opacity-50 sm:min-h-9 sm:px-2"
           >
             {saindo ? 'saindo…' : 'sair'}
           </button>
         </div>
+        {erroAoSair ? (
+          <div role="alert" className="rounded-md border border-alerta/40 bg-alerta-claro px-3 py-2 text-xs text-alerta">
+            Não foi possível sair: {erroAoSair} <strong>Você continua conectado.</strong> Tente de novo.
+          </div>
+        ) : null}
       </div>
-
-      {erroAoSair ? (
-        <div
-          role="alert"
-          className="border-t border-alerta/40 bg-alerta-claro px-4 py-2 text-sm text-alerta"
-        >
-          Não foi possível sair: {erroAoSair} <strong>Você continua conectado.</strong> Tente de novo.
-        </div>
-      ) : null}
-    </header>
+    </aside>
   )
 }

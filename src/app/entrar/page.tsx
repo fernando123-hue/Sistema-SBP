@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { api, ErroDaApi, mensagemDoErro } from '../../componentes/api'
-import { Marca } from '../../componentes/marca'
+import { BlocoDaMarca } from '../../componentes/marca'
 import { Aviso, Botao, Cartao } from '../../componentes/matrizes'
 import { telaInicial } from '../../core/telas'
 
@@ -117,7 +117,7 @@ export default function Entrar() {
         respira. O `scrypt` leva um instante perceptível de propósito (ver
         `servidor/credenciais.ts`), e este é o feedback desse instante.
       */}
-      <Marca altura={96} ocupado={entrando} className="mb-6 text-tinta" />
+      <BlocoDaMarca altura={176} comNome ocupado={entrando} className="mb-6" />
       <h1 className="text-xl font-semibold tracking-tight">Atendimento ao Associado</h1>
       <p className="mt-1 text-sm text-tinta-suave">Entre com o e-mail da associação.</p>
 

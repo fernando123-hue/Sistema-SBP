@@ -83,8 +83,8 @@ const AMORTECIMENTO = 14
 
 /** Força do campo do ponteiro. */
 const REPULSAO = 620
-/** Raio de influência, em unidades do contorno. */
-const ALCANCE = 22
+/** Raio de influência, em unidades do contorno. Fora dele, o ponteiro não faz nada. */
+export const ALCANCE = 22
 
 /** Teto de deslocamento. A marca deforma; nunca se desmancha. */
 const DESLOCAMENTO_MAXIMO = 9
