@@ -59,7 +59,7 @@ Decisão em `A56`. Em resumo:
 
 ## Segredos
 
-Gestor de segredos (Infisical ou o da empresa) no lugar do `.env` em produção. O projeto está **preparado, não migrado** (`auditoria/2026-09-16-segredos-e-dados-sensiveis.md`, seção 8). A migração é de operação, não de código.
+Gestor de segredos (Infisical ou o da empresa) no lugar do `.env` em produção — **e a rodada paralela já conta como produção** (`A68`). O projeto está **preparado, não migrado** (`auditoria/2026-09-16-segredos-e-dados-sensiveis.md`, seção 8). A migração é de operação, não de código.
 
 **Cuidado:** a suíte de testes nunca roda com `DATABASE_URL` injetada de produção (N-01).
 
@@ -75,14 +75,16 @@ O que separa o protótipo do uso real está **quase todo fora do código**: TI, 
 **Pronto é:** a equipe usar o SBP **com e-mail real, em paralelo com a planilha, por 2 semanas** (a rodada paralela do `A5`). O resultado se lê pelos critérios de aceitação do PRD (seção 5).
 
 **1. Código que ainda falta — só o que bloqueia a rodada paralela:**
-- (a) fechar os PRs #146 e #147, que estão quase prontos;
-- (b) **pendência 17**: conferir que o valor extraído está no texto e mandar para a revisão o CPF com dígito errado. Sem isso, a IA local aprova com dado real valores que não estão no e-mail (literalidade 0,69, `A59`). Critério: `§ H.4` 40;
+- ~~(a) fechar os PRs #146 e #147~~ — mesclados em 29/09;
+- ~~(b) **pendência 17**: conferir que o valor extraído está no texto~~ — mesclada no #150 (`AT-51`);
+- (e) **os atritos 2 e 3** (`A67`): a Revisão mostra o e-mail ao lado do que a IA leu, e a Minha fila vira lista e detalhe. Entram porque a rodada paralela só funciona se a equipe quiser usar o sistema;
 - (c) **pendência 37**: recusar `NODE_TLS_REJECT_UNAUTHORIZED=0` em produção, porque com ela o texto do e-mail fica exposto no caminho;
 - (d) **a sincronização não pode prender a tela**, e só se a medição mandar. Primeiro medir, na máquina da IA local, o tempo por e-mail. Se passar de alguns segundos, a sincronização vira rotina em segundo plano.
 
 **2. Fora do código — o caminho crítico de verdade, do dono e do TI:**
 - credencial do Microsoft 365 com `Mail.Read` só da caixa do setor, e a data de `GRAPH_LER_DESDE` (`AT-35`, `AT-47`);
 - servidor Linux (`A61`): distribuição, MySQL, backup sem `.env`, segredos fora do disco (`AT-47`);
+- **segredos no gestor (Infisical ou o da empresa) antes do primeiro e-mail real** (`A68`): a rodada paralela já é produção;
 - **o servidor precisa alcançar a IA local.** Hoje o Ollama da máquina Debian só atende a ela mesma (`127.0.0.1`). É preciso decidir entre rodar o SBP na mesma máquina ou abrir o Ollama só para o servidor, na rede interna e com firewall. O `AT-37` já recusa endereço público;
 - **decisão do dono:** e-mail real na IA local (`IA_PARA_DADO_REAL.local`, `A56 (e)`);
 - repositório privado (pendência 20);

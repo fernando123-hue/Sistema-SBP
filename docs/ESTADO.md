@@ -1,10 +1,69 @@
 # Estado do projeto — retomada
 
-Última atualização: **30/09/2026, tarde — #150 e #151 mesclados; logotipo oficial em PR (#152).** **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **30/09/2026, fim da tarde — parada pedida pelo dono para limpar o contexto (`/clear`).** `main` em `b570308` (#152 mesclado). **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 30/09/2026, tarde — #151 MESCLADO; LOGOTIPO OFICIAL EM PR (este bloco vence todos os de baixo)
+> ### 30/09/2026, fim da tarde — PARADA PARA `/clear` (este bloco vence todos os de baixo)
+>
+> **PRIMEIRA COISA AO RETOMAR — pedido do dono:** dizer a ele **o que falta para validar o projeto, ou seja, rodá-lo de verdade na empresa.** A resposta é a lista abaixo; confira antes se algo mudou (`git log`, PRs abertos) e apresente em linguagem simples, separando o que é do agente, do TI e dele.
+>
+> **1. Onde está.**
+> - `main` em `b570308`. Mesclados hoje: #150 (pendência 17), #151 (visual, parte 1) e **#152** (logotipo = arte oficial em imagem, `A66`; decisões da parte 2 do visual, `A67`).
+> - PR de docs desta parada: `A68` (segredos no gestor antes da rodada paralela), `DIRECAO.md` atualizado e esta lista.
+> - Nenhum outro PR do agente aberto. Dependabot #78 a #81 seguem sem avaliar (pendência 12).
+>
+> **2. O QUE FALTA PARA RODAR NA EMPRESA** — a rodada paralela do `A5`: equipe usando com e-mail real, ao lado da planilha, por 2 semanas (`DIRECAO.md`, *Linha de chegada*).
+>
+> *A. Código (agente), nesta ordem:*
+> 1. **Pendência 37:** o servidor recusa subir em produção com `NODE_TLS_REJECT_UNAUTHORIZED=0`.
+> 2. **Atrito 2, a Revisão com o e-mail ao lado do que a IA leu** (`A67`). Levantado: hoje nenhuma tela mostra o corpo do e-mail (a fila deixou de carregá-lo de propósito, `servicos/fila.ts` ≈86). Precisa de uma leitura nova, **sob demanda, item a item**, que:
+>    - mostra o texto como texto, nunca como HTML;
+>    - diz "conteúdo expurgado" quando a retenção já apagou o corpo (invariante 11);
+>    - é autorizada pelo papel.
+>
+>    É nível 3. **Junto, o tema sempre claro** (`A67 (d)`: tirar o bloco escuro de `globals.css`). A primeira tela vai no azul da SBP, com laranja só em alerta.
+> 3. **Atrito 3, a Minha fila em lista e detalhe** (`A67`).
+> 4. **Medir no Ollama** o tempo por e-mail e o efeito da pendência 17 (junto da 18). Se passar de alguns segundos por e-mail, a sincronização vira rotina em segundo plano, para não prender a tela.
+>
+> *B. TI da associação:*
+> 5. **Microsoft 365:**
+>    - o registro do aplicativo com `Mail.Read` **só da caixa do setor**;
+>    - certificado no lugar de segredo, com a validade anotada e o nome de quem renova;
+>    - a data de `GRAPH_LER_DESDE` (`AT-35`, `AT-47`).
+> 6. **Servidor Linux** (`A61`):
+>    - distribuição e versão;
+>    - MySQL: versão e `lower_case_table_names`;
+>    - usuário do banco com senha e menor privilégio;
+>    - backup **sem** `.env`, restaurado uma vez para teste.
+> 7. **O servidor precisa alcançar a IA local.** Hoje o Ollama da máquina Debian só atende em `127.0.0.1`. Duas saídas: o SBP roda na mesma máquina, ou o Ollama se abre só para o servidor, na rede interna e com firewall (o `AT-37` já recusa endereço público).
+> 8. **Gestor de segredos, antes do primeiro e-mail real** (`A68`):
+>    - projeto no Infisical, ou no gestor que a empresa já tiver;
+>    - segredos de produção **gerados lá**;
+>    - `BUSCA_SECRET` **só** no cofre;
+>    - servidor ligado com `infisical run -- npm start`;
+>    - decidir quem tem acesso.
+>
+> *C. Decisões do dono:*
+> 9. **Liberar e-mail real na IA local** (trava `IA_PARA_DADO_REAL.local = false`; só ele destrava, `A56 (e)`).
+> 10. **Repositório privado antes do dado real** (pendência 20). Se ele quiser, antes disso trocar os nomes reais por fictícios em `CONTEXTO.md` e `ENGENHARIA_REVERSA…`.
+> 11. `§ H.4`, itens abertos que tocam o uso:
+>     - **30**: o gestor digita a senha de novo para ações sensíveis?
+>     - **32**: quantas tentativas antes de mandar um e-mail para uma pessoa?
+>     - também o `AT-42`.
+> 12. **A escolha completa da página de atritos:** https://claude.ai/artifact/NL4m8qY6LZjwuSLvJSeWgm. A sugestão é `1A · 2A+2B · 3A+3B · 4A · 5B`; a ordem 2 → 3 já foi decidida.
+> 13. **Recomendado:** meia hora da equipe conferindo as respostas do gabarito da IA (`§ H.4` 31).
+> 14. *(Não bloqueia.)* O SVG oficial do logotipo ou uma versão maior. A arte atual tem 136 × 163 e fica levemente borrada em tela de alta resolução (`A66`).
+>
+> *D. No dia de ligar:* a lista do `DECISOES.md § AT-47` (403 do Graph fora da caixa, veredito gravado, backup sem segredo, rota de download).
+>
+> **3. Como esta sessão trabalhou.**
+> - Um branch só (`claude/bold-wright-h08gk6`), recomeçado da `main` depois de cada merge.
+> - MySQL 8.4 em Docker na porta 3307: `dockerd` em segundo plano, com o prazo máximo, depois `docker start sbp-mysql`.
+> - `SESSAO_SECRET=teste-nao-e-segredo-local` na linha de comando.
+> - Revisões por agente com o modelo menor, que basta para diffs pequenos e economiza tokens (o dono pediu para não gastar tokens à toa, 30/09).
+>
+> > ### 30/09/2026, tarde — #151 MESCLADO; LOGOTIPO OFICIAL EM PR (anterior; o #152 foi mesclado)
 >
 > **1. #151 (visual SBP, parte 1): MESCLADO** (`6152296`). O item 2 do bloco de baixo está superado.
 >
