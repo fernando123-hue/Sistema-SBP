@@ -1,8 +1,47 @@
 # Estado do projeto — retomada
 
-Última atualização: **29/09/2026, fim da noite — ponto de parada pedido pelo dono, que tem instruções novas sobre o Jev e sobre a conta dele no sistema.** Três trabalhos da pendência 11 ficaram estacionados em ponto seguro (dois PRs abertos, um desenho decidido). **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **30/09/2026, ~03:30 UTC — parada pedida pelo dono para limpar o contexto (`/clear`).** O #150 (pendência 17) está na 4ª rodada de revisão; o visual SBP (parte 1) está pronto em commit local, esperando o #150 mesclar. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### 30/09/2026, ~03:30 UTC — PARADA PARA `/clear` (este bloco vence todos os de baixo)
+>
+> **Se a pasta `/home/user/Sistema-SBP` tiver `RETOMAR-AQUI.md`, leia-o antes:** ele tem o estado da máquina (pastas, processos, relatórios em arquivo) que não cabe num documento versionado.
+>
+> **1. #150 — pendência 17 (`AT-51`), branch `claude/bold-wright-h08gk6`, cabeça `e78f74c`.**
+> - CI verde no `e78f74c`: typecheck, testes e migrações; dependências; segredos; e processo, depois dos links. `npm run verificar` local: 141 arquivos, 1731 testes.
+> - Três rodadas de revisão técnica e três de segurança, publicadas no PR com a nota do autor (destino de cada achado). Os links estão no corpo do PR.
+> - **A 4ª rodada (técnica e de segurança, sobre `7f73ac4..e78f74c`) estava rodando na parada.** Os relatórios devem ficar gravados na pasta de rascunho da sessão (`…/scratchpad/rev150-r4-tec.md` e `rev150-r4-sec.md`; caminho completo no `RETOMAR-AQUI.md`). **Se não estiverem lá, peça a rodada de novo** (agentes diferentes do autor, sem rodar `vitest`, só scripts `tsx`).
+> - **Para fechar:**
+>   - publicar as duas revisões da 4ª rodada, sem edição, com a nota do autor;
+>   - corrigir o que pedirem, com teste visto vermelho, e fazer nova rodada se a correção for de código;
+>   - trocar "em andamento" pelos links no corpo do PR;
+>   - ler o CI um check por um;
+>   - mesclar.
+>
+> **2. Visual SBP, parte 1 (`A65`, `AT-52`, `§ H.4` 49) — NÃO está no GitHub.**
+> - É um commit local, `e89dbf3`, no branch `trabalho/marca`, pasta `/home/user/sbp-marca`, baseado na `main` `a612ef1`. Cópia: `/home/user/Sistema-SBP/.claude/reviews/retomar/visual-sbp-parte1.patch` (fora do git), com as capturas nos dois temas.
+> - Conteúdo:
+>   - logotipo oficial (P de P's sobre o `#0D024C`, "**s**ociedade **b**rasileira de **p**ediatria");
+>   - paleta no índigo da marca, com contraste medido;
+>   - menu lateral;
+>   - correção do tema escuro, que **sobrescrevia o claro em todo computador** (`AT-52`).
+> - `npm run verificar`: 139 arquivos, 1633 testes, verdes.
+> - **Depois que o #150 mesclar:**
+>   - recomeçar `claude/bold-wright-h08gk6` a partir da `main`;
+>   - aplicar o commit, resolvendo o conflito esperado no `DECISOES.md` (o `AT-52` entra perto do `AT-51`);
+>   - rodar `verificar`;
+>   - abrir o PR. É **nível 3** (`src/componentes/`): pede revisão técnica **e** de segurança.
+> - Mostrar as capturas ao dono.
+>
+> **3. Perguntas abertas ao dono, sem resposta ainda:**
+> - (a) a escolha dos itens de tela da página de atritos (item 6 abaixo; sugestão `1A · 2A+2B · 3A+3B · 4A · 5B`);
+> - (b) as telas do Stitch em **tamanho real**: só chegou uma miniatura ilegível, e a parte 2 do visual depende delas;
+> - (c) o tema: sempre claro, seguir o computador ou botão por pessoa (`§ H.4` 49, recomendação: seguir o computador).
+>
+> **4. Regra de máquina aprendida nesta noite (pendência 43):** qualquer `vitest run`, até de teste puro, **apaga e recria `sbp_teste`**. Nunca rode dois `vitest` ao mesmo tempo, em pasta nenhuma, e peça aos agentes revisores que não rodem `vitest` enquanto houver suíte rodando.
+>
+> **5. Depois do #150 e do visual, na ordem da linha de chegada:** pendência 37; os itens de tela que o dono escolher (um PR por item); medir no Ollama o tempo por e-mail e o efeito da pendência 17 (junto da 18).
 >
 > ### 29/09/2026, depois da parada — INVESTIGAÇÃO DAS INSTRUÇÕES NOVAS (JEV + CONTA DO DONO) ENTREGUE; AGUARDA O DONO (este bloco vence os de baixo)
 >
@@ -54,7 +93,7 @@
 >   - **#149**: a investigação e a linha de chegada;
 >   - **#146**: rotação da sessão, com o aviso da troca na subida do servidor (3ª rodada);
 >   - **#147**: índice do rastro; pendências 40, 41 e 42 anotadas.
-> - **#150: pendência 17** (`AT-51`). Valor fora do texto e CPF que não confere vão para a Revisão, com o campo apontado; e-mail que estoura o orçamento da conferência vai como "grande demais para conferir tudo"; a liga citada que não está no e-mail não vira identidade. Três rodadas de revisão técnica e de segurança; todas as correções com teste visto vermelho.
+> - **#150: pendência 17** (`AT-51`). Valor fora do texto e CPF que não confere vão para a Revisão, com o campo apontado; e-mail que estoura o orçamento da conferência vai como "conferência interrompida: confira este campo e os seguintes"; a liga citada que não está no e-mail não vira identidade. Três rodadas de revisão técnica e de segurança; todas as correções com teste visto vermelho.
 > - **O dono pediu foco na experiência de uso** ("diminuir toda a resistência, que sintam mais resultado com menos esforço"). O levantamento de atrito, com as telas vistas rodando como operadora, colaboradora e gestora, está na página https://claude.ai/artifact/NL4m8qY6LZjwuSLvJSeWgm (privada, do dono). Cinco atritos, cada um com a tela de hoje e as opções:
 >   1. uma lista de ligantes vira dezenas de cartões na Revisão: 57 de 58 itens foram para a Revisão numa busca de teste;
 >   2. a Revisão pede para conferir, mas não mostra o e-mail, e o selo "99%" contradiz o motivo;
