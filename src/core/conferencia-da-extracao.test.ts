@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import { CASOS_DO_GABARITO } from './avaliacao/casos'
 import {
+  CAMPO_DA_LIGA,
   PASSOS_POR_EMAIL,
   conferirExtracao,
+  ligaEstaNoTexto,
   prepararTextoParaConferir,
   valorEstaNoTexto,
 } from './conferencia-da-extracao'
@@ -126,7 +128,29 @@ describe('conferirExtracao', () => {
 
   it('confere a liga mencionada, que vira identidade no banco', () => {
     expect(conferirExtracao(texto, {}, 'Liga Acadêmica de Pediatria Sintética')).toBeNull()
-    expect(conferirExtracao(texto, {}, 'Liga de Pediatria')).toEqual({ motivo: 'valor_fora_do_texto', campo: 'liga' })
+    expect(conferirExtracao(texto, {}, 'Liga de Pediatria')).toEqual({
+      motivo: 'valor_fora_do_texto',
+      campo: CAMPO_DA_LIGA,
+    })
+  })
+
+  /**
+   * A liga é conferida à parte do primeiro problema: com o CPF errado vindo
+   * antes, a liga inventada seguia para `resolverLiga` (2ª rodada do #150).
+   */
+  it('a liga é conferida mesmo quando outro campo falha antes', () => {
+    expect(conferirExtracao(texto, { cpf: '11144477736' }, 'Liga de Pediatria')?.motivo).toBe('cpf_invalido')
+    expect(ligaEstaNoTexto(texto, 'Liga de Pediatria')).toBe(false)
+    expect(ligaEstaNoTexto(texto, 'Liga Acadêmica de Pediatria Sintética')).toBe(true)
+    expect(ligaEstaNoTexto(texto, null)).toBe(true)
+  })
+
+  it('um campo da IA chamado "liga" não se confunde com a liga citada', () => {
+    expect(conferirExtracao(texto, { liga: 'Nome Inventado' }, null)).toEqual({
+      motivo: 'valor_fora_do_texto',
+      campo: 'liga',
+    })
+    expect(CAMPO_DA_LIGA).not.toBe('liga')
   })
 })
 
@@ -169,6 +193,33 @@ describe('endereço de e-mail é comparado inteiro', () => {
       expect({ reescrito, noTexto: valorEstaNoTexto(comEndereco, reescrito) }).toEqual({ reescrito, noTexto: false })
     }
   })
+
+  it('endereço entre aspas, sinais ou "mailto:" no texto é o mesmo endereço', () => {
+    for (const corpo of [
+      'Escreva para “ana.souza@exemplo.test”.',
+      'Escreva para «ana.souza@exemplo.test»!',
+      'Contato: mailto:ana.souza@exemplo.test?',
+      'Ana Souza <ana.souza@exemplo.test>|telefone',
+      'responder a ana.souza@exemplo.test/obrigada',
+    ]) {
+      const doTexto = prepararTextoParaConferir(corpo)
+      expect({ corpo, noTexto: valorEstaNoTexto(doTexto, 'ana.souza@exemplo.test') }).toEqual({ corpo, noTexto: true })
+    }
+  })
+
+  it('valor com nome e endereço confere as duas partes', () => {
+    const doTexto = prepararTextoParaConferir('De: Ana Souza Sintética <ana.souza@exemplo.test>')
+    expect(valorEstaNoTexto(doTexto, 'Ana Souza Sintética <ana.souza@exemplo.test>')).toBe(true)
+    expect(valorEstaNoTexto(doTexto, 'mailto:ana.souza@exemplo.test')).toBe(true)
+    expect(valorEstaNoTexto(doTexto, 'Ana Souza Sintética <ana@souza.exemplo.test>')).toBe(false)
+    expect(valorEstaNoTexto(doTexto, 'Beatriz Inventada <ana.souza@exemplo.test>')).toBe(false)
+  })
+
+  it('"@perfil" sem nada antes não é endereço: vai pela conferência de palavras', () => {
+    const doTexto = prepararTextoParaConferir('Siga a liga no @ligasintetica.')
+    expect(valorEstaNoTexto(doTexto, '@ligasintetica')).toBe(true)
+    expect(valorEstaNoTexto(doTexto, '@ligainventada')).toBe(false)
+  })
 })
 
 describe('caixa e símbolos que o critério manda ignorar', () => {
@@ -176,6 +227,12 @@ describe('caixa e símbolos que o critério manda ignorar', () => {
     const doTexto = prepararTextoParaConferir('Rua STRASSE, nº 12')
     expect(valorEstaNoTexto(doTexto, 'Straße')).toBe(true)
     expect(valorEstaNoTexto(doTexto, 'n° 12')).toBe(true)
+  })
+
+  it('"ẞ" maiúsculo também é "ss", e "İ" é "i" sem sobrar ponto', () => {
+    expect(valorEstaNoTexto(prepararTextoParaConferir('Rua GROẞE, 12'), 'grosse')).toBe(true)
+    expect(valorEstaNoTexto(prepararTextoParaConferir('Rua Grosse, 12'), 'GROẞE')).toBe(true)
+    expect(valorEstaNoTexto(prepararTextoParaConferir('Sra. İLKAY Sintética'), 'ilkay sintetica')).toBe(true)
   })
 
   it('"CPF" sem nenhum dígito não é CPF que não confere: é valor a conferir no texto', () => {
@@ -214,6 +271,26 @@ describe('custo', () => {
     const quase = `${'a 1 '.repeat(499)}b`
     const inicio = performance.now()
     for (let i = 0; i < 25; i += 1) valorEstaNoTexto(hostil, `${quase} ${i}`)
+    expect(performance.now() - inicio).toBeLessThan(2000)
+  })
+
+  /**
+   * O remetente escolhe o texto, e a PREPARAÇÃO também entra na conta: a
+   * expressão que achava endereços voltava atrás a cada letra de um trecho
+   * sem `@` — 200 mil letras levavam dezenas de segundos antes de qualquer
+   * orçamento (2ª rodada do #150).
+   */
+  it.each([
+    ['letras sem @', 'x'.repeat(200_000)],
+    ['@ repetido', 'a@'.repeat(100_000)],
+    ['pontos entre letras', `a${'.'.repeat(200_000)}a`],
+    ['pontos e @', `a${'.@'.repeat(100_000)}a`],
+    ['"⅟", que a forma de compatibilidade dobra em dois', '⅟'.repeat(200_000)],
+  ])('preparar um texto hostil (%s) não trava o servidor', (_nome, hostil) => {
+    const inicio = performance.now()
+    const preparado = prepararTextoParaConferir(hostil)
+    valorEstaNoTexto(preparado, 'fulana@exemplo.test')
+    valorEstaNoTexto(preparado, `a${'.'.repeat(1000)}a@b`)
     expect(performance.now() - inicio).toBeLessThan(2000)
   })
 

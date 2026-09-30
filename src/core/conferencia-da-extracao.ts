@@ -83,11 +83,22 @@ interface Atomo {
 
 /**
  * Sem acento, sem forma de compatibilidade, e em minúsculas que dobram de
- * verdade: `toUpperCase` antes de `toLowerCase` faz "ß" virar "ss", como
- * "STRASSE". O "°" (grau) escrito no lugar do "º" (ordinal) vira "o".
+ * verdade. A caixa vem ANTES de tirar os acentos: "ẞ" só vira "ss" passando
+ * por minúscula e maiúscula ("ẞ" → "ß" → "SS"), e "İ" em minúscula traz um
+ * ponto combinante que a limpeza de acentos precisa ver depois (2ª rodada do
+ * #150). A minúscula do fim é porque a forma de compatibilidade pode devolver
+ * maiúscula ("ᴬ" → "A"). O "°" (grau) escrito no lugar do "º" (ordinal) vira
+ * "o": no teclado, são o mesmo gesto.
  */
 function dobrar(texto: string): string {
-  return texto.normalize('NFKD').replace(/\p{M}/gu, '').replace(/°/g, 'o').toUpperCase().toLowerCase()
+  return texto
+    .toLowerCase()
+    .toUpperCase()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .replace(/°/g, 'o')
+    .toLowerCase()
 }
 
 /** Palavras e números. */
@@ -118,11 +129,35 @@ function atomosDoValor(valor: string): Atomo[] {
  * pontuação como espaço, "ana@souza.exemplo.test" casava com
  * "ana.souza@exemplo.test" — outro endereço, e alguém vai responder para ele
  * (revisão técnica do #150).
+ *
+ * Os endereços saem por SEPARAÇÃO, e não por uma expressão `[^…]+@[^…]+`:
+ * aquela voltava atrás a cada posição de um trecho longo sem `@`, e 200 mil
+ * letras seguidas levavam 45 s, fora de qualquer orçamento (2ª rodada do
+ * #150). Separar é linear.
  */
-const ENDERECO = /[^\s<>()[\],;:"'`]+@[^\s<>()[\],;:"'`]+/gu
+const SEPARADOR_DE_ENDERECO = /[\s<>()[\],;:"'`“”«»‘’/|!?]+/u
 
+const LETRA_OU_DIGITO = /[\p{L}\p{Nd}]/u
+
+/**
+ * Tira das pontas o que não é letra nem dígito (o ponto final da frase).
+ * Por laço, e não por `[^…]+$`: essa expressão volta atrás em cada ponto de
+ * "a.....a" e fica quadrática no pedaço que o remetente escolher.
+ */
 function limparEndereco(endereco: string): string {
-  return endereco.replace(/^[.]+|[.]+$/g, '')
+  let inicio = 0
+  let fim = endereco.length
+  while (inicio < fim && !LETRA_OU_DIGITO.test(endereco[inicio]!)) inicio += 1
+  while (fim > inicio && !LETRA_OU_DIGITO.test(endereco[fim - 1]!)) fim -= 1
+  return endereco.slice(inicio, fim)
+}
+
+/** Os pedaços com cara de endereço: algo antes e algo depois do `@`. */
+function enderecosEm(textoDobrado: string): string[] {
+  return textoDobrado
+    .split(SEPARADOR_DE_ENDERECO)
+    .map(limparEndereco)
+    .filter((pedaco) => /^[^@]+@[^@]+$/u.test(pedaco))
 }
 
 /**
@@ -151,7 +186,7 @@ export function prepararTextoParaConferir(texto: string): TextoParaConferir {
     if (posicoes) posicoes.push(posicao)
     else indice.set(atomo.valor, [posicao])
   })
-  const enderecos = new Set(Array.from(dobrar(texto).matchAll(ENDERECO), (achado) => limparEndereco(achado[0])))
+  const enderecos = new Set(enderecosEm(dobrar(texto)))
   return { atomos: lista, porPalavra, porNumero, enderecos, memoria: new Map(), orcamento: PASSOS_POR_EMAIL }
 }
 
@@ -218,9 +253,22 @@ export function valorEstaNoTexto(texto: TextoParaConferir, valor: string): boole
 
 function conferirValor(texto: TextoParaConferir, valor: string): boolean {
   if (texto.orcamento < 0) return false
-  if (valor.includes('@')) return texto.enderecos.has(limparEndereco(dobrar(valor).trim()))
+  // O endereço dentro do valor tem de estar no texto inteiro, e o resto do
+  // valor ("Ana Souza <ana@…>", "mailto:") passa pela conferência de átomos.
+  // "@perfil" sem nada antes não é endereço: vai pelos átomos.
+  const dobrado = dobrar(valor)
+  const enderecos = enderecosEm(dobrado)
+  if (enderecos.some((endereco) => !texto.enderecos.has(endereco))) return false
+  let resto = valor
+  if (enderecos.length > 0) {
+    resto = dobrado
+      .split(SEPARADOR_DE_ENDERECO)
+      .filter((pedaco) => !/^[^@]+@[^@]+$/u.test(limparEndereco(pedaco)))
+      .join(' ')
+      .replace(/\bmailto\b/gu, ' ')
+  }
 
-  const alvo = atomosDoValor(valor)
+  const alvo = atomosDoValor(resto)
   const tamanho = alvo.reduce((total, atomo) => total + atomo.valor.length, 0)
   if (tamanho < TAMANHO_MINIMO_CONFERIDO) return true
 
@@ -232,6 +280,21 @@ function conferirValor(texto: TextoParaConferir, valor: string): boolean {
     if (casaAPartirDe(texto, alvo, inicio)) return true
   }
   return false
+}
+
+/**
+ * O nome do "campo" quando é a liga citada que não bate. Não é `liga`: um
+ * campo da IA com a chave `liga` colidiria com ele (2ª rodada do #150).
+ */
+export const CAMPO_DA_LIGA = 'liga citada'
+
+/**
+ * A liga citada está no texto? Conferida SEMPRE, à parte do primeiro
+ * problema: se outro campo falhasse antes, a liga inventada seguia para
+ * `resolverLiga` e nascia no banco (2ª rodada do #150). Sem liga, `true`.
+ */
+export function ligaEstaNoTexto(texto: TextoParaConferir, ligaMencionada: string | null): boolean {
+  return ligaMencionada === null || valorEstaNoTexto(texto, ligaMencionada)
 }
 
 /**
@@ -266,8 +329,6 @@ export function conferirExtracao(
   for (const [campo, valor] of Object.entries(campos)) {
     if (!valorEstaNoTexto(texto, valor)) return { motivo: 'valor_fora_do_texto', campo }
   }
-  if (ligaMencionada !== null && !valorEstaNoTexto(texto, ligaMencionada)) {
-    return { motivo: 'valor_fora_do_texto', campo: 'liga' }
-  }
+  if (!ligaEstaNoTexto(texto, ligaMencionada)) return { motivo: 'valor_fora_do_texto', campo: CAMPO_DA_LIGA }
   return null
 }

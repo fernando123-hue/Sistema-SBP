@@ -16,6 +16,7 @@ import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { ClassificadorPort } from '../ports/classificador'
 import {
   conferirExtracao,
+  ligaEstaNoTexto,
   prepararTextoParaConferir,
   type MotivoDaConferencia,
   type ProblemaNaExtracao,
@@ -612,7 +613,7 @@ async function processarUm(
   // A conferência do que a IA extraiu contra o texto (pendência 17) também
   // fica FORA da transação: é conta sobre o texto, e não precisa segurar lock.
   // Um problema por item, na ordem dos itens.
-  const problemasDaExtracao: (ProblemaNaExtracao | null)[] = interpretacao
+  const problemasDaExtracao: ConferenciaDoItem[] = interpretacao
     ? conferirItens(email, interpretacao)
     : []
 
@@ -811,7 +812,7 @@ async function criarItens(
     messageId: string
     interpretacao: Interpretacao
     /** Um por item, na mesma ordem — `conferirItens`. */
-    problemasDaExtracao: readonly (ProblemaNaExtracao | null)[]
+    problemasDaExtracao: readonly ConferenciaDoItem[]
     anexosRejeitados: number
     correlacaoId: string
     usuario: string
@@ -856,7 +857,7 @@ async function criarItens(
     // perdido para sempre. É o defeito da planilha reconstruído aqui dentro.
     if (!categoria) throw new CategoriaDesconhecidaError(extraido.categoriaCodigo)
 
-    const problema = contexto.problemasDaExtracao[posicao]!
+    const { problema, ligaNoTexto } = contexto.problemasDaExtracao[posicao]!
     const motivo = decidirRevisao(
       extraido.confianca,
       categoria.limiarConfianca,
@@ -893,7 +894,7 @@ async function criarItens(
     const ligaId = await resolverLiga(
       tx,
       ligas,
-      problema?.campo === 'liga' ? null : extraido.ligaMencionada,
+      ligaNoTexto ? extraido.ligaMencionada : null,
       orcamentoDeLigas,
     )
 
@@ -1086,7 +1087,20 @@ export function decidirRevisao(
  * (`adapters/ia-estruturada.ts`) —, então um valor que só existe no nome de um
  * anexo conta como fora do texto.
  */
-function conferirItens(email: EmailBruto, interpretacao: Interpretacao): (ProblemaNaExtracao | null)[] {
+function conferirItens(email: EmailBruto, interpretacao: Interpretacao): ConferenciaDoItem[] {
   const texto = prepararTextoParaConferir(`${email.assunto}\n${email.corpo}`)
-  return interpretacao.itens.map((item) => conferirExtracao(texto, item.campos, item.ligaMencionada))
+  return interpretacao.itens.map((item) => ({
+    problema: conferirExtracao(texto, item.campos, item.ligaMencionada),
+    ligaNoTexto: ligaEstaNoTexto(texto, item.ligaMencionada),
+  }))
+}
+
+/**
+ * O que a conferência diz de um item: o primeiro problema (para o motivo e o
+ * campo apontado) e, à parte, se a liga citada está no texto — é isso que
+ * decide se ela vira identidade, qualquer que seja o primeiro problema.
+ */
+interface ConferenciaDoItem {
+  readonly problema: ProblemaNaExtracao | null
+  readonly ligaNoTexto: boolean
 }

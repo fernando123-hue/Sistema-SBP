@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { depoisDeResolver, estadoDaFila, filaDaResposta } from './fila-na-tela'
+import { CAMPO_DA_LIGA } from '../../core/conferencia-da-extracao'
+import { depoisDeResolver, estadoDaFila, filaDaResposta, lerSugestao, seloDoCampo } from './fila-na-tela'
 
 /**
  * A fila de revisão na tela, depois de cada decisão (achado N-30).
@@ -72,5 +73,40 @@ describe('estadoDaFila', () => {
 
   it('com itens: lista', () => {
     expect(estadoDaFila([item('a')], 1)).toBe('lista')
+  })
+})
+
+describe('selo do campo apontado', () => {
+  const sugestao = lerSugestao(JSON.stringify({ campos: { nome: 'Fulana Sintética', cpf: '  ' }, ligaMencionada: 'Liga Sintética' }))
+
+  it('campo com valor pede conferência; campo vazio ou ausente, falta', () => {
+    expect(seloDoCampo('nome', sugestao)).toBe('confira: nome')
+    expect(seloDoCampo('cpf', sugestao)).toBe('falta: cpf')
+    expect(seloDoCampo('crm', sugestao)).toBe('falta: crm')
+    expect(seloDoCampo(CAMPO_DA_LIGA, sugestao)).toBe(`confira: ${CAMPO_DA_LIGA}`)
+  })
+
+  /**
+   * O nome do campo vem da IA. Com `campos?.[campo]?.trim()`, "toString"
+   * achava a função herdada e a tela da Revisão caía inteira (2ª rodada do #150).
+   */
+  it.each(['toString', 'constructor', '__proto__', 'hasOwnProperty', 'valueOf'])('campo chamado "%s" não derruba a tela', (campo) => {
+    expect(seloDoCampo(campo, sugestao)).toBe(`falta: ${campo}`)
+    expect(seloDoCampo(campo, lerSugestao('{}'))).toBe(`falta: ${campo}`)
+  })
+
+  it('sugestão ilegível ou com tipos errados vira vazia', () => {
+    expect(lerSugestao('não é json')).toEqual({ campos: {}, ligaMencionada: null })
+    expect(lerSugestao('null')).toEqual({ campos: {}, ligaMencionada: null })
+    const torta = lerSugestao(JSON.stringify({ campos: { nome: 7, cpf: ['x'], crm: 'SP 1' }, ligaMencionada: 3 }))
+    expect({ ...torta.campos }).toEqual({ crm: 'SP 1' })
+    expect(torta.ligaMencionada).toBeNull()
+    expect(seloDoCampo('nome', torta)).toBe('falta: nome')
+  })
+
+  it('"__proto__" gravado pela IA fica como chave comum, sem mexer no protótipo', () => {
+    const lida = lerSugestao('{"campos":{"__proto__":"Fulana Sintética"}}')
+    expect(seloDoCampo('__proto__', lida)).toBe('confira: __proto__')
+    expect(Object.getPrototypeOf(lida.campos)).toBeNull()
   })
 })

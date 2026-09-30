@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { CAMPO_DA_LIGA } from '../core/conferencia-da-extracao'
 import { EmailBrutoSchema, type ItemExtraido } from '../core/esquemas'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
@@ -135,10 +136,37 @@ describe('conferência do que a IA extraiu, na ingestão', () => {
     )
     expect(await revisaoDoUnicoItem()).toEqual({
       status: 'aguardando_revisao',
-      revisao: { motivo: 'valor_fora_do_texto', campoIncerto: 'liga' },
+      revisao: { motivo: 'valor_fora_do_texto', campoIncerto: CAMPO_DA_LIGA },
     })
     // Sem isto, a liga inventada virava linha em `Liga` — ou prendia o item ao
     // lote de uma liga existente com nome parecido (revisões do #150).
+    expect(await banco.liga.count()).toBe(antes)
+    expect((await banco.item.findFirstOrThrow({ select: { ligaId: true } })).ligaId).toBeNull()
+  })
+
+  /**
+   * Com o CPF errado vindo antes na conferência, o motivo é o CPF — e a liga
+   * inventada seguia para `resolverLiga` e nascia no banco (2ª rodada do #150).
+   */
+  it('CPF que não confere e liga inventada: o motivo é o CPF, e a liga não nasce', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const antes = await banco.liga.count()
+    await sincronizar(
+      {
+        banco,
+        ingestao: email('cpf-e-liga@teste.local', 'Nome: Fulana Sintética\nCPF: 111.444.777-36'),
+        ia: iaQueDevolve({
+          categoriaCodigo: 'EMAIL_LIGA',
+          campos: { nome: 'Fulana Sintética', cpf: '111.444.777-36' },
+          ligaMencionada: 'Liga Sintética Que Ninguém Citou',
+        }),
+      },
+      base.operador,
+    )
+    expect(await revisaoDoUnicoItem()).toEqual({
+      status: 'aguardando_revisao',
+      revisao: { motivo: 'cpf_invalido', campoIncerto: 'cpf' },
+    })
     expect(await banco.liga.count()).toBe(antes)
     expect((await banco.item.findFirstOrThrow({ select: { ligaId: true } })).ligaId).toBeNull()
   })
