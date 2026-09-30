@@ -1,10 +1,24 @@
 # Estado do projeto — retomada
 
-Última atualização: **30/09/2026, ~03:30 UTC — parada pedida pelo dono para limpar o contexto (`/clear`).** O #150 (pendência 17) está na 4ª rodada de revisão; o visual SBP (parte 1) está pronto em commit local, esperando o #150 mesclar. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **30/09/2026, tarde — #150 e #151 mesclados; correção do P do logotipo em PR.** **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 30/09/2026, manhã — #150 MESCLADO; VISUAL SBP EM PR (este bloco vence todos os de baixo)
+> ### 30/09/2026, tarde — #151 MESCLADO; CORREÇÃO DO P EM PR (este bloco vence todos os de baixo)
+>
+> **1. #151 (visual SBP, parte 1): MESCLADO** (`6152296`). O item 2 do bloco de baixo está superado.
+>
+> **2. Correção do P do logotipo: PR aberto** a partir de `claude/bold-wright-h08gk6`.
+> - Pedido do dono: "o P do sistema está todo bugado", comparando com a arte oficial que ele mandou (o logotipo do site da SBP).
+> - O que estava errado e o que mudou estão no `A65`: P's empilhados virando mancha, forma da letra errada e proporções do bloco erradas.
+> - É **nível 3** (`src/componentes/`): precisa de revisão técnica **e** de segurança publicadas, com os links no corpo.
+> - `verificar`: 141 arquivos, 1746 testes.
+>
+> **3. Perguntas abertas ao dono:** as mesmas três do bloco de baixo (itens de tela da página de atritos, telas do Stitch em tamanho real, tema).
+>
+> **4. Depois:** pendência 37; os itens de tela que o dono escolher; medir no Ollama (junto da 18).
+>
+> ### 30/09/2026, manhã — #150 MESCLADO; VISUAL SBP EM PR (anterior; o #151 foi mesclado)
 >
 > **Se a pasta `/home/user/Sistema-SBP` tiver `RETOMAR-AQUI.md`, leia-o antes:** ele tem o estado da máquina (pastas, processos, relatórios em arquivo) que não cabe num documento versionado.
 >

@@ -26,14 +26,21 @@
  *
  * ═══ AS PROPORÇÕES ═══
  *
- * Espaço normalizado de `0..LARGURA` por `0..ALTURA`, medido sobre a arte:
- * haste vertical cheia à esquerda, bojo ocupando os 60% superiores com o lado
- * direito arredondado, e a contraforma (o vazado) como um quadrado de cantos
- * suaves. A espessura do traço superior é levemente menor que a do inferior —
- * correção óptica que existe na marca e que uma reconstrução ingênua perderia.
+ * Medidas sobre a arte oficial (o logotipo do site da SBP, 136 × 163 px, onde
+ * o P tem 72 × 89 px), convertidas para `0..LARGURA` por `0..ALTURA`:
+ *
+ * - haste estreita, com 18 das 80 unidades de largura;
+ * - bojo nos dois terços de cima (66 de 100), com o lado direito bem redondo;
+ * - contraforma GRANDE — mais da metade da largura da letra —, reta do lado
+ *   da haste e redonda do lado de fora. Paredes finas em cima e embaixo, a da
+ *   direita um pouco mais grossa.
+ *
+ * A primeira reconstrução errou justamente aqui: haste de um terço da letra e
+ * um buraco oval pequeno. Com os P's pequenos por cima, a letra virava uma
+ * mancha com um furo — e deixava de parecer a da SBP.
  */
 
-export const LARGURA = 70
+export const LARGURA = 80
 export const ALTURA = 100
 
 /** Retângulo com raio por canto. Raio `0` é canto reto. */
@@ -55,7 +62,7 @@ interface RetanguloArredondado {
 const HASTE: RetanguloArredondado = {
   x: 0,
   y: 0,
-  largura: 24,
+  largura: 18,
   altura: ALTURA,
   raioSuperiorEsquerdo: 0,
   raioSuperiorDireito: 0,
@@ -70,11 +77,11 @@ const HASTE: RetanguloArredondado = {
 const BOJO: RetanguloArredondado = {
   x: 0,
   y: 0,
-  largura: 70,
-  altura: 58,
+  largura: 80,
+  altura: 66,
   raioSuperiorEsquerdo: 0,
-  raioSuperiorDireito: 21,
-  raioInferiorDireito: 21,
+  raioSuperiorDireito: 26,
+  raioInferiorDireito: 26,
   raioInferiorEsquerdo: 0,
 }
 
@@ -84,17 +91,18 @@ const BOJO: RetanguloArredondado = {
  * Subtraída das duas formas acima. É ela que faz a letra ser um P e não um D
  * grosso, e é o detalhe que mais denuncia uma reconstrução malfeita: se ficar
  * redonda demais vira um "b" de fonte geométrica; quadrada demais, vira um
- * carimbo.
+ * carimbo. Na arte, os cantos do lado da haste são quase retos e os de fora
+ * acompanham a curva do bojo.
  */
 const CONTRAFORMA: RetanguloArredondado = {
-  x: 32,
+  x: 18,
   y: 15,
-  largura: 19,
-  altura: 25,
-  raioSuperiorEsquerdo: 7,
-  raioSuperiorDireito: 7,
-  raioInferiorDireito: 7,
-  raioInferiorEsquerdo: 7,
+  largura: 42,
+  altura: 36,
+  raioSuperiorEsquerdo: 3,
+  raioSuperiorDireito: 14,
+  raioInferiorDireito: 14,
+  raioInferiorEsquerdo: 3,
 }
 
 /**

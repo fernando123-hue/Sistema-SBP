@@ -1,4 +1,4 @@
-import { ALTURA, LARGURA, dentroDoP, folgaAteABorda } from './contorno'
+import { ALTURA, LARGURA, dentroDoP } from './contorno'
 
 /**
  * O arranjo dos P's pequenos que formam o P grande.
@@ -27,8 +27,8 @@ import { ALTURA, LARGURA, dentroDoP, folgaAteABorda } from './contorno'
  *      duas vezes; `Math.random()` produziria HTML diferente nos dois lados e
  *      o React acusaria erro de hidratação.
  *   3. **Dá para testar.** É o que permite a suíte afirmar que nenhum glifo
- *      vaza para fora da letra — o defeito visual mais provável aqui, e o que
- *      um olho distraído deixa passar.
+ *      vaza para fora da letra nem cai por cima de outro — os defeitos visuais
+ *      mais prováveis aqui, e os que um olho distraído deixa passar.
  *
  * ═══ POR QUE NÃO UM ARQUIVO DE DADOS GERADO ═══
  *
@@ -45,12 +45,21 @@ export interface ParticulaDaMarca {
   /** Posição de REPOUSO. A física desloca a partir daqui e sempre volta para cá. */
   readonly x: number
   readonly y: number
-  /** Altura do glifo. Também define a massa: grande resiste, pequeno foge. */
+  /**
+   * Altura da maiúscula do glifo. Também define a massa: grande resiste,
+   * pequeno foge.
+   */
   readonly tamanho: number
   /** Giro em graus. Sutil — a marca tem variação, não bagunça. */
   readonly giro: number
   /** Peso tipográfico. A marca real mistura pesos, e é isso que lhe dá textura. */
   readonly peso: 400 | 600 | 800
+  /**
+   * Opacidade da tinta, de 0 a 1. Na arte, parte dos P's é branca e parte é
+   * cinza-clara: é essa diferença que faz a letra ler como mosaico de letras,
+   * e não como bloco branco.
+   */
+  readonly tom: number
 }
 
 /**
@@ -59,32 +68,64 @@ export interface ParticulaDaMarca {
  * Mudar este número redesenha a marca inteira. É o único botão de "gerar outra
  * versão", e existe para poder escolher um arranjo bonito uma vez e travá-lo.
  */
-export const SEMENTE = 20260907
+export const SEMENTE = 20260930
 
 /**
- * Espaçamento da grade de amostragem.
+ * Largura da tinta de um "P" sobre a altura da maiúscula.
  *
- * Menor = mais P's = mais denso e mais caro. Em `4.2` a letra fica com pouco
- * menos de cem glifos: densidade suficiente para ler como textura, e leve o
- * bastante para animar no celular sem pensar duas vezes.
+ * É a caixa que o encaixe reserva para cada glifo. O teste de transbordo usa a
+ * elipse inscrita nela (`0,39` de raio horizontal).
  */
-const PASSO_DA_GRADE = 3.2
+export const LARGURA_DO_GLIFO = 0.78
 
 /**
- * Tamanhos possíveis do glifo, do menor ao maior.
+ * Folga mínima entre duas caixas, em unidades da letra.
  *
- * A média é DELIBERADAMENTE maior que o passo da grade. Com glifos menores que
- * a célula, sobra fundo entre eles e a letra lê como chuvisco — foi o primeiro
- * resultado, e o erro era exatamente esse. Na marca real os P's se encostam e
- * às vezes se sobrepõem: é isso que faz a silhueta ser sólida de longe e
- * revelar as peças de perto.
+ * ═══ POR QUE AS PEÇAS NÃO PODEM SE ENCOSTAR ═══
  *
- * O menor da lista existe para a BORDA: onde a folga é de um ponto ou dois, só
- * ele cabe. Sem essa opção o contorno ficaria serrilhado, com buracos onde
- * nenhum tamanho passou no teste de folga.
+ * A versão anterior espalhava os glifos numa grade mais apertada que o tamanho
+ * deles, de propósito, para a silhueta "ficar sólida". Visto na tela, os P's
+ * se sobrepunham até virar uma mancha branca granulada: ninguém enxergava letra
+ * nenhuma, e o dono chamou de "bugado" (30/09). Na arte oficial cada P pequeno
+ * é LEGÍVEL, com o azul aparecendo entre eles; a silhueta vem da borda alinhada
+ * ao contorno, não de tinta empilhada. O teste `nenhum glifo cai por cima de
+ * outro` guarda isto.
  */
-const TAMANHOS = [2.2, 3.2, 4.2, 5.4, 6.8] as const
-const PESOS = [400, 600, 800] as const
+export const FOLGA_ENTRE_GLIFOS = 0.25
+
+/**
+ * Tamanhos, do maior ao menor, e quantos de cada o encaixe aceita.
+ *
+ * Os grandes são poucos e entram primeiro — são os P's que se leem de longe
+ * na arte. Os pequenos não têm teto: preenchem o que sobrou até a letra ficar
+ * coberta, inclusive a borda, onde só eles cabem. `null` = sem teto.
+ */
+const CAMADAS: readonly { readonly tamanho: number; readonly teto: number | null }[] = [
+  { tamanho: 8, teto: 6 },
+  { tamanho: 6.6, teto: 14 },
+  { tamanho: 5.4, teto: 40 },
+  { tamanho: 4.4, teto: null },
+  { tamanho: 3.6, teto: null },
+  { tamanho: 2.9, teto: null },
+]
+
+/**
+ * Passo da varredura de candidatos, em unidades da letra.
+ *
+ * Cada camada experimenta TODAS as posições desta grade, em ordem embaralhada.
+ * A primeira versão do encaixe sorteava 1400 posições soltas por camada e
+ * deixou a letra rala — 77 peças, com buracos que o sorteio não achou. A
+ * varredura acha toda fresta em que o glifo cabe; o embaralhamento tira a
+ * aparência de tabela.
+ */
+const PASSO_DA_VARREDURA = 1
+
+/**
+ * Pesos, com repetição para dar a proporção da arte: a maioria média, um em
+ * cada seis em negrito. Com os três pesos na mesma proporção, os negritos
+ * dominavam e a letra ficava manchada; só com o regular, apagada.
+ */
+const PESOS = [400, 600, 600, 600, 600, 800] as const
 
 /**
  * Quanto um glifo pode passar do contorno, em unidades da letra.
@@ -94,7 +135,7 @@ const PESOS = [400, 600, 800] as const
  * barra de navegação. O teste guarda este número — se alguém aumentá-lo até a
  * letra perder a forma, a suíte acusa.
  */
-export const TRANSBORDO_DA_BORDA = 0.9
+export const TRANSBORDO_DA_BORDA = 0.6
 
 /**
  * Gerador pseudoaleatório de 32 bits (mulberry32).
@@ -114,69 +155,145 @@ function sorteador(semente: number): () => number {
   }
 }
 
+/** Fisher–Yates com o sorteador da semente: a mesma ordem em toda carga. */
+function embaralhar<T>(lista: T[], sortear: () => number): void {
+  for (let i = lista.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(sortear() * (i + 1))
+    const troca = lista[i]!
+    lista[i] = lista[j]!
+    lista[j] = troca
+  }
+}
+
+/**
+ * A caixa do glifo cabe na letra?
+ *
+ * Confere o centro, os quatro cantos e o meio de cada lado, com a caixa
+ * recolhida pelo `TRANSBORDO_DA_BORDA`. Os cantos são o que importa: é por
+ * eles que um glifo invade a contraforma.
+ */
+function cabeNaLetra(x: number, y: number, tamanho: number): boolean {
+  const meiaLargura = Math.max(0, (tamanho * LARGURA_DO_GLIFO) / 2 - TRANSBORDO_DA_BORDA)
+  const meiaAltura = Math.max(0, tamanho / 2 - TRANSBORDO_DA_BORDA)
+  for (const fx of [-1, 0, 1]) {
+    for (const fy of [-1, 0, 1]) {
+      if (!dentroDoP(x + fx * meiaLargura, y + fy * meiaAltura)) return false
+    }
+  }
+  return true
+}
+
+interface Caixa {
+  readonly x: number
+  readonly y: number
+  /** Meia largura e meia altura. */
+  readonly mx: number
+  readonly my: number
+}
+
+/** Lado da célula da grade de colisão, em unidades da letra. */
+const LADO_DA_CELULA = 6
+/** Maior meia medida de caixa possível: a do maior glifo. */
+const MAIOR_MEIA_MEDIDA = CAMADAS[0]!.tamanho / 2
+
+/**
+ * As caixas já ocupadas, numa grade: cada tentativa só confere as vizinhas.
+ *
+ * Comparar com todas seria quadrático — milhares de tentativas contra centenas
+ * de caixas, no carregamento de toda tela que mostra a marca.
+ */
+function criarOcupacao() {
+  const celulas = new Map<number, Caixa[]>()
+  const chave = (cx: number, cy: number) => cy * 1000 + cx
+
+  return {
+    colide(nova: Caixa): boolean {
+      const margem = MAIOR_MEIA_MEDIDA + FOLGA_ENTRE_GLIFOS
+      const cx0 = Math.floor((nova.x - nova.mx - margem) / LADO_DA_CELULA)
+      const cx1 = Math.floor((nova.x + nova.mx + margem) / LADO_DA_CELULA)
+      const cy0 = Math.floor((nova.y - nova.my - margem) / LADO_DA_CELULA)
+      const cy1 = Math.floor((nova.y + nova.my + margem) / LADO_DA_CELULA)
+      for (let cy = cy0; cy <= cy1; cy += 1) {
+        for (let cx = cx0; cx <= cx1; cx += 1) {
+          for (const c of celulas.get(chave(cx, cy)) ?? []) {
+            if (
+              Math.abs(c.x - nova.x) < c.mx + nova.mx + FOLGA_ENTRE_GLIFOS &&
+              Math.abs(c.y - nova.y) < c.my + nova.my + FOLGA_ENTRE_GLIFOS
+            ) {
+              return true
+            }
+          }
+        }
+      }
+      return false
+    },
+    ocupar(caixa: Caixa): void {
+      const k = chave(Math.floor(caixa.x / LADO_DA_CELULA), Math.floor(caixa.y / LADO_DA_CELULA))
+      const lista = celulas.get(k)
+      if (lista) lista.push(caixa)
+      else celulas.set(k, [caixa])
+    },
+  }
+}
+
 /**
  * Monta o arranjo.
  *
- * Grade com deslocamento aleatório em vez de sorteio livre de pontos: o
- * sorteio puro cria aglomerados e buracos — e um buraco no meio de uma letra
- * lê como defeito de impressão, não como textura. A grade garante cobertura
- * uniforme; o deslocamento tira a aparência de tabela.
- *
- * O tamanho de cada glifo é limitado pela folga até a borda, o que faz a letra
- * ficar naturalmente com peças grandes no miolo e pequenas no contorno — que é
- * exatamente o que a marca original faz, e pelo mesmo motivo: é a única forma
- * de a silhueta continuar nítida.
+ * Encaixe em camadas, do maior para o menor: cada camada percorre os
+ * candidatos em ordem embaralhada e aceita só aqueles em que a caixa do glifo
+ * cabe na letra e não encosta em nenhuma já colocada. Os grandes ficam
+ * espalhados e os pequenos ocupam as frestas — é o que dá à borda um contorno
+ * nítido sem nenhuma peça por cima de outra.
  */
 export function gerarParticulas(semente: number = SEMENTE): ParticulaDaMarca[] {
   const sortear = sorteador(semente)
+  const ocupacao = criarOcupacao()
   const particulas: ParticulaDaMarca[] = []
-  let id = 0
 
-  for (let y = PASSO_DA_GRADE / 2; y < ALTURA; y += PASSO_DA_GRADE) {
-    for (let x = PASSO_DA_GRADE / 2; x < LARGURA; x += PASSO_DA_GRADE) {
-      // Deslocamento dentro da própria célula: quebra o alinhamento sem
-      // permitir que dois vizinhos troquem de lugar.
-      const desvioX = (sortear() - 0.5) * PASSO_DA_GRADE * 0.85
-      const desvioY = (sortear() - 0.5) * PASSO_DA_GRADE * 0.85
-      const px = x + desvioX
-      const py = y + desvioY
+  // Os candidatos: a grade inteira, só com os pontos que caem na tinta.
+  const candidatos: [number, number][] = []
+  for (let y = PASSO_DA_VARREDURA / 2; y < ALTURA; y += PASSO_DA_VARREDURA) {
+    for (let x = PASSO_DA_VARREDURA / 2; x < LARGURA; x += PASSO_DA_VARREDURA) {
+      if (dentroDoP(x, y)) candidatos.push([x, y])
+    }
+  }
 
-      if (!dentroDoP(px, py)) continue
+  for (const { tamanho, teto } of CAMADAS) {
+    const mx = (tamanho * LARGURA_DO_GLIFO) / 2
+    const my = tamanho / 2
+    let nestaCamada = 0
+    embaralhar(candidatos, sortear)
+    for (const [cx, cy] of candidatos) {
+      if (teto !== null && nestaCamada >= teto) break
+      // Desvio dentro da própria célula: quebra o alinhamento da grade.
+      const x = cx + (sortear() - 0.5) * PASSO_DA_VARREDURA
+      const y = cy + (sortear() - 0.5) * PASSO_DA_VARREDURA
+      // Giro, peso e tom são sorteados SEMPRE, aceita ou não a posição: assim
+      // a sequência não depende de quantas foram recusadas, e ajustar o teste
+      // de encaixe não embaralha o resto da marca.
+      const sorteioDoGiro = sortear()
+      const sorteioDoPeso = sortear()
+      const sorteioDoTom = sortear()
+      if (!cabeNaLetra(x, y, tamanho)) continue
+      const caixa = { x, y, mx, my }
+      if (ocupacao.colide(caixa)) continue
 
-      // O glifo não pode ser maior que a folga até a borda, ou vaza da letra.
-      // O teste `nenhum glifo vaza` depende desta linha.
-      const folga = folgaAteABorda(px, py, 12)
-      // TRANSBORDO DELIBERADO. A marca real deixa os P's da borda passarem um
-      // pouco do contorno — é isso que faz a silhueta parecer feita de letras
-      // em vez de recortada a tesoura. Sem a tolerância, a borda fica com
-      // buracos onde nenhum tamanho passou no teste, e a letra vira renda.
-      const maiorCabivel = (folga + TRANSBORDO_DA_BORDA) * 1.6
-      const disponiveis = TAMANHOS.filter((t) => t <= maiorCabivel)
-      if (disponiveis.length === 0) continue
-
-      // Enviesado para os MAIORES entre os que cabem.
-      //
-      // A primeira versão puxava para os menores, e a letra saiu com aparência
-      // de chuvisco: cada glifo menor que a própria célula, fundo visível entre
-      // todos. A marca real faz o contrário — usa a maior peça que couber, e a
-      // variação de tamanho vem da FORMA da letra (miolo largo, borda estreita),
-      // não de sorteio. O teste de folga acima já garante que só entra o que
-      // cabe; aqui a preferência é pelo topo dessa lista.
-      const sorte = sortear() ** 2
-      const indice = Math.floor((1 - sorte) * disponiveis.length)
-      const tamanho = disponiveis[Math.min(indice, disponiveis.length - 1)] ?? disponiveis[0]!
-
+      ocupacao.ocupar(caixa)
+      const peso = PESOS[Math.floor(sorteioDoPeso * PESOS.length)] ?? 600
       particulas.push({
-        id,
-        x: px,
-        y: py,
+        id: particulas.length,
+        x,
+        y,
         tamanho,
-        // ±22°: o suficiente para nenhum P parecer alinhado com o vizinho, sem
-        // que nenhum chegue a parecer de cabeça para baixo.
-        giro: (sortear() - 0.5) * 44,
-        peso: PESOS[Math.floor(sortear() * PESOS.length)] ?? 600,
+        // Quase todos em pé, como na arte: ±7° na maioria; um em cada seis,
+        // mais inclinado, até ±18°. Nenhum chega perto de cabeça para baixo.
+        giro:
+          sorteioDoGiro < 1 / 6 ? (sorteioDoGiro * 6 - 0.5) * 36 : (sorteioDoGiro - 0.5) * 14,
+        peso,
+        // Os negritos saem brancos; o resto, entre 78% e 100%.
+        tom: peso === 800 ? 1 : 0.78 + sorteioDoTom * 0.22,
       })
-      id += 1
+      nestaCamada += 1
     }
   }
 

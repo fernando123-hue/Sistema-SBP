@@ -54,7 +54,7 @@ import { ALCANCE, assentou, criarEstado, passo, pulsar, type Ponteiro } from '..
  */
 
 /** Escala do glifo em relação ao `tamanho` da partícula. Calibrado no olho. */
-const ESCALA_DO_GLIFO = 1.42
+const ESCALA_DO_GLIFO = 1.5
 
 /**
  * Abaixo desta altura, a marca não reage ao ponteiro.
@@ -319,6 +319,7 @@ export function Marca({ altura = 26, ocupado = false, className, estilo }: Marca
             fontSize={p.tamanho * ESCALA_DO_GLIFO}
             fontWeight={p.peso}
             fill="currentColor"
+            fillOpacity={p.tom}
             textAnchor="middle"
             dominantBaseline="central"
             style={{ fontFamily: 'var(--font-sans)' }}
@@ -347,10 +348,18 @@ export function Marca({ altura = 26, ocupado = false, className, estilo }: Marca
  * O nome é TEXTO, não desenho: fica nítido em qualquer tamanho, e o leitor de
  * tela o lê — por isso ele não é `aria-hidden`, ao contrário do P.
  *
- * As proporções partem da arte oficial (136 × 163 px): o P ocupa 80% da altura,
- * perto da borda esquerda, e o nome começa logo depois da haste, na parte de
- * baixo, passando da largura do bojo. É uma reconstrução; quando houver o SVG
- * oficial, a troca é aqui e em `core/marca/contorno.ts`.
+ * As proporções são as da arte oficial (136 × 163 px), medidas pixel a pixel:
+ *
+ * - o P tem 55% da altura do bloco, com margem azul larga em volta — a arte
+ *   respira; o P não encosta nas bordas;
+ * - "sociedade" e "brasileira" começam logo depois da haste, abaixo do bojo;
+ * - a haste termina na altura da segunda linha, e "de pediatria" passa POR
+ *   BAIXO dela, alinhado à esquerda do P.
+ *
+ * A primeira versão pôs o P com 80% da altura e o nome inteiro ao lado da
+ * haste, que descia até a última linha: parecia outro logotipo. É uma
+ * reconstrução; quando houver o SVG oficial, a troca é aqui e em
+ * `core/marca/contorno.ts`.
  */
 export interface BlocoDaMarcaProps {
   /** Altura do bloco em pixels. */
@@ -361,17 +370,24 @@ export interface BlocoDaMarcaProps {
   readonly className?: string
 }
 
-/**
- * Na forma completa, o bloco é quase quadrado: o nome passa do bojo, e em
- * 136 × 163 (a arte oficial) "de pediatria" quebrava em duas linhas com a
- * fonte do sistema.
- */
-const PROPORCAO_COMPLETA = 0.95
+/** Na forma completa, a proporção da arte oficial: 136 × 163. */
+const PROPORCAO_COMPLETA = 136 / 163
 /** Na reduzida, o P centrado num bloco quadrado. */
 const PROPORCAO_REDUZIDA = 1
-/** Altura do P em relação ao bloco. */
-const P_NO_BLOCO_COMPLETO = 0.8
+/** Altura do P em relação ao bloco (89 de 163 px na arte). */
+const P_NO_BLOCO_COMPLETO = 89 / 163
 const P_NO_BLOCO_REDUZIDO = 0.72
+/** Onde o P começa, em fração do bloco (35 e 34 px na arte). */
+const P_ESQUERDA = 35 / 136
+const P_TOPO = 34 / 163
+/**
+ * O nome, em unidades do contorno (a altura do P vale 100), medido na arte:
+ * começa 25 unidades à direita da borda do P, logo depois da haste, e 73
+ * abaixo do topo — já abaixo do bojo; a letra tem 15,8 de corpo.
+ */
+const NOME_RECUO = 25
+const NOME_TOPO = 73
+const NOME_CORPO = 15.8
 
 export function BlocoDaMarca({ altura, comNome = false, ocupado = false, className }: BlocoDaMarcaProps) {
   const largura = Math.round(altura * (comNome ? PROPORCAO_COMPLETA : PROPORCAO_REDUZIDA))
@@ -379,6 +395,8 @@ export function BlocoDaMarca({ altura, comNome = false, ocupado = false, classNa
   const larguraDoP = (alturaDoP * LARGURA) / ALTURA
   // Uma unidade do contorno, em pixels: o nome se posiciona em relação à haste.
   const unidade = alturaDoP / ALTURA
+  const esquerdaDoP = Math.round(largura * P_ESQUERDA)
+  const topoDoP = Math.round(altura * P_TOPO)
 
   return (
     <span
@@ -391,22 +409,25 @@ export function BlocoDaMarca({ altura, comNome = false, ocupado = false, classNa
         className="absolute"
         estilo={
           comNome
-            ? { left: Math.round(largura * 0.14), top: Math.round(altura * 0.06) }
+            ? { left: esquerdaDoP, top: topoDoP }
             : { left: Math.round((largura - larguraDoP) / 2), top: Math.round((altura - alturaDoP) / 2) }
         }
       />
       {comNome ? (
         <span
-          className="absolute leading-[1.08] font-medium tracking-tight whitespace-nowrap lowercase"
+          className="absolute leading-none font-normal whitespace-nowrap lowercase"
           style={{
-            left: Math.round(largura * 0.14 + 26 * unidade),
-            top: Math.round(altura * 0.06 + 64 * unidade),
-            fontSize: Math.max(8, Math.round(10.2 * unidade)),
+            left: Math.round(esquerdaDoP + NOME_RECUO * unidade),
+            top: Math.round(topoDoP + NOME_TOPO * unidade),
+            fontSize: Math.max(8, Math.round(NOME_CORPO * unidade * 10) / 10),
           }}
         >
           <span className="block"><b className="font-extrabold">s</b>ociedade</span>
           <span className="block"><b className="font-extrabold">b</b>rasileira</span>
-          <span className="block">de <b className="font-extrabold">p</b>ediatria</span>
+          {/* A haste termina na segunda linha: a terceira volta para baixo dela. */}
+          <span className="block" style={{ marginLeft: -Math.round(NOME_RECUO * unidade) }}>
+            de <b className="font-extrabold">p</b>ediatria
+          </span>
         </span>
       ) : null}
     </span>

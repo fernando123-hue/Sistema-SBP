@@ -28,6 +28,20 @@ describe('contorno do P', () => {
     expect(dentroDoP(42, 28)).toBe(false)
   })
 
+  it('a contraforma é grande, como na arte — não um furo no meio de uma mancha', () => {
+    // Na arte oficial o vazado tem mais da metade da largura da letra e mais
+    // de um terço da altura. A primeira reconstrução tinha um furo oval de
+    // 19 × 25 e uma haste de um terço da letra.
+    // Mede no meio do vazado, dentro da caixa do bojo (os 60% de cima): abaixo
+    // dele, à direita da haste, é fundo por ser a perna do P, não o furo.
+    let larguraDoVazado = 0
+    for (let x = 0; x <= LARGURA; x += 0.5) if (!dentroDoP(x, 33)) larguraDoVazado += 0.5
+    let alturaDoVazado = 0
+    for (let y = 0; y <= ALTURA * 0.6; y += 0.5) if (!dentroDoP(LARGURA * 0.5, y)) alturaDoVazado += 0.5
+    expect(larguraDoVazado).toBeGreaterThan(LARGURA * 0.5)
+    expect(alturaDoVazado).toBeGreaterThan(ALTURA * 0.33)
+  })
+
   it('a perna do P não tem bojo — é o que o separa de um D', () => {
     // Bem abaixo do bojo, à direita da haste: tem de ser vazio.
     expect(dentroDoP(50, 85)).toBe(false)
@@ -136,6 +150,38 @@ describe('arranjo da marca', () => {
   it('mistura tamanhos e pesos — marca de peça única não é esta marca', () => {
     expect(new Set(PARTICULAS_DA_MARCA.map((p) => p.tamanho)).size).toBeGreaterThan(2)
     expect(new Set(PARTICULAS_DA_MARCA.map((p) => p.peso)).size).toBeGreaterThan(1)
+  })
+
+  it('nenhum glifo cai por cima de outro — cada P pequeno fica legível', () => {
+    // O defeito que o dono viu em 30/09 ("o P está todo bugado"): os glifos
+    // nasciam numa grade mais apertada que o tamanho deles, empilhavam, e a
+    // letra virava uma mancha branca granulada. Na arte oficial há azul entre
+    // as peças. A caixa é a do "P" desenhado: 0,78 da altura de largura.
+    const caixas = PARTICULAS_DA_MARCA.map((p) => ({
+      id: p.id,
+      x: p.x,
+      y: p.y,
+      mx: (p.tamanho * 0.78) / 2,
+      my: p.tamanho / 2,
+    }))
+    const sobrepostos: string[] = []
+    for (let i = 0; i < caixas.length; i += 1) {
+      for (let j = i + 1; j < caixas.length; j += 1) {
+        const a = caixas[i]!
+        const b = caixas[j]!
+        if (Math.abs(a.x - b.x) < a.mx + b.mx && Math.abs(a.y - b.y) < a.my + b.my) {
+          sobrepostos.push(`${a.id}×${b.id}`)
+        }
+      }
+    }
+    expect(sobrepostos, `glifos sobrepostos: ${sobrepostos.slice(0, 10).join(', ')}`).toEqual([])
+  })
+
+  it('o tom fica entre cinza-claro e branco — a letra nunca some no azul', () => {
+    for (const p of PARTICULAS_DA_MARCA) {
+      expect(p.tom).toBeGreaterThanOrEqual(0.7)
+      expect(p.tom).toBeLessThanOrEqual(1)
+    }
   })
 
   it('o giro é sutil — nenhum P fica de cabeça para baixo', () => {
