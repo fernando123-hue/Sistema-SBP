@@ -53,7 +53,7 @@ export const P_NA_ARTE = {
   topo: 34,
   /** Primeira linha abaixo do bojo: dali para baixo só a haste é do P. */
   fimDoBojo: 97,
-  /** No vão entre a haste (até a coluna 50) e "sociedade" (a partir da 55). */
+  /** No vão entre a haste (colunas 33 a 49) e "sociedade" (a partir da 54). */
   direitaDaHaste: 53,
   /**
    * O pé da haste: a linha 124 é o vão vazio antes de "de pediatria", que

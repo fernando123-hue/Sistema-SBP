@@ -15,9 +15,11 @@
 > - `verificar`: 141 arquivos, 1726 testes.
 > - **Pedir ao dono:** o SVG oficial, ou uma versão maior da arte. A atual fica um pouco borrada em tela de alta resolução.
 >
-> **3. Perguntas abertas ao dono:** as mesmas três do bloco de baixo (itens de tela da página de atritos, telas do Stitch em tamanho real, tema).
+> **3. Visual, parte 2 — decidido pelo dono (`A67`):** chegaram as telas do Stitch em tamanho real (resumo do que elas trazem no `A67`; as imagens não ficam no repositório). Azul do logotipo como cor principal, laranja só em alerta, **sempre claro por enquanto**, e **começa pelos atritos**: primeiro a Revisão com o e-mail ao lado do que a IA leu (atrito 2), depois a Minha fila em lista e detalhe (atrito 3). Um PR por tela. O `A67` lista também o que do modelo **não** entra sem decisão própria.
 >
-> **4. Depois:** pendência 37; os itens de tela que o dono escolher; medir no Ollama (junto da 18).
+> **4. Pergunta aberta ao dono:** a escolha completa dos itens da página de atritos (sugestão `1A · 2A+2B · 3A+3B · 4A · 5B`). A ordem 2 → 3 já foi decidida.
+>
+> **5. Depois:** pendência 37; medir no Ollama (junto da 18).
 >
 > ### 30/09/2026, manhã — #150 MESCLADO; VISUAL SBP EM PR (anterior; o #151 foi mesclado)
 >
