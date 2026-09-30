@@ -14,6 +14,13 @@ import { prepararConteudoExterno, validarAnexo } from '../core/seguranca/conteud
 import type { ResumoIngestao } from '../core/tipos'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { ClassificadorPort } from '../ports/classificador'
+import {
+  conferirExtracao,
+  ligaEstaNoTexto,
+  prepararTextoParaConferir,
+  type MotivoDaConferencia,
+  type ProblemaNaExtracao,
+} from '../core/conferencia-da-extracao'
 import { FalhaDeInterpretacao, InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { AvisoDaBusca, IngestaoPort } from '../ports/ingestao'
 import { ATOR_SISTEMA, exigirPapel, type Ator } from '../servidor/ator'
@@ -603,6 +610,13 @@ async function processarUm(
     ? prepararConteudoExterno(`${email.assunto}\n${email.corpo}`, TAMANHO_MAXIMO_CORPO).analise.suspeito
     : false
 
+  // A conferência do que a IA extraiu contra o texto (pendência 17) também
+  // fica FORA da transação: é conta sobre o texto, e não precisa segurar lock.
+  // Um problema por item, na ordem dos itens.
+  const problemasDaExtracao: ConferenciaDoItem[] = interpretacao
+    ? conferirItens(email, interpretacao)
+    : []
+
   // A segunda opinião também fica FORA da transação, pelo mesmo motivo. Só
   // quando houve interpretação: sem ela não há com o que comparar, e desistir
   // (achado C-11/N-13) é justamente parar de pagar chamada por este e-mail.
@@ -762,6 +776,7 @@ async function processarUm(
             emailId: registro.id,
             messageId: email.messageId,
             interpretacao,
+            problemasDaExtracao,
             anexosRejeitados,
             correlacaoId,
             usuario,
@@ -796,12 +811,20 @@ async function criarItens(
     emailId: string
     messageId: string
     interpretacao: Interpretacao
+    /** Um por item, na mesma ordem — `conferirItens`. */
+    problemasDaExtracao: readonly ConferenciaDoItem[]
     anexosRejeitados: number
     correlacaoId: string
     usuario: string
   },
 ): Promise<Omit<ResultadoDeUm, 'anexosRejeitados' | 'conteudoSuspeito' | 'naoInterpretado'>> {
   const { interpretacao } = contexto
+  // Um resultado por item, na mesma ordem. Se um dia a lista for filtrada
+  // entre a conferência e a gravação, um item ficaria sem conferência em
+  // silêncio — falha alta (invariante 7, revisão de segurança do #150).
+  if (contexto.problemasDaExtracao.length !== interpretacao.itens.length) {
+    throw new Error('a conferência da extração não corresponde aos itens da interpretação')
+  }
   // Uma leitura de `Liga` por LOTE, não por item — ver `indiceDeLigas`.
   const ligas = await indiceDeLigas(tx)
   // Quantas ligas NOVAS este e-mail ainda pode criar (achado N-12). Por e-mail,
@@ -834,6 +857,7 @@ async function criarItens(
     // perdido para sempre. É o defeito da planilha reconstruído aqui dentro.
     if (!categoria) throw new CategoriaDesconhecidaError(extraido.categoriaCodigo)
 
+    const { problema, ligaNoTexto } = contexto.problemasDaExtracao[posicao]!
     const motivo = decidirRevisao(
       extraido.confianca,
       categoria.limiarConfianca,
@@ -848,6 +872,7 @@ async function criarItens(
       // e N unidades de carga entravam aprovadas sem ninguém olhar. Uma
       // assinatura numerada no rodapé viraria três itens de trabalho.
       interpretacao.itens.length > 1,
+      problema?.motivo ?? null,
     )
 
     // A liga vira IDENTIDADE aqui, e não no motor (`A4`).
@@ -862,7 +887,16 @@ async function criarItens(
     // nome. `teto-de-ligas-novas.test.ts` trava isso: se um dia o
     // desdobramento deixar de ir para a revisão, o item sem liga passaria
     // aprovado sem ninguém ver, e o teste fica vermelho.
-    const ligaId = await resolverLiga(tx, ligas, extraido.ligaMencionada, orcamentoDeLigas)
+    // Liga que o e-mail não cita não vira identidade: o item fica sem liga
+    // (lote de um, inofensivo) e vai para a Revisão, com a menção no payload.
+    // Sem isto, a liga inventada nascia no banco, ou prendia o item ao lote de
+    // uma liga existente com nome parecido (revisões do #150).
+    const ligaId = await resolverLiga(
+      tx,
+      ligas,
+      ligaNoTexto ? extraido.ligaMencionada : null,
+      orcamentoDeLigas,
+    )
 
     const item = await tx.item.create({
       data: {
@@ -896,7 +930,11 @@ async function criarItens(
         data: {
           itemId: item.id,
           motivo,
-          campoIncerto: extraido.camposAusentes[0] ?? null,
+          // O campo que a pessoa precisa olhar: o que não bateu com o e-mail,
+          // mesmo quando o motivo principal é outro (numa lista de ligantes,
+          // o nome reescrito é justamente o que se perderia); senão, o
+          // primeiro que faltou (revisão técnica do #150).
+          campoIncerto: problema?.campo ?? extraido.camposAusentes[0] ?? null,
           sugestaoIa: serializar(extraido),
           confianca: extraido.confianca,
         },
@@ -1025,11 +1063,44 @@ export function decidirRevisao(
   conteudoSuspeito: boolean,
   anexoRejeitado: boolean,
   houveDesdobramento: boolean,
+  // Obrigatório: um chamador que esquecesse perderia a conferência em
+  // silêncio (revisão técnica do #150).
+  problemaNaExtracao: MotivoDaConferencia | null,
 ): MotivoRevisao | null {
   if (conteudoSuspeito) return 'conteudo_suspeito'
   if (anexoRejeitado) return 'anomalia'
+  // Desdobramento antes da conferência: quem revisa um desdobramento olha
+  // todos os itens e todos os campos de qualquer jeito, e o motivo que ele
+  // precisa ler é "quantos itens", que é decisão de carga.
   if (houveDesdobramento) return 'desdobramento'
+  // Antes da confiança: a confiança é a própria IA que dá; o valor fora do
+  // texto é o código que viu (pendência 17). Confiança alta não o dispensa.
+  if (problemaNaExtracao) return problemaNaExtracao
   if (confianca < limiar) return 'baixa_confianca'
   if (temCampoAusente) return 'campo_ausente'
   return null
+}
+
+/**
+ * A conferência da pendência 17 para todos os itens de um e-mail: o texto é
+ * preparado uma vez. O texto é o que o modelo leu — assunto e corpo
+ * (`adapters/ia-estruturada.ts`) —, então um valor que só existe no nome de um
+ * anexo conta como fora do texto.
+ */
+function conferirItens(email: EmailBruto, interpretacao: Interpretacao): ConferenciaDoItem[] {
+  const texto = prepararTextoParaConferir(`${email.assunto}\n${email.corpo}`)
+  return interpretacao.itens.map((item) => ({
+    problema: conferirExtracao(texto, item.campos, item.ligaMencionada),
+    ligaNoTexto: ligaEstaNoTexto(texto, item.ligaMencionada),
+  }))
+}
+
+/**
+ * O que a conferência diz de um item: o primeiro problema (para o motivo e o
+ * campo apontado) e, à parte, se a liga citada está no texto — é isso que
+ * decide se ela vira identidade, qualquer que seja o primeiro problema.
+ */
+interface ConferenciaDoItem {
+  readonly problema: ProblemaNaExtracao | null
+  readonly ligaNoTexto: boolean
 }

@@ -142,8 +142,9 @@ export const MANUAL: readonly VerbeteDoManual[] = [
     tela: '/revisao',
     texto:
       'A leitura automática dá uma nota de confiança para cada item, de 0 a 100%. Abaixo do limiar da categoria, o item não é distribuído: ' +
-      'ele espera revisão humana. Isso acontece por quatro motivos, e a tela diz qual: confiança baixa, campo obrigatório ausente, ' +
-      'suspeita de duplicata, ou conteúdo suspeito. Na revisão você corrige a categoria e os campos, e pode dividir o item em vários ' +
+      'ele espera revisão humana. A tela diz o motivo: confiança baixa, campo obrigatório ausente, suspeita de duplicata, ' +
+      'conteúdo suspeito, e-mail que gerou vários itens, dado que não foi encontrado no e-mail, CPF que não confere, ou conferência ' +
+      'interrompida num e-mail grande demais. Quando o problema é um dado, a tela aponta qual campo conferir. Na revisão você corrige a categoria e os campos, e pode dividir o item em vários ' +
       '— um e-mail que lista trinta ligantes vale trinta itens de trabalho, não um. Item revisado entra na próxima distribuição.',
   },
   {

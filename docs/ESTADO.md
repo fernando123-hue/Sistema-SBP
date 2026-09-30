@@ -1,8 +1,42 @@
 # Estado do projeto — retomada
 
-Última atualização: **29/09/2026, fim da noite — ponto de parada pedido pelo dono, que tem instruções novas sobre o Jev e sobre a conta dele no sistema.** Três trabalhos da pendência 11 ficaram estacionados em ponto seguro (dois PRs abertos, um desenho decidido). **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **30/09/2026, ~03:30 UTC — parada pedida pelo dono para limpar o contexto (`/clear`).** O #150 (pendência 17) está na 4ª rodada de revisão; o visual SBP (parte 1) está pronto em commit local, esperando o #150 mesclar. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### 30/09/2026, ~03:30 UTC — PARADA PARA `/clear` (este bloco vence todos os de baixo)
+>
+> **Se a pasta `/home/user/Sistema-SBP` tiver `RETOMAR-AQUI.md`, leia-o antes:** ele tem o estado da máquina (pastas, processos, relatórios em arquivo) que não cabe num documento versionado.
+>
+> **1. #150 — pendência 17 (`AT-51`), branch `claude/bold-wright-h08gk6`.**
+> - Cinco rodadas de revisão técnica e quatro de segurança, todas publicadas no PR com a nota do autor (o destino de cada achado). Os links estão no corpo do PR.
+> - A 5ª técnica, sobre `1cd576c`, **aprovou com ressalvas só de documentação**, tratadas no `AT-51`. A 4ª de segurança, sobre `7f73ac4..1cd576c`, **aprovou com ressalvas**. Os dois achados baixos dela foram corrigidos no commit seguinte, com teste visto vermelho, e o achado anterior ao PR virou a pendência 44.
+> - Todas as correções têm teste visto vermelho, ou prova por mutação quando o código já existia. `npm run verificar` local: 141 arquivos, 1741 testes.
+> - **Falta:** a conferência do revisor de segurança sobre o commit que corrigiu os achados da 4ª rodada; os links no corpo do PR; ler o CI check por check; mesclar.
+>
+> **2. Visual SBP, parte 1 (`A65`, `AT-52`, `§ H.4` 49) — NÃO está no GitHub.**
+> - É um commit local, `e89dbf3`, no branch `trabalho/marca`, pasta `/home/user/sbp-marca`, baseado na `main` `a612ef1`. Cópia: `/home/user/Sistema-SBP/.claude/reviews/retomar/visual-sbp-parte1.patch` (fora do git), com as capturas nos dois temas.
+> - Conteúdo:
+>   - logotipo oficial (P de P's sobre o `#0D024C`, "**s**ociedade **b**rasileira de **p**ediatria");
+>   - paleta no índigo da marca, com contraste medido;
+>   - menu lateral;
+>   - correção do tema escuro, que **sobrescrevia o claro em todo computador** (`AT-52`).
+> - `npm run verificar`: 139 arquivos, 1633 testes, verdes.
+> - **Depois que o #150 mesclar:**
+>   - recomeçar `claude/bold-wright-h08gk6` a partir da `main`;
+>   - aplicar o commit, resolvendo o conflito esperado no `DECISOES.md` (o `AT-52` entra perto do `AT-51`);
+>   - rodar `verificar`;
+>   - abrir o PR. É **nível 3** (`src/componentes/`): pede revisão técnica **e** de segurança.
+> - Mostrar as capturas ao dono.
+>
+> **3. Perguntas abertas ao dono, sem resposta ainda:**
+> - (a) a escolha dos itens de tela da página de atritos (item 6 abaixo; sugestão `1A · 2A+2B · 3A+3B · 4A · 5B`);
+> - (b) as telas do Stitch em **tamanho real**: só chegou uma miniatura ilegível, e a parte 2 do visual depende delas;
+> - (c) o tema: sempre claro, seguir o computador ou botão por pessoa (`§ H.4` 49, recomendação: seguir o computador).
+>
+> **4. Regra de máquina aprendida nesta noite (pendência 43):** qualquer `vitest run`, até de teste puro, **apaga e recria `sbp_teste`**. Nunca rode dois `vitest` ao mesmo tempo, em pasta nenhuma, e peça aos agentes revisores que não rodem `vitest` enquanto houver suíte rodando.
+>
+> **5. Depois do #150 e do visual, na ordem da linha de chegada:** pendência 37; os itens de tela que o dono escolher (um PR por item); medir no Ollama o tempo por e-mail e o efeito da pendência 17 (junto da 18).
 >
 > ### 29/09/2026, depois da parada — INVESTIGAÇÃO DAS INSTRUÇÕES NOVAS (JEV + CONTA DO DONO) ENTREGUE; AGUARDA O DONO (este bloco vence os de baixo)
 >
@@ -48,6 +82,26 @@
 > **Depois do protótipo (lista; não é trabalho agora):**
 > - tudo da Parte III do documento de arquitetura de 29/09;
 > - pendências fora do item 1 acima.
+>
+> **6. FEITO NA MESMA NOITE, depois da linha de chegada.**
+> - Mesclados:
+>   - **#149**: a investigação e a linha de chegada;
+>   - **#146**: rotação da sessão, com o aviso da troca na subida do servidor (3ª rodada);
+>   - **#147**: índice do rastro; pendências 40, 41 e 42 anotadas.
+> - **#150: pendência 17** (`AT-51`). Valor fora do texto e CPF que não confere vão para a Revisão, com o campo apontado; e-mail que estoura o orçamento da conferência vai como "conferência interrompida: confira este campo e os seguintes"; a liga citada que não está no e-mail não vira identidade. Três rodadas de revisão técnica e de segurança; todas as correções com teste visto vermelho.
+> - **O dono pediu foco na experiência de uso** ("diminuir toda a resistência, que sintam mais resultado com menos esforço"). O levantamento de atrito, com as telas vistas rodando como operadora, colaboradora e gestora, está na página https://claude.ai/artifact/NL4m8qY6LZjwuSLvJSeWgm (privada, do dono). Cinco atritos, cada um com a tela de hoje e as opções:
+>   1. uma lista de ligantes vira dezenas de cartões na Revisão: 57 de 58 itens foram para a Revisão numa busca de teste;
+>   2. a Revisão pede para conferir, mas não mostra o e-mail, e o selo "99%" contradiz o motivo;
+>   3. a Minha fila tem 34 cartões iguais e 68 cliques para concluir uma liga, sem os dados que a IA já leu;
+>   4. depois da busca, a Distribuição não diz que 57 esperam conferência;
+>   5. nada mostra o ganho.
+>
+>   **Aguardando a escolha do dono** (sugestão: `1A · 2A+2B · 3A+3B · 4A · 5B`). Isso entra na linha de chegada: a rodada paralela só funciona se a equipe quiser usar. Um PR por item.
+> - **Próximo:**
+>   - fechar o #150 (revisões, links, CI, mesclar);
+>   - pendência 37;
+>   - os itens de tela que o dono escolher;
+>   - medir no Ollama o tempo por e-mail e o efeito da pendência 17 (junto da 18).
 >
 > ### 29/09/2026, fim da noite — PARADA PARA AS INSTRUÇÕES NOVAS DO DONO (anterior; o item 0 dele foi feito no bloco acima)
 >
@@ -273,7 +327,7 @@
 > 16. **Servidor de telas com cache velho:** duas vezes em 24/09 o `sbp-local` subiu com **toda rota aninhada de `/api` em 404** (a página 404 do Next, não a da rota). Contorno: parar, `rm -rf .next`, subir de novo. Causa não investigada.
 >
 > *D. Novas em 25/09 (IA local e segurança):*
-> 17. **Conferir por código que cada valor extraído pela IA aparece no texto do e-mail** antes de aprovar o item direto; o que não aparecer vai para a Revisão. Hoje a nota de confiança é a própria IA que dá, e o modelo local escolhido tem literalidade 0,69 (`A59`). Proposto no documento de segurança de 25/09 — decidir o critério (igualdade exata? normalizada?) antes de codar.
+> 17. ~~**Conferir por código que cada valor extraído pela IA aparece no texto do e-mail**~~ — **resolvida no PR da pendência 17** (`AT-51`, critério do `§ H.4` 40). Falta medir no Ollama quantos itens da IA local mudam de destino (junto da 18). Texto original: antes de aprovar o item direto; o que não aparecer vai para a Revisão. Hoje a nota de confiança é a própria IA que dá, e o modelo local escolhido tem literalidade 0,69 (`A59`). Proposto no documento de segurança de 25/09 — decidir o critério (igualdade exata? normalizada?) antes de codar.
 > 18. **Forma forçada no servidor local** (esquema JSON no pedido do `ia-local.ts`, em vez de só `json_object`) — **é a correção da causa real das falhas de forma** (`A59`). Medir no Ollama desta máquina Windows (instalado em 25/09 com o dono de acordo, só o `qwen2.5:1.5b`, só em `127.0.0.1`) antes e depois, pelo gabarito. **Medido (25/09, fim da noite): idêntico caso a caso no 1.5b — ver item 5 do primeiro bloco.** O que resta é a falha de entendimento (ligantes num item só); próximo passo, exemplo na instrução, medido.
 > 19. ~~Janela de contexto do Ollama não registrada~~ — **medida e descartada** (25/09, noite): 8192 na máquina Debian, 4096 aqui, pedidos de ~1,1 mil tokens, nenhum corte (`A59`).
 > 20. **Repositório público** (`gh repo view` em 25/09: `PUBLIC`), com nomes reais da equipe em `CONTEXTO.md` e `ENGENHARIA_REVERSA…`. Dono: voltar a privado. **Decisão do dono (29/09):** fica aberto de propósito, por enquanto, para o ChatGPT ter acesso; ele volta a privado quando tudo estiver pronto. Depois: chave de implantação só de leitura para a máquina Debian (a cópia de lá é tarball), e trocar os nomes reais por fictícios nesses dois arquivos (PR de docs).
@@ -313,6 +367,8 @@
 > 40. **O teto de `LogAuditoria` na recusa de entrada nunca foi medido** (revisão de segurança do #147, achado 5). `auditarRecusa` (`servicos/autenticacao.ts` ≈124) filtra `entidade + entidadeId + acao + timestamp`, e nenhum índice cobre `acao` e `timestamp` depois da entidade. Uma conta desativada martelada soma ~52 mil linhas por ano na mesma entidade; se a leitura passar de ~150 ms, esse ramo escapa do piso de entrada e volta a separar "conta existente sem acesso" de "e-mail inexistente". Medir com `LogAuditoria` cheia (como o #147 mediu `EventoProcessamento`) e, se o plano não for estável, criar `[entidade, entidadeId, acao, timestamp]`.
 > 41. **O roteiro de concessão da `03-SPEC § 14` não funciona no MySQL** (revisão de segurança do #147, achado 6): `REVOKE` numa tabela não desfaz `GRANT` dado em `sbp.*` (`ERROR 1147`). A falha é ruidosa (`npm run db:privilegios` recusa em produção), mas o roteiro fica impossível de seguir. Trocar por grants tabela a tabela, com só `SELECT, INSERT` nas duas tabelas da trilha, e considerar `INDEX` em `PRIVILEGIOS_PROIBIDOS` (quem tem `INDEX` derruba o índice do #147 e reabre o oráculo de tempo da entrada). Do dia de montar o servidor; comprovar criando um usuário.
 > 42. **`IA_LOCAL_URL` inválida é repetida por inteiro na mensagem de erro** (revisão de segurança, 3ª rodada do #146, achado 3). `motivoDeEnderecoLocalInvalido()` em `servidor/ambiente.ts` escreve `não é um endereço válido: "${valor}"`; um endereço com usuário e senha que `new URL` recusa (um espaço a mais) vai ao log inteiro. A trava de credencial embutida, logo abaixo, existe justamente para não repetir o valor. Trocar por uma frase sem o valor, com teste.
+> 43. **Qualquer `vitest run`, até de um arquivo de teste puro, apaga e recria a base `sbp_teste`** (aviso da revisão de segurança, 3ª rodada do #150). O `globalSetup` de `vitest.config.ts` (`src/testes/preparar-banco.ts`) roda `prisma migrate reset --force` sempre. Dois `vitest` ao mesmo tempo, em pastas diferentes, derrubam a suíte um do outro com "Database `sbp_teste` does not exist", sem defeito no código; foi o que aconteceu com as 40 falhas da suíte do visual em 30/09. Até corrigir: nunca dois `vitest` na mesma máquina. Correção: pular o reset quando nenhum arquivo escolhido usa banco, ou uma config só para testes puros.
+> 44. **A chave da liga perde letras e dígitos que a conferência viu** (revisão de segurança, 4ª rodada do #150, achado 3; anterior ao #150). `chaveDaLiga` (`core/ligas.ts`) usa NFD e `[^a-z0-9]`; a conferência usa NFKD e `\p{L}`/`\p{Nd}`. "Liga de Cardiologia ①" e "… ②" viram a mesma chave, "Liga Pediatria Ⅱ" vira "liga pediatria", e 146.998 pontos de código somem da chave. Efeito: duas ligas diferentes se unem sem ninguém ver, que é o erro que `ligas.ts` existe para evitar. Raro em texto de secretaria brasileira. Saídas: mandar para a Revisão, sem identidade, a liga cuja chave perde letra ou dígito; ou alinhar a chave ao `dobrar`, o que muda chave de liga existente e é decisão (`§ C` ou `§ H.4`).
 
 > *Decidido de propósito — não é pendência:* o gestor vê "ausente hoje" na Minha fila (tela de quem executa); payload de item ilegível trava a revisão daquele item com 500 e o id na mensagem do log; login, troca de senha e desativação esperam milissegundos por uma confirmação de distribuição em curso; `A34` (e-mails suspeitos sem item) é a fase 4.
 >

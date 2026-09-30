@@ -158,6 +158,7 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaD
     remetente: registro.item.email?.conteudo?.remetente ?? null,
     assunto: registro.item.email?.conteudo?.assunto ?? null,
     sugestaoIa: registro.sugestaoIa,
+    semLiga: registro.item.ligaId === null,
   }))
 
   return { itens, total }

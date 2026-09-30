@@ -16,7 +16,7 @@ import {
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
 import { pedidoDeConfirmacao } from '../../componentes/pedido-de-confirmacao'
-import { depoisDeResolver, estadoDaFila, filaDaResposta } from './fila-na-tela'
+import { depoisDeResolver, estadoDaFila, filaDaResposta, ligaQueFicouDeFora, lerSugestao, seloDoCampo } from './fila-na-tela'
 import type { ItemEmRevisao, NaRede } from '../../core/tipos'
 
 /** A forma vem do núcleo; a tela lê o que sobrevive ao JSON (`H-D7`). */
@@ -50,6 +50,12 @@ const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutr
   anomalia: { texto: 'anomalia', tom: 'alerta' },
   conteudo_suspeito: { texto: 'conteúdo suspeito', tom: 'alerta' },
   desdobramento: { texto: 'e-mail gerou vários itens', tom: 'atencao' },
+  valor_fora_do_texto: { texto: 'dado não encontrado no e-mail', tom: 'atencao' },
+  cpf_invalido: { texto: 'CPF não confere', tom: 'atencao' },
+  // Alerta, e não atenção: o estouro pode ser provocado pelo remetente para o
+  // selo apontar um campo isca; o que vem depois dele não foi conferido
+  // (3ª rodada de segurança do #150).
+  conferencia_incompleta: { texto: 'conferência interrompida: confira este campo e os seguintes', tom: 'alerta' },
 }
 
 /**
@@ -229,7 +235,7 @@ export default function Revisao() {
             ? 'Carregando…'
             : estado === 'vazia'
               ? 'Nada aguardando decisão humana.'
-              : `${totalPendentes} itens em que a IA não teve certeza suficiente.`
+              : `${totalPendentes} itens para conferir antes de ir para a fila de alguém.`
         }
       />
 
@@ -275,8 +281,22 @@ export default function Revisao() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Selo tom={info.tom}>{info.texto}</Selo>
                     <SeloDeConfianca valor={item.confianca} limiar={item.limiarConfianca} />
-                    {item.campoIncerto ? <Selo>falta: {item.campoIncerto}</Selo> : null}
+                    {item.campoIncerto ? (
+                      <Selo>{seloDoCampo(item.campoIncerto, lerSugestao(item.sugestaoIa))}</Selo>
+                    ) : null}
                   </div>
+
+                  {/* A liga que a IA citou não é campo editável, e quando ela não
+                      bate com o e-mail o item fica sem liga: quem revisa precisa
+                      ver o nome para saber o que conferir (revisão técnica do #150). */}
+                  {ligaQueFicouDeFora(lerSugestao(item.sugestaoIa), item.semLiga) ? (
+                    <p className="mt-2 text-xs text-tinta-suave">
+                      {/* <bdi>: o nome vem da IA, e um controle de direção nele
+                          desenharia o resto da frase invertido (4ª rodada de segurança). */}
+                      liga citada pela IA: <bdi>{ligaQueFicouDeFora(lerSugestao(item.sugestaoIa), item.semLiga)}</bdi> · o
+                      item ficou sem liga
+                    </p>
+                  ) : null}
 
                   <p className="mt-2 text-xs text-tinta-suave">
                     de {item.remetente ?? 'origem manual'}

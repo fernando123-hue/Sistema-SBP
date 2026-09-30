@@ -212,6 +212,12 @@ export const MotivoRevisaoSchema = z.enum([
   'conteudo_suspeito',
   /** A IA desdobrou um e-mail em vários itens. Quantidade de carga é decisão humana. */
   'desdobramento',
+  /** Um valor extraído não aparece no texto do e-mail (pendência 17). */
+  'valor_fora_do_texto',
+  /** O CPF extraído não confere pelo dígito verificador (pendência 17, `A40`). */
+  'cpf_invalido',
+  /** O e-mail esgotou o orçamento da conferência antes de ela terminar (pendência 17). */
+  'conferencia_incompleta',
 ])
 export type MotivoRevisao = z.infer<typeof MotivoRevisaoSchema>
 

@@ -409,4 +409,10 @@ export interface ItemEmRevisao {
   remetente: string | null
   assunto: string | null
   sugestaoIa: string
+  /**
+   * O item ficou sem liga. Com a liga citada pela IA fora do e-mail, ela não
+   * vira identidade, qualquer que seja o motivo apontado — e quem aprova
+   * precisa saber que o item virou lote de um (3ª rodada do #150).
+   */
+  semLiga: boolean
 }
