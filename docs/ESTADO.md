@@ -1,8 +1,15 @@
 # Estado do projeto — retomada
 
-Última atualização: **30/09/2026, fim da tarde — parada pedida pelo dono para limpar o contexto (`/clear`).** `main` em `b570308` (#152 mesclado). **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **30/09/2026, noite — escolha dos atritos registrada (`A69`).** `main` em `b570308` (#152 mesclado). **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### 30/09/2026, noite — ESCOLHA DOS ATRITOS REGISTRADA (`A69`) E PDF PARA O TI (este bloco vence o de baixo)
+>
+> - **Dono escolheu `1A · 2A+2B · 3A+3B · 4A · 5A+5B`** (`A69`). O contador do 5A é só da própria colaboradora e recomeça a cada dia. A virada à meia-noite de São Paulo é hipótese, sem resposta dele.
+> - **PDF para o TI** (8 páginas; estado, o que falta e segurança), autor: Fernando. Entregue na conversa e **fora do repositório de propósito**. A fonte ficou só na máquina da sessão; se for preciso refazer, os fatos estão no `DECISOES.md` e neste arquivo.
+> - **Achado novo ao preparar o PDF:** o cookie de sessão é `Secure` e há HSTS, então o servidor interno **precisa de HTTPS** (proxy reverso e certificado). Não estava na lista do TI. Entra no item 6 da lista de baixo.
+> - **Próximo:** pendência 37; depois a Revisão com o e-mail (2A+2B, nível 3); depois a Minha fila (3A+3B); 1A, 4A e 5A+5B, um PR cada.
 >
 > ### 30/09/2026, fim da tarde — PARADA PARA `/clear` (este bloco vence todos os de baixo)
 >
