@@ -296,10 +296,44 @@ describe('endereço de e-mail é comparado inteiro', () => {
     ['ana.souza@@exemplo.test', 'ana.souza@exemplo.test'],
     ['Ana @ Souza', 'Ana Souza'],
     ['Ana Mailto Souza <ana@x.test>', 'Ana Souza ana@x.test'],
+    // Letra fora do plano básico colada ao endereço: hoje os átomos já
+    // barram ("𐐨ana" é uma palavra); a limpeza por ponto de código em
+    // `limparEndereco` é defesa em profundidade, sem caso que a discrimine.
     ['ana@x.test', '𐐨ana@x.test'],
     ['ana@x.test', 'ana@x.test𐐨'],
   ])('"%s" não passa com o texto "%s"', (valor, corpo) => {
     expect(valorEstaNoTexto(prepararTextoParaConferir(corpo), valor)).toBe(false)
+  })
+
+  /**
+   * O que só a conferência dos pedaços com "@" barra (4ª rodada do #150): o
+   * endereço truncado, e o endereço reescrito com espaço antes do "@", em que
+   * o domínio viraria um "@perfil" com os mesmos átomos do texto.
+   */
+  it.each([
+    'ana.souza@',
+    'Ana Souza ana.souza@',
+    'ana-souza @exemplo.test',
+    'ana_souza @exemplo-test',
+    'ana souza @exemplo.test',
+    'Ana Souza <ana-souza @exemplo.test>',
+  ])('"%s" não passa com o endereço inteiro no texto', (valor) => {
+    const doTexto = prepararTextoParaConferir('De: Ana Souza <ana.souza@exemplo.test>')
+    expect(valorEstaNoTexto(doTexto, valor)).toBe(false)
+  })
+
+  it('"@perfil" só passa se o texto cita o mesmo perfil', () => {
+    const doTexto = prepararTextoParaConferir('Liga Cardio - contato liga.cardio@x.test, instagram @liga.pediatria')
+    expect(valorEstaNoTexto(doTexto, '@liga.pediatria')).toBe(true)
+    expect(valorEstaNoTexto(doTexto, 'liga.pediatria')).toBe(true)
+    expect(ligaEstaNoTexto(doTexto, 'liga-cardio @x-test')).toBe(false)
+    expect(ligaEstaNoTexto(doTexto, 'Liga Cardio @x.test')).toBe(false)
+  })
+
+  it('"mailto:" que atravessa um separador não está colado a endereço', () => {
+    const doTexto = prepararTextoParaConferir('Ana Souza,ana@x.test')
+    expect(valorEstaNoTexto(doTexto, 'Ana Mailto:Souza,ana@x.test')).toBe(false)
+    expect(valorEstaNoTexto(doTexto, 'Ana Souza,mailto:ana@x.test')).toBe(true)
   })
 
   it('liga com endereço no meio não passa', () => {
@@ -472,6 +506,26 @@ describe('custo', () => {
     const antes = doTexto.orcamento
     expect(valorEstaNoTexto(doTexto, `${numero}9`)).toBe(false)
     expect(antes - doTexto.orcamento).toBeGreaterThanOrEqual(1000 * 100)
+  })
+
+  /**
+   * O orçamento pode acabar nos prefixos, antes de qualquer início: a conta
+   * não terminou, e o motivo tem de dizer isso (4ª rodada do #150).
+   */
+  it('orçamento que acaba nos prefixos dá conferência interrompida', () => {
+    const doTexto = prepararTextoParaConferir('CPF 111.444.777-35')
+    // Sobra 1 passo depois do valor e do valor dobrado (10 + 10); o primeiro
+    // prefixo, de 2 dígitos, já não cabe.
+    doTexto.orcamento = 21
+    expect(conferirExtracao(doTexto, { ref: '1'.repeat(10) }, null)?.motivo).toBe('conferencia_incompleta')
+  })
+
+  it('a liga que começa por número paga o tamanho dele', () => {
+    const doTexto = prepararTextoParaConferir('Liga 1, 2 e 3')
+    const antes = doTexto.orcamento
+    expect(ligaEstaNoTexto(doTexto, '12345 liga')).toBe(false)
+    // O valor (10), o valor dobrado (10) e o número procurado inteiro (5).
+    expect(antes - doTexto.orcamento).toBe(25)
   })
 
   it('a forma de compatibilidade também gasta orçamento', () => {

@@ -1,4 +1,5 @@
 import { CAMPO_DA_LIGA, ROTULO_DO_CAMPO_DA_LIGA } from '../../core/conferencia-da-extracao'
+import { chaveDaLiga } from '../../core/ligas'
 
 /**
  * A fila de revisão como a tela a guarda: até 200 revisões e o total real
@@ -105,5 +106,7 @@ export function seloDoCampo(campo: string, sugestao: Sugestao): string {
  */
 export function ligaQueFicouDeFora(sugestao: Sugestao, semLiga: boolean): string | null {
   const citada = sugestao.ligaMencionada?.trim()
-  return semLiga && citada ? citada : null
+  // "-", "—", "?": o modelo dizendo "nenhuma". Não vira liga no núcleo, e a
+  // tela não pode afirmar que uma liga ficou de fora (4ª rodada do #150).
+  return semLiga && citada && chaveDaLiga(citada) !== null ? citada : null
 }

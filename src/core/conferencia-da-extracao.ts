@@ -180,10 +180,35 @@ function enderecosEm(textoDobrado: string): string[] {
 }
 
 /**
- * Todo pedaço do valor com "@" tem de ser um endereço que está INTEIRO no
- * texto, ou "@perfil" (um "@" só, na frente, com algo depois). Qualquer outra
- * coisa com "@" ("ana@souza@…", "ana@@…", "…test@outro.test") não está no
- * texto: tratada como pontuação, ela casava pelas palavras (3ª rodada).
+ * O perfil ("@liga.pediatria") de um pedaço: um "@" só, na frente, sem letra
+ * nem dígito antes, e algo depois. Sem o "@". Qualquer outra forma, `null`.
+ */
+function perfilDoPedaco(pedaco: string): string | null {
+  const arroba = pedaco.indexOf('@')
+  if (arroba < 0 || arroba !== pedaco.lastIndexOf('@')) return null
+  if (limparEndereco(pedaco.slice(0, arroba)) !== '') return null
+  const perfil = limparEndereco(pedaco.slice(arroba + 1))
+  return perfil === '' ? null : perfil
+}
+
+/** Os perfis que o texto cita, para conferir os do valor contra eles. */
+function perfisEm(textoDobrado: string): string[] {
+  const perfis: string[] = []
+  for (const pedaco of textoDobrado.split(SEPARADOR_DE_ENDERECO)) {
+    const perfil = pedaco.includes('@') ? perfilDoPedaco(pedaco) : null
+    if (perfil !== null) perfis.push(perfil)
+  }
+  return perfis
+}
+
+/**
+ * Todo pedaço do valor com "@" tem de estar INTEIRO no texto: o endereço,
+ * entre os endereços do texto; o "@perfil", entre os perfis do texto. Barra
+ * o que os átomos sozinhos deixam passar:
+ * - endereço truncado ("ana.souza@", com "ana.souza@exemplo.test" no texto);
+ * - endereço reescrito com espaço antes do "@" ("ana-souza @exemplo.test"),
+ *   em que o domínio viraria um "perfil" com os mesmos átomos (4ª rodada);
+ * - qualquer outra forma com "@" ("ana@souza@…", "ana@@…").
  */
 function arrobasConferem(texto: TextoParaConferir, dobrado: string): boolean {
   for (const pedaco of dobrado.split(SEPARADOR_DE_ENDERECO)) {
@@ -193,10 +218,8 @@ function arrobasConferem(texto: TextoParaConferir, dobrado: string): boolean {
       if (!texto.enderecos.has(limpo)) return false
       continue
     }
-    const arroba = pedaco.indexOf('@')
-    const perfil =
-      arroba === pedaco.lastIndexOf('@') && limparEndereco(pedaco.slice(0, arroba)) === '' && !limpo.includes('@') && limpo !== ''
-    if (!perfil) return false
+    const perfil = perfilDoPedaco(pedaco)
+    if (perfil === null || !texto.perfis.has(perfil)) return false
   }
   return true
 }
@@ -212,6 +235,7 @@ export interface TextoParaConferir {
   /** Onde cada número aparece, pelo valor dele. */
   readonly porNumero: ReadonlyMap<string, readonly number[]>
   readonly enderecos: ReadonlySet<string>
+  readonly perfis: ReadonlySet<string>
   /** Resultado por valor já conferido neste e-mail: listas repetem valores. */
   readonly memoria: Map<string, Achado>
   /**
@@ -233,7 +257,9 @@ export function prepararTextoParaConferir(texto: string): TextoParaConferir {
     if (posicoes) posicoes.push(posicao)
     else indice.set(atomo.valor, [posicao])
   })
-  const enderecos = new Set(enderecosEm(dobrar(texto)))
+  const textoDobrado = dobrar(texto)
+  const enderecos = new Set(enderecosEm(textoDobrado))
+  const perfis = new Set(perfisEm(textoDobrado))
   const comprimentosDeNumero = [...new Set(lista.filter((atomo) => atomo.digitos).map((atomo) => atomo.valor.length))].sort(
     (a, b) => a - b,
   )
@@ -242,6 +268,7 @@ export function prepararTextoParaConferir(texto: string): TextoParaConferir {
     porPalavra,
     porNumero,
     enderecos,
+    perfis,
     memoria: new Map(),
     comprimentosDeNumero,
     orcamento: PASSOS_POR_EMAIL,
@@ -359,7 +386,9 @@ function conferirValor(texto: TextoParaConferir, valor: string, semIsencao: bool
   // casar com "Ana Souza" (3ª rodada do #150). O "mailto:" só sai quando vem
   // colado a um endereço; em qualquer outro lugar, é palavra do valor.
   if (!arrobasConferem(texto, dobrado)) return 'nao'
-  const semMailto = dobrado.replace(/mailto:(?=[^\s@]{1,254}@)/gu, ' ')
+  // A classe exclui os separadores de endereço: "mailto:" atravessando uma
+  // vírgula ou um "<" não está colado a endereço nenhum (4ª rodada).
+  const semMailto = dobrado.replace(/mailto:(?=[^\s@<>()[\],;:"“”«»/|!?]{1,254}@)/gu, ' ')
 
   // A liga vira identidade: nela, número casa com número INTEIRO. Juntando,
   // "Liga 12" passava com "Liga 1, 2 e 3" no texto (3ª rodada do #150).

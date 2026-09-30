@@ -102,6 +102,10 @@ describe('selo do campo apontado', () => {
     expect(ligaQueFicouDeFora(sugestao, false)).toBeNull()
     expect(ligaQueFicouDeFora(lerSugestao(JSON.stringify({ ligaMencionada: '  ' })), true)).toBeNull()
     expect(ligaQueFicouDeFora(lerSugestao('{}'), true)).toBeNull()
+    // Sem letra nem dígito é o modelo dizendo "nenhuma" (4ª rodada do #150).
+    for (const marcador of ['-', '—', '?', '""']) {
+      expect(ligaQueFicouDeFora(lerSugestao(JSON.stringify({ ligaMencionada: marcador })), true)).toBeNull()
+    }
   })
 
   /**
