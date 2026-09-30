@@ -1,8 +1,16 @@
 # Estado do projeto — retomada
 
-Última atualização: **30/09/2026, noite — escolha dos atritos registrada (`A69`).** `main` em `b570308` (#152 mesclado). **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **30/09/2026, fim da noite — Jev próprio decidido (`A70`); Next 16.3.6 (#155).** `main` em `b570308` (#152 mesclado). **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### 30/09/2026, fim da noite — JEV PRÓPRIO DECIDIDO (`A70`); NEXT CORRIGIDO (este bloco vence os de baixo)
+>
+> - **#155 mesclado:** Next 16.3.5 → 16.3.6. O `npm audit` passou a acusar falha crítica (GHSA-vcvr-r3jv-pc5j, RCE em `next/og`) e deixava a auditoria vermelha em todo PR. O código não usa `next/og`. Revisões técnica e de segurança aprovaram; ficou a pendência 46.
+> - **`A70`: o Jev próprio entra agora.** Ordem: **pendência 37 → Jev próprio → telas do `A69`**. Meta: custo zero. O plano do dono paga o agente, não as APIs: o `A63` segue valendo.
+> - **Pendência 37 pronta:** commit `daffddb` no branch local `fix/pendencia-37` (teste vermelho visto, `verificar` com 1733 testes). Vai como PR logo depois deste.
+> - **P1 do Jev próprio está com o dono:** o comando de PowerShell que confirma os *logprobs* do Ollama foi passado na conversa de 30/09. Sem a resposta dele, P2 pode ser escrito contra um servidor falso, mas não medido.
+> - **Máquina:** o container foi reiniciado às 23h; o Docker sobe com `dockerd --pidfile /tmp/dockerd-sessao.pid` (o `/var/run/docker.pid` ficou do boot anterior). A pasta antiga `/home/user/sbp-jev-harness`, que prendia o branch, foi removida com o ok do dono (os arquivos eram idênticos a `fd45b0b`).
 >
 > ### 30/09/2026, noite — ESCOLHA DOS ATRITOS REGISTRADA (`A69`) E PDF PARA O TI (este bloco vence o de baixo)
 >
@@ -446,6 +454,7 @@
 > 43. **Qualquer `vitest run`, até de um arquivo de teste puro, apaga e recria a base `sbp_teste`** (aviso da revisão de segurança, 3ª rodada do #150). O `globalSetup` de `vitest.config.ts` (`src/testes/preparar-banco.ts`) roda `prisma migrate reset --force` sempre. Dois `vitest` ao mesmo tempo, em pastas diferentes, derrubam a suíte um do outro com "Database `sbp_teste` does not exist", sem defeito no código; foi o que aconteceu com as 40 falhas da suíte do visual em 30/09. Até corrigir: nunca dois `vitest` na mesma máquina. Correção: pular o reset quando nenhum arquivo escolhido usa banco, ou uma config só para testes puros.
 > 44. **A chave da liga perde letras e dígitos que a conferência viu** (revisão de segurança, 4ª rodada do #150, achado 3; anterior ao #150). `chaveDaLiga` (`core/ligas.ts`) usa NFD e `[^a-z0-9]`; a conferência usa NFKD e `\p{L}`/`\p{Nd}`. "Liga de Cardiologia ①" e "… ②" viram a mesma chave, "Liga Pediatria Ⅱ" vira "liga pediatria", e 146.998 pontos de código somem da chave. Efeito: duas ligas diferentes se unem sem ninguém ver, que é o erro que `ligas.ts` existe para evitar. Raro em texto de secretaria brasileira. Saídas: mandar para a Revisão, sem identidade, a liga cuja chave perde letra ou dígito; ou alinhar a chave ao `dobrar`, o que muda chave de liga existente e é decisão (`§ C` ou `§ H.4`).
 > 45. **Toda tela abre com o foco no botão "Ajuda"** (revisão técnica do #151, achado 7; anterior ao #151). O efeito de `aberto` em `componentes/assistente.tsx` roda na montagem com `aberto = false` e devolve o foco ao gatilho. No menu lateral, o primeiro Tab vai para "sair", e as telas só se alcançam com Shift+Tab. O contorno aparece em toda captura. Correção: pular a devolução de foco na primeira execução do efeito (um ref "já abriu alguma vez").
+> 46. **Não há teste automático de que o nonce da CSP chega aos scripts** (revisão de segurança do #155, achado 4). Se uma versão futura do Next deixar de propagar o nonce do cabeçalho da requisição, a hidratação não roda e a tela quebra, e só teste manual pega. A atualização do #155 foi conferida à mão: 11 de 11 scripts de `/entrar` com nonce em `next start`. Remédio: teste de integração que suba `next start` e confira o nonce de cada `<script>` contra o do cabeçalho, ou teste do middleware com `NextRequest` simulado.
 
 > *Decidido de propósito — não é pendência:* o gestor vê "ausente hoje" na Minha fila (tela de quem executa); payload de item ilegível trava a revisão daquele item com 500 e o id na mensagem do log; login, troca de senha e desativação esperam milissegundos por uma confirmação de distribuição em curso; `A34` (e-mails suspeitos sem item) é a fase 4.
 >
