@@ -1,4 +1,5 @@
 import { normalizarCpf } from './chave-de-busca'
+import { chaveDaLiga } from './ligas'
 import { nomeDeCampoGravavel } from './nome-de-campo'
 
 /**
@@ -112,19 +113,22 @@ function dobrar(texto: string): string {
  * ele, "ana @souza.exemplo.test" virava os mesmos átomos de
  * "ana.souza@exemplo.test" e passava como o endereço do texto (3ª rodada do
  * #150).
+ *
+ * Recebe o texto JÁ dobrado: dobrar duas vezes o texto inteiro era o maior
+ * custo fixo da preparação (4ª rodada de segurança).
  */
-function atomos(texto: string): Atomo[] {
+function atomos(dobrado: string): Atomo[] {
   const lista: Atomo[] = []
-  for (const achado of dobrar(texto).matchAll(/\p{L}+|\p{Nd}+|@/gu)) {
+  for (const achado of dobrado.matchAll(/\p{L}+|\p{Nd}+|@/gu)) {
     lista.push({ digitos: /^\p{Nd}/u.test(achado[0]), valor: achado[0] })
   }
   return lista
 }
 
 /** Números seguidos no VALOR viram um só: "123.456.789-09" é "12345678909". */
-function atomosDoValor(valor: string): Atomo[] {
+function atomosDoValor(dobrado: string): Atomo[] {
   const juntos: Atomo[] = []
-  for (const atomo of atomos(valor)) {
+  for (const atomo of atomos(dobrado)) {
     const anterior = juntos.at(-1)
     if (atomo.digitos && anterior?.digitos) {
       juntos[juntos.length - 1] = { digitos: true, valor: anterior.valor + atomo.valor }
@@ -175,6 +179,7 @@ const ENDERECO_UNICO = /^[^@]+@[^@]+$/u
 function enderecosEm(textoDobrado: string): string[] {
   return textoDobrado
     .split(SEPARADOR_DE_ENDERECO)
+    .filter((pedaco) => pedaco.includes('@'))
     .map(limparEndereco)
     .filter((pedaco) => ENDERECO_UNICO.test(pedaco))
 }
@@ -248,7 +253,8 @@ export interface TextoParaConferir {
 }
 
 export function prepararTextoParaConferir(texto: string): TextoParaConferir {
-  const lista = atomos(texto)
+  const textoDobrado = dobrar(texto)
+  const lista = atomos(textoDobrado)
   const porPalavra = new Map<string, number[]>()
   const porNumero = new Map<string, number[]>()
   lista.forEach((atomo, posicao) => {
@@ -257,7 +263,6 @@ export function prepararTextoParaConferir(texto: string): TextoParaConferir {
     if (posicoes) posicoes.push(posicao)
     else indice.set(atomo.valor, [posicao])
   })
-  const textoDobrado = dobrar(texto)
   const enderecos = new Set(enderecosEm(textoDobrado))
   const perfis = new Set(perfisEm(textoDobrado))
   const comprimentosDeNumero = [...new Set(lista.filter((atomo) => atomo.digitos).map((atomo) => atomo.valor.length))].sort(
@@ -387,8 +392,10 @@ function conferirValor(texto: TextoParaConferir, valor: string, semIsencao: bool
   // colado a um endereço; em qualquer outro lugar, é palavra do valor.
   if (!arrobasConferem(texto, dobrado)) return 'nao'
   // A classe exclui os separadores de endereço: "mailto:" atravessando uma
-  // vírgula ou um "<" não está colado a endereço nenhum (4ª rodada).
-  const semMailto = dobrado.replace(/mailto:(?=[^\s@<>()[\],;:"“”«»/|!?]{1,254}@)/gu, ' ')
+  // vírgula ou um "<" não está colado a endereço nenhum (4ª rodada). E nada
+  // de letra ou dígito antes: em "Anamailto:x@y.test", o "mailto" é parte da
+  // palavra, e tirá-lo fazia o valor casar com "Ana" (4ª rodada de segurança).
+  const semMailto = dobrado.replace(/(?<![\p{L}\p{Nd}])mailto:(?=[^\s@<>()[\],;:"“”«»/|!?]{1,254}@)/gu, ' ')
 
   // A liga vira identidade: nela, número casa com número INTEIRO. Juntando,
   // "Liga 12" passava com "Liga 1, 2 e 3" no texto (3ª rodada do #150).
@@ -430,7 +437,17 @@ export const ROTULO_DO_CAMPO_DA_LIGA = 'liga citada'
  * texto nascia como liga "lx" (2ª rodada de segurança do #150).
  */
 export function ligaEstaNoTexto(texto: TextoParaConferir, ligaMencionada: string | null): boolean {
-  return ligaMencionada === null || lembrar(texto, ligaMencionada, true) === 'sim'
+  return !ligaQueViraIdentidade(ligaMencionada) || lembrar(texto, ligaMencionada, true) === 'sim'
+}
+
+/**
+ * Uma regra só para "nenhuma liga", a mesma de `resolverLiga` e da tela: o
+ * que `chaveDaLiga` descarta ("-", "Лига Кардио", "¹²³") nunca vira liga, e
+ * não há o que conferir. Com duas regras, a Revisão mandava "confira: liga
+ * citada" sem mostrar nome nenhum (4ª rodada de segurança do #150).
+ */
+function ligaQueViraIdentidade(ligaMencionada: string | null): ligaMencionada is string {
+  return ligaMencionada !== null && chaveDaLiga(ligaMencionada) !== null
 }
 
 /**
@@ -470,7 +487,7 @@ export function conferirExtracao(
     const achado = lembrar(texto, valor, false)
     if (achado !== 'sim') return { motivo: motivo(achado), campo }
   }
-  if (ligaMencionada !== null) {
+  if (ligaQueViraIdentidade(ligaMencionada)) {
     const achado = lembrar(texto, ligaMencionada, true)
     if (achado !== 'sim') return { motivo: motivo(achado), campo: CAMPO_DA_LIGA }
   }

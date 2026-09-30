@@ -291,8 +291,10 @@ export default function Revisao() {
                       ver o nome para saber o que conferir (revisão técnica do #150). */}
                   {ligaQueFicouDeFora(lerSugestao(item.sugestaoIa), item.semLiga) ? (
                     <p className="mt-2 text-xs text-tinta-suave">
-                      liga citada pela IA: {ligaQueFicouDeFora(lerSugestao(item.sugestaoIa), item.semLiga)} · o item
-                      ficou sem liga
+                      {/* <bdi>: o nome vem da IA, e um controle de direção nele
+                          desenharia o resto da frase invertido (4ª rodada de segurança). */}
+                      liga citada pela IA: <bdi>{ligaQueFicouDeFora(lerSugestao(item.sugestaoIa), item.semLiga)}</bdi> · o
+                      item ficou sem liga
                     </p>
                   ) : null}
 

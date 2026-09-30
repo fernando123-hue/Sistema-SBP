@@ -179,6 +179,21 @@ describe('conferirExtracao', () => {
     expect(valorEstaNoTexto(prepararTextoParaConferir('Liga 20 26 de Pediatria'), 'Liga 2026 de Pediatria')).toBe(true)
   })
 
+  /**
+   * Uma regra só para "nenhuma liga": o que `chaveDaLiga` descarta nunca vira
+   * liga e não é conferido. Com duas regras, a Revisão mandava "confira: liga
+   * citada" sem nome nenhum na tela (4ª rodada de segurança do #150).
+   */
+  it('liga que não vira identidade não é conferida, nem com o orçamento esgotado', () => {
+    const doTexto = prepararTextoParaConferir('Pedido de inscrição, Liga de Cardiologia')
+    for (const liga of ['Лига Кардио', '@', '¹²³', '-']) {
+      expect({ liga, problema: conferirExtracao(doTexto, {}, liga) }).toEqual({ liga, problema: null })
+    }
+    doTexto.orcamento = -1
+    expect(conferirExtracao(doTexto, {}, '-')).toBeNull()
+    expect(conferirExtracao(doTexto, {}, 'Liga de Cardiologia')?.motivo).toBe('conferencia_incompleta')
+  })
+
   it('um campo da IA chamado "liga" não se confunde com a liga citada', () => {
     expect(conferirExtracao(texto, { liga: 'Nome Inventado' }, null)).toEqual({
       motivo: 'valor_fora_do_texto',
@@ -328,6 +343,18 @@ describe('endereço de e-mail é comparado inteiro', () => {
     expect(valorEstaNoTexto(doTexto, 'liga.pediatria')).toBe(true)
     expect(ligaEstaNoTexto(doTexto, 'liga-cardio @x-test')).toBe(false)
     expect(ligaEstaNoTexto(doTexto, 'Liga Cardio @x.test')).toBe(false)
+  })
+
+  /**
+   * Sem olhar o que vem antes, "Anamailto:x@y.test" perdia o "mailto" e
+   * casava com "Ana x@y.test" (4ª rodada de segurança do #150).
+   */
+  it('"mailto" colado a uma palavra é parte dela', () => {
+    const doTexto = prepararTextoParaConferir('Ana x@y.test')
+    expect(valorEstaNoTexto(doTexto, 'Anamailto:x@y.test')).toBe(false)
+    expect(valorEstaNoTexto(doTexto, 'Anãmailto:x@y.test')).toBe(false)
+    expect(ligaEstaNoTexto(prepararTextoParaConferir('liga ana@souza.x<'), 'ligamailto:ana@souza.x')).toBe(false)
+    expect(valorEstaNoTexto(doTexto, 'Ana mailto:x@y.test')).toBe(true)
   })
 
   it('"mailto:" que atravessa um separador não está colado a endereço', () => {
