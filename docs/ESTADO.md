@@ -4,30 +4,23 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 30/09/2026, ~03:30 UTC — PARADA PARA `/clear` (este bloco vence todos os de baixo)
+> ### 30/09/2026, manhã — #150 MESCLADO; VISUAL SBP EM PR (este bloco vence todos os de baixo)
 >
 > **Se a pasta `/home/user/Sistema-SBP` tiver `RETOMAR-AQUI.md`, leia-o antes:** ele tem o estado da máquina (pastas, processos, relatórios em arquivo) que não cabe num documento versionado.
 >
-> **1. #150 — pendência 17 (`AT-51`), branch `claude/bold-wright-h08gk6`.**
-> - Cinco rodadas de revisão técnica e quatro de segurança, todas publicadas no PR com a nota do autor (o destino de cada achado). Os links estão no corpo do PR.
-> - A 5ª técnica, sobre `1cd576c`, **aprovou com ressalvas só de documentação**, tratadas no `AT-51`. A 4ª de segurança, sobre `7f73ac4..1cd576c`, **aprovou com ressalvas**. Os dois achados baixos dela foram corrigidos no commit seguinte, com teste visto vermelho, e o achado anterior ao PR virou a pendência 44.
-> - Todas as correções têm teste visto vermelho, ou prova por mutação quando o código já existia. `npm run verificar` local: 141 arquivos, 1741 testes.
-> - **Falta:** a conferência do revisor de segurança sobre o commit que corrigiu os achados da 4ª rodada; os links no corpo do PR; ler o CI check por check; mesclar.
+> **1. #150 — pendência 17 (`AT-51`): MESCLADO** (`030eeab`).
+> - Cinco rodadas técnicas e quatro de segurança, mais a conferência das correções finais, todas publicadas no PR.
+> - `verificar`: 141 arquivos, 1743 testes. CI verde.
+> - Ficou para depois a pendência 44 (a chave da liga perde letras que a conferência vê), que é decisão.
 >
-> **2. Visual SBP, parte 1 (`A65`, `AT-52`, `§ H.4` 49) — NÃO está no GitHub.**
-> - É um commit local, `e89dbf3`, no branch `trabalho/marca`, pasta `/home/user/sbp-marca`, baseado na `main` `a612ef1`. Cópia: `/home/user/Sistema-SBP/.claude/reviews/retomar/visual-sbp-parte1.patch` (fora do git), com as capturas nos dois temas.
+> **2. Visual SBP, parte 1 (`A65`, `AT-52`, `§ H.4` 49): PR aberto** a partir de `claude/bold-wright-h08gk6`, recomeçado da `main` depois do #150.
 > - Conteúdo:
 >   - logotipo oficial (P de P's sobre o `#0D024C`, "**s**ociedade **b**rasileira de **p**ediatria");
 >   - paleta no índigo da marca, com contraste medido;
 >   - menu lateral;
 >   - correção do tema escuro, que **sobrescrevia o claro em todo computador** (`AT-52`).
-> - `npm run verificar`: 139 arquivos, 1633 testes, verdes.
-> - **Depois que o #150 mesclar:**
->   - recomeçar `claude/bold-wright-h08gk6` a partir da `main`;
->   - aplicar o commit, resolvendo o conflito esperado no `DECISOES.md` (o `AT-52` entra perto do `AT-51`);
->   - rodar `verificar`;
->   - abrir o PR. É **nível 3** (`src/componentes/`): pede revisão técnica **e** de segurança.
-> - Mostrar as capturas ao dono.
+> - É **nível 3** (`src/componentes/`): precisa de revisão técnica **e** de segurança publicadas, com os links no corpo.
+> - As capturas nos dois temas estão em `/home/user/Sistema-SBP/.claude/reviews/retomar/capturas-visual/`, fora do git. Mostrá-las ao dono.
 >
 > **3. Perguntas abertas ao dono, sem resposta ainda:**
 > - (a) a escolha dos itens de tela da página de atritos (item 6 abaixo; sugestão `1A · 2A+2B · 3A+3B · 4A · 5B`);
