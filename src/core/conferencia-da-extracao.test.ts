@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { CASOS_DO_GABARITO } from './avaliacao/casos'
+import { CamposExtraidosSchema } from './esquemas'
 import {
   CAMPO_DA_LIGA,
   PASSOS_POR_EMAIL,
@@ -166,12 +167,47 @@ describe('conferirExtracao', () => {
     expect(conferirExtracao(comSigla, {}, 'LX')).toEqual({ motivo: 'valor_fora_do_texto', campo: CAMPO_DA_LIGA })
   })
 
+  /**
+   * A liga vira identidade: juntando números, "Liga 12" passava com "Liga 1,
+   * 2 e 3" no texto (3ª rodada de segurança do #150). Como campo, a junção
+   * continua: é ela que casa o telefone com a máscara.
+   */
+  it('na liga, número casa com número inteiro', () => {
+    expect(ligaEstaNoTexto(prepararTextoParaConferir('Liga 1, 2 e 3'), 'Liga 12')).toBe(false)
+    expect(ligaEstaNoTexto(prepararTextoParaConferir('Liga 20 26 de Pediatria'), 'Liga 2026 de Pediatria')).toBe(false)
+    expect(ligaEstaNoTexto(prepararTextoParaConferir('Liga 2026 de Pediatria'), 'Liga 2026 de Pediatria')).toBe(true)
+    expect(valorEstaNoTexto(prepararTextoParaConferir('Liga 20 26 de Pediatria'), 'Liga 2026 de Pediatria')).toBe(true)
+  })
+
   it('um campo da IA chamado "liga" não se confunde com a liga citada', () => {
     expect(conferirExtracao(texto, { liga: 'Nome Inventado' }, null)).toEqual({
       motivo: 'valor_fora_do_texto',
       campo: 'liga',
     })
     expect(CAMPO_DA_LIGA).not.toBe('liga')
+  })
+
+  /**
+   * "liga" e depois "liga citada" colidiam com um campo da IA de mesmo nome.
+   * O marcador passa do teto do nome de campo do esquema (3ª rodada do #150).
+   */
+  it('nenhum nome de campo que a IA pode devolver colide com o da liga citada', () => {
+    expect(CamposExtraidosSchema.safeParse({ [CAMPO_DA_LIGA]: 'x' }).success).toBe(false)
+    expect(conferirExtracao(texto, { 'liga citada': 'Nome Inventado' }, null)?.campo).toBe('liga citada')
+  })
+
+  /**
+   * A memória tinha a chave do valor cru para campos e "\0" + valor para a
+   * liga: um campo "\0LX", isento por ser curto, gravava "está" na chave da
+   * liga "LX" (3ª rodada do #150).
+   */
+  it('um valor de campo não escreve na memória da liga', () => {
+    const comSigla = prepararTextoParaConferir('Somos da LP, liga de pediatria.')
+    expect(conferirExtracao(comSigla, { obs: '\u0000LX', outra: 'LX', mais: 'X' }, 'LX')).toEqual({
+      motivo: 'valor_fora_do_texto',
+      campo: CAMPO_DA_LIGA,
+    })
+    expect(ligaEstaNoTexto(comSigla, 'LX')).toBe(false)
   })
 })
 
@@ -236,6 +272,42 @@ describe('endereço de e-mail é comparado inteiro', () => {
     expect(valorEstaNoTexto(doTexto, 'Beatriz Inventada <ana.souza@exemplo.test>')).toBe(false)
   })
 
+  /**
+   * Com o "@" como pontuação, um espaço junto dele fazia o endereço
+   * reescrito virar os mesmos átomos do texto e passar (3ª rodada do #150).
+   */
+  it('espaço junto do "@" não faz um endereço reescrito passar', () => {
+    for (const reescrito of ['ana @souza.exemplo.test', 'ana@ souza.exemplo.test', 'ana @ souza.exemplo.test', 'ana\u00a0@souza.exemplo.test']) {
+      expect({ reescrito, noTexto: valorEstaNoTexto(comEndereco, reescrito) }).toEqual({ reescrito, noTexto: false })
+    }
+    expect(valorEstaNoTexto(comEndereco, 'Ana Souza')).toBe(true)
+    expect(valorEstaNoTexto(comEndereco, 'exemplo.test')).toBe(true)
+  })
+
+  /**
+   * Tirar o endereço do valor fazia as palavras em volta se juntarem, e
+   * qualquer pedaço com mais de um "@" ia pelas palavras. Tudo isto ia para a
+   * Revisão antes, e passou a entrar (3ª rodada de segurança do #150).
+   */
+  it.each([
+    ['Ana x@y.test Souza', 'Ana Souza, contato x@y.test'],
+    ['ana@souza@exemplo.test', 'ana.souza@exemplo.test'],
+    ['ana.souza@exemplo.test@evil.test', 'ana.souza@exemplo.test, evil.test'],
+    ['ana.souza@@exemplo.test', 'ana.souza@exemplo.test'],
+    ['Ana @ Souza', 'Ana Souza'],
+    ['Ana Mailto Souza <ana@x.test>', 'Ana Souza ana@x.test'],
+    ['ana@x.test', '𐐨ana@x.test'],
+    ['ana@x.test', 'ana@x.test𐐨'],
+  ])('"%s" não passa com o texto "%s"', (valor, corpo) => {
+    expect(valorEstaNoTexto(prepararTextoParaConferir(corpo), valor)).toBe(false)
+  })
+
+  it('liga com endereço no meio não passa', () => {
+    const doTexto = prepararTextoParaConferir('contato ana@x.test sobre Liga Cardio')
+    expect(ligaEstaNoTexto(doTexto, 'Liga ana@x.test Cardio')).toBe(false)
+    expect(ligaEstaNoTexto(doTexto, 'Liga Cardio')).toBe(true)
+  })
+
   it('"@" de largura cheia é o mesmo "@": o endereço é comparado inteiro', () => {
     for (const reescrito of ['ana＠souza.exemplo.test', 'ana﹫souza.exemplo.test']) {
       expect({ reescrito, noTexto: valorEstaNoTexto(comEndereco, reescrito) }).toEqual({ reescrito, noTexto: false })
@@ -272,6 +344,10 @@ describe('caixa e símbolos que o critério manda ignorar', () => {
     expect(valorEstaNoTexto(prepararTextoParaConferir('Rua GROẞE, 12'), 'grosse')).toBe(true)
     expect(valorEstaNoTexto(prepararTextoParaConferir('Rua Grosse, 12'), 'GROẞE')).toBe(true)
     expect(valorEstaNoTexto(prepararTextoParaConferir('Sra. İLKAY Sintética'), 'ilkay sintetica')).toBe(true)
+  })
+
+  it('a forma de compatibilidade que devolve maiúscula ("ᴬ") ainda compara em minúsculas', () => {
+    expect(valorEstaNoTexto(prepararTextoParaConferir('Turma ᴬᴮᶜ Sintética'), 'turma abc sintetica')).toBe(true)
   })
 
   it('"CPF" sem nenhum dígito não é CPF que não confere: é valor a conferir no texto', () => {
@@ -357,6 +433,52 @@ describe('custo', () => {
       campo: CAMPO_DA_LIGA,
     })
     expect(ligaEstaNoTexto(doTexto, 'Liga Sintética de Pediatria')).toBe(false)
+  })
+
+  /**
+   * O motivo sai do que a memória guardou para AQUELE valor, e não do
+   * orçamento no momento do rótulo: uma conta que terminou antes do estouro
+   * continua "fora do texto" (3ª rodada do #150).
+   */
+  it('valor conferido antes do estouro continua "fora do texto" depois dele', () => {
+    const doTexto = prepararTextoParaConferir('Nome: Fulana Sintética.')
+    expect(conferirExtracao(doTexto, { nome: 'Beatriz Inventada' }, null)?.motivo).toBe('valor_fora_do_texto')
+    doTexto.orcamento = -1
+    expect(conferirExtracao(doTexto, { nome: 'Beatriz Inventada' }, null)?.motivo).toBe('valor_fora_do_texto')
+    expect(conferirExtracao(doTexto, { nome: 'Fulana Sintetica' }, null)?.motivo).toBe('conferencia_incompleta')
+  })
+
+  /**
+   * Passos, e não tempo: um número de 2 mil dígitos recortava 2 mil prefixos
+   * num texto cujo maior número tem 2 dígitos (2ª e 3ª rodadas do #150).
+   */
+  it('os prefixos de um número são só os comprimentos que existem no texto', () => {
+    const doTexto = prepararTextoParaConferir('CPF 111.444.777-35')
+    const valor = '9'.repeat(2000)
+    const antes = doTexto.orcamento
+    expect(valorEstaNoTexto(doTexto, valor)).toBe(false)
+    // O valor, o valor dobrado e os prefixos de 2 e de 3 dígitos.
+    expect(antes - doTexto.orcamento).toBe(2 * valor.length + 2 + 3)
+  })
+
+  /**
+   * Cada número comparado custa o seu tamanho: um número de 100 dígitos
+   * repetido custava um passo por início e 100 caracteres de trabalho
+   * (3ª rodada de segurança do #150).
+   */
+  it('comparar números longos gasta o tamanho deles', () => {
+    const numero = '1'.repeat(100)
+    const doTexto = prepararTextoParaConferir(`${numero} `.repeat(1000))
+    const antes = doTexto.orcamento
+    expect(valorEstaNoTexto(doTexto, `${numero}9`)).toBe(false)
+    expect(antes - doTexto.orcamento).toBeGreaterThanOrEqual(1000 * 100)
+  })
+
+  it('a forma de compatibilidade também gasta orçamento', () => {
+    const doTexto = prepararTextoParaConferir('Nome: Fulana Sintética.')
+    const antes = doTexto.orcamento
+    valorEstaNoTexto(doTexto, 'ﷺ'.repeat(100))
+    expect(antes - doTexto.orcamento).toBeGreaterThanOrEqual(100 + 1800)
   })
 
   /**

@@ -1,4 +1,4 @@
-import { CAMPO_DA_LIGA } from '../../core/conferencia-da-extracao'
+import { CAMPO_DA_LIGA, ROTULO_DO_CAMPO_DA_LIGA } from '../../core/conferencia-da-extracao'
 
 /**
  * A fila de revisão como a tela a guarda: até 200 revisões e o total real
@@ -91,6 +91,19 @@ export function lerSugestao(texto: string): Sugestao {
  * campo apontado continua sendo o que não bateu (revisão técnica do #150).
  */
 export function seloDoCampo(campo: string, sugestao: Sugestao): string {
-  const valor = campo === CAMPO_DA_LIGA ? sugestao.ligaMencionada : Object.hasOwn(sugestao.campos, campo) ? sugestao.campos[campo] : null
-  return valor?.trim() ? `confira: ${campo}` : `falta: ${campo}`
+  const daLiga = campo === CAMPO_DA_LIGA
+  const valor = daLiga ? sugestao.ligaMencionada : Object.hasOwn(sugestao.campos, campo) ? sugestao.campos[campo] : null
+  const nome = daLiga ? ROTULO_DO_CAMPO_DA_LIGA : campo
+  return valor?.trim() ? `confira: ${nome}` : `falta: ${nome}`
+}
+
+/**
+ * A liga que a IA citou e que não virou a liga do item. Aparece qualquer que
+ * seja o campo apontado: com o CPF falhando e a liga fora do e-mail, o selo
+ * aponta o CPF, e sem esta linha quem aprova não saberia que o item ficou sem
+ * liga (3ª rodada do #150).
+ */
+export function ligaQueFicouDeFora(sugestao: Sugestao, semLiga: boolean): string | null {
+  const citada = sugestao.ligaMencionada?.trim()
+  return semLiga && citada ? citada : null
 }

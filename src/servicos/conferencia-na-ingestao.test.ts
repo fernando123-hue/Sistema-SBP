@@ -7,7 +7,7 @@ import type { IngestaoPort } from '../ports/ingestao'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo, semearBase } from '../testes/apoio'
 import { sincronizar } from './ingestao'
-import { aprovarTodosPendentes } from './revisao'
+import { aprovarTodosPendentes, listarPendentes } from './revisao'
 
 /**
  * A conferência do que a IA extraiu, na ingestão (pendência 17, `§ H.4` 40).
@@ -169,6 +169,9 @@ describe('conferência do que a IA extraiu, na ingestão', () => {
     })
     expect(await banco.liga.count()).toBe(antes)
     expect((await banco.item.findFirstOrThrow({ select: { ligaId: true } })).ligaId).toBeNull()
+    // A tela precisa saber que o item ficou sem liga, com o selo no CPF.
+    const { itens } = await listarPendentes(banco)
+    expect(itens.map((item) => item.semLiga)).toEqual([true])
   })
 
   it('conteúdo suspeito continua vindo primeiro: é o motivo que a pessoa precisa ler antes', async () => {

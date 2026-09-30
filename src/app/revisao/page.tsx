@@ -16,8 +16,7 @@ import {
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
 import { pedidoDeConfirmacao } from '../../componentes/pedido-de-confirmacao'
-import { depoisDeResolver, estadoDaFila, filaDaResposta, lerSugestao, seloDoCampo } from './fila-na-tela'
-import { CAMPO_DA_LIGA } from '../../core/conferencia-da-extracao'
+import { depoisDeResolver, estadoDaFila, filaDaResposta, ligaQueFicouDeFora, lerSugestao, seloDoCampo } from './fila-na-tela'
 import type { ItemEmRevisao, NaRede } from '../../core/tipos'
 
 /** A forma vem do núcleo; a tela lê o que sobrevive ao JSON (`H-D7`). */
@@ -53,7 +52,10 @@ const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutr
   desdobramento: { texto: 'e-mail gerou vários itens', tom: 'atencao' },
   valor_fora_do_texto: { texto: 'dado não encontrado no e-mail', tom: 'atencao' },
   cpf_invalido: { texto: 'CPF não confere', tom: 'atencao' },
-  conferencia_incompleta: { texto: 'e-mail grande demais para conferir tudo', tom: 'atencao' },
+  // Alerta, e não atenção: o estouro pode ser provocado pelo remetente para o
+  // selo apontar um campo isca; o que vem depois dele não foi conferido
+  // (3ª rodada de segurança do #150).
+  conferencia_incompleta: { texto: 'conferência interrompida: confira este campo e os seguintes', tom: 'alerta' },
 }
 
 /**
@@ -287,9 +289,10 @@ export default function Revisao() {
                   {/* A liga que a IA citou não é campo editável, e quando ela não
                       bate com o e-mail o item fica sem liga: quem revisa precisa
                       ver o nome para saber o que conferir (revisão técnica do #150). */}
-                  {item.campoIncerto === CAMPO_DA_LIGA && lerSugestao(item.sugestaoIa).ligaMencionada ? (
+                  {ligaQueFicouDeFora(lerSugestao(item.sugestaoIa), item.semLiga) ? (
                     <p className="mt-2 text-xs text-tinta-suave">
-                      liga citada pela IA: {lerSugestao(item.sugestaoIa).ligaMencionada}
+                      liga citada pela IA: {ligaQueFicouDeFora(lerSugestao(item.sugestaoIa), item.semLiga)} · o item
+                      ficou sem liga
                     </p>
                   ) : null}
 

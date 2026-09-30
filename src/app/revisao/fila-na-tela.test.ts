@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { CAMPO_DA_LIGA } from '../../core/conferencia-da-extracao'
-import { depoisDeResolver, estadoDaFila, filaDaResposta, lerSugestao, seloDoCampo } from './fila-na-tela'
+import { depoisDeResolver, estadoDaFila, filaDaResposta, ligaQueFicouDeFora, lerSugestao, seloDoCampo } from './fila-na-tela'
 
 /**
  * A fila de revisão na tela, depois de cada decisão (achado N-30).
@@ -83,7 +83,25 @@ describe('selo do campo apontado', () => {
     expect(seloDoCampo('nome', sugestao)).toBe('confira: nome')
     expect(seloDoCampo('cpf', sugestao)).toBe('falta: cpf')
     expect(seloDoCampo('crm', sugestao)).toBe('falta: crm')
-    expect(seloDoCampo(CAMPO_DA_LIGA, sugestao)).toBe(`confira: ${CAMPO_DA_LIGA}`)
+    expect(seloDoCampo(CAMPO_DA_LIGA, sugestao)).toBe('confira: liga citada')
+    expect(seloDoCampo(CAMPO_DA_LIGA, lerSugestao('{}'))).toBe('falta: liga citada')
+  })
+
+  it('um campo da IA chamado "liga citada" é só um campo', () => {
+    const comCampo = lerSugestao(JSON.stringify({ campos: { 'liga citada': 'Nome Inventado' }, ligaMencionada: null }))
+    expect(seloDoCampo('liga citada', comCampo)).toBe('confira: liga citada')
+    expect(seloDoCampo(CAMPO_DA_LIGA, comCampo)).toBe('falta: liga citada')
+  })
+
+  /**
+   * Com o CPF apontado e a liga fora do e-mail, o item fica sem liga; quem
+   * aprova precisa ver isso, qualquer que seja o campo do selo (3ª rodada).
+   */
+  it('a liga citada que não virou a liga do item aparece, qualquer que seja o campo apontado', () => {
+    expect(ligaQueFicouDeFora(sugestao, true)).toBe('Liga Sintética')
+    expect(ligaQueFicouDeFora(sugestao, false)).toBeNull()
+    expect(ligaQueFicouDeFora(lerSugestao(JSON.stringify({ ligaMencionada: '  ' })), true)).toBeNull()
+    expect(ligaQueFicouDeFora(lerSugestao('{}'), true)).toBeNull()
   })
 
   /**

@@ -107,10 +107,15 @@ function dobrar(texto: string): string {
     .toLowerCase()
 }
 
-/** Palavras e números. */
+/**
+ * Palavras, números e o "@". O "@" é átomo próprio, e não pontuação: sem
+ * ele, "ana @souza.exemplo.test" virava os mesmos átomos de
+ * "ana.souza@exemplo.test" e passava como o endereço do texto (3ª rodada do
+ * #150).
+ */
 function atomos(texto: string): Atomo[] {
   const lista: Atomo[] = []
-  for (const achado of dobrar(texto).matchAll(/\p{L}+|\p{Nd}+/gu)) {
+  for (const achado of dobrar(texto).matchAll(/\p{L}+|\p{Nd}+|@/gu)) {
     lista.push({ digitos: /^\p{Nd}/u.test(achado[0]), valor: achado[0] })
   }
   return lista
@@ -151,22 +156,49 @@ const LETRA_OU_DIGITO = /[\p{L}\p{Nd}]/u
 /**
  * Tira das pontas o que não é letra nem dígito (o ponto final da frase).
  * Por laço, e não por `[^…]+$`: essa expressão volta atrás em cada ponto de
- * "a.....a" e fica quadrática no pedaço que o remetente escolher.
+ * "a.....a" e fica quadrática no pedaço que o remetente escolher. E por
+ * PONTO DE CÓDIGO: a metade de um par substituto não é letra, e uma letra
+ * fora do plano básico ("𐐨ana@x.test") era cortada da ponta (3ª rodada).
  */
 function limparEndereco(endereco: string): string {
+  const pontos = Array.from(endereco)
   let inicio = 0
-  let fim = endereco.length
-  while (inicio < fim && !LETRA_OU_DIGITO.test(endereco[inicio]!)) inicio += 1
-  while (fim > inicio && !LETRA_OU_DIGITO.test(endereco[fim - 1]!)) fim -= 1
-  return endereco.slice(inicio, fim)
+  let fim = pontos.length
+  while (inicio < fim && !LETRA_OU_DIGITO.test(pontos[inicio]!)) inicio += 1
+  while (fim > inicio && !LETRA_OU_DIGITO.test(pontos[fim - 1]!)) fim -= 1
+  return pontos.slice(inicio, fim).join('')
 }
+
+const ENDERECO_UNICO = /^[^@]+@[^@]+$/u
 
 /** Os pedaços com cara de endereço: algo antes e algo depois do `@`. */
 function enderecosEm(textoDobrado: string): string[] {
   return textoDobrado
     .split(SEPARADOR_DE_ENDERECO)
     .map(limparEndereco)
-    .filter((pedaco) => /^[^@]+@[^@]+$/u.test(pedaco))
+    .filter((pedaco) => ENDERECO_UNICO.test(pedaco))
+}
+
+/**
+ * Todo pedaço do valor com "@" tem de ser um endereço que está INTEIRO no
+ * texto, ou "@perfil" (um "@" só, na frente, com algo depois). Qualquer outra
+ * coisa com "@" ("ana@souza@…", "ana@@…", "…test@outro.test") não está no
+ * texto: tratada como pontuação, ela casava pelas palavras (3ª rodada).
+ */
+function arrobasConferem(texto: TextoParaConferir, dobrado: string): boolean {
+  for (const pedaco of dobrado.split(SEPARADOR_DE_ENDERECO)) {
+    if (!pedaco.includes('@')) continue
+    const limpo = limparEndereco(pedaco)
+    if (ENDERECO_UNICO.test(limpo)) {
+      if (!texto.enderecos.has(limpo)) return false
+      continue
+    }
+    const arroba = pedaco.indexOf('@')
+    const perfil =
+      arroba === pedaco.lastIndexOf('@') && limparEndereco(pedaco.slice(0, arroba)) === '' && !limpo.includes('@') && limpo !== ''
+    if (!perfil) return false
+  }
+  return true
 }
 
 /**
@@ -181,9 +213,13 @@ export interface TextoParaConferir {
   readonly porNumero: ReadonlyMap<string, readonly number[]>
   readonly enderecos: ReadonlySet<string>
   /** Resultado por valor já conferido neste e-mail: listas repetem valores. */
-  readonly memoria: Map<string, boolean>
-  /** Quantos dígitos tem o maior número do texto: nenhum prefixo maior casa. */
-  readonly maiorNumero: number
+  readonly memoria: Map<string, Achado>
+  /**
+   * Os comprimentos de número que existem no texto, em ordem. Só um prefixo
+   * desses comprimentos pode estar em `porNumero`: recortar os outros era
+   * trabalho sem passo (2ª e 3ª rodadas do #150).
+   */
+  readonly comprimentosDeNumero: readonly number[]
   orcamento: number
 }
 
@@ -198,14 +234,16 @@ export function prepararTextoParaConferir(texto: string): TextoParaConferir {
     else indice.set(atomo.valor, [posicao])
   })
   const enderecos = new Set(enderecosEm(dobrar(texto)))
-  const maiorNumero = lista.reduce((maior, atomo) => (atomo.digitos ? Math.max(maior, atomo.valor.length) : maior), 0)
+  const comprimentosDeNumero = [...new Set(lista.filter((atomo) => atomo.digitos).map((atomo) => atomo.valor.length))].sort(
+    (a, b) => a - b,
+  )
   return {
     atomos: lista,
     porPalavra,
     porNumero,
     enderecos,
     memoria: new Map(),
-    maiorNumero,
+    comprimentosDeNumero,
     orcamento: PASSOS_POR_EMAIL,
   }
 }
@@ -217,7 +255,7 @@ export function prepararTextoParaConferir(texto: string): TextoParaConferir {
  * Linear: o número do valor casa com UMA junção de números seguidos do texto
  * — a que tem o mesmo comprimento —, então não há escolha a explorar.
  */
-function casaAPartirDe(texto: TextoParaConferir, valor: readonly Atomo[], inicio: number): boolean {
+function casaAPartirDe(texto: TextoParaConferir, valor: readonly Atomo[], inicio: number, juntar: boolean): boolean {
   let i = inicio
   for (const alvo of valor) {
     if (!alvo.digitos) {
@@ -227,15 +265,21 @@ function casaAPartirDe(texto: TextoParaConferir, valor: readonly Atomo[], inicio
       i += 1
       continue
     }
-    let junto = ''
+    // Compara no lugar, sem concatenar, e cobra o tamanho de cada número: um
+    // número de 100 dígitos repetido custava 100 vezes o passo que pagava
+    // (3ª rodada do #150).
+    let deslocamento = 0
     let casou = false
-    for (let n = 0; n < MAIOR_JUNCAO_DE_NUMEROS; n += 1) {
-      texto.orcamento -= 1
+    const maximo = juntar ? MAIOR_JUNCAO_DE_NUMEROS : 1
+    for (let n = 0; n < maximo; n += 1) {
       const atual = texto.atomos[i + n]
-      if (texto.orcamento < 0 || !atual?.digitos) break
-      junto += atual.valor
-      if (!alvo.valor.startsWith(junto)) break
-      if (junto.length === alvo.valor.length) {
+      if (!atual?.digitos) break
+      texto.orcamento -= atual.valor.length
+      if (texto.orcamento < 0) break
+      if (deslocamento + atual.valor.length > alvo.valor.length) break
+      if (!alvo.valor.startsWith(atual.valor, deslocamento)) break
+      deslocamento += atual.valor.length
+      if (deslocamento === alvo.valor.length) {
         i += n + 1
         casou = true
         break
@@ -252,28 +296,45 @@ function casaAPartirDe(texto: TextoParaConferir, valor: readonly Atomo[], inicio
  * Gerador, e não lista: com cem mil "1" no texto, copiar as posições para
  * cada valor já custava segundos, fora do orçamento (revisões do #150).
  */
-function* inicios(texto: TextoParaConferir, primeiro: Atomo): Generator<number> {
+function* inicios(texto: TextoParaConferir, primeiro: Atomo, juntar: boolean): Generator<number> {
   if (!primeiro.digitos) {
     yield* texto.porPalavra.get(primeiro.valor) ?? []
     return
   }
-  // Até o maior número do texto: um valor de 2 mil dígitos recortava 2 mil
-  // prefixos sem gastar passo (2ª rodada de segurança do #150).
-  const limite = Math.min(primeiro.valor.length, texto.maiorNumero)
-  for (let tamanho = 1; tamanho <= limite; tamanho += 1) {
+  if (!juntar) {
+    texto.orcamento -= primeiro.valor.length
+    yield* texto.porNumero.get(primeiro.valor) ?? []
+    return
+  }
+  // Só os comprimentos que existem no texto, e cada prefixo recortado custa
+  // o seu tamanho: com um número de 200 mil dígitos no texto, 4 mil prefixos
+  // de um valor longo somavam segundos sem gastar passo (2ª e 3ª rodadas).
+  for (const tamanho of texto.comprimentosDeNumero) {
+    if (tamanho > primeiro.valor.length) return
+    texto.orcamento -= tamanho
+    if (texto.orcamento < 0) return
     yield* texto.porNumero.get(primeiro.valor.slice(0, tamanho)) ?? []
   }
 }
 
 /** O valor aparece no texto? Valor curto demais conta como "aparece": não há o que provar. */
 export function valorEstaNoTexto(texto: TextoParaConferir, valor: string): boolean {
-  return lembrar(texto, valor, false)
+  return lembrar(texto, valor, false) === 'sim'
 }
 
-function lembrar(texto: TextoParaConferir, valor: string, semIsencao: boolean): boolean {
-  // Chaves distintas para as duas regras: "SP" isento como campo não vale
-  // como liga conferida.
-  const chave = semIsencao ? `\u0000${valor}` : valor
+/**
+ * Três respostas, e não duas: "não está" e "não deu para procurar" são
+ * coisas diferentes para quem revisa, e a memória guarda qual foi. Deduzir
+ * pelo orçamento no momento do rótulo chamava de incompleta uma conta que
+ * tinha terminado antes do estouro (3ª rodada do #150).
+ */
+type Achado = 'sim' | 'nao' | 'incompleto'
+
+function lembrar(texto: TextoParaConferir, valor: string, semIsencao: boolean): Achado {
+  // Chaves distintas para as duas regras, com prefixo dos DOIS lados: "SP"
+  // isento como campo não vale como liga conferida, e nenhum valor de campo
+  // escreve na chave de uma liga (3ª rodada do #150).
+  const chave = `${semIsencao ? 'L' : 'C'}${valor}`
   const lembrado = texto.memoria.get(chave)
   if (lembrado !== undefined) return lembrado
   const resultado = conferirValor(texto, valor, semIsencao)
@@ -281,49 +342,55 @@ function lembrar(texto: TextoParaConferir, valor: string, semIsencao: boolean): 
   return resultado
 }
 
-function conferirValor(texto: TextoParaConferir, valor: string, semIsencao: boolean): boolean {
-  // O próprio valor custa o seu tamanho: dobrar, separar e recortar são
-  // lineares nele, e 1.800 valores longos somavam dezenas de segundos sem
-  // tocar no orçamento (2ª rodada de segurança do #150).
+function conferirValor(texto: TextoParaConferir, valor: string, semIsencao: boolean): Achado {
+  // O próprio valor custa o seu tamanho, antes e depois de dobrar: dobrar,
+  // separar e recortar são lineares nele, e a forma de compatibilidade
+  // multiplica ("ﷺ" vira 18 caracteres). 1.800 valores longos somavam
+  // segundos sem tocar no orçamento (2ª e 3ª rodadas do #150).
   texto.orcamento -= valor.length
-  if (texto.orcamento < 0) return false
-  // O endereço dentro do valor tem de estar no texto inteiro, e o resto do
-  // valor ("Ana Souza <ana@…>", "mailto:") passa pela conferência de átomos.
-  // "@perfil" sem nada antes não é endereço: vai pelos átomos.
+  if (texto.orcamento < 0) return 'incompleto'
   const dobrado = dobrar(valor)
-  const enderecos = enderecosEm(dobrado)
-  if (enderecos.some((endereco) => !texto.enderecos.has(endereco))) return false
-  let resto = valor
-  if (enderecos.length > 0) {
-    resto = dobrado
-      .split(SEPARADOR_DE_ENDERECO)
-      .filter((pedaco) => !/^[^@]+@[^@]+$/u.test(limparEndereco(pedaco)))
-      .join(' ')
-      .replace(/\bmailto\b/gu, ' ')
-  }
+  texto.orcamento -= dobrado.length
+  if (texto.orcamento < 0) return 'incompleto'
 
-  const alvo = atomosDoValor(resto)
+  // Duas conferências, e as duas valem: o endereço tem de estar INTEIRO no
+  // texto, e o valor todo — com o endereço dentro, porque o "@" é átomo — tem
+  // de aparecer seguido. Tirar o endereço do valor fazia "Ana x@y.test Souza"
+  // casar com "Ana Souza" (3ª rodada do #150). O "mailto:" só sai quando vem
+  // colado a um endereço; em qualquer outro lugar, é palavra do valor.
+  if (!arrobasConferem(texto, dobrado)) return 'nao'
+  const semMailto = dobrado.replace(/mailto:(?=[^\s@]{1,254}@)/gu, ' ')
+
+  // A liga vira identidade: nela, número casa com número INTEIRO. Juntando,
+  // "Liga 12" passava com "Liga 1, 2 e 3" no texto (3ª rodada do #150).
+  const juntar = !semIsencao
+  const alvo = juntar ? atomosDoValor(semMailto) : atomos(semMailto)
   const tamanho = alvo.reduce((total, atomo) => total + atomo.valor.length, 0)
   // Sem letra nem dígito ("-", "") não há o que conferir: é o modelo dizendo
   // "nenhuma", e nem como liga isso vira identidade (`teto-de-ligas-novas`).
-  if (tamanho === 0) return true
-  if (tamanho < TAMANHO_MINIMO_CONFERIDO && !semIsencao) return true
+  if (tamanho === 0) return 'sim'
+  if (tamanho < TAMANHO_MINIMO_CONFERIDO && !semIsencao) return 'sim'
 
-  for (const inicio of inicios(texto, alvo[0]!)) {
+  for (const inicio of inicios(texto, alvo[0]!, juntar)) {
     // Cada início tentado custa um passo, mesmo o que falha na primeira
     // comparação: é o que dá teto a "cem mil lugares onde poderia começar".
     texto.orcamento -= 1
-    if (texto.orcamento < 0) return false
-    if (casaAPartirDe(texto, alvo, inicio)) return true
+    if (texto.orcamento < 0) return 'incompleto'
+    if (casaAPartirDe(texto, alvo, inicio, juntar)) return 'sim'
   }
-  return false
+  // O último início, ou os prefixos, podem ter parado por falta de orçamento.
+  return texto.orcamento < 0 ? 'incompleto' : 'nao'
 }
 
 /**
- * O nome do "campo" quando é a liga citada que não bate. Não é `liga`: um
- * campo da IA com a chave `liga` colidiria com ele (2ª rodada do #150).
+ * O nome do "campo" quando é a liga citada que não bate. Tem mais de 60
+ * caracteres DE PROPÓSITO: é o teto do nome de campo que a IA pode devolver
+ * (`CamposExtraidosSchema`), então nenhum campo dela colide com ele. `liga`
+ * e depois `liga citada` colidiam (2ª e 3ª rodadas do #150). A tela mostra
+ * `ROTULO_DO_CAMPO_DA_LIGA`.
  */
-export const CAMPO_DA_LIGA = 'liga citada'
+export const CAMPO_DA_LIGA = 'liga citada pela IA — conferida à parte, não é um dos campos extraídos'
+export const ROTULO_DO_CAMPO_DA_LIGA = 'liga citada'
 
 /**
  * A liga citada está no texto? Conferida SEMPRE, à parte do primeiro
@@ -334,7 +401,7 @@ export const CAMPO_DA_LIGA = 'liga citada'
  * texto nascia como liga "lx" (2ª rodada de segurança do #150).
  */
 export function ligaEstaNoTexto(texto: TextoParaConferir, ligaMencionada: string | null): boolean {
-  return ligaMencionada === null || lembrar(texto, ligaMencionada, true)
+  return ligaMencionada === null || lembrar(texto, ligaMencionada, true) === 'sim'
 }
 
 /**
@@ -366,12 +433,17 @@ export function conferirExtracao(
       return { motivo: 'cpf_invalido', campo }
     }
   }
-  // Com o orçamento esgotado, "não achado" pode ser só "não deu para
-  // procurar": o motivo diz isso, e não que o dado está fora do e-mail.
-  const naoAchado = (): MotivoDaConferencia => (texto.orcamento < 0 ? 'conferencia_incompleta' : 'valor_fora_do_texto')
+  // "Não deu para procurar" (orçamento esgotado) não é "não está no e-mail":
+  // o motivo diz qual dos dois foi.
+  const motivo = (achado: Achado): MotivoDaConferencia =>
+    achado === 'incompleto' ? 'conferencia_incompleta' : 'valor_fora_do_texto'
   for (const [campo, valor] of Object.entries(campos)) {
-    if (!valorEstaNoTexto(texto, valor)) return { motivo: naoAchado(), campo }
+    const achado = lembrar(texto, valor, false)
+    if (achado !== 'sim') return { motivo: motivo(achado), campo }
   }
-  if (!ligaEstaNoTexto(texto, ligaMencionada)) return { motivo: naoAchado(), campo: CAMPO_DA_LIGA }
+  if (ligaMencionada !== null) {
+    const achado = lembrar(texto, ligaMencionada, true)
+    if (achado !== 'sim') return { motivo: motivo(achado), campo: CAMPO_DA_LIGA }
+  }
   return null
 }
