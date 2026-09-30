@@ -113,9 +113,10 @@ export default function Entrar() {
         sai da frente — quem está distribuindo o dia não quer identidade visual
         ocupando espaço.
 
-        `ocupado` durante a entrada: enquanto a senha é conferida, a marca
-        respira. O `scrypt` leva um instante perceptível de propósito (ver
-        `servidor/credenciais.ts`), e este é o feedback desse instante.
+        `ocupado` durante a entrada: enquanto a senha é conferida, a faixa na
+        base da marca pulsa. O `scrypt` leva um instante perceptível de
+        propósito (ver `servidor/credenciais.ts`), e este é o feedback desse
+        instante, junto do "entrando…" do botão.
       */}
       <BlocoDaMarca altura={176} comNome ocupado={entrando} className="mb-6" />
       <h1 className="text-xl font-semibold tracking-tight">Atendimento ao Associado</h1>

@@ -1,18 +1,19 @@
 # Estado do projeto — retomada
 
-Última atualização: **30/09/2026, tarde — #150 e #151 mesclados; correção do P do logotipo em PR.** **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **30/09/2026, tarde — #150 e #151 mesclados; logotipo oficial em PR (#152).** **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 30/09/2026, tarde — #151 MESCLADO; CORREÇÃO DO P EM PR (este bloco vence todos os de baixo)
+> ### 30/09/2026, tarde — #151 MESCLADO; LOGOTIPO OFICIAL EM PR (este bloco vence todos os de baixo)
 >
 > **1. #151 (visual SBP, parte 1): MESCLADO** (`6152296`). O item 2 do bloco de baixo está superado.
 >
-> **2. Correção do P do logotipo: PR aberto** a partir de `claude/bold-wright-h08gk6`.
-> - Pedido do dono: "o P do sistema está todo bugado", comparando com a arte oficial que ele mandou (o logotipo do site da SBP).
-> - O que estava errado e o que mudou estão no `A65`: P's empilhados virando mancha, forma da letra errada e proporções do bloco erradas.
-> - É **nível 3** (`src/componentes/`): precisa de revisão técnica **e** de segurança publicadas, com os links no corpo.
-> - `verificar`: 141 arquivos, 1746 testes.
+> **2. #152 — o logotipo passa a ser a arte oficial (`A66`): PR aberto** a partir de `claude/bold-wright-h08gk6`.
+> - Pedido do dono: "o P do sistema está todo bugado". Uma primeira correção do P desenhado em código chegou perto, mas não ficou igual. **O dono decidiu usar o logotipo original** e parar de reconstruir.
+> - `public/marca-sbp.png` (136 × 163, a arte que ele mandou). `src/core/marca/` foi apagado.
+> - Nível 3 (`src/componentes/`): precisa de revisão técnica **e** de segurança publicadas, com os links no corpo.
+> - `verificar`: 141 arquivos, 1726 testes.
+> - **Pedir ao dono:** o SVG oficial, ou uma versão maior da arte. A atual fica um pouco borrada em tela de alta resolução.
 >
 > **3. Perguntas abertas ao dono:** as mesmas três do bloco de baixo (itens de tela da página de atritos, telas do Stitch em tamanho real, tema).
 >

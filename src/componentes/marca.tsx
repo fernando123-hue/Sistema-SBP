@@ -1,435 +1,129 @@
-'use client'
-
-import { useEffect, useRef, type CSSProperties } from 'react'
-
-import { ALTURA, LARGURA } from '../core/marca/contorno'
-import { PARTICULAS_DA_MARCA } from '../core/marca/especificacao'
-import { ALCANCE, assentou, criarEstado, passo, pulsar, type Ponteiro } from '../core/marca/fisica'
-
 /**
- * A marca da SBP como objeto, não como imagem.
+ * O logotipo da SBP — a arte oficial, como imagem.
  *
- * ═══ A DIVISÃO DE TRABALHO ═══
+ * ═══ POR QUE IMAGEM, E NÃO UMA RECONSTRUÇÃO ═══
  *
- * `core/marca/` decide TUDO: onde cada P nasce, quanto pesa, como reage. Este
- * arquivo só sabe duas coisas que o núcleo não pode saber — o que é um pixel e
- * o que é um elemento do DOM.
+ * Até 30/09 o P era desenhado em código: um contorno analítico, dezenas de P's
+ * pequenos sorteados com semente fixa e uma física de mola que reagia ao
+ * ponteiro (`A16`, `A65`). Comparado ampliado com a arte oficial, nunca ficou
+ * igual — a arte mistura caligrafias diferentes em cada P pequeno, e cada
+ * ajuste chegava mais perto sem chegar. Decisão do dono (`A66`): usar a arte
+ * original. Identidade visual não se aproxima; ou é a marca, ou não é.
  *
- * ═══ REACT DESENHA UMA VEZ; O QUADRO É ESCRITO À MÃO ═══
- *
- * Os P's são renderizados uma única vez. A partir daí, o laço de animação
- * escreve `transform` direto nos elementos, por referência. Nada de estado do
- * React por quadro: uma centena de partículas a sessenta quadros por segundo
- * seriam seis mil re-renderizações por segundo, e o React não é — nem tenta
- * ser — um motor de animação.
- *
- * Só `transform` é tocado. É a única propriedade que o navegador anima sem
- * refazer layout, e é o que mantém isto barato até no celular.
- *
- * ═══ O LAÇO PARA ═══
- *
- * Quando o campo assenta e não há atividade, o `requestAnimationFrame` é
- * cancelado. Esta marca fica no menu lateral, que a equipe deixa aberto o
- * expediente inteiro — um laço eterno gastaria bateria o dia todo para não
- * mostrar nada.
- *
- * "Atividade" é só o que mexe nas peças: o ponteiro PERTO do contorno (dentro
- * do `ALCANCE` do campo) e em movimento. Com a marca de 24 px na barra de
- * cima, nada disso importava; com o bloco de 132 px no menu, qualquer
- * movimento na janela ligava o ponteiro, o `pointerleave` na `window` nunca
- * chegava, e o laço rodava a 60 quadros por segundo o dia inteiro — medido:
- * ~17% da thread principal depois de mexer o mouse uma vez (revisão técnica
- * do #151).
- *
- * ═══ ACESSIBILIDADE NÃO É CAMADA POSTERIOR ═══
- *
- * - `prefers-reduced-motion` desliga a física INTEIRA, não a suaviza: quem
- *   pede menos movimento não quer movimento mais devagar.
- * - O SVG é `aria-hidden` e o nome acessível vem do texto ao lado. Para quem
- *   usa leitor de tela, a marca é decoração de um link que já se anuncia.
- * - `pointer: coarse` (dedo, não ponteiro) não recebe campo de repulsão: não
- *   há hover no toque, e reagir ao toque roubaria o gesto de rolagem.
- * - A cor é `currentColor`. A marca herda o tema claro e o escuro sem um
- *   segundo arquivo e sem uma linha de condicional.
- */
-
-/** Escala do glifo em relação ao `tamanho` da partícula. Calibrado no olho. */
-const ESCALA_DO_GLIFO = 1.5
-
-/**
- * Abaixo desta altura, a marca não reage ao ponteiro.
- *
- * ═══ POR QUE CORTAR O EFEITO, E NÃO OS GLIFOS ═══
- *
- * A primeira ideia foi reduzir a quantidade de peças nas versões pequenas — o
- * "plano de LOD" que o dossiê descreve. Medido, ela se mostrou errada: os
- * glifos menores são justamente os da BORDA, e é a borda que define a
- * silhueta. Cortá-los deixa a letra mais leve e menos legível, que é o pior
- * dos dois mundos.
- *
- * O custo real nunca foi o número de nós — são algumas centenas, desenhados
- * uma vez. O custo é ESCREVER transformação neles sessenta vezes por segundo.
- *
- * Então o corte é no efeito: pequena, a marca move as peças por frações de
- * pixel — ninguém percebe, e o navegador trabalharia o expediente inteiro
- * para isso. O bloco reduzido da barra estreita (P de ~35 px) fica parado; o
- * do menu lateral (P de ~106 px) reage, mas só com o ponteiro perto dele.
- *
- * A respiração do `ocupado` continua valendo em qualquer tamanho: ela é um
- * pulso COLETIVO, e movimento de conjunto se enxerga onde o de uma peça não.
- */
-const ALTURA_MINIMA_PARA_PONTEIRO = 48
-
-/** Depois disto sem mexer, o ponteiro sobre a marca deixa de contar como atividade. */
-const PONTEIRO_PARADO_MS = 1500
-
-export interface MarcaProps {
-  /** Altura em pixels. A largura sai da proporção do contorno. */
-  readonly altura?: number
-  /**
-   * `true` enquanto o sistema está trabalhando.
-   *
-   * A marca respira — não é enfeite: substitui um indicador genérico por um
-   * que É a identidade, e reflete um fato real (há requisição em voo), nunca
-   * uma métrica inventada.
-   */
-  readonly ocupado?: boolean
-  readonly className?: string
-  /** Posição dentro do bloco da marca (`BlocoDaMarca`). */
-  readonly estilo?: CSSProperties
-}
-
-export function Marca({ altura = 26, ocupado = false, className, estilo }: MarcaProps) {
-  const svg = useRef<SVGSVGElement>(null)
-  const grupos = useRef<(SVGGElement | null)[]>([])
-  // O estado do ponteiro vive em ref, não em estado do React: ele muda a cada
-  // movimento do mouse, e re-renderizar a árvore a cada pixel seria absurdo.
-  const ponteiro = useRef<Ponteiro>({ x: 0, y: 0, ativo: false })
-  const ocupadoRef = useRef(ocupado)
-  /**
-   * Religa o laço de animação.
-   *
-   * Publicada pelo efeito principal para que o efeito de `ocupado` possa
-   * acordar o campo sem remontar nada. Remontar o efeito principal a cada
-   * mudança de `ocupado` recriaria o estado do campo, e a marca daria um salto
-   * visível toda vez que uma requisição começasse.
-   */
-  const acordarRef = useRef<(() => void) | null>(null)
-  // A altura vive em ref para o efeito principal — que monta uma vez só — poder
-  // consultá-la sem se remontar quando ela muda.
-  const alturaRef = useRef(altura)
-  alturaRef.current = altura
-
-  useEffect(() => {
-    ocupadoRef.current = ocupado
-  }, [ocupado])
-
-  useEffect(() => {
-    const elemento = svg.current
-    if (!elemento) return
-
-    // Quem pede menos movimento recebe a marca parada. Sem laço, sem ouvintes,
-    // sem custo — e o SVG estático já está correto no DOM.
-    const semMovimento = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const semPonteiroFino = window.matchMedia('(pointer: coarse)')
-    if (semMovimento.matches) return
-
-    const particulas = PARTICULAS_DA_MARCA
-    const estado = criarEstado(particulas.length)
-
-    let quadro = 0
-    let instanteAnterior = 0
-    let rodando = false
-    let ultimoMovimento = 0
-    let faseDaRespiracao = 0
-
-    function escreverNoDom() {
-      for (let i = 0; i < particulas.length; i += 1) {
-        const g = grupos.current[i]
-        if (!g) continue
-        const dx = estado.deslocX[i]!
-        const dy = estado.deslocY[i]!
-        const p = particulas[i]!
-        const giro = p.giro + estado.giroExtra[i]!
-        // `rotate` do SVG aceita o centro como argumento — o glifo gira em
-        // torno de si mesmo sem depender de `transform-origin`, que em SVG
-        // tem comportamento diferente entre navegadores.
-        g.setAttribute(
-          'transform',
-          `translate(${dx.toFixed(3)} ${dy.toFixed(3)}) rotate(${giro.toFixed(2)} ${p.x.toFixed(2)} ${p.y.toFixed(2)})`,
-        )
-      }
-    }
-
-    function laco(instante: number) {
-      const dt = instanteAnterior === 0 ? 1 / 60 : (instante - instanteAnterior) / 1000
-      instanteAnterior = instante
-
-      // A respiração do "ocupado" é um pulso periódico e fraco, injetado no
-      // MESMO campo — não uma animação paralela. Assim ela some sozinha quando
-      // o trabalho termina, e nunca briga com o ponteiro.
-      if (ocupadoRef.current) {
-        faseDaRespiracao += dt
-        if (faseDaRespiracao >= 1.15) {
-          faseDaRespiracao = 0
-          pulsar(estado, particulas, LARGURA * 0.42, ALTURA * 0.3, 26)
-        }
-      } else {
-        faseDaRespiracao = 0
-      }
-
-      // Ponteiro PARADO em cima da marca deixa de contar: as peças voltam ao
-      // lugar e o laço pode parar. Sem isso, um mouse esquecido sobre o
-      // logotipo mantinha o laço vivo o expediente inteiro.
-      if (ponteiro.current.ativo && instante - ultimoMovimento > PONTEIRO_PARADO_MS) {
-        ponteiro.current = { ...ponteiro.current, ativo: false }
-      }
-
-      passo(estado, particulas, ponteiro.current, dt)
-      escreverNoDom()
-
-      // Para quando não há mais nada acontecendo. Volta a rodar no próximo
-      // movimento do ponteiro ou na próxima requisição.
-      if (assentou(estado) && !ponteiro.current.ativo && !ocupadoRef.current) {
-        rodando = false
-        instanteAnterior = 0
-        return
-      }
-      quadro = requestAnimationFrame(laco)
-    }
-
-    function acordar() {
-      if (rodando || semMovimento.matches) return
-      rodando = true
-      instanteAnterior = 0
-      quadro = requestAnimationFrame(laco)
-    }
-    acordarRef.current = acordar
-
-    /** Converte pixels da tela para as coordenadas do contorno. */
-    function aoMover(evento: PointerEvent) {
-      // Toque não tem "passar por cima": reagir ao dedo roubaria o gesto de
-      // rolagem. E abaixo do tamanho mínimo o efeito é imperceptível — ver
-      // `ALTURA_MINIMA_PARA_PONTEIRO`.
-      if (semPonteiroFino.matches || alturaRef.current < ALTURA_MINIMA_PARA_PONTEIRO) return
-      const caixa = elemento!.getBoundingClientRect()
-      if (caixa.width === 0) return
-      const x = ((evento.clientX - caixa.left) / caixa.width) * LARGURA
-      const y = ((evento.clientY - caixa.top) / caixa.height) * ALTURA
-      // Longe do contorno o campo não empurra nada: acordar o laço ali era
-      // trabalho sem efeito. Só a SAÍDA do alcance acorda, para as peças
-      // voltarem ao lugar.
-      const perto = x > -ALCANCE && x < LARGURA + ALCANCE && y > -ALCANCE && y < ALTURA + ALCANCE
-      if (!perto) {
-        if (ponteiro.current.ativo) aoSair()
-        return
-      }
-      ponteiro.current = { x, y, ativo: true }
-      ultimoMovimento = performance.now()
-      acordar()
-    }
-
-    function aoSair() {
-      ponteiro.current = { ...ponteiro.current, ativo: false }
-      acordar()
-    }
-
-    // Ouvir na JANELA, não no SVG: a marca tem 26px de altura e uma silhueta
-    // recortada. Esperar o ponteiro entrar exatamente na tinta tornaria o
-    // efeito quase inalcançável — o campo tem de sentir a aproximação.
-    window.addEventListener('pointermove', aoMover, { passive: true })
-    // No DOCUMENTO: `pointerleave` não borbulha, e na `window` nunca chegava.
-    document.documentElement.addEventListener('pointerleave', aoSair, { passive: true })
-
-    // A preferência pode mudar com a aba aberta — o expediente inteiro, que é o
-    // uso normal. Lida só na montagem, "reduzir movimento" ligado no meio do dia
-    // não desligava nada até recarregar (revisão do PR #35). Ao ligar, o laço
-    // para e as peças voltam ao lugar; `acordar` passa a recusar. Ao desligar, a
-    // marca volta a reagir no próximo movimento do ponteiro.
-    function aoMudarPreferencia() {
-      if (!semMovimento.matches) return
-      cancelAnimationFrame(quadro)
-      rodando = false
-      instanteAnterior = 0
-      Object.assign(estado, criarEstado(particulas.length))
-      escreverNoDom()
-    }
-    semMovimento.addEventListener('change', aoMudarPreferencia)
-
-    // Um pulso na montagem: a marca se MONTA em vez de aparecer pronta.
-    // Acontece uma vez por carregamento e dura menos de um segundo.
-    //
-    // Só nas versões grandes: a 24 pixels o movimento é imperceptível, e
-    // acordar o laço em toda navegação para nada é o oposto do que a regra de
-    // parar o laço existe para conseguir.
-    if (alturaRef.current >= ALTURA_MINIMA_PARA_PONTEIRO) {
-      pulsar(estado, particulas, LARGURA * 0.5, ALTURA * 0.45, 90)
-      acordar()
-    } else {
-      escreverNoDom()
-    }
-
-    return () => {
-      cancelAnimationFrame(quadro)
-      acordarRef.current = null
-      window.removeEventListener('pointermove', aoMover)
-      document.documentElement.removeEventListener('pointerleave', aoSair)
-      semMovimento.removeEventListener('change', aoMudarPreferencia)
-    }
-  }, [])
-
-  // Religa o laço quando o sistema começa a trabalhar. Só isso — o efeito
-  // principal continua montado, e o campo mantém o estado que tinha.
-  useEffect(() => {
-    if (ocupado) acordarRef.current?.()
-  }, [ocupado])
-
-  const largura = (altura * LARGURA) / ALTURA
-
-  return (
-    <svg
-      ref={svg}
-      width={largura}
-      height={altura}
-      viewBox={`0 0 ${LARGURA} ${ALTURA}`}
-      // Decoração: quem lê por áudio recebe o nome do link ao lado, não uma
-      // descrição de cem letras P.
-      aria-hidden="true"
-      focusable="false"
-      className={className}
-      style={{ overflow: 'visible', color: 'currentColor', ...estilo }}
-    >
-      {PARTICULAS_DA_MARCA.map((p, i) => (
-        // Dois elementos por peça, e a separação é o que torna isto um objeto:
-        // o <g> é o PIVÔ — o alvo da animação, movido e girado — e o <text> é
-        // o glifo, que nunca é tocado pelo laço. É a mesma divisão que o
-        // dossiê descreve como o contrato de runtime do img2threejs.
-        <g
-          key={p.id}
-          ref={(no) => {
-            grupos.current[i] = no
-          }}
-          // O giro de repouso já vem no atributo: sem movimento (ou antes do
-          // primeiro quadro) a marca já está correta, não achatada.
-          transform={`translate(0 0) rotate(${p.giro.toFixed(2)} ${p.x.toFixed(2)} ${p.y.toFixed(2)})`}
-        >
-          <text
-            x={p.x}
-            y={p.y}
-            fontSize={p.tamanho * ESCALA_DO_GLIFO}
-            fontWeight={p.peso}
-            fill="currentColor"
-            fillOpacity={p.tom}
-            textAnchor="middle"
-            dominantBaseline="central"
-            style={{ fontFamily: 'var(--font-sans)' }}
-          >
-            P
-          </text>
-        </g>
-      ))}
-    </svg>
-  )
-}
-
-/**
- * O logotipo da SBP como ele é: o P branco dentro do bloco azul da marca.
+ * O arquivo é `public/marca-sbp.png`, 136 × 163, tirado da arte que o dono
+ * mandou. Só os pixels de borda que eram resto do recorte da página (uma
+ * faixa cinza em cima, uma linha embaixo, uma coluna branca à direita) foram
+ * repintados no azul do próprio logotipo. Quando houver o SVG oficial, a
+ * troca é o arquivo e as constantes de tamanho abaixo.
  *
  * ═══ DUAS FORMAS, PELO TAMANHO ═══
  *
- * - **Completa** (`comNome`): o P e, ao lado da haste, "sociedade brasileira
- *   de pediatria" em três linhas, com as iniciais em negrito — como na arte
- *   oficial. É a da tela de entrada e a do menu lateral.
- * - **Reduzida**: só o P no bloco. É a da barra de cima, que o menu vira
- *   abaixo de 1024 px (janela estreita ou zoom alto): nessa altura o nome
+ * - **Completa** (`comNome`): a arte inteira, com o nome. É a da tela de
+ *   entrada e a do menu lateral. O nome acessível é o `alt`.
+ * - **Reduzida**: só o P, recortado da mesma arte, num bloco quadrado. É a da
+ *   barra de cima, que o menu vira abaixo de 1024 px: nessa altura o nome
  *   sairia com uns cinco pixels, e letra que ninguém lê não é marca, é ruído.
- *   O nome acessível do link vem do texto ao lado.
+ *   Ela é decoração: o nome do link vem do texto ao lado.
  *
- * O nome é TEXTO, não desenho: fica nítido em qualquer tamanho, e o leitor de
- * tela o lê — por isso ele não é `aria-hidden`, ao contrário do P.
+ * ═══ `ocupado` ═══
  *
- * As proporções são as da arte oficial (136 × 163 px), medidas pixel a pixel:
- *
- * - o P tem 55% da altura do bloco, com margem azul larga em volta — a arte
- *   respira; o P não encosta nas bordas;
- * - "sociedade" e "brasileira" começam logo depois da haste, abaixo do bojo;
- * - a haste termina na altura da segunda linha, e "de pediatria" passa POR
- *   BAIXO dela, alinhado à esquerda do P.
- *
- * A primeira versão pôs o P com 80% da altura e o nome inteiro ao lado da
- * haste, que descia até a última linha: parecia outro logotipo. É uma
- * reconstrução; quando houver o SVG oficial, a troca é aqui e em
- * `core/marca/contorno.ts`.
+ * O P desenhado "respirava" enquanto havia requisição em voo, e era o único
+ * aviso de trabalho em andamento no menu. A imagem não respira; o aviso
+ * passa a ser uma faixa fina que pulsa na base do bloco. Com "reduzir
+ * movimento" ligado ela fica parada, mas continua aparecendo — o fato de o
+ * sistema estar trabalhando não some junto com a animação.
  */
+
+/** Tamanho da arte, em pixels. */
+const LARGURA_DA_ARTE = 136
+const ALTURA_DA_ARTE = 163
+
+/**
+ * O P dentro da arte, em pixels: o bojo inteiro e a haste até o pé, sem o
+ * nome que fica ao lado da haste. É o recorte da forma reduzida.
+ */
+const P_NA_ARTE = {
+  esquerda: 35,
+  direita: 108,
+  topo: 33,
+  fimDoBojo: 97,
+  /** Borda direita da haste, abaixo do bojo — logo antes de "sociedade". */
+  direitaDaHaste: 55,
+  pe: 125,
+} as const
+
+/** Altura do P em relação ao bloco reduzido. */
+const P_NO_BLOCO_REDUZIDO = 0.72
+
+const SRC = '/marca-sbp.png'
+
 export interface BlocoDaMarcaProps {
   /** Altura do bloco em pixels. */
   readonly altura: number
-  /** Com o nome da SBP ao lado da haste (forma completa). */
+  /** A arte inteira, com o nome da SBP (forma completa). */
   readonly comNome?: boolean
+  /** `true` enquanto há requisição em voo. */
   readonly ocupado?: boolean
   readonly className?: string
 }
 
-/** Na forma completa, a proporção da arte oficial: 136 × 163. */
-const PROPORCAO_COMPLETA = 136 / 163
-/** Na reduzida, o P centrado num bloco quadrado. */
-const PROPORCAO_REDUZIDA = 1
-/** Altura do P em relação ao bloco (89 de 163 px na arte). */
-const P_NO_BLOCO_COMPLETO = 89 / 163
-const P_NO_BLOCO_REDUZIDO = 0.72
-/** Onde o P começa, em fração do bloco (35 e 34 px na arte). */
-const P_ESQUERDA = 35 / 136
-const P_TOPO = 34 / 163
-/**
- * O nome, em unidades do contorno (a altura do P vale 100), medido na arte:
- * começa 25 unidades à direita da borda do P, logo depois da haste, e 73
- * abaixo do topo — já abaixo do bojo; a letra tem 15,8 de corpo.
- */
-const NOME_RECUO = 25
-const NOME_TOPO = 73
-const NOME_CORPO = 15.8
-
 export function BlocoDaMarca({ altura, comNome = false, ocupado = false, className }: BlocoDaMarcaProps) {
-  const largura = Math.round(altura * (comNome ? PROPORCAO_COMPLETA : PROPORCAO_REDUZIDA))
-  const alturaDoP = Math.round(altura * (comNome ? P_NO_BLOCO_COMPLETO : P_NO_BLOCO_REDUZIDO))
-  const larguraDoP = (alturaDoP * LARGURA) / ALTURA
-  // Uma unidade do contorno, em pixels: o nome se posiciona em relação à haste.
-  const unidade = alturaDoP / ALTURA
-  const esquerdaDoP = Math.round(largura * P_ESQUERDA)
-  const topoDoP = Math.round(altura * P_TOPO)
+  const largura = comNome ? Math.round((altura * LARGURA_DA_ARTE) / ALTURA_DA_ARTE) : altura
 
   return (
     <span
-      className={['relative inline-block shrink-0 bg-marca text-sobre-marca', className].filter(Boolean).join(' ')}
+      className={['relative inline-block shrink-0 overflow-hidden bg-marca', className].filter(Boolean).join(' ')}
       style={{ width: largura, height: altura }}
     >
-      <Marca
-        altura={alturaDoP}
-        ocupado={ocupado}
-        className="absolute"
-        estilo={
-          comNome
-            ? { left: esquerdaDoP, top: topoDoP }
-            : { left: Math.round((largura - larguraDoP) / 2), top: Math.round((altura - alturaDoP) / 2) }
-        }
-      />
       {comNome ? (
+        // Arquivo estático pequeno: o otimizador de imagem do Next não ganha nada aqui.
+        <img src={SRC} alt="Sociedade Brasileira de Pediatria" width={largura} height={altura} className="block" />
+      ) : (
+        <PRecortado altura={altura} />
+      )}
+      {ocupado ? (
         <span
-          className="absolute leading-none font-normal whitespace-nowrap lowercase"
-          style={{
-            left: Math.round(esquerdaDoP + NOME_RECUO * unidade),
-            top: Math.round(topoDoP + NOME_TOPO * unidade),
-            fontSize: Math.max(8, Math.round(NOME_CORPO * unidade * 10) / 10),
-          }}
-        >
-          <span className="block"><b className="font-extrabold">s</b>ociedade</span>
-          <span className="block"><b className="font-extrabold">b</b>rasileira</span>
-          {/* A haste termina na segunda linha: a terceira volta para baixo dela. */}
-          <span className="block" style={{ marginLeft: -Math.round(NOME_RECUO * unidade) }}>
-            de <b className="font-extrabold">p</b>ediatria
-          </span>
-        </span>
+          aria-hidden="true"
+          className="absolute inset-x-0 bottom-0 h-[3px] animate-pulse bg-sobre-marca/70 motion-reduce:animate-none"
+        />
       ) : null}
     </span>
+  )
+}
+
+/** Só o P da arte, centrado no bloco quadrado. */
+function PRecortado({ altura }: { readonly altura: number }) {
+  const p = P_NA_ARTE
+  const escala = (altura * P_NO_BLOCO_REDUZIDO) / (p.pe - p.topo)
+  const larguraDoP = (p.direita - p.esquerda) * escala
+  const alturaDoP = (p.pe - p.topo) * escala
+  // O recorte segue a letra, não a caixa dela: a caixa do P inclui o começo de
+  // "sociedade" e "brasileira", ao lado da haste.
+  const pontos: readonly (readonly [number, number])[] = [
+    [p.esquerda, p.topo],
+    [p.direita, p.topo],
+    [p.direita, p.fimDoBojo],
+    [p.direitaDaHaste, p.fimDoBojo],
+    [p.direitaDaHaste, p.pe],
+    [p.esquerda, p.pe],
+  ]
+  const recorte = `polygon(${pontos
+    .map(([px, py]) => `${((px / LARGURA_DA_ARTE) * 100).toFixed(2)}% ${((py / ALTURA_DA_ARTE) * 100).toFixed(2)}%`)
+    .join(', ')})`
+
+  return (
+    <img
+      src={SRC}
+      alt=""
+      aria-hidden="true"
+      width={Math.round(LARGURA_DA_ARTE * escala)}
+      height={Math.round(ALTURA_DA_ARTE * escala)}
+      className="absolute block max-w-none"
+      style={{
+        left: Math.round((altura - larguraDoP) / 2 - p.esquerda * escala),
+        top: Math.round((altura - alturaDoP) / 2 - p.topo * escala),
+        clipPath: recorte,
+      }}
+    />
   )
 }
