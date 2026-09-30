@@ -43,11 +43,17 @@ import { nomeDeCampoGravavel } from './nome-de-campo'
  * texto, não descarta o item: quem revisa vê a sugestão da IA e decide.
  */
 
-export type MotivoDaConferencia = 'cpf_invalido' | 'valor_fora_do_texto'
+/**
+ * `conferencia_incompleta`: o orçamento do e-mail acabou antes de a conta
+ * terminar. O item vai para uma pessoa do mesmo jeito (falha fechada), mas
+ * dizer "dado não encontrado no e-mail" de um valor que pode estar lá seria
+ * mentir para quem revisa (invariante 7; 2ª rodada de segurança do #150).
+ */
+export type MotivoDaConferencia = 'cpf_invalido' | 'valor_fora_do_texto' | 'conferencia_incompleta'
 
 export interface ProblemaNaExtracao {
   readonly motivo: MotivoDaConferencia
-  /** O nome do campo como a IA o escreveu, ou `liga` para a liga mencionada. */
+  /** O nome do campo como a IA o escreveu, ou `CAMPO_DA_LIGA` para a liga mencionada. */
   readonly campo: string
 }
 
@@ -135,7 +141,10 @@ function atomosDoValor(valor: string): Atomo[] {
  * letras seguidas levavam 45 s, fora de qualquer orçamento (2ª rodada do
  * #150). Separar é linear.
  */
-const SEPARADOR_DE_ENDERECO = /[\s<>()[\],;:"'`“”«»‘’/|!?]+/u
+// Sem apóstrofo: ele é válido no endereço ("joana.d'avila@…"), e cortar ali
+// fazia "avila@…", OUTRO endereço, passar (2ª rodada de segurança do #150).
+// Aspas simples em volta do endereço saem pela limpeza das pontas.
+const SEPARADOR_DE_ENDERECO = /[\s<>()[\],;:"“”«»/|!?]+/u
 
 const LETRA_OU_DIGITO = /[\p{L}\p{Nd}]/u
 
@@ -173,6 +182,8 @@ export interface TextoParaConferir {
   readonly enderecos: ReadonlySet<string>
   /** Resultado por valor já conferido neste e-mail: listas repetem valores. */
   readonly memoria: Map<string, boolean>
+  /** Quantos dígitos tem o maior número do texto: nenhum prefixo maior casa. */
+  readonly maiorNumero: number
   orcamento: number
 }
 
@@ -187,7 +198,16 @@ export function prepararTextoParaConferir(texto: string): TextoParaConferir {
     else indice.set(atomo.valor, [posicao])
   })
   const enderecos = new Set(enderecosEm(dobrar(texto)))
-  return { atomos: lista, porPalavra, porNumero, enderecos, memoria: new Map(), orcamento: PASSOS_POR_EMAIL }
+  const maiorNumero = lista.reduce((maior, atomo) => (atomo.digitos ? Math.max(maior, atomo.valor.length) : maior), 0)
+  return {
+    atomos: lista,
+    porPalavra,
+    porNumero,
+    enderecos,
+    memoria: new Map(),
+    maiorNumero,
+    orcamento: PASSOS_POR_EMAIL,
+  }
 }
 
 /**
@@ -237,21 +257,35 @@ function* inicios(texto: TextoParaConferir, primeiro: Atomo): Generator<number> 
     yield* texto.porPalavra.get(primeiro.valor) ?? []
     return
   }
-  for (let tamanho = 1; tamanho <= primeiro.valor.length; tamanho += 1) {
+  // Até o maior número do texto: um valor de 2 mil dígitos recortava 2 mil
+  // prefixos sem gastar passo (2ª rodada de segurança do #150).
+  const limite = Math.min(primeiro.valor.length, texto.maiorNumero)
+  for (let tamanho = 1; tamanho <= limite; tamanho += 1) {
     yield* texto.porNumero.get(primeiro.valor.slice(0, tamanho)) ?? []
   }
 }
 
 /** O valor aparece no texto? Valor curto demais conta como "aparece": não há o que provar. */
 export function valorEstaNoTexto(texto: TextoParaConferir, valor: string): boolean {
-  const lembrado = texto.memoria.get(valor)
+  return lembrar(texto, valor, false)
+}
+
+function lembrar(texto: TextoParaConferir, valor: string, semIsencao: boolean): boolean {
+  // Chaves distintas para as duas regras: "SP" isento como campo não vale
+  // como liga conferida.
+  const chave = semIsencao ? `\u0000${valor}` : valor
+  const lembrado = texto.memoria.get(chave)
   if (lembrado !== undefined) return lembrado
-  const resultado = conferirValor(texto, valor)
-  texto.memoria.set(valor, resultado)
+  const resultado = conferirValor(texto, valor, semIsencao)
+  texto.memoria.set(chave, resultado)
   return resultado
 }
 
-function conferirValor(texto: TextoParaConferir, valor: string): boolean {
+function conferirValor(texto: TextoParaConferir, valor: string, semIsencao: boolean): boolean {
+  // O próprio valor custa o seu tamanho: dobrar, separar e recortar são
+  // lineares nele, e 1.800 valores longos somavam dezenas de segundos sem
+  // tocar no orçamento (2ª rodada de segurança do #150).
+  texto.orcamento -= valor.length
   if (texto.orcamento < 0) return false
   // O endereço dentro do valor tem de estar no texto inteiro, e o resto do
   // valor ("Ana Souza <ana@…>", "mailto:") passa pela conferência de átomos.
@@ -270,7 +304,10 @@ function conferirValor(texto: TextoParaConferir, valor: string): boolean {
 
   const alvo = atomosDoValor(resto)
   const tamanho = alvo.reduce((total, atomo) => total + atomo.valor.length, 0)
-  if (tamanho < TAMANHO_MINIMO_CONFERIDO) return true
+  // Sem letra nem dígito ("-", "") não há o que conferir: é o modelo dizendo
+  // "nenhuma", e nem como liga isso vira identidade (`teto-de-ligas-novas`).
+  if (tamanho === 0) return true
+  if (tamanho < TAMANHO_MINIMO_CONFERIDO && !semIsencao) return true
 
   for (const inicio of inicios(texto, alvo[0]!)) {
     // Cada início tentado custa um passo, mesmo o que falha na primeira
@@ -292,9 +329,12 @@ export const CAMPO_DA_LIGA = 'liga citada'
  * A liga citada está no texto? Conferida SEMPRE, à parte do primeiro
  * problema: se outro campo falhasse antes, a liga inventada seguia para
  * `resolverLiga` e nascia no banco (2ª rodada do #150). Sem liga, `true`.
+ *
+ * Sem a isenção de valor curto: a liga vira IDENTIDADE, e "LX" ausente do
+ * texto nascia como liga "lx" (2ª rodada de segurança do #150).
  */
 export function ligaEstaNoTexto(texto: TextoParaConferir, ligaMencionada: string | null): boolean {
-  return ligaMencionada === null || valorEstaNoTexto(texto, ligaMencionada)
+  return ligaMencionada === null || lembrar(texto, ligaMencionada, true)
 }
 
 /**
@@ -326,9 +366,12 @@ export function conferirExtracao(
       return { motivo: 'cpf_invalido', campo }
     }
   }
+  // Com o orçamento esgotado, "não achado" pode ser só "não deu para
+  // procurar": o motivo diz isso, e não que o dado está fora do e-mail.
+  const naoAchado = (): MotivoDaConferencia => (texto.orcamento < 0 ? 'conferencia_incompleta' : 'valor_fora_do_texto')
   for (const [campo, valor] of Object.entries(campos)) {
-    if (!valorEstaNoTexto(texto, valor)) return { motivo: 'valor_fora_do_texto', campo }
+    if (!valorEstaNoTexto(texto, valor)) return { motivo: naoAchado(), campo }
   }
-  if (!ligaEstaNoTexto(texto, ligaMencionada)) return { motivo: 'valor_fora_do_texto', campo: CAMPO_DA_LIGA }
+  if (!ligaEstaNoTexto(texto, ligaMencionada)) return { motivo: naoAchado(), campo: CAMPO_DA_LIGA }
   return null
 }

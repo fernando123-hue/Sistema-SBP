@@ -216,6 +216,8 @@ export const MotivoRevisaoSchema = z.enum([
   'valor_fora_do_texto',
   /** O CPF extraído não confere pelo dígito verificador (pendência 17, `A40`). */
   'cpf_invalido',
+  /** O e-mail esgotou o orçamento da conferência antes de ela terminar (pendência 17). */
+  'conferencia_incompleta',
 ])
 export type MotivoRevisao = z.infer<typeof MotivoRevisaoSchema>
 

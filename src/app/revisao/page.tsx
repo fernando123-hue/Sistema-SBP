@@ -53,6 +53,7 @@ const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutr
   desdobramento: { texto: 'e-mail gerou vários itens', tom: 'atencao' },
   valor_fora_do_texto: { texto: 'dado não encontrado no e-mail', tom: 'atencao' },
   cpf_invalido: { texto: 'CPF não confere', tom: 'atencao' },
+  conferencia_incompleta: { texto: 'e-mail grande demais para conferir tudo', tom: 'atencao' },
 }
 
 /**

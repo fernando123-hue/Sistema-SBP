@@ -145,6 +145,27 @@ describe('conferirExtracao', () => {
     expect(ligaEstaNoTexto(texto, null)).toBe(true)
   })
 
+  it('a liga é conferida mesmo com um nome reescrito antes', () => {
+    expect(conferirExtracao(texto, { nome: 'Mariana de Souza' }, 'Liga Inventada do Brasil')?.campo).toBe('nome')
+    expect(ligaEstaNoTexto(texto, 'Liga Inventada do Brasil')).toBe(false)
+  })
+
+  /**
+   * A liga vira identidade: "LX" ausente do texto nascia como liga "lx",
+   * porque valor curto não era conferido (2ª rodada de segurança do #150).
+   */
+  it('liga curta não escapa da conferência', () => {
+    const comSigla = prepararTextoParaConferir('Somos da LP, liga de pediatria.')
+    expect(ligaEstaNoTexto(comSigla, 'LP')).toBe(true)
+    expect(ligaEstaNoTexto(comSigla, 'LX')).toBe(false)
+    expect(ligaEstaNoTexto(comSigla, 'L.X.')).toBe(false)
+    // Sem letra nem dígito é "nenhuma liga", como `null`.
+    expect(ligaEstaNoTexto(comSigla, '—')).toBe(true)
+    // Como campo comum, continua isento: "SP" está em qualquer texto.
+    expect(valorEstaNoTexto(comSigla, 'LX')).toBe(true)
+    expect(conferirExtracao(comSigla, {}, 'LX')).toEqual({ motivo: 'valor_fora_do_texto', campo: CAMPO_DA_LIGA })
+  })
+
   it('um campo da IA chamado "liga" não se confunde com a liga citada', () => {
     expect(conferirExtracao(texto, { liga: 'Nome Inventado' }, null)).toEqual({
       motivo: 'valor_fora_do_texto',
@@ -213,6 +234,24 @@ describe('endereço de e-mail é comparado inteiro', () => {
     expect(valorEstaNoTexto(doTexto, 'mailto:ana.souza@exemplo.test')).toBe(true)
     expect(valorEstaNoTexto(doTexto, 'Ana Souza Sintética <ana@souza.exemplo.test>')).toBe(false)
     expect(valorEstaNoTexto(doTexto, 'Beatriz Inventada <ana.souza@exemplo.test>')).toBe(false)
+  })
+
+  it('"@" de largura cheia é o mesmo "@": o endereço é comparado inteiro', () => {
+    for (const reescrito of ['ana＠souza.exemplo.test', 'ana﹫souza.exemplo.test']) {
+      expect({ reescrito, noTexto: valorEstaNoTexto(comEndereco, reescrito) }).toEqual({ reescrito, noTexto: false })
+    }
+    expect(valorEstaNoTexto(comEndereco, 'ana.souza＠exemplo.test')).toBe(true)
+  })
+
+  /**
+   * Apóstrofo é válido no endereço. Cortando ali, "avila@…" — outro
+   * endereço — passava, e o certo ia para a Revisão (2ª rodada de segurança).
+   */
+  it("apóstrofo não corta o endereço", () => {
+    const comApostrofo = prepararTextoParaConferir("Contato: joana.d'avila@exemplo.test ou 'bia@exemplo.test'.")
+    expect(valorEstaNoTexto(comApostrofo, "joana.d'avila@exemplo.test")).toBe(true)
+    expect(valorEstaNoTexto(comApostrofo, 'avila@exemplo.test')).toBe(false)
+    expect(valorEstaNoTexto(comApostrofo, 'bia@exemplo.test')).toBe(true)
   })
 
   it('"@perfil" sem nada antes não é endereço: vai pela conferência de palavras', () => {
@@ -299,5 +338,40 @@ describe('custo', () => {
     doTexto.orcamento = 0
     expect(valorEstaNoTexto(doTexto, 'Fulana Sintética')).toBe(false)
     expect(PASSOS_POR_EMAIL).toBeGreaterThan(0)
+  })
+
+  /**
+   * "Dado não encontrado no e-mail" de um valor que pode estar lá seria
+   * mentir para quem revisa: o motivo diz que a conferência não terminou
+   * (2ª rodada de segurança do #150).
+   */
+  it('orçamento esgotado tem motivo próprio, e a liga não vira identidade', () => {
+    const doTexto = prepararTextoParaConferir('Nome: Fulana Sintética. Liga Sintética de Pediatria.')
+    doTexto.orcamento = 0
+    expect(conferirExtracao(doTexto, { nome: 'Fulana Sintética' }, null)).toEqual({
+      motivo: 'conferencia_incompleta',
+      campo: 'nome',
+    })
+    expect(conferirExtracao(doTexto, {}, 'Liga Sintética de Pediatria')).toEqual({
+      motivo: 'conferencia_incompleta',
+      campo: CAMPO_DA_LIGA,
+    })
+    expect(ligaEstaNoTexto(doTexto, 'Liga Sintética de Pediatria')).toBe(false)
+  })
+
+  /**
+   * O valor também custa: 2 mil dígitos recortavam 2 mil prefixos, e 2 mil
+   * pontos passavam pela limpeza, sem gastar passo (2ª rodada de segurança).
+   */
+  it('valores longos gastam orçamento, e 1.800 deles não travam o servidor', () => {
+    const doTexto = prepararTextoParaConferir(`Nome: Fulana Sintética, CPF 111.444.777-35. ${'1 '.repeat(1000)}`)
+    const inicio = performance.now()
+    for (let i = 0; i < 600; i += 1) {
+      valorEstaNoTexto(doTexto, `${i}${'1'.repeat(1990)}`)
+      valorEstaNoTexto(doTexto, `a@${'.'.repeat(1990)}${i}`)
+      valorEstaNoTexto(doTexto, `${'ﷺ'.repeat(1990)}${i}`)
+    }
+    expect(performance.now() - inicio).toBeLessThan(2000)
+    expect(doTexto.orcamento).toBeLessThan(0)
   })
 })
