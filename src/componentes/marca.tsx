@@ -4,7 +4,7 @@ import { useEffect, useRef, type CSSProperties } from 'react'
 
 import { ALTURA, LARGURA } from '../core/marca/contorno'
 import { PARTICULAS_DA_MARCA } from '../core/marca/especificacao'
-import { assentou, criarEstado, passo, pulsar, type Ponteiro } from '../core/marca/fisica'
+import { ALCANCE, assentou, criarEstado, passo, pulsar, type Ponteiro } from '../core/marca/fisica'
 
 /**
  * A marca da SBP como objeto, não como imagem.
@@ -29,8 +29,17 @@ import { assentou, criarEstado, passo, pulsar, type Ponteiro } from '../core/mar
  * ═══ O LAÇO PARA ═══
  *
  * Quando o campo assenta e não há atividade, o `requestAnimationFrame` é
- * cancelado. Esta marca fica numa barra que a equipe deixa aberta o expediente
- * inteiro — um laço eterno gastaria bateria o dia todo para não mostrar nada.
+ * cancelado. Esta marca fica no menu lateral, que a equipe deixa aberto o
+ * expediente inteiro — um laço eterno gastaria bateria o dia todo para não
+ * mostrar nada.
+ *
+ * "Atividade" é só o que mexe nas peças: o ponteiro PERTO do contorno (dentro
+ * do `ALCANCE` do campo) e em movimento. Com a marca de 24 px na barra de
+ * cima, nada disso importava; com o bloco de 132 px no menu, qualquer
+ * movimento na janela ligava o ponteiro, o `pointerleave` na `window` nunca
+ * chegava, e o laço rodava a 60 quadros por segundo o dia inteiro — medido:
+ * ~17% da thread principal depois de mexer o mouse uma vez (revisão técnica
+ * do #151).
  *
  * ═══ ACESSIBILIDADE NÃO É CAMADA POSTERIOR ═══
  *
@@ -61,15 +70,18 @@ const ESCALA_DO_GLIFO = 1.42
  * O custo real nunca foi o número de nós — são algumas centenas, desenhados
  * uma vez. O custo é ESCREVER transformação neles sessenta vezes por segundo.
  *
- * Então o corte é no efeito: a 24 pixels a marca tem 17 de largura, e um campo
- * de repulsão nessa escala move as peças por frações de pixel — ninguém
- * percebe, e o navegador trabalha o expediente inteiro para isso. A marca da
- * barra fica parada, e o laço só acorda quando há trabalho de verdade em voo.
+ * Então o corte é no efeito: pequena, a marca move as peças por frações de
+ * pixel — ninguém percebe, e o navegador trabalharia o expediente inteiro
+ * para isso. O bloco reduzido da barra estreita (P de ~35 px) fica parado; o
+ * do menu lateral (P de ~106 px) reage, mas só com o ponteiro perto dele.
  *
  * A respiração do `ocupado` continua valendo em qualquer tamanho: ela é um
  * pulso COLETIVO, e movimento de conjunto se enxerga onde o de uma peça não.
  */
 const ALTURA_MINIMA_PARA_PONTEIRO = 48
+
+/** Depois disto sem mexer, o ponteiro sobre a marca deixa de contar como atividade. */
+const PONTEIRO_PARADO_MS = 1500
 
 export interface MarcaProps {
   /** Altura em pixels. A largura sai da proporção do contorno. */
@@ -128,6 +140,7 @@ export function Marca({ altura = 26, ocupado = false, className, estilo }: Marca
     let quadro = 0
     let instanteAnterior = 0
     let rodando = false
+    let ultimoMovimento = 0
     let faseDaRespiracao = 0
 
     function escreverNoDom() {
@@ -165,6 +178,13 @@ export function Marca({ altura = 26, ocupado = false, className, estilo }: Marca
         faseDaRespiracao = 0
       }
 
+      // Ponteiro PARADO em cima da marca deixa de contar: as peças voltam ao
+      // lugar e o laço pode parar. Sem isso, um mouse esquecido sobre o
+      // logotipo mantinha o laço vivo o expediente inteiro.
+      if (ponteiro.current.ativo && instante - ultimoMovimento > PONTEIRO_PARADO_MS) {
+        ponteiro.current = { ...ponteiro.current, ativo: false }
+      }
+
       passo(estado, particulas, ponteiro.current, dt)
       escreverNoDom()
 
@@ -194,11 +214,18 @@ export function Marca({ altura = 26, ocupado = false, className, estilo }: Marca
       if (semPonteiroFino.matches || alturaRef.current < ALTURA_MINIMA_PARA_PONTEIRO) return
       const caixa = elemento!.getBoundingClientRect()
       if (caixa.width === 0) return
-      ponteiro.current = {
-        x: ((evento.clientX - caixa.left) / caixa.width) * LARGURA,
-        y: ((evento.clientY - caixa.top) / caixa.height) * ALTURA,
-        ativo: true,
+      const x = ((evento.clientX - caixa.left) / caixa.width) * LARGURA
+      const y = ((evento.clientY - caixa.top) / caixa.height) * ALTURA
+      // Longe do contorno o campo não empurra nada: acordar o laço ali era
+      // trabalho sem efeito. Só a SAÍDA do alcance acorda, para as peças
+      // voltarem ao lugar.
+      const perto = x > -ALCANCE && x < LARGURA + ALCANCE && y > -ALCANCE && y < ALTURA + ALCANCE
+      if (!perto) {
+        if (ponteiro.current.ativo) aoSair()
+        return
       }
+      ponteiro.current = { x, y, ativo: true }
+      ultimoMovimento = performance.now()
       acordar()
     }
 
@@ -211,7 +238,8 @@ export function Marca({ altura = 26, ocupado = false, className, estilo }: Marca
     // recortada. Esperar o ponteiro entrar exatamente na tinta tornaria o
     // efeito quase inalcançável — o campo tem de sentir a aproximação.
     window.addEventListener('pointermove', aoMover, { passive: true })
-    window.addEventListener('pointerleave', aoSair, { passive: true })
+    // No DOCUMENTO: `pointerleave` não borbulha, e na `window` nunca chegava.
+    document.documentElement.addEventListener('pointerleave', aoSair, { passive: true })
 
     // A preferência pode mudar com a aba aberta — o expediente inteiro, que é o
     // uso normal. Lida só na montagem, "reduzir movimento" ligado no meio do dia
@@ -245,7 +273,7 @@ export function Marca({ altura = 26, ocupado = false, className, estilo }: Marca
       cancelAnimationFrame(quadro)
       acordarRef.current = null
       window.removeEventListener('pointermove', aoMover)
-      window.removeEventListener('pointerleave', aoSair)
+      document.documentElement.removeEventListener('pointerleave', aoSair)
       semMovimento.removeEventListener('change', aoMudarPreferencia)
     }
   }, [])
@@ -310,10 +338,11 @@ export function Marca({ altura = 26, ocupado = false, className, estilo }: Marca
  *
  * - **Completa** (`comNome`): o P e, ao lado da haste, "sociedade brasileira
  *   de pediatria" em três linhas, com as iniciais em negrito — como na arte
- *   oficial. É a da tela de entrada, onde a marca tem espaço.
- * - **Reduzida**: só o P no bloco. É a da barra: com a altura da barra, o
- *   nome sairia com uns cinco pixels, e letra que ninguém lê não é marca, é
- *   ruído. O nome acessível do link vem do texto ao lado, como antes.
+ *   oficial. É a da tela de entrada e a do menu lateral.
+ * - **Reduzida**: só o P no bloco. É a da barra de cima, que o menu vira
+ *   abaixo de 1024 px (janela estreita ou zoom alto): nessa altura o nome
+ *   sairia com uns cinco pixels, e letra que ninguém lê não é marca, é ruído.
+ *   O nome acessível do link vem do texto ao lado.
  *
  * O nome é TEXTO, não desenho: fica nítido em qualquer tamanho, e o leitor de
  * tela o lê — por isso ele não é `aria-hidden`, ao contrário do P.

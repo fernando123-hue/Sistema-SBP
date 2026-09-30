@@ -13,9 +13,11 @@
   A paleta segue a identidade da SBP (30/09/2026, pedido do dono): o azul
   índigo da marca (#0D024C, matiz ~285 em oklch) tinge os neutros e o acento,
   no lugar do cinza-azulado genérico de antes. Todo par de texto e fundo foi
-  medido antes de entrar (script na nota do PR): o mais apertado, tinta-fraca
-  sobre o fundo, mede 5,1:1 no claro e 6,3:1 no escuro — acima do mínimo AA
-  de 4,5:1.
+  medido antes de entrar: o mais apertado é tinta-fraca, que mede 5,1:1 sobre
+  o fundo no claro e 6,3:1 sobre o papel no escuro — acima do mínimo AA de
+  4,5:1. Dois pares que ainda não existem em tela ficam abaixo de 5:1 e não
+  devem ser usados sem medir: tinta-fraca sobre acento-claro (~4,6:1) e sobre
+  borda (~4,2:1 no claro) (revisão técnica do #151).
 */
 @theme {
   --color-tinta: oklch(0.22 0.06 285);
@@ -129,6 +131,17 @@ body {
   outline: 2px solid var(--color-acento);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/*
+  Contorno para DENTRO, para o que encosta na borda da janela (o link da marca,
+  no alto do menu): para fora, a borda de cima saía cortada. Fora de camada e
+  mais específico que a regra acima, que também é fora de camada — um
+  utilitário do Tailwind (`focus-visible:outline-offset-*`) fica em camada e
+  PERDE para ela (revisão técnica do #151).
+*/
+.foco-para-dentro:focus-visible {
+  outline-offset: -3px;
 }
 
 @media (prefers-reduced-motion: reduce) {

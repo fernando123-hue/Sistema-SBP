@@ -48,11 +48,11 @@ export default async function LayoutRaiz({ children }: { children: React.ReactNo
       <body className="min-h-dvh">
         {perfil && !perfil.precisaTrocarSenha ? (
           // Menu lateral e conteúdo lado a lado (`navegacao.tsx`).
-          <div className="flex min-h-dvh">
+          <div className="flex min-h-dvh flex-col lg:flex-row">
             <Navegacao nome={perfil.nome} papel={perfil.papel} />
             <div className="min-w-0 flex-1">
               {faixaDoAcessoLocal}
-              <main className="px-8 py-7">
+              <main className="px-4 py-6 lg:px-8 lg:py-7">
                 <div className="mx-auto w-full max-w-6xl">{conteudo}</div>
               </main>
             </div>

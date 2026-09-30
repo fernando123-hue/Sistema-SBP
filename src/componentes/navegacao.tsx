@@ -76,20 +76,46 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
     // as telas numa coluna, e quem está logado embaixo. O sistema é só para
     // computador (`A60`), e a coluna devolve a altura inteira da tela ao
     // trabalho — a barra de cima comia uma faixa de todas as telas.
-    <aside className="sticky top-0 flex h-dvh w-60 shrink-0 flex-col border-r border-borda bg-papel">
-      <Link href={telaInicial(papel)} className="group flex flex-col gap-3 px-4 pb-5">
+    //
+    // Abaixo de 1024 px — janela estreita ou zoom alto, que é critério de
+    // acessibilidade também no computador — a coluna vira barra de cima, com o
+    // bloco reduzido e as telas quebrando linha. Com a coluna fixa, a 400% de
+    // zoom não sobrava nenhuma tela visível e o conteúdo ficava com 80 px
+    // (revisão técnica do #151). Na coluna, ela rola INTEIRA: rolando só a
+    // lista, marca e rodapé comiam as telas em janela baixa.
+    //
+    // `relative z-30`: o `sticky` cria contexto de empilhamento, e o painel da
+    // Ajuda (fixo, `z-40`, filho deste aside) passava por BAIXO de elemento
+    // semitransparente da página (revisão de segurança do #151).
+    <aside className="relative z-30 flex w-full flex-col border-b border-borda bg-papel lg:sticky lg:top-0 lg:h-dvh lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:border-r lg:border-b-0">
+      <Link
+        href={telaInicial(papel)}
+        // Contorno de foco para DENTRO (`.foco-para-dentro`, em `globals.css`):
+        // o bloco encosta no alto da janela, e o contorno para fora saía
+        // cortado (revisão técnica do #151).
+        className="foco-para-dentro group flex items-center gap-3 px-4 py-2 lg:flex-col lg:items-start lg:py-0 lg:pb-5"
+      >
         {/*
           O bloco leva o nome da SBP como TEXTO (lido pelo leitor de tela); o P
-          é decoração. "Atendimento ao Associado" completa o nome do link.
+          é decoração. "Atendimento ao Associado" completa o nome do link. Na
+          barra estreita, o bloco reduzido não tem o nome, e ele vai só para o
+          leitor de tela.
         */}
-        <BlocoDaMarca altura={132} comNome ocupado={ocupado} />
+        <span className="hidden lg:block">
+          <BlocoDaMarca altura={132} comNome ocupado={ocupado} />
+        </span>
+        <span className="lg:hidden">
+          <BlocoDaMarca altura={48} ocupado={ocupado} />
+        </span>
         <span className="text-sm leading-tight font-semibold text-tinta group-hover:text-acento">
+          <span className="sr-only lg:hidden">Sociedade Brasileira de Pediatria — </span>
           Atendimento ao Associado
         </span>
       </Link>
 
-      <nav aria-label="Principal" className="flex-1 overflow-y-auto px-3">
-        <ul className="flex flex-col gap-0.5">
+      <nav aria-label="Principal" className="px-3 lg:flex-1">
+        {/* `py-1`: o contorno de foco do primeiro item saía cortado em cima. */}
+        <ul className="flex flex-wrap gap-0.5 py-1 lg:flex-col lg:flex-nowrap">
           {visiveis.map((destino) => {
             const ativo = caminho.startsWith(destino.href)
             return (
@@ -112,19 +138,25 @@ export function Navegacao({ nome, papel }: { nome: string; papel: string }) {
         </ul>
       </nav>
 
-      <div className="flex flex-col gap-3 border-t border-borda px-4 py-4">
+      <div className="flex flex-wrap items-center gap-3 border-t border-borda px-4 py-3 lg:flex-col lg:flex-nowrap lg:items-stretch lg:py-4">
         {/* A ajuda abre um painel fixo no canto da tela (`assistente.tsx`):
             o botão pode morar aqui, junto de quem está logado. */}
         <Assistente papel={papel} />
         <div className="flex items-end justify-between gap-2">
           <span className="min-w-0 text-xs leading-tight">
-            <span className="block truncate font-medium text-tinta">{nome}</span>
+            {/* Inteiro, sem reticências: no computador compartilhado, a pessoa
+                confere quem está logado antes de agir, e dois nomes com o mesmo
+                começo ficavam iguais (revisão de segurança do #151). */}
+            <span className="block font-medium break-words text-tinta">{nome}</span>
             <span className="block text-tinta-fraca">{papel}</span>
           </span>
+          {/* Alvo de toque de 44 px no celular, como o `Botao` garante: com
+              ~26 px, "sair" no balcão compartilhado era o controle mais fácil
+              de errar — e sair errado é a sessão de pé para a próxima pessoa. */}
           <button
             onClick={() => void sair()}
             disabled={saindo}
-            className="min-h-9 rounded-md px-2 text-xs text-tinta-suave hover:bg-papel-fundo hover:text-tinta disabled:opacity-50"
+            className="min-h-11 shrink-0 rounded-md px-3 text-xs text-tinta-suave hover:bg-papel-fundo hover:text-tinta disabled:opacity-50 sm:min-h-9 sm:px-2"
           >
             {saindo ? 'saindo…' : 'sair'}
           </button>
