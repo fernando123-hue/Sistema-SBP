@@ -71,8 +71,12 @@ const AmbienteSchema = z.object({
    * separada de `IA_ADAPTER` porque é OUTRO fornecedor, com outra decisão de
    * dado — e a trava `CLASSIFICADOR_PARA_DADO_REAL` abaixo é por fornecedor.
    */
-  CLASSIFICADOR_ADAPTER: z.enum(['nenhum', 'mock', 'typesafe']).default('nenhum'),
-  /** Vazio = o padrão do fornecedor (`jev-latest` na TypeSafe). */
+  CLASSIFICADOR_ADAPTER: z.enum(['nenhum', 'mock', 'typesafe', 'local']).default('nenhum'),
+  /**
+   * Vazio = o padrão do fornecedor (`jev-latest` na TypeSafe). Com `local`, o
+   * vazio quer dizer o mesmo modelo da interpretação (`IA_MODELO`), no mesmo
+   * servidor (`IA_LOCAL_URL`) — o caminho do `A70`.
+   */
   CLASSIFICADOR_MODELO: z
     .string()
     .default('')
@@ -407,6 +411,28 @@ export function ambiente(): Ambiente {
     throw new Error('CLASSIFICADOR_ADAPTER="typesafe" exige TYPESAFE_API_KEY configurada.')
   }
 
+  // O classificador próprio (`A70`) fala com o MESMO servidor da IA local, e
+  // herda as exigências dela: endereço interno (`A56 (f)`), e um nome de
+  // modelo, porque servidor local não tem padrão. Sem isto, a recusa do
+  // endereço público valeria só quando `IA_ADAPTER` também fosse `local`, e o
+  // classificador mandaria o texto para onde a variável dissesse.
+  if (resultado.data.CLASSIFICADOR_ADAPTER === 'local') {
+    if (!resultado.data.IA_LOCAL_URL) {
+      throw new Error(
+        'CLASSIFICADOR_ADAPTER="local" exige IA_LOCAL_URL: o endereço do servidor de modelo compatível com OpenAI ' +
+          '(por exemplo http://127.0.0.1:11434/v1).',
+      )
+    }
+    if (!resultado.data.CLASSIFICADOR_MODELO && !resultado.data.IA_MODELO) {
+      throw new Error(
+        'CLASSIFICADOR_ADAPTER="local" exige CLASSIFICADOR_MODELO ou IA_MODELO: cada servidor local serve o modelo ' +
+          'que baixaram nele, e não há padrão que valha para todos.',
+      )
+    }
+    const recusa = motivoDeEnderecoLocalInvalido(resultado.data.IA_LOCAL_URL)
+    if (recusa) throw new Error(`IA_LOCAL_URL ${recusa}`)
+  }
+
   // A mesma trava da IA, para o classificador (`A62`, `§ H.4` item 35): o Jev
   // não recebe e-mail de associado enquanto o dono não decidir as condições.
   // A camada de defesa do dado roda sempre, mas nome e endereço passam por
@@ -568,11 +594,15 @@ const IA_PARA_DADO_REAL = {
  * - `typesafe`: nasce `false`. Sem acordo empresarial, e nome e endereço
  *   atravessam a camada de defesa. Quem troca esta linha é o dono, com a
  *   resposta do `§ H.4` item 35 registrada.
+ * - `local`: nasce `false`, pela mesma condição da IA local (`A56 (e)`): o
+ *   modelo só recebe e-mail de associado depois de medido e de o dono
+ *   decidir (`A70`). O texto não sai da associação, mas a decisão é a mesma.
  */
 const CLASSIFICADOR_PARA_DADO_REAL = {
   nenhum: true,
   mock: false,
   typesafe: false,
+  local: false,
 } as const satisfies Record<z.infer<typeof AmbienteSchema>['CLASSIFICADOR_ADAPTER'], boolean>
 
 /**

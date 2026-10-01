@@ -14,6 +14,7 @@ import { obterPrisma } from '../servidor/prisma'
 import { ArmazenamentoEmDisco } from './armazenamento-disco'
 import { ClassificadorExterno, type ClienteDeClassificacao } from './classificador-externo'
 import { clienteMock as clienteClassificadorMock, PERFIL_MOCK as PERFIL_CLASSIFICADOR_MOCK } from './classificador-mock'
+import { clienteClassificadorLocal, PERFIL_CLASSIFICADOR_LOCAL } from './classificador-local'
 import { clienteTypeSafe, PERFIL_TYPESAFE } from './classificador-typesafe'
 import { chamarComControle, comControleDeConsumo, type OpcoesDeConsumo } from './cliente-com-consumo'
 import { AssistentePorBusca } from './assistente-busca'
@@ -172,6 +173,15 @@ export function criarClassificadorPort(): ClassificadorPort | null {
         PERFIL_TYPESAFE,
         controlarClassificacao(clienteTypeSafe(), PERFIL_TYPESAFE.nome),
         modelo,
+      )
+    case 'local':
+      // O classificador próprio (`A70`): o mesmo servidor e, sem modelo
+      // próprio, o mesmo modelo da interpretação. Com o disjuntor, um servidor
+      // fora do ar para de ser perguntado em vez de custar o prazo a cada texto.
+      return new ClassificadorExterno(
+        PERFIL_CLASSIFICADOR_LOCAL,
+        controlarClassificacao(clienteClassificadorLocal(), PERFIL_CLASSIFICADOR_LOCAL.nome),
+        modelo || ambiente().IA_MODELO,
       )
     default:
       throw new AdapterIndisponivelError('classificador', nome)
