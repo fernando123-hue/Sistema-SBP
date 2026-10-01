@@ -169,5 +169,8 @@ describe('ninguém desliga a verificação de TLS por fora da trava (pendências
     const lf = readFileSync(join(RAIZ, 'src/servidor/ambiente.ts'), 'utf8').replace(/\r\n/g, '\n')
     expect(ofende('src/servidor/ambiente.ts', lf), 'LF').toBe(false)
     expect(ofende('src/servidor/ambiente.ts', lf.replace(/\n/g, '\r\n')), 'CRLF').toBe(false)
+    // Só CRLF é tolerado: um CR a mais não se esconde dentro dele.
+    expect(ofende('src/servidor/ambiente.ts', lf.replace(/\n/g, '\r\n') + '\r'), 'CRLF + CR no fim').toBe(true)
+    expect(ofende('src/servidor/ambiente.ts', lf + '\r\r\n'), 'CR antes de CRLF').toBe(true)
   })
 })
