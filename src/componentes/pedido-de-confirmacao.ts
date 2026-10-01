@@ -31,3 +31,27 @@ export function pedidoDeConfirmacaoDoGrupo(posicao: number, total: number, quant
   const qual = posicao < 0 || total < 1 ? 'deste e-mail' : `do e-mail ${posicao + 1} de ${total}`
   return `Para concluir os ${quantos} itens ${qual}, aperte o mesmo botão de novo. Concluir não tem volta.`
 }
+
+/**
+ * O aviso do cartão do e-mail na Revisão (`A69`, 1A).
+ *
+ * Diz quantos são aprovados e quantos descartados, porque é isso que o
+ * segundo toque decide: tirar alguém da lista é descartá-lo, e descartar não
+ * tem volta. Qual e-mail, pela posição — nunca pelo assunto (`§ AT-48`).
+ */
+export function pedidoDeConfirmacaoDoEmail(
+  acao: 'aprovar' | 'descartar',
+  posicao: number,
+  total: number,
+  aprovados: number,
+  descartados: number,
+): string {
+  const qual = posicao < 0 || total < 1 ? 'deste e-mail' : `do e-mail ${posicao + 1} de ${total}`
+  if (acao === 'descartar') {
+    return `Para descartar os ${descartados} itens ${qual}, aperte o mesmo botão de novo. Descartar não tem volta.`
+  }
+  if (descartados === 0) {
+    return `Para aprovar os ${aprovados} itens ${qual}, aperte o mesmo botão de novo.`
+  }
+  return `Para aprovar ${aprovados} e descartar ${descartados} ${qual}, aperte o mesmo botão de novo. Descartar não tem volta.`
+}

@@ -206,6 +206,39 @@ describe('rotas que guardam o papel sozinhas', () => {
     expect(respostas.filter((status) => status !== 429).every((status) => status === 422)).toBe(true)
   })
 
+  it('POST /api/revisao/resolver-email: só quem revisa, corpo estrito, lista com teto e limite por pessoa (`A69`, 1A)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const { POST } = await import('./revisao/resolver-email/route')
+    const enviar = (corpo: unknown) =>
+      POST(
+        new Request('http://teste.local/api/revisao/resolver-email', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(corpo),
+        }),
+      )
+    const linha = { revisaoId: 'x', titulo: 'Item sintético', campos: {}, aprovar: true }
+
+    cookieDaVez.valor = ''
+    expect((await enviar({ emailId: 'e', revisoes: [linha] })).status).toBe(401)
+
+    await entrarComo(base.colaboradores[0]!.id, 'colaborador')
+    expect((await enviar({ emailId: 'e', revisoes: [linha] })).status).toBe(403)
+
+    await entrarComo(base.operadorId, 'operador')
+    // Invariante 5: "quem" no corpo é recusado, não ignorado.
+    expect((await enviar({ emailId: 'e', revisoes: [linha], resolvidoPor: base.colaboradores[0]!.id })).status).toBe(400)
+    expect((await enviar({ emailId: 'e', revisoes: [{ ...linha, resolvidoPor: 'y' }] })).status).toBe(400)
+    const muitas = Array.from({ length: 501 }, (_, i) => ({ ...linha, revisaoId: `r-${i}` }))
+    expect((await enviar({ emailId: 'e', revisoes: muitas })).status).toBe(400)
+
+    const respostas: number[] = []
+    for (let i = 0; i < 20; i += 1) respostas.push((await enviar({ emailId: 'e', revisoes: [linha] })).status)
+    expect(respostas.includes(429)).toBe(true)
+    // E-mail inexistente: conjunto não bate, nada decidido.
+    expect(respostas.filter((status) => status !== 429).every((status) => status === 422)).toBe(true)
+  })
+
   it('GET /api/rodadas/[id] recusa colaborador — o livro-razão não é material aberto', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     await entrarComo(base.colaboradores[0]!.id, 'colaborador')

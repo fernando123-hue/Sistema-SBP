@@ -1,7 +1,12 @@
 import { ErroDeNegocio } from '../core/erros'
+import { Prisma } from '../generated/prisma/client'
 import {
+  CategoriaClassificavelSchema,
   PayloadDoItemSchema,
   ResolucaoRevisaoSchema,
+  ResolucaoDoEmailSchema,
+  MOTIVOS_DECIDIDOS_POR_EMAIL,
+  type ResolucaoRevisao,
   SugestaoIaGravadaSchema,
   serializar,
 } from '../core/esquemas'
@@ -141,11 +146,28 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaD
           // Só o que a lista mostra (achado N-34). `include` trazia o `corpo`
           // (LongText, até 200 mil caracteres) de cada pendente a cada
           // abertura — e quem enche a revisão é justamente e-mail suspeito.
-          email: { select: { conteudo: { select: { remetente: true, assunto: true } } } },
+          email: {
+            select: { conteudoSuspeito: true, conteudo: { select: { remetente: true, assunto: true } } },
+          },
         },
       },
     },
   })
+
+  // Quantas revisões cada e-mail tem pendentes DE VERDADE, além do corte
+  // (`A69`, 1A). A tela só junta um e-mail num cartão quando tem todas na mão:
+  // "Aprovar os 3" de um e-mail com 5 pendentes decidiria sobre nomes que
+  // ninguém viu — e o serviço recusaria, mas a tela não deve nem oferecer.
+  const emailIds = [...new Set(registros.flatMap((registro) => (registro.item.emailId ? [registro.item.emailId] : [])))]
+  const contagens =
+    emailIds.length === 0
+      ? []
+      : await banco.$queryRaw<{ emailId: string; pendentes: bigint }[]>`
+          SELECT i.emailId AS emailId, COUNT(*) AS pendentes
+          FROM \`Revisao\` r JOIN \`Item\` i ON i.id = r.itemId
+          WHERE r.resolvidoEm IS NULL AND i.emailId IN (${Prisma.join(emailIds)})
+          GROUP BY i.emailId`
+  const pendentesPorEmail = new Map(contagens.map((linha) => [linha.emailId, Number(linha.pendentes)]))
 
   const itens = registros.map((registro) => ({
     revisaoId: registro.id,
@@ -160,6 +182,9 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaD
     assunto: registro.item.email?.conteudo?.assunto ?? null,
     sugestaoIa: registro.sugestaoIa,
     semLiga: registro.item.ligaId === null,
+    emailId: registro.item.emailId,
+    emailSuspeito: registro.item.email?.conteudoSuspeito ?? false,
+    pendentesNoEmail: registro.item.emailId ? (pendentesPorEmail.get(registro.item.emailId) ?? 0) : 1,
   }))
 
   return { itens, total }
@@ -292,184 +317,310 @@ export async function resolver(
     // a trilha ficava com "aprovada" e "recusada" para o mesmo item. Travada, a
     // segunda espera e lê a revisão já resolvida.
     await tx.$queryRaw`SELECT id FROM \`Revisao\` WHERE id = ${dados.revisaoId} FOR UPDATE`
-    const revisao = await tx.revisao.findUnique({
-      where: { id: dados.revisaoId },
-      include: { item: true },
-    })
-
-    if (!revisao) throw new ErroDeNegocio('Esta revisão não foi encontrada. Atualize a tela.')
-    if (revisao.resolvidoEm) throw new ErroDeNegocio('Esta revisão já foi resolvida. Atualize a tela para ver a próxima.')
-
-    await exigirColaborador(tx, ator.colaboradorId)
-
-    const categoria = await tx.categoria.findUnique({
-      where: { codigo: dados.categoriaCodigo },
-      select: { id: true, ativa: true },
-    })
-    if (!categoria) throw new ErroDeNegocio(`Categoria "${dados.categoriaCodigo}" não existe.`)
-    // Categoria desativada não entra em rodada nem no painel (achado C-23): o
-    // item aprovado ali sumiria da operação sem erro. Mesma recusa do registro
-    // manual (`conferirDestino`).
-    if (!categoria.ativa) {
-      throw new ErroDeNegocio(`A categoria "${dados.categoriaCodigo}" está desativada. Escolha outra.`)
-    }
-
-    // Sem título: o que a IA extraiu pode ter nome de associado, e a trilha
-    // não tem prazo (`A23(d)`).
-    const antes = {
-      categoriaId: revisao.item.categoriaId,
-      status: revisao.item.status,
-    }
-
-    // MESCLA, não sobrescreve.
-    //
-    // Gravar `{ campos: dados.campos }` apagava tudo que a IA extraiu — nome,
-    // CPF, CRM, campos ausentes, liga mencionada. Como a tela envia os campos
-    // vazios quando o operador não mexe neles, aprovar uma revisão deixava o
-    // item com MENOS informação do que antes de ser revisado, e o dataset de
-    // melhoria nascia vazio justamente na dimensão que mais importa.
-    const payloadAnterior = payloadGravado(revisao.item.id, revisao.item.payload)
-    const payloadFinal = {
-      ...payloadAnterior,
-      campos: { ...payloadAnterior.campos, ...dados.campos },
-      revisadoPorHumano: true,
-    }
-
-    const item = await tx.item.update({
-      where: { id: revisao.itemId },
-      data: {
-        categoriaId: categoria.id,
-        titulo: dados.titulo,
-        payload: serializar(payloadFinal),
-        // A chave vem dos campos FINAIS: a pessoa pode ter corrigido ou trocado
-        // o CPF, e a chave antiga não pode sobreviver a isso (`A23(b)`).
-        ...chaveDeBusca(payloadFinal.campos),
-        // Aprovado por humano entra na próxima rodada. Recusado sai da fila
-        // sem sumir do banco — cancelado é estado, não exclusão.
-        status: dados.aprovar ? 'aprovado' : 'cancelado',
-        // Carimba QUANDO saiu. Sem isto, um cancelamento feito hoje mudaria
-        // retroativamente a pendência do mês passado no painel: o número
-        // mudaria sozinho entre duas consultas, e a comparação com a planilha
-        // deixaria de significar coisa alguma.
-        canceladoEm: dados.aprovar ? null : new Date(),
-      },
-    })
-
-    await tx.revisao.update({
-      where: { id: dados.revisaoId },
-      data: {
-        valorFinal: serializar({
-          categoriaCodigo: dados.categoriaCodigo,
-          titulo: dados.titulo,
-          campos: dados.campos,
-          aprovado: dados.aprovar,
-          itensExtras: dados.itensExtras.length,
-        }),
-        ...acertoDaRevisao(revisao.id, revisao.sugestaoIa, {
-          categoriaCodigo: dados.categoriaCodigo,
-          titulo: dados.titulo,
-          campos: dados.campos,
-          aprovado: dados.aprovar,
-          itensExtras: dados.itensExtras.length,
-        }),
-        resolvidoPor: ator.colaboradorId,
-        resolvidoEm: new Date(),
-      },
-    })
-
-    await auditar(tx, {
-      entidade: 'Item',
-      entidadeId: item.id,
-      acao: dados.aprovar ? 'revisao_aprovada' : 'revisao_recusada',
-      antes,
-      // QUAIS campos mudaram e SE o título mudou — nunca o que está escrito.
-      depois: {
-        categoriaId: categoria.id,
-        status: item.status,
-        tituloEditado: dados.titulo.trim() !== revisao.item.titulo.trim(),
-        camposAlterados: camposAlterados(payloadAnterior.campos, payloadFinal.campos),
-      },
-      usuario: ator.colaboradorId,
-      correlacaoId,
-    })
-
-    // O N que a IA propôs é só uma sugestão (AT-06). Quando o operador percebe
-    // que um item de lista ainda escondia mais gente — ex.: "e mais 2 ligantes"
-    // no rodapé —, ele registra a carga real aqui em vez de o sistema ficar
-    // pequeno pra sempre. Cada item extra nasce já `aprovado`: um humano acabou
-    // de olhar para ele, não faz sentido mandar pra fila de novo.
-    const itensExtrasCriados: string[] = []
-    if (dados.aprovar && dados.itensExtras.length > 0) {
-      // `(emailId, sequencia)` é único no banco. `revisao.item.sequencia + 1`
-      // colide na hora — é exatamente a posição do PRÓXIMO irmão que a IA já
-      // criou no mesmo desdobramento. A sequência real precisa vir do maior
-      // valor já usado pelo e-mail, não da posição do item sendo revisado.
-      //
-      // Só que isso vale para item VINDO DE E-MAIL. Com `emailId` nulo — que
-      // significa "origem manual" no resto do sistema — a mesma consulta
-      // varreria todos os itens manuais já criados, que não têm parentesco
-      // nenhum entre si, e devolveria uma sequência sem sentido. Pior: em SQL,
-      // `NULL` é distinto de `NULL` num índice único, então a constraint não
-      // apanharia a colisão e o erro passaria calado. Para esses, a sequência
-      // se conta a partir do próprio item de origem.
-      let proximaSequencia = revisao.item.sequencia + 1
-
-      if (revisao.item.emailId) {
-        const maiorSequencia = await tx.item.aggregate({
-          where: { emailId: revisao.item.emailId },
-          _max: { sequencia: true },
-        })
-        proximaSequencia = (maiorSequencia._max.sequencia ?? revisao.item.sequencia) + 1
-      }
-
-      for (const extra of dados.itensExtras) {
-        const criado = await tx.item.create({
-          data: {
-            emailId: revisao.item.emailId,
-            categoriaId: categoria.id,
-            // HERDA A LIGA DO ITEM DE ORIGEM.
-            //
-            // Sem isto, o desdobramento — que é EXATAMENTE o caso do `A4`,
-            // "um e-mail lista trinta ligantes" — criava trinta itens com
-            // `ligaId` nulo. Cada um virava um lote de um só (é o que
-            // `agruparPorLiga` faz com item sem liga), a liga era espalhada
-            // entre a equipe inteira, e o agrupamento que o operador acabara
-            // de justificar na tela deixava de valer justamente para os itens
-            // que ele criou.
-            //
-            // O item extra é o mesmo trabalho da mesma liga: a única resposta
-            // correta é a liga do item de origem.
-            ligaId: revisao.item.ligaId,
-            ...chaveDeBusca(extra.campos),
-            sequencia: proximaSequencia,
-            titulo: extra.titulo,
-            payload: serializar({
-              campos: extra.campos,
-              camposAusentes: [],
-              ligaMencionada: payloadAnterior.ligaMencionada,
-              observacao: null,
-              revisadoPorHumano: true,
-            }),
-            confianca: 1,
-            status: 'aprovado',
-          },
-        })
-        itensExtrasCriados.push(criado.id)
-        proximaSequencia += 1
-
-        await auditar(tx, {
-          entidade: 'Item',
-          entidadeId: criado.id,
-          acao: 'item_criado_por_divisao_de_revisao',
-          depois: { categoriaId: categoria.id, origemRevisaoId: dados.revisaoId },
-          usuario: ator.colaboradorId,
-          correlacaoId,
-        })
-      }
-    }
-
-    return { itemId: item.id, itensExtrasCriados }
+    return resolverTravada(tx, dados, ator, correlacaoId)
   })
+}
+
+/**
+ * O miolo de `resolver`, com a revisão JÁ TRAVADA por quem chama.
+ *
+ * Separado para o cartão do e-mail (`resolverEmailDaRevisao`) decidir N
+ * revisões com exatamente a mesma escrita, a mesma trilha e a mesma medida de
+ * acerto da IA que a decisão avulsa — duas cópias desta função divergiriam no
+ * primeiro conserto feito só numa delas.
+ */
+async function resolverTravada(
+  tx: Transacao,
+  dados: ResolucaoRevisao,
+  ator: Ator,
+  correlacaoId: string,
+): Promise<{ itemId: string; itensExtrasCriados: string[] }> {
+  const revisao = await tx.revisao.findUnique({
+    where: { id: dados.revisaoId },
+    include: { item: true },
+  })
+
+  if (!revisao) throw new ErroDeNegocio('Esta revisão não foi encontrada. Atualize a tela.')
+  if (revisao.resolvidoEm) throw new ErroDeNegocio('Esta revisão já foi resolvida. Atualize a tela para ver a próxima.')
+
+  await exigirColaborador(tx, ator.colaboradorId)
+
+  const categoria = await tx.categoria.findUnique({
+    where: { codigo: dados.categoriaCodigo },
+    select: { id: true, ativa: true },
+  })
+  if (!categoria) throw new ErroDeNegocio(`Categoria "${dados.categoriaCodigo}" não existe.`)
+  // Categoria desativada não entra em rodada nem no painel (achado C-23): o
+  // item aprovado ali sumiria da operação sem erro. Mesma recusa do registro
+  // manual (`conferirDestino`).
+  if (!categoria.ativa) {
+    throw new ErroDeNegocio(`A categoria "${dados.categoriaCodigo}" está desativada. Escolha outra.`)
+  }
+
+  // Sem título: o que a IA extraiu pode ter nome de associado, e a trilha
+  // não tem prazo (`A23(d)`).
+  const antes = {
+    categoriaId: revisao.item.categoriaId,
+    status: revisao.item.status,
+  }
+
+  // MESCLA, não sobrescreve.
+  //
+  // Gravar `{ campos: dados.campos }` apagava tudo que a IA extraiu — nome,
+  // CPF, CRM, campos ausentes, liga mencionada. Como a tela envia os campos
+  // vazios quando o operador não mexe neles, aprovar uma revisão deixava o
+  // item com MENOS informação do que antes de ser revisado, e o dataset de
+  // melhoria nascia vazio justamente na dimensão que mais importa.
+  const payloadAnterior = payloadGravado(revisao.item.id, revisao.item.payload)
+  const payloadFinal = {
+    ...payloadAnterior,
+    campos: { ...payloadAnterior.campos, ...dados.campos },
+    revisadoPorHumano: true,
+  }
+
+  const item = await tx.item.update({
+    where: { id: revisao.itemId },
+    data: {
+      categoriaId: categoria.id,
+      titulo: dados.titulo,
+      payload: serializar(payloadFinal),
+      // A chave vem dos campos FINAIS: a pessoa pode ter corrigido ou trocado
+      // o CPF, e a chave antiga não pode sobreviver a isso (`A23(b)`).
+      ...chaveDeBusca(payloadFinal.campos),
+      // Aprovado por humano entra na próxima rodada. Recusado sai da fila
+      // sem sumir do banco — cancelado é estado, não exclusão.
+      status: dados.aprovar ? 'aprovado' : 'cancelado',
+      // Carimba QUANDO saiu. Sem isto, um cancelamento feito hoje mudaria
+      // retroativamente a pendência do mês passado no painel: o número
+      // mudaria sozinho entre duas consultas, e a comparação com a planilha
+      // deixaria de significar coisa alguma.
+      canceladoEm: dados.aprovar ? null : new Date(),
+    },
+  })
+
+  await tx.revisao.update({
+    where: { id: dados.revisaoId },
+    data: {
+      valorFinal: serializar({
+        categoriaCodigo: dados.categoriaCodigo,
+        titulo: dados.titulo,
+        campos: dados.campos,
+        aprovado: dados.aprovar,
+        itensExtras: dados.itensExtras.length,
+      }),
+      ...acertoDaRevisao(revisao.id, revisao.sugestaoIa, {
+        categoriaCodigo: dados.categoriaCodigo,
+        titulo: dados.titulo,
+        campos: dados.campos,
+        aprovado: dados.aprovar,
+        itensExtras: dados.itensExtras.length,
+      }),
+      resolvidoPor: ator.colaboradorId,
+      resolvidoEm: new Date(),
+    },
+  })
+
+  await auditar(tx, {
+    entidade: 'Item',
+    entidadeId: item.id,
+    acao: dados.aprovar ? 'revisao_aprovada' : 'revisao_recusada',
+    antes,
+    // QUAIS campos mudaram e SE o título mudou — nunca o que está escrito.
+    depois: {
+      categoriaId: categoria.id,
+      status: item.status,
+      tituloEditado: dados.titulo.trim() !== revisao.item.titulo.trim(),
+      camposAlterados: camposAlterados(payloadAnterior.campos, payloadFinal.campos),
+    },
+    usuario: ator.colaboradorId,
+    correlacaoId,
+  })
+
+  // O N que a IA propôs é só uma sugestão (AT-06). Quando o operador percebe
+  // que um item de lista ainda escondia mais gente — ex.: "e mais 2 ligantes"
+  // no rodapé —, ele registra a carga real aqui em vez de o sistema ficar
+  // pequeno pra sempre. Cada item extra nasce já `aprovado`: um humano acabou
+  // de olhar para ele, não faz sentido mandar pra fila de novo.
+  const itensExtrasCriados: string[] = []
+  if (dados.aprovar && dados.itensExtras.length > 0) {
+    // `(emailId, sequencia)` é único no banco. `revisao.item.sequencia + 1`
+    // colide na hora — é exatamente a posição do PRÓXIMO irmão que a IA já
+    // criou no mesmo desdobramento. A sequência real precisa vir do maior
+    // valor já usado pelo e-mail, não da posição do item sendo revisado.
+    //
+    // Só que isso vale para item VINDO DE E-MAIL. Com `emailId` nulo — que
+    // significa "origem manual" no resto do sistema — a mesma consulta
+    // varreria todos os itens manuais já criados, que não têm parentesco
+    // nenhum entre si, e devolveria uma sequência sem sentido. Pior: em SQL,
+    // `NULL` é distinto de `NULL` num índice único, então a constraint não
+    // apanharia a colisão e o erro passaria calado. Para esses, a sequência
+    // se conta a partir do próprio item de origem.
+    let proximaSequencia = revisao.item.sequencia + 1
+
+    if (revisao.item.emailId) {
+      const maiorSequencia = await tx.item.aggregate({
+        where: { emailId: revisao.item.emailId },
+        _max: { sequencia: true },
+      })
+      proximaSequencia = (maiorSequencia._max.sequencia ?? revisao.item.sequencia) + 1
+    }
+
+    for (const extra of dados.itensExtras) {
+      const criado = await tx.item.create({
+        data: {
+          emailId: revisao.item.emailId,
+          categoriaId: categoria.id,
+          // HERDA A LIGA DO ITEM DE ORIGEM.
+          //
+          // Sem isto, o desdobramento — que é EXATAMENTE o caso do `A4`,
+          // "um e-mail lista trinta ligantes" — criava trinta itens com
+          // `ligaId` nulo. Cada um virava um lote de um só (é o que
+          // `agruparPorLiga` faz com item sem liga), a liga era espalhada
+          // entre a equipe inteira, e o agrupamento que o operador acabara
+          // de justificar na tela deixava de valer justamente para os itens
+          // que ele criou.
+          //
+          // O item extra é o mesmo trabalho da mesma liga: a única resposta
+          // correta é a liga do item de origem.
+          ligaId: revisao.item.ligaId,
+          ...chaveDeBusca(extra.campos),
+          sequencia: proximaSequencia,
+          titulo: extra.titulo,
+          payload: serializar({
+            campos: extra.campos,
+            camposAusentes: [],
+            ligaMencionada: payloadAnterior.ligaMencionada,
+            observacao: null,
+            revisadoPorHumano: true,
+          }),
+          confianca: 1,
+          status: 'aprovado',
+        },
+      })
+      itensExtrasCriados.push(criado.id)
+      proximaSequencia += 1
+
+      await auditar(tx, {
+        entidade: 'Item',
+        entidadeId: criado.id,
+        acao: 'item_criado_por_divisao_de_revisao',
+        depois: { categoriaId: categoria.id, origemRevisaoId: dados.revisaoId },
+        usuario: ator.colaboradorId,
+        correlacaoId,
+      })
+    }
+  }
+
+  return { itemId: item.id, itensExtrasCriados }
+}
+
+/**
+ * O cartão do e-mail na Revisão: N decisões, tomadas de uma vez (`A69`, 1A).
+ *
+ * ═══ POR QUE EXISTE ═══
+ *
+ * Uma lista de ligantes vira N itens, e cada um ia para a Revisão com o
+ * formulário inteiro. A decisão real é uma só — "estes N nomes são os que o
+ * e-mail pede?" —, e agora ela é tomada assim: tirar quem não é, corrigir o
+ * nome, acrescentar quem a IA não separou, e aprovar. No banco continua sendo
+ * revisão a revisão, por `resolverTravada`: mesma escrita, mesma trilha, mesma
+ * medida de acerto da IA. A diferença é só a correlação, que é uma para o
+ * e-mail inteiro.
+ *
+ * ═══ TUDO OU NADA ═══
+ *
+ * As revisões pendentes do e-mail são travadas NUMA consulta, em ordem de id
+ * (ordem fixa: duas pessoas no mesmo e-mail esperam uma pela outra em vez de
+ * se travarem). O conjunto pedido tem de ser IGUAL ao conjunto travado: faltou
+ * uma, sobrou uma de outro e-mail, alguém resolveu uma enquanto a tela estava
+ * aberta — nada é decidido e a pessoa atualiza. Decidir "os outros dois" de um
+ * cartão que mostrava três seria decidir sobre uma lista que ninguém viu.
+ *
+ * ═══ O QUE CONTINUA ITEM A ITEM ═══
+ *
+ * E-mail marcado como suspeito, e qualquer revisão com motivo fora de
+ * `MOTIVOS_DECIDIDOS_POR_EMAIL`. A tela nem oferece o cartão nesses casos;
+ * a recusa aqui é para quem chamar a rota sem a tela.
+ */
+export async function resolverEmailDaRevisao(
+  banco: Banco,
+  entrada: unknown,
+  ator: Ator,
+): Promise<{ aprovados: number; descartados: number; criados: number }> {
+  exigirPapel(ator, 'resolver revisão', 'operador', 'gestor')
+  const dados = ResolucaoDoEmailSchema.parse(entrada)
+  const aprovados = dados.revisoes.filter((linha) => linha.aprovar).length
+  if (dados.novos.length > 0 && aprovados === 0) {
+    throw new ErroDeNegocio('Para acrescentar alguém, aprove pelo menos um item do e-mail.')
+  }
+  const correlacaoId = novaCorrelacao()
+
+  // O prazo padrão do Prisma (5 s) não cabe numa lista longa: cada revisão é
+  // um punhado de escritas. Mesmo prazo de `concluirDoMesmoEmail`.
+  return transacaoComNovaTentativa(
+    banco,
+    async (tx) => {
+      const travadas = await tx.$queryRaw<{ id: string; motivo: string; emailSuspeito: number | boolean }[]>`
+        SELECT r.id AS id, r.motivo AS motivo, e.conteudoSuspeito AS emailSuspeito
+        FROM \`Revisao\` r
+        JOIN \`Item\` i ON i.id = r.itemId
+        JOIN \`Email\` e ON e.id = i.emailId
+        WHERE i.emailId = ${dados.emailId} AND r.resolvidoEm IS NULL
+        ORDER BY r.id
+        FOR UPDATE`
+
+      const pedidas = new Set(dados.revisoes.map((linha) => linha.revisaoId))
+      const conjuntoBate =
+        travadas.length === pedidas.size && travadas.every((travada) => pedidas.has(travada.id))
+      if (!conjuntoBate) {
+        throw new ErroDeNegocio(
+          'A lista deste e-mail mudou desde que você abriu a tela. Nada foi decidido: atualize e confira de novo.',
+        )
+      }
+      // `tinyint(1)` volta como número no SQL cru.
+      const suspeito = travadas.some((travada) => Boolean(travada.emailSuspeito))
+      const foraDoCartao = travadas.some(
+        (travada) => !(MOTIVOS_DECIDIDOS_POR_EMAIL as readonly string[]).includes(travada.motivo),
+      )
+      if (suspeito || foraDoCartao) {
+        throw new ErroDeNegocio('Este e-mail precisa ser decidido item a item. Nada foi decidido.')
+      }
+
+      const itens = await tx.revisao.findMany({
+        where: { id: { in: [...pedidas] } },
+        select: { id: true, item: { select: { categoria: { select: { codigo: true } } } } },
+      })
+      const categoriaDe = new Map(itens.map((linha) => [linha.id, linha.item.categoria.codigo]))
+
+      // Os acrescentados vão como "itens extras" da PRIMEIRA aprovada: herdam
+      // dela categoria e liga, exatamente como na divisão de uma revisão avulsa.
+      const primeiraAprovada = dados.revisoes.find((linha) => linha.aprovar)?.revisaoId
+      let criados = 0
+      for (const linha of [...dados.revisoes].sort((a, b) => (a.revisaoId < b.revisaoId ? -1 : 1))) {
+        const categoria = CategoriaClassificavelSchema.safeParse(categoriaDe.get(linha.revisaoId))
+        if (!categoria.success) {
+          throw new ErroDeNegocio('Este e-mail precisa ser decidido item a item. Nada foi decidido.')
+        }
+        const feito = await resolverTravada(
+          tx,
+          {
+            revisaoId: linha.revisaoId,
+            categoriaCodigo: categoria.data,
+            titulo: linha.titulo,
+            campos: linha.campos,
+            aprovar: linha.aprovar,
+            itensExtras: linha.revisaoId === primeiraAprovada ? dados.novos : [],
+          },
+          ator,
+          correlacaoId,
+        )
+        criados += feito.itensExtrasCriados.length
+      }
+
+      return { aprovados, descartados: dados.revisoes.length - aprovados, criados }
+    },
+    20_000,
+  )
 }
 
 /**

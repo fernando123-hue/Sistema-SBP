@@ -4,7 +4,13 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 01/10/2026 — MINHA FILA EM LISTA E DETALHE (`A69` 3A + 3B) (este bloco vence os de baixo)
+> ### 01/10/2026 — UM CARTÃO POR E-MAIL NA REVISÃO (`A69` 1A) (este bloco vence os de baixo)
+>
+> - **O que entrou:** na Revisão, as revisões de um e-mail de lista viram um cartão com a lista de nomes: tirar, corrigir, acrescentar e "Aprovar os N" (dois toques, tudo ou nada). E-mail com alerta ou valor para conferir continua item a item. Decisões em `AT-57`. Nível 3.
+> - **3A+3B mesclado no #165.** O aviso ao TI e ao encarregado de dados sobre CPF e matrícula na tela de quem executa (`A69`) é **tarefa do dono**; o repositório só registra.
+> - **Próximo do `A69`:** 4A, depois 5A+5B, um PR cada.
+>
+> ### 01/10/2026 — MINHA FILA EM LISTA E DETALHE (`A69` 3A + 3B) MESCLADO NO #165
 >
 > - **O que entrou:** na Minha fila, os itens do mesmo e-mail viram um cartão com "Concluir os N" (dois toques, tudo ou nada) e "Ver um por um"; cada item de e-mail tem "Ver dados", com o que a IA leu e um "Copiar" por campo. Decisões em `AT-56`. Nível 3.
 > - **Próximo do `A69`:** 1A (um cartão por e-mail na Revisão), 4A e 5A+5B, um PR cada.

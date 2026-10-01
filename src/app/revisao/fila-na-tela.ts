@@ -1,4 +1,5 @@
 import { CAMPO_DA_LIGA, ROTULO_DO_CAMPO_DA_LIGA } from '../../core/conferencia-da-extracao'
+import { MOTIVOS_DECIDIDOS_POR_EMAIL } from '../../core/esquemas'
 import { chaveDaLiga } from '../../core/ligas'
 
 /**
@@ -22,6 +23,18 @@ export function depoisDeResolver<T extends { revisaoId: string }>(
   if (restantes.length === itens.length) return { itens: [...itens], total, recarregar: false }
 
   const novoTotal = Math.max(0, total - 1)
+  return { itens: restantes, total: novoTotal, recarregar: restantes.length === 0 && novoTotal > 0 }
+}
+
+/** O mesmo, para as N revisões de um e-mail decididas de uma vez (`A69`, 1A). */
+export function depoisDeResolverVarias<T extends { revisaoId: string }>(
+  itens: readonly T[],
+  total: number,
+  revisaoIds: readonly string[],
+): { itens: T[]; total: number; recarregar: boolean } {
+  const saem = new Set(revisaoIds)
+  const restantes = itens.filter((linha) => !saem.has(linha.revisaoId))
+  const novoTotal = Math.max(0, total - (itens.length - restantes.length))
   return { itens: restantes, total: novoTotal, recarregar: restantes.length === 0 && novoTotal > 0 }
 }
 
@@ -143,4 +156,56 @@ export function partesDoCorpo(
     marcado: corpo.slice(trecho.inicio, trecho.fim),
     depois: corpo.slice(trecho.fim),
   }
+}
+
+/**
+ * Um bloco da lista: uma revisão sozinha, ou o cartão de um e-mail (`A69`, 1A).
+ */
+export type BlocoDaRevisao<T> = { tipo: 'item'; item: T } | { tipo: 'email'; emailId: string; itens: T[] }
+
+/**
+ * Junta num cartão as revisões do mesmo e-mail — só quando é seguro decidir
+ * de uma vez:
+ *
+ * - a lista tem TODAS as pendentes do e-mail (`pendentesNoEmail`): "Aprovar
+ *   os 3" de um e-mail com 5 decidiria sobre nomes que ninguém viu;
+ * - são duas ou mais;
+ * - nenhum motivo pede um valor conferido ou é alerta de segurança, e o
+ *   e-mail não foi marcado como suspeito (`MOTIVOS_DECIDIDOS_POR_EMAIL`);
+ * - a pessoa não pediu "Ver um por um".
+ *
+ * O cartão fica onde a primeira revisão do e-mail aparece: a ordem da fila
+ * (menor confiança primeiro) continua valendo. O serviço confere tudo de novo.
+ */
+export function blocosDaRevisao<
+  T extends { revisaoId: string; emailId: string | null; pendentesNoEmail: number; motivo: string; emailSuspeito: boolean },
+>(itens: readonly T[], separados: ReadonlySet<string>): BlocoDaRevisao<T>[] {
+  const porEmail = new Map<string, T[]>()
+  for (const item of itens) {
+    if (item.emailId === null) continue
+    porEmail.set(item.emailId, [...(porEmail.get(item.emailId) ?? []), item])
+  }
+  const juntavel = (emailId: string, doEmail: readonly T[]) =>
+    !separados.has(emailId) &&
+    doEmail.length >= 2 &&
+    doEmail.every(
+      (item) =>
+        item.pendentesNoEmail === doEmail.length &&
+        !item.emailSuspeito &&
+        (MOTIVOS_DECIDIDOS_POR_EMAIL as readonly string[]).includes(item.motivo),
+    )
+
+  const blocos: BlocoDaRevisao<T>[] = []
+  const postos = new Set<string>()
+  for (const item of itens) {
+    const doEmail = item.emailId === null ? undefined : porEmail.get(item.emailId)
+    if (item.emailId !== null && doEmail && juntavel(item.emailId, doEmail)) {
+      if (postos.has(item.emailId)) continue
+      postos.add(item.emailId)
+      blocos.push({ tipo: 'email', emailId: item.emailId, itens: doEmail })
+    } else {
+      blocos.push({ tipo: 'item', item })
+    }
+  }
+  return blocos
 }
