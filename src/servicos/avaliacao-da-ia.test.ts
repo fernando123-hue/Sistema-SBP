@@ -219,6 +219,33 @@ describe('tempo por caso e efeito da conferência (pendência 17)', () => {
     expect(resultado.medicoes[0]!.conferencia).toMatchObject({ comProblema: 1, mudamDeDestino: 0 })
   })
 
+  // Os outros gatilhos já mandam à Revisão: o problema conta, a mudança não.
+  // Sem estes, a medição poderia ignorar um gatilho da ingestão e ninguém
+  // perceberia (revisão técnica do #166).
+  it.each([
+    [
+      'conteúdo suspeito',
+      (base: Interpretacao): Interpretacao => ({ ...base, conteudoSuspeito: true }),
+    ],
+    [
+      'campo ausente',
+      (base: Interpretacao): Interpretacao => ({ ...base, itens: [{ ...base.itens[0]!, camposAusentes: ['cpf'] }] }),
+    ],
+    [
+      'desdobramento (mais de um item)',
+      (base: Interpretacao): Interpretacao => ({ ...base, itens: [base.itens[0]!, { ...base.itens[0]!, titulo: 'Outro' }] }),
+    ],
+  ])('com %s, o item com problema não conta como mudança de destino', async (_nome, ajustar) => {
+    const resultado = await avaliarInterpretacao(
+      porta(async () => ajustar(comCampos({ nome: 'Ana Maria Lima' }))),
+      [CASO_COM_CPF],
+      relogio(0, 10),
+    )
+    const conferencia = resultado.medicoes[0]!.conferencia!
+    expect(conferencia.comProblema).toBeGreaterThan(0)
+    expect(conferencia.mudamDeDestino).toBe(0)
+  })
+
   it('CPF com dígito trocado conta como cpf_invalido', async () => {
     const resultado = await avaliarInterpretacao(
       porta(async () => comCampos({ cpf: '529.982.247-26' })),
@@ -242,15 +269,21 @@ describe('tempo por caso e efeito da conferência (pendência 17)', () => {
     expect(resumirMedicoes([])).toEqual({ msMediana: 0, msMaximo: 0, msTotal: 0, itens: 0, comProblema: 0, mudamDeDestino: 0 })
   })
 
-  it('a medição não carrega texto do e-mail nem valor extraído — só números e motivos', async () => {
+  it('o resultado inteiro não carrega texto do e-mail, valor extraído nem nome de campo', async () => {
     const resultado = await avaliarInterpretacao(
-      porta(async () => comCampos({ nome: 'Ana Maria Lima' })),
+      porta(async () => comCampos({ apelidoSintetico: 'Ana Maria Lima', cpf: '529.982.247-25' })),
       [CASO_COM_CPF],
       relogio(0, 10),
     )
-    const serializado = JSON.stringify(resultado.medicoes)
+    // O resultado inteiro, e não só `medicoes`: é tudo isto que o `--json`
+    // imprime (revisão de segurança do #166).
+    const serializado = JSON.stringify(resultado)
+    expect(resultado.medicoes[0]!.conferencia?.comProblema).toBe(1)
     expect(serializado).not.toContain('Ana')
+    expect(serializado).not.toContain('Lima')
     expect(serializado).not.toContain('529')
+    expect(serializado).not.toContain('apelidoSintetico')
+    expect(serializado).not.toContain('Sou ')
   })
 })
 

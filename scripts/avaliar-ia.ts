@@ -74,6 +74,9 @@ function imprimir(resultado: ResultadoDaAvaliacao): void {
     // Falha costuma ser o fornecedor (503, tempo esgotado), não a leitura.
     // Comparar esta nota com a de outra rodada misturaria as duas coisas.
     linha(`ATENÇÃO: ${resumo.falhas} caso(s) sem resposta — a nota geral não é comparável; rode de novo.`)
+    // Também o tempo (o caso que falhou conta as duas tentativas) e a
+    // conferência (os itens dele ficam fora da conta) — revisão técnica do #166.
+    linha('         O tempo e a conferência também mudam com as falhas: compare só rodadas com as mesmas falhas.')
   }
 }
 

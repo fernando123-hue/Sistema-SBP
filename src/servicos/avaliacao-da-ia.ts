@@ -11,7 +11,7 @@ import { limiarConfiancaSemente } from '../core/config'
 import type { MotivoDaConferencia } from '../core/conferencia-da-extracao'
 import { InterpretacaoSchema, type EmailBruto, type Interpretacao } from '../core/esquemas'
 import { FalhaDeInterpretacao, type AiPort } from '../ports/ia'
-import { conferirItens, decidirRevisao } from './ingestao'
+import { conferirItens, motivoDeRevisaoDoItem } from './ingestao'
 
 /**
  * Roda um `AiPort` qualquer contra o gabarito e devolve a nota.
@@ -42,6 +42,9 @@ export interface ResultadoDaAvaliacao {
  *
  * Só números e motivos: nenhum valor extraído, nenhum nome de campo, nenhum
  * texto do e-mail.
+ *
+ * O tempo é um PISO do que a ingestão gasta por e-mail: não inclui a segunda
+ * opinião do classificador nem a gravação, e os e-mails do gabarito são curtos.
  */
 export interface MedicaoDoCaso {
   id: string
@@ -157,31 +160,29 @@ export function resumirMedicoes(medicoes: readonly MedicaoDoCaso[]): ResumoDasMe
 
 /**
  * O destino de cada item com e sem a conferência, pela mesma regra da
- * ingestão (`decidirRevisao`, `conferirItens`). O limiar é o de nascença da
+ * ingestão (`motivoDeRevisaoDoItem`, `conferirItens`). O limiar é o de nascença da
  * categoria: o gabarito roda sem banco, e o operador ainda não ajustou nenhum.
  * O gabarito não tem anexo, então "anexo rejeitado" é sempre falso aqui.
  */
 function efeitoDaConferencia(email: EmailBruto, interpretacao: Interpretacao): EfeitoDaConferencia {
   const conferencias = conferirItens(email, interpretacao)
+  // Mesma guarda da ingestão: item sem conferência contaria como "sem
+  // problema" em silêncio (invariante 7, revisão técnica do #166).
+  if (conferencias.length !== interpretacao.itens.length) {
+    throw new Error('a conferência da extração não corresponde aos itens da interpretação')
+  }
   const motivos: Partial<Record<MotivoDaConferencia, number>> = {}
   let comProblema = 0
   let mudamDeDestino = 0
   for (const [posicao, item] of interpretacao.itens.entries()) {
-    const problema = conferencias[posicao]?.problema ?? null
+    const problema = conferencias[posicao]!.problema
     if (!problema) continue
     comProblema += 1
     motivos[problema.motivo] = (motivos[problema.motivo] ?? 0) + 1
-    const destino = (motivo: MotivoDaConferencia | null) =>
-      decidirRevisao(
-        item.confianca,
-        limiarConfiancaSemente(item.categoriaCodigo),
-        item.camposAusentes.length > 0,
-        interpretacao.conteudoSuspeito,
-        false,
-        interpretacao.itens.length > 1,
-        motivo,
-      )
-    if (destino(null) === null && destino(problema.motivo) !== null) mudamDeDestino += 1
+    const limiar = limiarConfiancaSemente(item.categoriaCodigo)
+    const semConferencia = motivoDeRevisaoDoItem(item, limiar, interpretacao, 0, null)
+    const comConferencia = motivoDeRevisaoDoItem(item, limiar, interpretacao, 0, problema.motivo)
+    if (semConferencia === null && comConferencia !== null) mudamDeDestino += 1
   }
   return { itens: interpretacao.itens.length, comProblema, mudamDeDestino, motivos }
 }
