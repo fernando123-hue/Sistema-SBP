@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { parseEnv } from 'node:util'
 
 import { z } from 'zod'
 
@@ -71,8 +72,11 @@ const AmbienteSchema = z.object({
    * separada de `IA_ADAPTER` porque é OUTRO fornecedor, com outra decisão de
    * dado — e a trava `CLASSIFICADOR_PARA_DADO_REAL` abaixo é por fornecedor.
    */
-  CLASSIFICADOR_ADAPTER: z.enum(['nenhum', 'mock', 'typesafe']).default('nenhum'),
-  /** Vazio = o padrão do fornecedor (`jev-latest` na TypeSafe). */
+  CLASSIFICADOR_ADAPTER: z.enum(['nenhum', 'mock', 'typesafe', 'local']).default('nenhum'),
+  /**
+   * Vazio = o padrão do fornecedor (`jev-latest` na TypeSafe). Com `local` é
+   * obrigatório: cada servidor serve o modelo que baixaram nele.
+   */
   CLASSIFICADOR_MODELO: z
     .string()
     .default('')
@@ -311,10 +315,14 @@ export function ambiente(): Ambiente {
   // publicado passava. Agora só DESENVOLVIMENTO libera, e a variável não pode
   // morar num arquivo `.env`: quem liga é o `npm run dev:local`, só para o
   // processo dele.
+  //
+  // E o desenvolvimento tem de ser DECLARADO (pendência 47): ver
+  // `motivoDeNaoSerDesenvolvimento`.
   if (resultado.data.ACESSO_LOCAL_SEM_SENHA) {
-    if (resultado.data.NODE_ENV !== 'development') {
+    const motivo = motivoDeNaoSerDesenvolvimento()
+    if (motivo !== null) {
       throw new Error(
-        `ACESSO_LOCAL_SEM_SENHA=1 com NODE_ENV=${resultado.data.NODE_ENV}. O acesso sem senha existe só para ` +
+        `ACESSO_LOCAL_SEM_SENHA=1 com ${motivo}. O acesso sem senha existe só para ` +
           'desenvolvimento local — desligue a variável antes de subir o sistema.',
       )
     }
@@ -341,9 +349,13 @@ export function ambiente(): Ambiente {
   // "desligado". É conferido na partida, não depois: código que escreva em
   // `process.env` em tempo de execução já está dentro do processo, e essa
   // barreira não é esta (revisão de segurança do #157).
-  if (process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0' && resultado.data.NODE_ENV !== 'development') {
+  //
+  // O desenvolvimento tem de ser DECLARADO (pendência 47): ver
+  // `motivoDeNaoSerDesenvolvimento`.
+  const motivoTls = process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0' ? motivoDeNaoSerDesenvolvimento() : null
+  if (motivoTls !== null) {
     throw new Error(
-      `NODE_TLS_REJECT_UNAUTHORIZED=0 com NODE_ENV=${resultado.data.NODE_ENV} desliga a verificação de TLS de ` +
+      `NODE_TLS_REJECT_UNAUTHORIZED=0 com ${motivoTls} desliga a verificação de TLS de ` +
         'todo o processo, e o texto dos e-mails ficaria legível para quem estiver no caminho. Apague a variável; ' +
         'se a rede da empresa inspeciona TLS, aponte NODE_EXTRA_CA_CERTS para o certificado dela.',
     )
@@ -397,6 +409,25 @@ export function ambiente(): Ambiente {
       throw new Error(
         'IA_ADAPTER="local" exige IA_MODELO: cada servidor local serve o modelo que baixaram nele, ' +
           'e não há padrão que valha para todos.',
+      )
+    }
+    const recusa = motivoDeEnderecoLocalInvalido(resultado.data.IA_LOCAL_URL)
+    if (recusa) throw new Error(`IA_LOCAL_URL ${recusa}`)
+  }
+
+  // O classificador local (`A70`) fala com o MESMO servidor da IA local, e
+  // tem as mesmas exigências dela, cobradas na partida.
+  if (resultado.data.CLASSIFICADOR_ADAPTER === 'local') {
+    if (!resultado.data.IA_LOCAL_URL) {
+      throw new Error(
+        'CLASSIFICADOR_ADAPTER="local" exige IA_LOCAL_URL: o endereço do servidor de modelo compatível com OpenAI ' +
+          '(por exemplo http://127.0.0.1:11434/v1).',
+      )
+    }
+    if (!resultado.data.CLASSIFICADOR_MODELO) {
+      throw new Error(
+        'CLASSIFICADOR_ADAPTER="local" exige CLASSIFICADOR_MODELO: cada servidor local serve o modelo que ' +
+          'baixaram nele, e não há padrão que valha para todos.',
       )
     }
     const recusa = motivoDeEnderecoLocalInvalido(resultado.data.IA_LOCAL_URL)
@@ -573,6 +604,11 @@ const CLASSIFICADOR_PARA_DADO_REAL = {
   nenhum: true,
   mock: false,
   typesafe: false,
+  // Nasce `false` como `IA_PARA_DADO_REAL.local` (`A56 (e)`, `A70`): o texto
+  // não sai da casa, mas o classificador local só opina sobre e-mail de
+  // associado depois de medido no gabarito (`npm run classificador:avaliar`)
+  // e de o dono decidir. Trocar esta linha é a decisão.
+  local: false,
 } as const satisfies Record<z.infer<typeof AmbienteSchema>['CLASSIFICADOR_ADAPTER'], boolean>
 
 /**
@@ -589,12 +625,14 @@ const CLASSIFICADOR_PARA_DADO_REAL = {
  * porque resolvê-lo aqui seria consulta de DNS na partida — e o mesmo nome
  * pode resolver para outra coisa depois.
  */
-function motivoDeEnderecoLocalInvalido(valor: string): string | null {
+export function motivoDeEnderecoLocalInvalido(valor: string): string | null {
   let url: URL
   try {
     url = new URL(valor)
   } catch {
-    return `não é um endereço válido: "${valor}".`
+    // Sem repetir o valor: um endereço malformado ainda pode trazer usuário e
+    // senha embutidos (revisão de segurança do #160).
+    return 'não é um endereço válido.'
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return `precisa ser http ou https (recebido "${url.protocol}").`
@@ -607,10 +645,18 @@ function motivoDeEnderecoLocalInvalido(valor: string): string | null {
 
   // `[::1]` chega com os colchetes em `hostname`.
   const hospedeiro = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
-  if (hospedeiro === 'localhost' || hospedeiro === '::1' || /^127\./.test(hospedeiro)) return null
-  if (/^10\./.test(hospedeiro)) return null
-  if (/^192\.168\./.test(hospedeiro)) return null
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(hospedeiro)) return null
+  if (hospedeiro === 'localhost' || hospedeiro === '::1') return null
+  // As faixas IPv4 valem só para ENDEREÇO NUMÉRICO. Testar o começo do nome
+  // deixava passar `127.evil.example` e `10.0.0.1.nip.io`, nomes que resolvem
+  // para onde o dono deles quiser (revisão de segurança do #160). O `URL` já
+  // normaliza o IPv4 (`0x7f.1` vira `127.0.0.1`), então quatro números aqui
+  // são um endereço, não um nome.
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hospedeiro)) {
+    if (/^127\./.test(hospedeiro)) return null
+    if (/^10\./.test(hospedeiro)) return null
+    if (/^192\.168\./.test(hospedeiro)) return null
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(hospedeiro)) return null
+  }
   // `fc00::/7` — endereço local único do IPv6.
   //
   // OS QUATRO DÍGITOS SÃO A REGRA, não zero à esquerda esquecido. A faixa é
@@ -655,11 +701,19 @@ const ARQUIVOS_ENV = [
 // enxergar o mesmo que o carregador (revisão do PR).
 const LIGADO_EM_ARQUIVO = /^[ \t]*(?:export[ \t]+)?ACESSO_LOCAL_SEM_SENHA[ \t]*=[ \t]*["']?1["']?[ \t]*$/m
 
+const DESENVOLVIMENTO_EM_ARQUIVO = /^[ \t]*(?:export[ \t]+)?NODE_ENV[ \t]*=[ \t]*["']?development["']?[ \t]*$/m
+
 /**
- * O primeiro arquivo `.env*` da pasta que liga o acesso sem senha, ou `null`.
- * Linha comentada ou com outro valor não conta.
+ * O primeiro arquivo `.env*` da pasta em que `chave` vale `valor`, ou `null`.
+ *
+ * Duas leituras, e basta uma achar: o `parseEnv` do próprio Node (o parser do
+ * `process.loadEnvFile`), que enxerga exatamente o que o carregador vai pôr no
+ * processo — inclusive com comentário no fim da linha, que a regex sozinha
+ * deixava passar (segunda revisão técnica do PR da pendência 47) —, e a regex,
+ * mais larga em formas que o Node de hoje não carrega mas outro carregador
+ * (`dotenv`, o do Next) poderia. Errar para o lado de recusar é o lado certo.
  */
-export function acessoLocalEmArquivoEnv(pasta: string): string | null {
+function primeiroArquivoEnvCom(pasta: string, padrao: RegExp, chave: string, valor: string): string | null {
   for (const arquivo of ARQUIVOS_ENV) {
     let conteudo: string
     try {
@@ -667,7 +721,62 @@ export function acessoLocalEmArquivoEnv(pasta: string): string | null {
     } catch {
       continue // arquivo que não existe não liga nada
     }
-    if (LIGADO_EM_ARQUIVO.test(conteudo)) return arquivo
+    if (padrao.test(conteudo) || valorNoParserDoNode(conteudo, chave) === valor) return arquivo
+  }
+  return null
+}
+
+function valorNoParserDoNode(conteudo: string, chave: string): string | undefined {
+  try {
+    return parseEnv(conteudo)[chave]
+  } catch {
+    return undefined // arquivo que o Node não lê também não carrega nada; a regex segue valendo
+  }
+}
+
+/**
+ * O primeiro arquivo `.env*` da pasta que liga o acesso sem senha, ou `null`.
+ * Linha comentada ou com outro valor não conta.
+ */
+export function acessoLocalEmArquivoEnv(pasta: string): string | null {
+  return primeiroArquivoEnvCom(pasta, LIGADO_EM_ARQUIVO, 'ACESSO_LOCAL_SEM_SENHA', '1')
+}
+
+/**
+ * Por que este processo NÃO conta como desenvolvimento declarado, ou `null`
+ * se conta. É o único sinal que libera as travas de desenvolvimento (acesso
+ * sem senha, TLS desligado) — pendência 47.
+ *
+ * Três coisas, todas achadas nas revisões do PR da pendência 47:
+ *
+ * - **Ausência não é desenvolvimento.** O schema completa `NODE_ENV` ausente
+ *   com `development`; um script por `tsx` num cron (`db:expurgar`,
+ *   `ia:avaliar`) passaria com a variável herdada da máquina. Por isso a
+ *   leitura é de `process.env`, não do schema.
+ * - **Escrito em `.env*` não é declarado.** `process.loadEnvFile` preenche o
+ *   `NODE_ENV` que falta, e um `.env` com `NODE_ENV=development` faria o
+ *   mesmo cron passar. Vale só o exportado no comando, como faz o `dev:local`.
+ * - **Dentro do servidor do Next, vale o modo do BUILD, não o do processo.**
+ *   O Next troca `process.env['NODE_ENV']` (com colchetes também) pelo valor
+ *   do build: conferido em `.next/server`, onde esta comparação vira
+ *   constante. Num `next build` + `next start`, as travas recusam sempre,
+ *   mesmo com `NODE_ENV` herdado como `development` — mais duro que o C-12
+ *   pedia, e de propósito. Só nos scripts por `tsx` e no vitest a leitura é a
+ *   do processo.
+ *
+ * LIMITE CONHECIDO: só os arquivos de `ARQUIVOS_ENV` na pasta atual. Um
+ * `NODE_ENV=development` que chegue por `node --env-file=outro.env`,
+ * `dotenv -e` ou pela própria crontab entra no processo como declarado, e não
+ * há como distinguir. Os arquivos são relidos a cada chamada de propósito: uma
+ * edição do `.env` com o servidor de pé tem de valer na hora.
+ */
+export function motivoDeNaoSerDesenvolvimento(pasta: string = process.cwd()): string | null {
+  const nodeEnv = process.env['NODE_ENV']
+  if (nodeEnv === undefined) return 'NODE_ENV ausente'
+  if (nodeEnv !== 'development') return `NODE_ENV=${nodeEnv}`
+  const arquivo = primeiroArquivoEnvCom(pasta, DESENVOLVIMENTO_EM_ARQUIVO, 'NODE_ENV', 'development')
+  if (arquivo !== null) {
+    return `NODE_ENV=development escrito em ${arquivo} (vale só exportado no comando, como faz o npm run dev:local)`
   }
   return null
 }

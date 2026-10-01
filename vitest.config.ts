@@ -29,6 +29,13 @@ export default defineConfig({
       // Vazia, a recusa e o SDK a ignoram; o teste que a liga de propósito
       // usa `vi.stubEnv`.
       ANTHROPIC_CUSTOM_HEADERS: '',
+      // `ambiente()` recusa subir com `0` fora de desenvolvimento (pendência
+      // 37), e a suíte roda com NODE_ENV=test. Máquina atrás de proxy que
+      // exportou a variável no shell veria todo teste que lê o ambiente
+      // vermelho sem defeito. O teste da trava a liga com `vi.stubEnv`.
+      // Vazia, a verificação de TLS fica LIGADA nos testes, de propósito:
+      // atrás de proxy, o caminho é `NODE_EXTRA_CA_CERTS`, que o vitest herda.
+      NODE_TLS_REJECT_UNAUTHORIZED: '',
     },
     globalSetup: ['./src/testes/preparar-banco.ts'],
     // Uma base compartilhada por toda a suíte: arquivos de teste rodam em
