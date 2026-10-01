@@ -10,7 +10,12 @@ import { exigirAtor } from '../../../../servidor/sessao'
  * `?colaborador=` para operador e gestor remanejarem carga, aqui qualquer
  * parâmetro é RECUSADO, e não ignorado: quem tentar `?colaborador=fulano`
  * recebe 400 em vez do próprio número com cara de ser o de fulano
- * (invariante 5). Nenhuma outra rota devolve este número por pessoa.
+ * (invariante 5).
+ *
+ * O Painel de operador e gestor ainda mostra concluídos por pessoa em
+ * qualquer período, hoje inclusive (`A24`). Se isso continua é pergunta ao
+ * dono em `DECISOES.md § H.4` (revisão de segurança do #171); até a resposta,
+ * a tela da fila não diz "só você vê".
  *
  * Sem cache: é dado de uma pessoa, e um cache compartilhado o entregaria a
  * outra.

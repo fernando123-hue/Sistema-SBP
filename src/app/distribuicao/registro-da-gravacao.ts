@@ -19,9 +19,17 @@ export function registroDaGravacao(
   totalDistribuido: number,
   rodadasGravadas: number,
   hora: string,
+  /**
+   * Havia item que ficou fora: `confirmar` replaneja dentro da transação, e
+   * um plantão mudado depois da prévia pode deixar toda categoria sem
+   * ninguém elegível. "Não havia item" seria falso (revisão técnica do #171).
+   */
+  ficouItemDeFora: boolean,
 ): string {
   if (rodadasGravadas <= 0) {
-    return `Nada gravado às ${hora}: não havia item a distribuir nesta data.`
+    return ficouItemDeFora
+      ? `Nada gravado às ${hora}: nenhuma categoria pôde ser distribuída. Os itens continuam esperando; o motivo está abaixo.`
+      : `Nada gravado às ${hora}: não havia item a distribuir nesta data.`
   }
   const itens = totalDistribuido === 1 ? '1 item' : `${totalDistribuido} itens`
   const rodadas =

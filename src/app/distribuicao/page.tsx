@@ -110,9 +110,10 @@ export default function Distribuicao() {
   const [previa, setPrevia] = useState<Resumo | null>(null)
   const [confirmado, setConfirmado] = useState<Resumo | null>(null)
   /**
-   * A hora em que a confirmação voltou, no fuso da operação (`A69`, 5B). A
-   * resposta só chega depois do commit, então é a hora da gravação com folga
-   * de milissegundos.
+   * A hora em que a confirmação voltou, no fuso da operação (`A69`, 5B),
+   * pelo relógio deste computador. A resposta só chega depois do commit;
+   * a hora exata da gravação, pelo servidor, está em cada rodada
+   * (`RodadaDistribuicao.executadoEm`).
    */
   const [gravadoAs, setGravadoAs] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
@@ -423,7 +424,14 @@ export default function Distribuicao() {
           titulo={confirmado && !previa ? 'Distribuição gravada' : 'Prévia'}
           descricao={
             confirmado && !previa
-              ? registroDaGravacao(confirmado.totalDistribuido, confirmado.rodadasGravadas, gravadoAs ?? '--:--')
+              ? registroDaGravacao(
+                  confirmado.totalDistribuido,
+                  confirmado.rodadasGravadas,
+                  gravadoAs ?? '--:--',
+                  // Havia o que distribuir e nada foi gravado: plantão mudou
+                  // depois da prévia, ou cadastro inválido (revisão técnica do #171).
+                  comItens.length > 0 || confirmado.categoriasInvalidas.length > 0,
+                )
               : previa && previaCalculadaEm
                 ? `Calculada às ${previaCalculadaEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. ` +
                   'Confirmar refaz a conta com os dados deste momento: se chegou e-mail ou mudou o ' +

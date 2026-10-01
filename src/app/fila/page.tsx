@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
@@ -115,17 +115,27 @@ export default function Fila() {
    * id de ninguém (`A71`). `null` enquanto não chegou ou se a contagem falhou.
    */
   const [concluidosHoje, setConcluidosHoje] = useState<number | null>(null)
+  /**
+   * Número da última leitura pedida. Dois "Concluir" seguidos disparam duas
+   * leituras, e a resposta da primeira pode chegar depois: sem isto, o número
+   * menor e velho sobrescrevia o novo (revisão técnica do #171).
+   */
+  const leituraDoDia = useRef(0)
 
   /**
    * Relê o número do dia. Uma falha aqui não vira erro na tela: a fila é o
    * trabalho, a frase é só acompanhamento, e um aviso vermelho por causa dela
-   * assustaria sem pedir nada a ninguém. A frase some até a próxima leitura.
+   * assustaria sem pedir nada a ninguém. A frase some até a próxima leitura;
+   * o rastro da falha fica no log do servidor (`rota`) e no console.
    */
   const atualizarDia = useCallback(async () => {
+    const minha = ++leituraDoDia.current
     try {
-      setConcluidosHoje((await api.buscar<{ concluidos: number }>('/fila/hoje')).concluidos)
-    } catch {
-      setConcluidosHoje(null)
+      const { concluidos } = await api.buscar<{ concluidos: number }>('/fila/hoje')
+      if (minha === leituraDoDia.current) setConcluidosHoje(concluidos)
+    } catch (causa) {
+      console.warn('Não foi possível ler quantos itens você concluiu hoje.', causa)
+      if (minha === leituraDoDia.current) setConcluidosHoje(null)
     }
   }, [])
 
@@ -610,11 +620,12 @@ export default function Fila() {
       />
 
       {/* Texto (`<p>`), nunca campo: número do sistema não é digitável
-          (invariante 4). Só de quem está na sessão (`A71`). */}
+          (invariante 4). A rota só devolve o de quem está na sessão; a frase
+          NÃO diz "só você vê" porque o Painel de operador e gestor ainda mostra
+          concluídos por pessoa (`A24`; pergunta em `§ H.4`, revisão de
+          segurança do #171). Não prometer o que o sistema não cumpre. */}
       {fraseDoDia ? (
-        <p className="-mt-3 text-sm text-tinta-suave">
-          {fraseDoDia} Só você vê este número, e ele recomeça à meia-noite.
-        </p>
+        <p className="-mt-3 text-sm text-tinta-suave">{fraseDoDia} O número recomeça à meia-noite.</p>
       ) : null}
 
       {erro ? <Aviso>{erro}</Aviso> : null}

@@ -197,6 +197,8 @@ describe('rotas que guardam o papel sozinhas', () => {
 
     // Invariante 5: pedir o de outra pessoa é recusado, não respondido com o próprio.
     await entrarComo(base.operadorId, 'operador')
+    const daOperadora = (await (await ler()).json()) as { dados: { concluidos: number } }
+    expect(daOperadora.dados.concluidos).toBe(0)
     const alheia = await ler(`?colaborador=${base.colaboradores[0]!.id}`)
     expect(alheia.status).toBe(400)
     expect(alheia.headers.get('Cache-Control')).toBe('no-store')

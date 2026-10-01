@@ -11,7 +11,8 @@ import { concluidosHoje, concluir, concluirDoMesmoEmail } from './fila'
  * O dono decidiu: "apenas o funcionário da conta específica verá quantos ele
  * fez no dia e sempre será resetado no fim do dia". Por isso o número:
  *
- * - é do `Ator`, e de mais ninguém: a função não recebe id de pessoa;
+ * - é do `Ator`, e de mais ninguém: a função não recebe id de pessoa, e a
+ *   rota recusa qualquer parâmetro (`app/api/autorizacao-de-rotas.test.ts`);
  * - é calculado das execuções do dia de São Paulo, sem nada guardado, então
  *   "zerar" é o dia mudar;
  * - conta só conclusão: devolver ou ter o item cancelado não é trabalho feito.
@@ -124,11 +125,5 @@ describe('concluidosHoje', () => {
     await execucaoEm(base, dora.id, agora, 'concluido')
 
     expect((await concluidosHoje(banco, dora.ator, agora)).concluidos).toBe(1)
-  })
-
-  it('não recebe id de pessoa: o número de outra conta não tem caminho para sair', () => {
-    // A assinatura é a guarda (invariante 5, `A71`). Um terceiro parâmetro
-    // opcional seria o primeiro passo para "ver o de fulano".
-    expect(concluidosHoje.length).toBe(2)
   })
 })

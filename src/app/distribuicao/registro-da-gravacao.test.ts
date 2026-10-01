@@ -4,21 +4,30 @@ import { registroDaGravacao } from './registro-da-gravacao'
 
 describe('registroDaGravacao (`A69`, 5B)', () => {
   it('diz a hora, quantos itens, que nada foi digitado e que a conservação fechou', () => {
-    expect(registroDaGravacao(60, 3, '08:14')).toBe(
+    expect(registroDaGravacao(60, 3, '08:14', false)).toBe(
       'Gravada às 08:14 · 60 itens · nenhum número digitado · conservação conferida. ' +
         '3 rodadas registradas, cada uma auditável.',
     )
   })
 
   it('singular', () => {
-    expect(registroDaGravacao(1, 1, '09:00')).toBe(
+    expect(registroDaGravacao(1, 1, '09:00', false)).toBe(
       'Gravada às 09:00 · 1 item · nenhum número digitado · conservação conferida. 1 rodada registrada, auditável.',
     )
   })
 
   it('sem rodada gravada, não afirma conservação de coisa nenhuma', () => {
-    const linha = registroDaGravacao(0, 0, '10:30')
+    const linha = registroDaGravacao(0, 0, '10:30', false)
     expect(linha).toBe('Nada gravado às 10:30: não havia item a distribuir nesta data.')
+    expect(linha).not.toContain('conservação')
+  })
+
+  it('com item que ficou de fora, não diz que não havia item', () => {
+    const linha = registroDaGravacao(0, 0, '10:30', true)
+    expect(linha).toBe(
+      'Nada gravado às 10:30: nenhuma categoria pôde ser distribuída. Os itens continuam esperando; o motivo está abaixo.',
+    )
+    expect(linha).not.toContain('não havia')
     expect(linha).not.toContain('conservação')
   })
 })

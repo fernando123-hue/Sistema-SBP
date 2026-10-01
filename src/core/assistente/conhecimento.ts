@@ -186,8 +186,8 @@ export const MANUAL: readonly VerbeteDoManual[] = [
       'Os itens do mesmo e-mail, como uma lista de ligantes, aparecem juntos num cartão: "Concluir os N" conclui todos de uma vez, com o mesmo segundo toque de confirmação, ' +
       'e cada um continua contando no painel; "Ver um por um" abre os cartões de cada item, para concluir, devolver ou transferir só alguns. ' +
       'Em item que veio de e-mail, "Ver dados" mostra o que a IA leu (CPF, matrícula, e-mail) com um botão de copiar, sem precisar voltar ao Outlook. ' +
-      'Depois do primeiro item concluído no dia, o topo diz "Hoje você concluiu N": é só seu, ninguém mais vê esse número — nem a gestão —, ' +
-      'e ele recomeça à meia-noite. Não é meta nem comparação; é para você ver o dia andar.',
+      'Depois do primeiro item concluído no dia, o topo diz "Hoje você concluiu N". Ele recomeça à meia-noite. ' +
+      'Não é meta; é para você ver o dia andar.',
   },
   {
     id: 'devolver-e-transferir',
