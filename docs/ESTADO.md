@@ -1,6 +1,6 @@
 # Estado do projeto — retomada
 
-Última atualização: **30/09/2026, fim da noite — Jev próprio decidido (`A70`); Next 16.3.6 (#155).** `main` em `b570308` (#152 mesclado). **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **30/09/2026, fim da noite — Jev próprio decidido (`A70`); Next 16.3.6 (#155).** `main` em `415106c` (#154 mesclado; antes dele, #153 e #155). *(Conferido contra o GitHub em 01/10/2026: a linha dizia `b570308`.)* **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
@@ -8,7 +8,7 @@
 >
 > - **#155 mesclado:** Next 16.3.5 → 16.3.6. O `npm audit` passou a acusar falha crítica (GHSA-vcvr-r3jv-pc5j, RCE em `next/og`) e deixava a auditoria vermelha em todo PR. O código não usa `next/og`. Revisões técnica e de segurança aprovaram; ficou a pendência 46.
 > - **`A70`: o Jev próprio entra agora.** Ordem: **pendência 37 → Jev próprio → telas do `A69`**. Meta: custo zero. O plano do dono paga o agente, não as APIs: o `A63` segue valendo.
-> - **Pendência 37 pronta:** commit `daffddb` no branch local `fix/pendencia-37` (teste vermelho visto, `verificar` com 1733 testes). Vai como PR logo depois deste.
+> - ~~**Pendência 37 pronta:** commit `daffddb` no branch local `fix/pendencia-37`. Vai como PR logo depois deste.~~ **Corrigido em 01/10/2026:** o branch `fix/pendencia-37` nunca chegou ao GitHub, e a `main` não tem a trava. A pendência 37 está **em refação, PR a caminho**.
 > - **P1 do Jev próprio está com o dono:** o comando de PowerShell que confirma os *logprobs* do Ollama foi passado na conversa de 30/09. Sem a resposta dele, P2 pode ser escrito contra um servidor falso, mas não medido.
 > - **Máquina:** o container foi reiniciado às 23h; o Docker sobe com `dockerd --pidfile /tmp/dockerd-sessao.pid` (o `/var/run/docker.pid` ficou do boot anterior). A pasta antiga `/home/user/sbp-jev-harness`, que prendia o branch, foi removida com o ok do dono (os arquivos eram idênticos a `fd45b0b`).
 >
@@ -26,7 +26,7 @@
 > **1. Onde está.**
 > - `main` em `b570308`. Mesclados hoje: #150 (pendência 17), #151 (visual, parte 1) e **#152** (logotipo = arte oficial em imagem, `A66`; decisões da parte 2 do visual, `A67`).
 > - PR de docs desta parada: `A68` (segredos no gestor antes da rodada paralela), `DIRECAO.md` atualizado e esta lista.
-> - Nenhum outro PR do agente aberto. Dependabot #78 a #81 seguem sem avaliar (pendência 12).
+> - Nenhum outro PR do agente aberto. Dependabot sem avaliar: ver a pendência 12, com a lista conferida em 01/10.
 >
 > **2. O QUE FALTA PARA RODAR NA EMPRESA** — a rodada paralela do `A5`: equipe usando com e-mail real, ao lado da planilha, por 2 semanas (`DIRECAO.md`, *Linha de chegada*).
 >
@@ -402,7 +402,7 @@
 > 9. ~~`/api/painel` e `/api/memoria` sem limite por pessoa~~ — **resolvida no #131.** 30 consultas por pessoa por minuto em cada uma (constantes em `servicos/painel.ts` e `servicos/memoria.ts`), mesmo desenho da qualidade (C-21), e vale por processo. O Painel espera 400 ms depois da última mudança nas datas antes de pedir (o campo de data disparava a cada dígito). Ficam para depois: teto de duração do período do Painel (hoje sem limite, ao contrário da qualidade) e `GET /api/itens` e `GET /api/rodadas/[id]` sem limite (revisões do #131).
 > 10. ~~Erro de *transporte* da IA grava a mensagem crua do fornecedor no log~~ — **resolvida no #132.** Conferido nos SDKs instalados, nenhum ecoa o pedido. Anthropic e Gemini montam a mensagem com o corpo de erro da própria API, e o põem cru quando ele não é JSON. `ia-local` só lança frases nossas. Mesmo assim, a mensagem de transporte, **inclusive a dos erros "indisponível"** que param o lote e chegam à tela, passa por `resumoDeTransporte`. O resumo corta antes de mascarar, tem teto de 300 caracteres e troca e-mail, CRM/RQE e 8+ dígitos por marcadores; status e código sobrevivem. **Resíduo aceito:** nome e endereço não são cobertos. A trilha grava só o nome da classe (`mensagemPersistivel`).
 > 11. Alerta por volume das recusas de entrada (`AT-45`; decidido em 29/09: vai no aviso do dia da gestora, `A64` a registrar no PR dele); ~~índice `(situacao, etapa, referencia)` em `EventoProcessamento`~~ — **resolvido no #147** (`[situacao, etapa, referencia, criadoEm]`); ~~rotação da sessão com duas chaves (`SESSAO_SECRET_ANTERIOR`, C-25)~~ — **resolvida no #146** (`AT-50`). Só o alerta por volume segue aberto nesta linha.
-> 12. Dependabot #78 a #81 (`@anthropic-ai/sdk`, `react-dom`, `@google/genai`, `react`) abertos e não avaliados — cada um é nível 3, CI lido check a check.
+> 12. PRs do Dependabot abertos e não avaliados — cada um é nível 3, CI lido check a check. **Lista conferida em 01/10/2026:** #79 (`react-dom`), #81 (`react`), #137 (`@anthropic-ai/sdk` 0.128.0), #138 (`@google/genai` 2.24.0) e #156 (grupo de *patches*, 4 atualizações de desenvolvimento). O #78 e o #80 foram fechados pelo próprio Dependabot em 28/09, trocados pelo #137 e pelo #138; o #136 foi fechado em 30/09, trocado pelo #156.
 >
 > *C. Processo, testes e ambiente:*
 > 13. **Classificador de risco não conhece `src/componentes/`** (`scripts/processo/nivel-de-risco.ts` só tem `src/components/`): toda mudança ali cai no nível 3 por falha fechada. Seguro, só mais rígido; decidir antes se `componentes/api.ts` (cliente HTTP da tela) fica acima do nível 1.
@@ -1746,7 +1746,7 @@ being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4
 
 Os dois estavam parados por limitação de permissão (alteram arquivo de workflow), não por defeito. Foram mesclados por API em 28/08/2026, e `checkout` e `setup-node` estão em `v7` nos três jobs do CI e no workflow do CodeQL. Nenhuma ação continua apontando para o Node 20.
 
-### PRs — nenhum aberto
+### PRs em 07/09/2026 *(histórico; os abertos de hoje estão no topo e na pendência 12)*
 
 **Zero PRs abertos em 07/09/2026.** Seis mesclados neste dia, todos com CI verde: [#24](https://github.com/fernando123-hue/Sistema-SBP/pull/24) fuso do teste · [#25](https://github.com/fernando123-hue/Sistema-SBP/pull/25) retenção e `A14` · [#26](https://github.com/fernando123-hue/Sistema-SBP/pull/26) notas do setor · [#27](https://github.com/fernando123-hue/Sistema-SBP/pull/27) este arquivo · [#28](https://github.com/fernando123-hue/Sistema-SBP/pull/28) liga na tela · [#29](https://github.com/fernando123-hue/Sistema-SBP/pull/29) adapter Gemini.
 
