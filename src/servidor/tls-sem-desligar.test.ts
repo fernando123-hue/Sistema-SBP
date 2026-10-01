@@ -48,11 +48,16 @@ const LINHAS_ACEITAS_EM_AMBIENTE = [
 ]
 const SEMPRE_PROIBIDO_EM_AMBIENTE =
   /rejectUnauthorized|checkServerIdentity|delete\s+process\.env|(?:Reflect|Object)\.\w+\(\s*process\.env/
+// As linhas como o JavaScript as vê, e não só `\n`: com `core.autocrlf=true`
+// (Windows) cada linha terminava em `\r` e nenhuma regex ancorada em `$`
+// casava; e um `\r`, `\u2028` ou `\u2029` sozinho encerra um comentário `//`,
+// então o código depois dele passaria como comentário.
+const TERMINADOR_DE_LINHA = /\r\n|[\n\r\u2028\u2029]/
 
 function ambienteOfende(conteudo: string): boolean {
   if (SEMPRE_PROIBIDO_EM_AMBIENTE.test(conteudo)) return true
   return conteudo
-    .split('\n')
+    .split(TERMINADOR_DE_LINHA)
     .filter((linha) => PROIBIDO.test(linha))
     .some((linha) => !LINHAS_ACEITAS_EM_AMBIENTE.some((aceita) => aceita.test(linha)))
 }
@@ -136,9 +141,25 @@ describe('ninguém desliga a verificação de TLS por fora da trava (pendências
     expect(ofende('src/servidor/ambiente.ts', '      `NODE_TLS_REJECT_UNAUTHORIZED=0 com ${motivoTls} desliga a verificação` +')).toBe(false)
     expect(ofende('vitest.config.ts', "NODE_TLS_REJECT_UNAUTHORIZED: '',")).toBe(false)
 
+    // Qualquer terminador de linha do JavaScript encerra um comentário `//`;
+    // se a varredura só quebrasse em `\n`, o código depois dele passaria como
+    // parte do comentário.
+    for (const terminador of ['\r', '\u2028', '\u2029']) {
+      const trecho = `  // ok${terminador}process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'`
+      expect(ofende('src/servidor/ambiente.ts', trecho), JSON.stringify(trecho)).toBe(true)
+    }
+
     const vistos = codigoDoRepositorio().map((caminho) => relative(RAIZ, caminho).split('\\').join('/'))
     for (const esperado of ['src/servidor/ambiente.ts', 'scripts/dev-local.ts', 'prisma/seed.ts', 'next.config.ts', 'prisma.config.ts', 'vitest.config.ts']) {
       expect(vistos, esperado).toContain(esperado)
     }
+  })
+
+  it('o fim de linha da cópia de trabalho não muda o veredito', () => {
+    // No Windows, com `core.autocrlf=true`, o git entrega os arquivos com CRLF;
+    // no CI (Linux), com LF. A mesma trava tem de passar nos dois (`A61`).
+    const lf = readFileSync(join(RAIZ, 'src/servidor/ambiente.ts'), 'utf8').replace(/\r\n/g, '\n')
+    expect(ofende('src/servidor/ambiente.ts', lf), 'LF').toBe(false)
+    expect(ofende('src/servidor/ambiente.ts', lf.replace(/\n/g, '\r\n')), 'CRLF').toBe(false)
   })
 })
