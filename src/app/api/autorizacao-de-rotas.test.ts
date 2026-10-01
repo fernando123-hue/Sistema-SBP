@@ -156,6 +156,29 @@ describe('rotas que guardam o papel sozinhas', () => {
     expect(cabecalhos.every((valor) => valor === 'no-store')).toBe(true)
   })
 
+  it('GET /api/itens/[id]/dados não se guarda em cache e tem limite por pessoa (`A69`, 3B)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    await entrarComo(base.colaboradores[0]!.id, 'colaborador')
+
+    const { GET } = await import('./itens/[id]/dados/route')
+    const ler = () =>
+      GET(new Request('http://teste.local/api/itens/x/dados'), { params: Promise.resolve({ id: 'x' }) })
+    const respostas: number[] = []
+    const cabecalhos: (string | null)[] = []
+    for (let i = 0; i < 61; i += 1) {
+      const resposta = await ler()
+      respostas.push(resposta.status)
+      cabecalhos.push(resposta.headers.get('Cache-Control'))
+    }
+
+    // Item que não é da pessoa: recusa de negócio, sem dizer de quem é.
+    expect(respostas[0]).toBe(422)
+    expect(respostas.slice(0, 60).every((status) => status !== 429)).toBe(true)
+    expect(respostas[60]).toBe(429)
+    // A resposta de sucesso tem CPF: nem ela nem a recusa vão para cache.
+    expect(cabecalhos.every((valor) => valor === 'no-store')).toBe(true)
+  })
+
   it('GET /api/rodadas/[id] recusa colaborador — o livro-razão não é material aberto', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     await entrarComo(base.colaboradores[0]!.id, 'colaborador')

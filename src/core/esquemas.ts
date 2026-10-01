@@ -96,6 +96,8 @@ export const AcaoAuditavelSchema = z.enum([
   'item_criado_por_divisao_de_revisao',
   /** `A69` (2A): quem abriu o corpo de um e-mail na Revisão. Nunca o que estava escrito. */
   'email_lido_na_revisao',
+  /** `A69` (3B): quem abriu os dados que a IA leu de um item da própria fila. Nunca os valores. */
+  'dados_do_item_lidos',
   // Item
   'item_registrado_manualmente',
   'concluido',

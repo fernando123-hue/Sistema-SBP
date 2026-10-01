@@ -4,7 +4,12 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 01/10/2026 — REVISÃO COM O E-MAIL AO LADO (`A69` 2A + 2B) MESCLADO NO #163 (este bloco vence os de baixo)
+> ### 01/10/2026 — MINHA FILA EM LISTA E DETALHE (`A69` 3A + 3B) (este bloco vence os de baixo)
+>
+> - **O que entrou:** na Minha fila, os itens do mesmo e-mail viram um cartão com "Concluir os N" (dois toques, tudo ou nada) e "Ver um por um"; cada item de e-mail tem "Ver dados", com o que a IA leu e um "Copiar" por campo. Decisões em `AT-56`. Nível 3.
+> - **Próximo do `A69`:** 1A (um cartão por e-mail na Revisão), 4A e 5A+5B, um PR cada.
+>
+> ### 01/10/2026 — REVISÃO COM O E-MAIL AO LADO (`A69` 2A + 2B) MESCLADO NO #163
 >
 > - **#163:** "Ver o e-mail" na Revisão, lido sob demanda, com o trecho do campo apontado marcado; selo de confiança só na baixa confiança; tema sempre claro (`A67 (d)`). Decisões em `AT-55`. Nível 3.
 > - `verificar` com a main de 01/10 (#160, #161, #162): 147 arquivos, 1831 testes.
