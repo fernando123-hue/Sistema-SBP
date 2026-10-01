@@ -560,29 +560,36 @@ export async function resolverEmailDaRevisao(
   }
   const correlacaoId = novaCorrelacao()
 
+  // Dois passos, e a trava SÓ em `Revisao` (revisões técnica e de segurança
+  // do #167). Um `JOIN … FOR UPDATE` travava também os `Item` do e-mail
+  // (inclusive os já em execução), a linha `Email` e lacunas de índice, por
+  // até 20 s, e na ordem do plano de leitura — não na do `ORDER BY`.
+  //
+  // Primeiro, FORA da transação, quais revisões o e-mail tem pendentes. Fora
+  // de propósito: no isolamento padrão do MySQL, a primeira leitura comum
+  // dentro da transação fixa a foto que as leituras seguintes enxergam, e
+  // fixá-la ANTES da trava faria `resolverTravada` mesclar o payload de um
+  // item como ele estava antes da espera (conferência da revisão de
+  // segurança do #167). Assim, a primeira coisa da transação é a trava.
+  const pendentes = await banco.$queryRaw<{ id: string }[]>`
+    SELECT r.id AS id
+    FROM \`Revisao\` r JOIN \`Item\` i ON i.id = r.itemId
+    WHERE i.emailId = ${dados.emailId} AND r.resolvidoEm IS NULL`
+
+  const pedidas = new Set(dados.revisoes.map((linha) => linha.revisaoId))
+  const conjuntoBate =
+    pendentes.length === pedidas.size && pendentes.every((pendente) => pedidas.has(pendente.id))
+  if (!conjuntoBate) throw new ErroDeNegocio(LISTA_MUDOU)
+
   // O prazo padrão do Prisma (5 s) não cabe numa lista longa: cada revisão é
   // um punhado de escritas. Mesmo prazo de `concluirDoMesmoEmail`.
   return transacaoComNovaTentativa(
     banco,
     async (tx) => {
-      // Dois passos, e a trava SÓ em `Revisao` (revisões técnica e de
-      // segurança do #167). Um `JOIN … FOR UPDATE` travava também os `Item` do
-      // e-mail (inclusive os já em execução), a linha `Email` e lacunas de
-      // índice, por até 20 s, e na ordem do plano de leitura — não na do
-      // `ORDER BY`. Aqui: primeiro quais revisões o e-mail tem pendentes
-      // (leitura comum), depois a trava delas pela chave, em ordem de id. A
-      // leitura com trava enxerga o valor mais novo, então quem resolveu uma
-      // delas no meio aparece como resolvida e a decisão inteira é recusada.
-      const pendentes = await tx.$queryRaw<{ id: string }[]>`
-        SELECT r.id AS id
-        FROM \`Revisao\` r JOIN \`Item\` i ON i.id = r.itemId
-        WHERE i.emailId = ${dados.emailId} AND r.resolvidoEm IS NULL`
-
-      const pedidas = new Set(dados.revisoes.map((linha) => linha.revisaoId))
-      const conjuntoBate =
-        pendentes.length === pedidas.size && pendentes.every((pendente) => pedidas.has(pendente.id))
-      if (!conjuntoBate) throw new ErroDeNegocio(LISTA_MUDOU)
-
+      // Depois da trava, a leitura enxerga o valor mais novo: quem resolveu
+      // uma delas no meio aparece como resolvida e a decisão inteira é
+      // recusada. Revisão nova do mesmo e-mail não aparece no meio: só a
+      // ingestão cria revisão, na mesma transação que cria o e-mail.
       const ids = [...pedidas].sort()
       const travadas = await tx.$queryRaw<
         { id: string; resolvidoEm: Date | null; motivo: string; campoIncerto: string | null; sugestaoIa: string }[]
