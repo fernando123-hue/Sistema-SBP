@@ -490,12 +490,26 @@ aplicar o que mudou.
 máquina, sem TLS: `mysql://sbp_app:<senha>@127.0.0.1:3306/sbp?allowPublicKeyRetrieval=true`.
 Sem a opção, a autenticação padrão do MySQL 8.4 (`caching_sha2_password`)
 recusa a conexão e o erro não diz por quê. Banco em outra máquina usa TLS, não
-esta opção (pendência 48).
+esta opção (pendência 48), e o `CREATE USER` ganha `REQUIRE SSL`.
+
+O que `allowPublicKeyRetrieval` aceita: o cliente cifra a senha com a chave que
+o servidor mandar, sem conferir de quem é. Na mesma máquina, o risco que sobra
+é alguém com acesso ao servidor abrir a porta 3306 enquanto o `mysqld` está
+parado e receber a senha na reconexão. Por isso, no servidor: `mysqld` com
+`bind-address=127.0.0.1`, serviço que reinicia, e só o TI com acesso ao terminal.
+
+`--host` precisa casar com a origem da conexão: com `skip_name_resolve` ligado,
+`'localhost'` não casa com uma conexão por `127.0.0.1`, e o usuário use
+`--host 127.0.0.1`. `%` (qualquer origem) só com `--aceito-qualquer-host`, de
+propósito.
 
 Conferido num MySQL 8.4 em 01/10/2026: com essas concessões, a aplicação entra
 e grava (`db:preparar` criou as categorias, a gestora e a linha da trilha), e
 `DELETE`, `UPDATE`, `DROP TRIGGER`, `ALTER TABLE` e `DROP TABLE` na trilha são
 recusados com `ERROR 1142`.
+
+**Nem `npm run db:limpar`**, que apaga a trilha e só existe para
+desenvolvimento: com o usuário mínimo ele falha, e é o certo.
 
 **As migrações não rodam com este usuário.** `prisma migrate deploy` precisa de
 DDL (`CREATE`, `ALTER`, `TRIGGER`), que a aplicação não deve ter; use uma

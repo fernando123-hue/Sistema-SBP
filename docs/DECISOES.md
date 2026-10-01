@@ -1421,9 +1421,10 @@ A V1 do `A74`, com `IA_ADAPTER=local` e `NODE_ENV=production`, sobe.
 **Decisões do agente:**
 - Os nomes viram texto de SQL e são conferidos (letras, números e `_`; o host aceita também `.`, `%`, `-` e `:`). Fora disso, recusa em vez de gerar SQL que faz outra coisa.
 - Base sem as tabelas da trilha recusa: as migrações vêm antes.
-- `INDEX` não está na lista do conferidor (`PRIVILEGIOS_PROIBIDOS`). O SQL gerado não o concede; acrescentá-lo ao conferidor fica para quando houver motivo medido.
+- **O conferidor acusa o que o gerador promete não dar** (revisão de segurança do #182): `INDEX` na trilha, porque derrubar o índice do #147 reabre o oráculo de tempo, e `WITH GRANT OPTION` na trilha, porque quem repassa privilégio pode dar `DELETE` a outro login. Era o que a pendência 41 pedia; a primeira versão deste PR tinha adiado.
+- **`%` no host só com `--aceito-qualquer-host`:** copiado de um exemplo, ele alarga o usuário a qualquer origem sem ninguém decidir.
 
-**Prova:** `servidor/privilegios-sql.test.ts`: o formato do SQL; o que ele concede passa no próprio conferidor; nomes maliciosos recusam; base sem trilha recusa. Ponta a ponta num MySQL 8.4, numa base descartável:
+**Prova:** `servidor/privilegios-sql.test.ts`: o formato do SQL; o que ele concede passa no próprio conferidor e não contém nenhum privilégio de estrutura, rotina ou repasse; nomes maliciosos recusam; `%` só com o pedido; base sem trilha recusa; `INDEX` e `WITH GRANT OPTION` na trilha são acusados. `scripts-encerram.test.ts`: o comando roda contra a base de teste pelo adaptador de verdade (`SHOW TABLES`) e encerra. Ponta a ponta num MySQL 8.4, numa base descartável:
 - migrar, gerar e aplicar;
 - o conferidor dá OK com `EXIGIR_PRIVILEGIO_MINIMO=sim`;
 - `db:preparar` funciona com o usuário mínimo;

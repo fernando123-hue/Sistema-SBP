@@ -34,7 +34,8 @@ async function principal(): Promise<void> {
   const linhas = await banco.$queryRawUnsafe<Record<string, string>[]>('SHOW TABLES')
   const tabelas = linhas.map((linha) => Object.values(linha)[0] ?? '')
 
-  process.stdout.write(`${sqlDeConcessaoMinima(tabelas, { base, usuario, host })}\n`)
+  const aceitaQualquerHost = process.argv.includes('--aceito-qualquer-host')
+  process.stdout.write(`${sqlDeConcessaoMinima(tabelas, { base, usuario, host, aceitaQualquerHost })}\n`)
 }
 
 principal()

@@ -57,6 +57,18 @@ describe('scripts que usam o banco encerram sozinhos', () => {
     expect(resultado.saida.trim().length).toBeGreaterThan(0)
   })
 
+  it('db:sql-privilegios termina, e lê as tabelas reais da base de teste (pendência 41)', async () => {
+    const resultado = await rodar('sql-de-privilegios.ts', ['--usuario', 'sbp_app', '--host', 'localhost'])
+
+    expect(resultado.encerrou).toBe(true)
+    expect(resultado.codigo).toBe(0)
+    // `SHOW TABLES` pelo adaptador de verdade, e não só a função pura: a
+    // trilha sai só com SELECT, INSERT, e uma tabela comum com as quatro.
+    expect(resultado.saida).toMatch(/GRANT SELECT, INSERT ON `[^`]+`\.`LogAuditoria` TO 'sbp_app'@'localhost';/)
+    expect(resultado.saida).toMatch(/GRANT SELECT, INSERT, UPDATE, DELETE ON `[^`]+`\.`Item` TO 'sbp_app'@'localhost';/)
+    expect(resultado.saida).not.toContain('_prisma_migrations')
+  })
+
   describe('ia:avaliar contra um servidor de modelo falso', () => {
     let servidor: Server
     let endereco: string

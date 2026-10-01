@@ -23,8 +23,14 @@
 /** As tabelas cujo passado o sistema promete nunca reescrever. */
 export const TABELAS_DA_TRILHA = ['LogAuditoria', 'EventoProcessamento'] as const
 
-/** Os privilégios que, nessas tabelas, quebrariam a promessa. */
-const PRIVILEGIOS_PROIBIDOS = ['UPDATE', 'DELETE', 'DROP', 'ALTER', 'TRIGGER'] as const
+/**
+ * Os privilégios que, nessas tabelas, quebrariam a promessa.
+ *
+ * `INDEX` entrou com a pendência 41 (revisão de segurança do #182): quem pode
+ * derrubar o índice do #147 reabre o oráculo de tempo da entrada. O SQL de
+ * `sqlDeConcessaoMinima` não o concede, e o conferidor agora acusa quem o tem.
+ */
+const PRIVILEGIOS_PROIBIDOS = ['UPDATE', 'DELETE', 'DROP', 'ALTER', 'TRIGGER', 'INDEX'] as const
 
 export interface AchadoDePrivilegio {
   /** A linha de `SHOW GRANTS` que concede o privilégio. */
@@ -88,8 +94,12 @@ export function privilegiosQueAmeacamATrilha(
     if (!concessao) continue
 
     const temTudo = concessao.privilegios.includes('ALL PRIVILEGES')
+    // Quem pode repassar privilégio sobre a trilha pode dar `DELETE` a outro
+    // usuário, ou a si mesmo por outro login (revisão de segurança do #182).
+    const repassa = /\bWITH\s+GRANT\s+OPTION\b/i.test(linha) || concessao.privilegios.includes('GRANT OPTION')
     for (const tabela of TABELAS_DA_TRILHA) {
       if (!alcanca(concessao.alvo, tabela)) continue
+      if (repassa) achados.push({ concessao: linha.trim(), privilegio: 'GRANT OPTION', alvo: tabela })
 
       for (const privilegio of PRIVILEGIOS_PROIBIDOS) {
         if (!temTudo && !concessao.privilegios.includes(privilegio)) continue
@@ -111,6 +121,8 @@ export interface AlvoDaConcessao {
   base: string
   usuario: string
   host: string
+  /** `%` no host só com este pedido explícito. */
+  aceitaQualquerHost?: boolean
 }
 
 /** Nome de base, usuário ou tabela: só o que o MySQL aceita sem escapar. */
@@ -141,6 +153,14 @@ export function sqlDeConcessaoMinima(tabelas: readonly string[], alvo: AlvoDaCon
     if (!IDENTIFICADOR.test(nome)) throw new Error(`Nome fora do formato esperado para SQL: "${nome.slice(0, 64)}".`)
   }
   if (!HOST.test(alvo.host)) throw new Error(`Host fora do formato esperado para SQL: "${alvo.host.slice(0, 64)}".`)
+  if (alvo.host.includes('%')) {
+    // `%` é "de qualquer origem". Pode ser o certo (banco num contêiner), mas
+    // copiado de um exemplo alarga o alcance do usuário sem ninguém decidir
+    // (revisão de segurança do #182): só com o pedido explícito.
+    if (!alvo.aceitaQualquerHost) {
+      throw new Error('Host com "%" vale para conexões de qualquer origem. Se é isso mesmo, peça com --aceito-qualquer-host.')
+    }
+  }
 
   const daTrilha = new Set<string>(TABELAS_DA_TRILHA)
   const daAplicacao = tabelas.filter((tabela) => tabela !== '_prisma_migrations')

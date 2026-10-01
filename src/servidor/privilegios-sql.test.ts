@@ -27,6 +27,17 @@ describe('a concessão mínima, tabela a tabela', () => {
     expect(privilegiosQueAmeacamATrilha(concessoes)).toEqual([])
   })
 
+  // Não só pelo conferidor, que pode ter lacuna (revisão de segurança do #182):
+  // nenhum privilégio de estrutura, rotina ou repasse aparece no texto.
+  it('nenhuma linha concede INDEX, ALTER, DROP, TRIGGER, CREATE, ROUTINE, VIEW, ALL ou GRANT OPTION', () => {
+    expect(sqlDeConcessaoMinima(TABELAS, ALVO)).not.toMatch(/INDEX|ALTER|DROP|TRIGGER|CREATE|ROUTINE|VIEW|ALL|GRANT OPTION/)
+  })
+
+  it('host com "%" só com o pedido explícito', () => {
+    expect(() => sqlDeConcessaoMinima(TABELAS, { ...ALVO, host: '%' })).toThrow(/--aceito-qualquer-host/)
+    expect(sqlDeConcessaoMinima(TABELAS, { ...ALVO, host: '%', aceitaQualquerHost: true })).toContain("'sbp_app'@'%'")
+  })
+
   it.each([
     ['base', { ...ALVO, base: 'sbp`; DROP DATABASE sbp; --' }],
     ['usuário', { ...ALVO, usuario: "app'@'%" }],
@@ -41,5 +52,23 @@ describe('a concessão mínima, tabela a tabela', () => {
 
   it('base sem a trilha (sem migração) recusa: o usuário nem gravaria a trilha', () => {
     expect(() => sqlDeConcessaoMinima(['Item'], ALVO)).toThrow(/rode as migrações/)
+  })
+})
+
+describe('o conferidor acusa o que o gerador promete não dar (revisão de segurança do #182)', () => {
+  it('INDEX na trilha é acusado: derrubar o índice do #147 reabre o oráculo de tempo', () => {
+    const achados = privilegiosQueAmeacamATrilha(['GRANT SELECT, INSERT, INDEX ON `sbp`.`LogAuditoria` TO `app`@`%`'])
+    expect(achados.map((achado) => achado.privilegio)).toEqual(['INDEX'])
+  })
+
+  it('WITH GRANT OPTION na trilha é acusado, mesmo só com SELECT e INSERT', () => {
+    const achados = privilegiosQueAmeacamATrilha([
+      'GRANT SELECT, INSERT ON `sbp`.`EventoProcessamento` TO `app`@`%` WITH GRANT OPTION',
+    ])
+    expect(achados).toEqual([expect.objectContaining({ privilegio: 'GRANT OPTION', alvo: 'EventoProcessamento' })])
+  })
+
+  it('WITH GRANT OPTION em outra tabela não acusa a trilha', () => {
+    expect(privilegiosQueAmeacamATrilha(['GRANT SELECT ON `sbp`.`Item` TO `app`@`%` WITH GRANT OPTION'])).toEqual([])
   })
 })
