@@ -1086,8 +1086,11 @@ export function decidirRevisao(
  * preparado uma vez. O texto é o que o modelo leu — assunto e corpo
  * (`adapters/ia-estruturada.ts`) —, então um valor que só existe no nome de um
  * anexo conta como fora do texto.
+ *
+ * Exportada para o gabarito (`avaliacao-da-ia.ts`) medir o efeito com a MESMA
+ * conta que a ingestão faz — uma cópia lá poderia divergir em silêncio.
  */
-function conferirItens(email: EmailBruto, interpretacao: Interpretacao): ConferenciaDoItem[] {
+export function conferirItens(email: EmailBruto, interpretacao: Interpretacao): ConferenciaDoItem[] {
   const texto = prepararTextoParaConferir(`${email.assunto}\n${email.corpo}`)
   return interpretacao.itens.map((item) => ({
     problema: conferirExtracao(texto, item.campos, item.ligaMencionada),
@@ -1100,7 +1103,7 @@ function conferirItens(email: EmailBruto, interpretacao: Interpretacao): Confere
  * campo apontado) e, à parte, se a liga citada está no texto — é isso que
  * decide se ela vira identidade, qualquer que seja o primeiro problema.
  */
-interface ConferenciaDoItem {
+export interface ConferenciaDoItem {
   readonly problema: ProblemaNaExtracao | null
   readonly ligaNoTexto: boolean
 }

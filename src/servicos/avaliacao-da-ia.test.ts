@@ -5,7 +5,7 @@ import { CASOS_DO_GABARITO } from '../core/avaliacao/casos'
 import type { CasoDoGabarito } from '../core/avaliacao/gabarito'
 import type { EmailBruto, Interpretacao } from '../core/esquemas'
 import { FalhaDeInterpretacao, InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
-import { avaliarInterpretacao } from './avaliacao-da-ia'
+import { avaliarInterpretacao, resumirMedicoes } from './avaliacao-da-ia'
 
 /**
  * A avaliação roda qualquer `AiPort` contra o gabarito — sem rede aqui.
@@ -134,6 +134,123 @@ describe('avaliarInterpretacao', () => {
       [CASO, { ...CASO, id: 'b' }, { ...CASO, id: 'c' }],
     )
     expect(resultado.modelos).toEqual(['a', 'b'])
+  })
+})
+
+/**
+ * Duas medidas que a nota não dá e que a linha de chegada pede (`ESTADO.md`,
+ * item 4 da lista "o que falta"): quanto tempo cada e-mail leva — decide se a
+ * sincronização vira rotina em segundo plano — e quantos itens a conferência
+ * da pendência 17 manda para a Revisão que, sem ela, entrariam aprovados.
+ */
+describe('tempo por caso e efeito da conferência (pendência 17)', () => {
+  function relogio(...marcas: number[]): () => number {
+    const fila = [...marcas]
+    return () => {
+      const proxima = fila.shift()
+      if (proxima === undefined) throw new Error('relógio do teste sem marca')
+      return proxima
+    }
+  }
+
+  function comCampos(campos: Record<string, string>, confianca = 0.99): Interpretacao {
+    const base = resposta()
+    return { ...base, itens: [{ ...base.itens[0]!, confianca, campos }] }
+  }
+
+  const CASO_COM_CPF: CasoDoGabarito = {
+    ...CASO,
+    id: 'com-cpf',
+    email: { assunto: 'Cadastro', corpo: 'Sou Ana Lima, CPF 529.982.247-25.' },
+  }
+
+  it('mede o tempo de cada chamada, também quando ela falha', async () => {
+    let vez = 0
+    const resultado = await avaliarInterpretacao(
+      porta(async () => {
+        vez += 1
+        if (vez === 2) throw new FalhaDeInterpretacao('x', 'laço cortado pelo teto')
+        return resposta()
+      }),
+      [CASO, { ...CASO, id: 'segundo' }],
+      relogio(1000, 1250, 2000, 2900),
+    )
+    expect(resultado.medicoes.map((m) => [m.id, m.ms])).toEqual([
+      ['duvida', 250],
+      ['segundo', 900],
+    ])
+    expect(resultado.medicoes[1]!.conferencia).toBeNull()
+  })
+
+  it('valor que está no texto não muda o destino', async () => {
+    const resultado = await avaliarInterpretacao(
+      porta(async () => comCampos({ nome: 'Ana Lima', cpf: '529.982.247-25' })),
+      [CASO_COM_CPF],
+      relogio(0, 10),
+    )
+    expect(resultado.medicoes[0]!.conferencia).toEqual({
+      itens: 1,
+      comProblema: 0,
+      mudamDeDestino: 0,
+      motivos: {},
+    })
+  })
+
+  it('valor reescrito que entraria aprovado passa a ir para a Revisão — e é contado', async () => {
+    const resultado = await avaliarInterpretacao(
+      porta(async () => comCampos({ nome: 'Ana Maria Lima' })),
+      [CASO_COM_CPF],
+      relogio(0, 10),
+    )
+    expect(resultado.medicoes[0]!.conferencia).toEqual({
+      itens: 1,
+      comProblema: 1,
+      mudamDeDestino: 1,
+      motivos: { valor_fora_do_texto: 1 },
+    })
+  })
+
+  it('item que já iria para a Revisão por outro motivo tem problema, mas não muda de destino', async () => {
+    const resultado = await avaliarInterpretacao(
+      porta(async () => comCampos({ nome: 'Ana Maria Lima' }, 0.3)),
+      [CASO_COM_CPF],
+      relogio(0, 10),
+    )
+    expect(resultado.medicoes[0]!.conferencia).toMatchObject({ comProblema: 1, mudamDeDestino: 0 })
+  })
+
+  it('CPF com dígito trocado conta como cpf_invalido', async () => {
+    const resultado = await avaliarInterpretacao(
+      porta(async () => comCampos({ cpf: '529.982.247-26' })),
+      [{ ...CASO_COM_CPF, email: { assunto: 'Cadastro', corpo: 'CPF 529.982.247-26.' } }],
+      relogio(0, 10),
+    )
+    expect(resultado.medicoes[0]!.conferencia?.motivos).toEqual({ cpf_invalido: 1 })
+  })
+
+  it('o resumo dá mediana, máximo e total do tempo, e soma o efeito só dos casos respondidos', () => {
+    const conferencia = { itens: 3, comProblema: 2, mudamDeDestino: 1, motivos: {} }
+    expect(
+      resumirMedicoes([
+        { id: 'a', ms: 300, conferencia },
+        { id: 'b', ms: 100, conferencia: null },
+        { id: 'c', ms: 200, conferencia },
+        { id: 'd', ms: 900, conferencia },
+      ]),
+    ).toEqual({ msMediana: 250, msMaximo: 900, msTotal: 1500, itens: 9, comProblema: 6, mudamDeDestino: 3 })
+    expect(resumirMedicoes([{ id: 'a', ms: 7, conferencia: null }]).msMediana).toBe(7)
+    expect(resumirMedicoes([])).toEqual({ msMediana: 0, msMaximo: 0, msTotal: 0, itens: 0, comProblema: 0, mudamDeDestino: 0 })
+  })
+
+  it('a medição não carrega texto do e-mail nem valor extraído — só números e motivos', async () => {
+    const resultado = await avaliarInterpretacao(
+      porta(async () => comCampos({ nome: 'Ana Maria Lima' })),
+      [CASO_COM_CPF],
+      relogio(0, 10),
+    )
+    const serializado = JSON.stringify(resultado.medicoes)
+    expect(serializado).not.toContain('Ana')
+    expect(serializado).not.toContain('529')
   })
 })
 

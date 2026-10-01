@@ -4,6 +4,14 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
+> ### 01/10/2026, madrugada — MEDIÇÃO NO OLLAMA FEITA (máquina Windows do dono; item 4 da lista "o que falta")
+>
+> - **Como:** `npm run ia:avaliar -- --json` com `IA_TETO_DIARIO=0`, `IA_ADAPTER=local`, `qwen2.5:1.5b-instruct-q4_K_M` (`A59`), modelo começando frio. Ollama **0.35.0**, só em `127.0.0.1:11434`; GTX 1050 Ti (4 GB). O gabarito passou a medir o tempo de cada e-mail e o efeito da pendência 17 (PR desta medição).
+> - **Nota geral 0,78** (só as respondidas: 0,88). Por dimensão: quantidade 1,00 · categorias 0,80 · campos 1,00 · literalidade 0,75 · suspeita 0,93. **Falhas: 2 de 17**, as mesmas de 25/09 — `ligantes-tres` e `ligantes-dois-tracos`, `itens.0.campos: custom` na primeira e na segunda tentativa (os ligantes juntados num item só; pendência 18, parte que resta).
+> - **Tempo por e-mail:** mediana **11,3 s**, máximo 30,5 s (`ligantes-tres`, com a segunda tentativa), o primeiro caso 21,9 s com a carga do modelo; 17 casos em 211 s. **Isso manda a sincronização para segundo plano** (`ESTADO` de 30/09, item 4): 30 e-mails seriam ~6 min de tela presa.
+> - **Pendência 17:** 6 de 15 itens com problema; **3 sairiam aprovados e foram para a Revisão**. Nos casos `documentos-sem-dados`, `injecao-papel` e `injecao-sutil` o texto **não tem CPF nenhum** e o modelo inventou um (`cpf_invalido`); no `injecao-sutil` o item entraria aprovado. O `ficha-comum` vai para a Revisão porque o CPF sintético do gabarito (`000.000.000-00`) é inválido de propósito — esperado.
+> - **Memória:** placa de vídeo com pico de 2,9 GB (1,7 GB antes de carregar o modelo); processos do Ollama em 233 MB de RAM, porque o modelo roda inteiro na placa. Na máquina Debian (só CPU, 8 GB) o número é outro: medir lá.
+>
 > ### 01/10/2026 — REVISÃO COM O E-MAIL AO LADO (`A69` 2A + 2B) MESCLADO NO #163 (este bloco vence os de baixo)
 >
 > - **#163:** "Ver o e-mail" na Revisão, lido sob demanda, com o trecho do campo apontado marcado; selo de confiança só na baixa confiança; tema sempre claro (`A67 (d)`). Decisões em `AT-55`. Nível 3.
