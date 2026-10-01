@@ -105,3 +105,57 @@ export function privilegiosQueAmeacamATrilha(
 
   return achados
 }
+
+export interface AlvoDaConcessao {
+  /** A base da operação (`SELECT DATABASE()` com a credencial de manutenção). */
+  base: string
+  usuario: string
+  host: string
+}
+
+/** Nome de base, usuário ou tabela: só o que o MySQL aceita sem escapar. */
+const IDENTIFICADOR = /^[A-Za-z0-9_]{1,64}$/
+/** Host do usuário: nome, endereço, `%` e `_` coringa. Nada que feche a aspa. */
+const HOST = /^[A-Za-z0-9_.%:-]{1,255}$/
+
+/**
+ * O SQL da concessão mínima, tabela a tabela (pendência 41).
+ *
+ * O roteiro antigo da `03-SPEC § 14` dava `SELECT, INSERT, UPDATE, DELETE` na
+ * base inteira e tentava tirar `UPDATE, DELETE` das duas tabelas da trilha. O
+ * MySQL não desfaz numa tabela o que foi dado na base: o `REVOKE` falha com
+ * `ERROR 1147` (reproduzido em 01/10/2026), e o roteiro era impossível de
+ * seguir. Aqui cada tabela recebe a sua linha: as da trilha só
+ * `SELECT, INSERT`, as outras as quatro de sempre. Nenhuma recebe `INDEX`,
+ * `ALTER`, `DROP` ou `TRIGGER`.
+ *
+ * A lista de tabelas vem da base, não deste arquivo: uma migração nova que
+ * cria tabela entra na próxima geração sem ninguém lembrar de editar SQL.
+ * `_prisma_migrations` fica de fora: a aplicação não migra.
+ *
+ * Os nomes viram texto de SQL, então são conferidos antes: um identificador
+ * com aspa ou crase recusa, em vez de gerar SQL que faz outra coisa.
+ */
+export function sqlDeConcessaoMinima(tabelas: readonly string[], alvo: AlvoDaConcessao): string {
+  for (const nome of [alvo.base, alvo.usuario, ...tabelas]) {
+    if (!IDENTIFICADOR.test(nome)) throw new Error(`Nome fora do formato esperado para SQL: "${nome.slice(0, 64)}".`)
+  }
+  if (!HOST.test(alvo.host)) throw new Error(`Host fora do formato esperado para SQL: "${alvo.host.slice(0, 64)}".`)
+
+  const daTrilha = new Set<string>(TABELAS_DA_TRILHA)
+  const daAplicacao = tabelas.filter((tabela) => tabela !== '_prisma_migrations')
+  const faltando = TABELAS_DA_TRILHA.filter((tabela) => !daAplicacao.includes(tabela))
+  if (faltando.length > 0) {
+    // Gerar sem elas daria à aplicação um usuário que nem grava a trilha, e o
+    // erro só apareceria na primeira ação auditada. Base sem migração não é base.
+    throw new Error(`A base não tem ${faltando.join(' nem ')}: rode as migrações antes de gerar as concessões.`)
+  }
+
+  const quem = `'${alvo.usuario}'@'${alvo.host}'`
+  const linhas = [...daAplicacao].sort().map((tabela) =>
+    daTrilha.has(tabela)
+      ? `GRANT SELECT, INSERT ON \`${alvo.base}\`.\`${tabela}\` TO ${quem};`
+      : `GRANT SELECT, INSERT, UPDATE, DELETE ON \`${alvo.base}\`.\`${tabela}\` TO ${quem};`,
+  )
+  return linhas.join('\n')
+}

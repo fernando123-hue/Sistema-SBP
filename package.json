@@ -26,7 +26,8 @@
     "dev:local": "tsx scripts/dev-local.ts",
     "build": "next build",
     "start": "next start",
-    "db:privilegios": "tsx scripts/conferir-privilegios.ts"
+    "db:privilegios": "tsx scripts/conferir-privilegios.ts",
+    "db:sql-privilegios": "tsx scripts/sql-de-privilegios.ts"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

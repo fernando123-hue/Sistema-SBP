@@ -462,21 +462,40 @@ reescrever o passado em seguida.
 
 ### Concessão mínima
 
-Crie um usuário próprio para a aplicação e conceda, tabela a tabela, só o que
-ela precisa. O trecho abaixo é o mínimo; ajuste o nome da base e do host.
+Crie um usuário próprio para a aplicação e conceda, **tabela a tabela**, só o
+que ela precisa. Tabela a tabela porque o MySQL não desfaz numa tabela o que
+foi dado na base inteira: o roteiro antigo (`GRANT … ON sbp.*` seguido de
+`REVOKE … ON sbp.LogAuditoria`) falha com `ERROR 1147` e não pode ser seguido
+(pendência 41, `AT-64`).
 
 ```sql
+-- 1. O TI cria o usuário, com a senha que só o servidor conhece.
 CREATE USER 'sbp_app'@'localhost' IDENTIFIED BY 'a-senha-que-so-o-servidor-sabe';
-
--- O resto do sistema: leitura e escrita normais.
-GRANT SELECT, INSERT, UPDATE, DELETE ON `sbp`.* TO 'sbp_app'@'localhost';
-
--- A trilha: só nasce, nunca muda nem some.
-REVOKE UPDATE, DELETE ON `sbp`.`LogAuditoria` FROM 'sbp_app'@'localhost';
-REVOKE UPDATE, DELETE ON `sbp`.`EventoProcessamento` FROM 'sbp_app'@'localhost';
-
-FLUSH PRIVILEGES;
 ```
+
+```bash
+# 2. Depois das migrações, com a credencial de MANUTENÇÃO (a que migra), gere
+#    as concessões a partir das tabelas que existem na base e aplique:
+npm run db:sql-privilegios -- --usuario sbp_app --host localhost > concessoes.sql
+mysql -u <manutencao> -p < concessoes.sql
+```
+
+O que sai: `SELECT, INSERT, UPDATE, DELETE` em cada tabela da aplicação, e
+**só `SELECT, INSERT`** em `LogAuditoria` e `EventoProcessamento`. Nada de
+`INDEX`, `ALTER`, `DROP` ou `TRIGGER` em lugar nenhum, e nada em
+`_prisma_migrations`. Migração nova que cria tabela pede gerar de novo e
+aplicar o que mudou.
+
+**Na `DATABASE_URL` do servidor**, com usuário de senha e banco na mesma
+máquina, sem TLS: `mysql://sbp_app:<senha>@127.0.0.1:3306/sbp?allowPublicKeyRetrieval=true`.
+Sem a opção, a autenticação padrão do MySQL 8.4 (`caching_sha2_password`)
+recusa a conexão e o erro não diz por quê. Banco em outra máquina usa TLS, não
+esta opção (pendência 48).
+
+Conferido num MySQL 8.4 em 01/10/2026: com essas concessões, a aplicação entra
+e grava (`db:preparar` criou as categorias, a gestora e a linha da trilha), e
+`DELETE`, `UPDATE`, `DROP TRIGGER`, `ALTER TABLE` e `DROP TABLE` na trilha são
+recusados com `ERROR 1142`.
 
 **As migrações não rodam com este usuário.** `prisma migrate deploy` precisa de
 DDL (`CREATE`, `ALTER`, `TRIGGER`), que a aplicação não deve ter; use uma
