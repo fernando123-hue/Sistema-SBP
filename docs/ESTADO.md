@@ -4,6 +4,14 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
+> ### 01/10/2026, madrugada — MEDIÇÃO NO OLLAMA FEITA (item 4 da lista "o que falta"; frente da IA local — as telas do `A69` seguem nos blocos logo abaixo)
+>
+> - **Como:** `npm run ia:avaliar -- --json` com `IA_TETO_DIARIO=0`, `IA_ADAPTER=local`, `qwen2.5:1.5b-instruct-q4_K_M` (`A59`), modelo começando frio. Ollama **0.35.0**, só em `127.0.0.1:11434`; GTX 1050 Ti (4 GB). O gabarito passou a medir o tempo de cada e-mail e o efeito da pendência 17 (PR desta medição).
+> - **Nota geral 0,78** (só as respondidas: 0,88). Por dimensão: quantidade 1,00 · categorias 0,80 · campos 1,00 · literalidade 0,75 · suspeita 0,93. **Falhas: 2 de 17**, as mesmas de 25/09 — `ligantes-tres` e `ligantes-dois-tracos`, `itens.0.campos: custom` na primeira e na segunda tentativa (os ligantes juntados num item só; pendência 18, parte que resta).
+> - **Tempo por e-mail:** mediana **11,3 s**, máximo 30,5 s (`ligantes-tres`, com a segunda tentativa), o primeiro caso 21,9 s com a carga do modelo; 17 casos em 211 s. **É um piso:** não conta a segunda opinião do classificador nem a gravação, e os e-mails do gabarito são curtos. **Isso manda a sincronização para segundo plano** (`ESTADO` de 30/09, item 4): 30 e-mails seriam **no mínimo** ~6 min de tela presa.
+> - **Pendência 17 (calculado pela regra da ingestão, sem gravar nada):** 6 de 15 itens com problema na conferência; **3 sairiam aprovados e iriam para a Revisão** — `ficha-comum`, `ficha-sem-palavra-chave` (`valor_fora_do_texto`) e `injecao-sutil` (`cpf_invalido`). **Atribuíveis ao modelo: 2.** O `ficha-comum` é artefato do gabarito: o CPF sintético dele (`000.000.000-00`) é inválido de propósito, e qualquer modelo que o copie certo cai na conferência. Os outros 3 problemas não mudam destino porque o item já iria à Revisão por outro motivo: `documentos-sem-dados` e `injecao-papel` (`cpf_invalido`) e `injecao-na-ficha` (`valor_fora_do_texto`). **Achado:** em `documentos-sem-dados`, `injecao-papel` e `injecao-sutil` o texto **não tem CPF nenhum** e o modelo inventou um. **Não medido:** o efeito em e-mail com mais de um item — os dois casos de ligantes falharam (e desdobramento já vai sempre à Revisão).
+> - **Memória:** placa de vídeo com pico de 2,9 GB (1,7 GB antes de carregar o modelo); processos do Ollama em 233 MB de RAM, porque o modelo roda inteiro na placa. Na máquina Debian (só CPU, 8 GB) o número é outro: medir lá.
+>
 > ### 01/10/2026 — "HOJE VOCÊ CONCLUIU N" E O REGISTRO DA DISTRIBUIÇÃO (`A69` 5A + 5B) (este bloco vence os de baixo)
 >
 > - **O que entrou:** na Minha fila, "Hoje você concluiu N", que a rota só devolve a quem está na sessão, contado do dia de São Paulo sem nada guardado; na Distribuição, depois de confirmar, a hora, quantos itens, "nenhum número digitado" e "conservação conferida". Decisões em `AT-59`. Nível 3 (rota nova).
