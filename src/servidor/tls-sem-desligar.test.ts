@@ -33,7 +33,9 @@ const EXTENSOES = /\.[cm]?[jt]sx?$/
  *   `process.env` por `defineProperty`, `assign`, `Reflect` ou `delete`.
  *   Lista fechada, e não uma regex de "escrita": a segunda revisão de
  *   segurança mostrou `||=`, `??=`, `defineProperty` e `assign` escapando
- *   daquela.
+ *   daquela. Fechada sobre LINHAS, não sobre código: o que ela ainda deixa
+ *   passar (linha `*` que é multiplicação, template de várias linhas, nome
+ *   montado) está na pendência 50 do `ESTADO.md` (revisão de segurança do #172).
  * - `vitest.config.ts` a ESVAZIA para a suíte (vazia, a verificação fica
  *   ligada). Só essa linha exata é aceita.
  */
@@ -52,7 +54,7 @@ const SEMPRE_PROIBIDO_EM_AMBIENTE =
 // somem na tela de quem revisa o diff. Quebrando só em `\n`, um deles dentro de
 // um comentário `//` escondia o código seguinte; quebrando neles, um deles
 // dentro de um template literal fazia `${...}` parecer linha de comentário
-// (revisão de segurança do PR do CRLF). Código-fonte não precisa de nenhum.
+// (revisão de segurança do #172). Código-fonte não precisa de nenhum.
 const TERMINADOR_INVISIVEL = /\r(?!\n)|[\u2028\u2029]/
 
 function ambienteOfende(conteudo: string): boolean {
@@ -163,7 +165,7 @@ describe('ninguém desliga a verificação de TLS por fora da trava (pendências
     }
   })
 
-  it('o fim de linha da cópia de trabalho não muda o veredito', () => {
+  it('em ambiente.ts, só LF e CRLF valem como fim de linha, e a cópia de trabalho não muda o veredito', () => {
     // No Windows, com `core.autocrlf=true`, o git entrega os arquivos com CRLF;
     // no CI (Linux), com LF. A mesma trava tem de passar nos dois (`A61`).
     const lf = readFileSync(join(RAIZ, 'src/servidor/ambiente.ts'), 'utf8').replace(/\r\n/g, '\n')
