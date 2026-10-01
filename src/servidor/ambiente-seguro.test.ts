@@ -425,6 +425,13 @@ describe('em produção, o assistente não manda o que a equipe digita a fornece
     expect(() => ambiente()).toThrow(/IA_ADAPTER="gemini" com NODE_ENV=production/)
   })
 
+  it('fora de produção, o Gemini segue: é a rotina do A50, por script, sem NODE_ENV de produção', () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    vi.stubEnv('IA_ADAPTER', 'gemini')
+    vi.stubEnv('GOOGLE_AI_KEY', 'chave-sintetica')
+    expect(() => ambiente()).not.toThrow()
+  })
+
   it.each([
     ['mock', {}],
     ['local', { IA_LOCAL_URL: 'http://127.0.0.1:11434/v1', IA_MODELO: 'qwen2.5:1.5b-instruct-q4_K_M' }],

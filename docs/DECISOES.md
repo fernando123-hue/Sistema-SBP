@@ -1404,7 +1404,9 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 A V1 do `A74`, com `IA_ADAPTER=local` e `NODE_ENV=production`, sobe.
 
-**Prova:** `servidor/ambiente-seguro.test.ts`: o Gemini é recusado em produção com a caixa simulada; `mock`, `local` e `anthropic` sobem. Mutações: sem a trava, a trava fora de produção, `local` marcado como "tira da casa" e a autorização ignorada. As quatro derrubam 1 teste cada.
+**Dois sinais de produção** (revisão de segurança do #179): o `NODE_ENV` do processo, **ou** o literal `process.env['NODE_ENV']`. O Next troca esse literal pelo modo do build dentro do servidor. Assim um `NODE_ENV=test` herdado da máquina não desliga a trava num `next start`, e os scripts por `tsx` (a rotina do `A50`) seguem como antes. **Limite conhecido:** `next dev` rodando no servidor passa, porque é desenvolvimento para os dois sinais. O roteiro de instalação manda `next start`. "Recusa subir" quer dizer, como nas outras travas, que toda requisição que lê o ambiente falha. **Se um dia** o assistente usar o classificador (`A62`), esta trava precisa ser repetida para `CLASSIFICADOR_ADAPTER`.
+
+**Prova:** `servidor/ambiente-seguro.test.ts`: o Gemini é recusado em produção com a caixa simulada; fora de produção, segue; `mock`, `local` e `anthropic` sobem. Mutações: sem a trava, a trava fora de produção, `local` marcado como "tira da casa" e a autorização ignorada. As quatro derrubam 1 teste cada.
 
 **Status:** 🟢 em vigor.
 
