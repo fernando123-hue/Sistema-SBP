@@ -33,7 +33,9 @@ const EXTENSOES = /\.[cm]?[jt]sx?$/
  *   `process.env` por `defineProperty`, `assign`, `Reflect` ou `delete`.
  *   Lista fechada, e não uma regex de "escrita": a segunda revisão de
  *   segurança mostrou `||=`, `??=`, `defineProperty` e `assign` escapando
- *   daquela.
+ *   daquela. Fechada sobre LINHAS, não sobre código: o que ela ainda deixa
+ *   passar (linha `*` que é multiplicação, template de várias linhas, nome
+ *   montado) está na pendência 50 do `ESTADO.md` (revisão de segurança do #172).
  * - `vitest.config.ts` a ESVAZIA para a suíte (vazia, a verificação fica
  *   ligada). Só essa linha exata é aceita.
  */
@@ -48,11 +50,19 @@ const LINHAS_ACEITAS_EM_AMBIENTE = [
 ]
 const SEMPRE_PROIBIDO_EM_AMBIENTE =
   /rejectUnauthorized|checkServerIdentity|delete\s+process\.env|(?:Reflect|Object)\.\w+\(\s*process\.env/
+// `\r` sem `\n` depois, `\u2028` e `\u2029` são fim de linha para o JavaScript e
+// somem na tela de quem revisa o diff. Quebrando só em `\n`, um deles dentro de
+// um comentário `//` escondia o código seguinte; quebrando neles, um deles
+// dentro de um template literal fazia `${...}` parecer linha de comentário
+// (revisão de segurança do #172). Código-fonte não precisa de nenhum.
+const TERMINADOR_INVISIVEL = /\r(?!\n)|[\u2028\u2029]/
 
 function ambienteOfende(conteudo: string): boolean {
-  if (SEMPRE_PROIBIDO_EM_AMBIENTE.test(conteudo)) return true
+  if (SEMPRE_PROIBIDO_EM_AMBIENTE.test(conteudo) || TERMINADOR_INVISIVEL.test(conteudo)) return true
   return conteudo
-    .split('\n')
+    // CRLF também: com `core.autocrlf=true` (Windows) cada linha terminava em
+    // `\r` e nenhuma regex ancorada em `$` casava.
+    .split(/\r?\n/)
     .filter((linha) => PROIBIDO.test(linha))
     .some((linha) => !LINHAS_ACEITAS_EM_AMBIENTE.some((aceita) => aceita.test(linha)))
 }
@@ -136,9 +146,33 @@ describe('ninguém desliga a verificação de TLS por fora da trava (pendências
     expect(ofende('src/servidor/ambiente.ts', '      `NODE_TLS_REJECT_UNAUTHORIZED=0 com ${motivoTls} desliga a verificação` +')).toBe(false)
     expect(ofende('vitest.config.ts', "NODE_TLS_REJECT_UNAUTHORIZED: '',")).toBe(false)
 
+    // Terminador que o JavaScript reconhece e a tela não mostra: dentro de um
+    // comentário `//`, esconderia o código seguinte; dentro de um template
+    // literal, faria `${...}` parecer linha de comentário.
+    for (const terminador of ['\r', '\u2028', '\u2029']) {
+      for (const trecho of [
+        `  // ok${terminador}process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'`,
+        'const x = `a' + terminador + "// ${process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0'}`",
+        'const x = `a' + terminador + "* ${process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0'}`",
+      ]) {
+        expect(ofende('src/servidor/ambiente.ts', trecho), JSON.stringify(trecho)).toBe(true)
+      }
+    }
+
     const vistos = codigoDoRepositorio().map((caminho) => relative(RAIZ, caminho).split('\\').join('/'))
     for (const esperado of ['src/servidor/ambiente.ts', 'scripts/dev-local.ts', 'prisma/seed.ts', 'next.config.ts', 'prisma.config.ts', 'vitest.config.ts']) {
       expect(vistos, esperado).toContain(esperado)
     }
+  })
+
+  it('em ambiente.ts, só LF e CRLF valem como fim de linha, e a cópia de trabalho não muda o veredito', () => {
+    // No Windows, com `core.autocrlf=true`, o git entrega os arquivos com CRLF;
+    // no CI (Linux), com LF. A mesma trava tem de passar nos dois (`A61`).
+    const lf = readFileSync(join(RAIZ, 'src/servidor/ambiente.ts'), 'utf8').replace(/\r\n/g, '\n')
+    expect(ofende('src/servidor/ambiente.ts', lf), 'LF').toBe(false)
+    expect(ofende('src/servidor/ambiente.ts', lf.replace(/\n/g, '\r\n')), 'CRLF').toBe(false)
+    // Só CRLF é tolerado: um CR a mais não se esconde dentro dele.
+    expect(ofende('src/servidor/ambiente.ts', lf.replace(/\n/g, '\r\n') + '\r'), 'CRLF + CR no fim').toBe(true)
+    expect(ofende('src/servidor/ambiente.ts', lf + '\r\r\n'), 'CR antes de CRLF').toBe(true)
   })
 })
