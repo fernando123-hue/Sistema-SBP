@@ -1,7 +1,8 @@
 /**
  * O que o servidor liga ao subir.
  *
- * Hoje, duas coisas: a limpeza diária de `A17` — "a limpeza roda sozinha, uma
+ * Hoje, três coisas: a conferência do ambiente, que em produção encerra o
+ * processo se ele estiver errado (pendência 49); a limpeza diária de `A17` — "a limpeza roda sozinha, uma
  * vez por dia" — e o aviso de troca da chave de sessão em curso (`AT-50`). O
  * Next chama `register` uma vez por instância de servidor, e em todos os
  * runtimes: por isso este arquivo só decide SE liga, e o que só existe
@@ -16,7 +17,12 @@ export async function register(): Promise<void> {
   // pode nem ser o de produção.
   if (process.env.NEXT_PHASE === 'phase-production-build') return
 
-  const { agendarLimpezaDiaria, avisarTrocaDaChaveDeSessao } = await import('./instrumentation-node')
+  const { agendarLimpezaDiaria, avisarTrocaDaChaveDeSessao, conferirAmbienteNaSubida } = await import(
+    './instrumentation-node'
+  )
+  // Primeiro: com a configuração errada, em produção o processo encerra aqui
+  // (pendência 49), antes de agendar rotina que não teria como rodar.
+  await conferirAmbienteNaSubida()
   await avisarTrocaDaChaveDeSessao()
   await agendarLimpezaDiaria()
 }

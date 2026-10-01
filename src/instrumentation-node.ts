@@ -15,13 +15,64 @@
  *
  * ═══ O QUE NÃO ACONTECE AQUI ═══
  *
- * Nenhum erro derruba o servidor. A limpeza que falha fica em
+ * Nenhum erro DA LIMPEZA derruba o servidor. (A configuração errada derruba,
+ * de propósito e só em produção: ver `conferirAmbienteNaSubida`.) A limpeza que falha fica em
  * `ExecucaoDeRotina` e `EventoProcessamento` e é tentada de novo; parar a
  * equipe inteira de trabalhar porque a limpeza falhou trocaria um problema
  * visível por um maior.
  */
 
 import type { ArmazenamentoPort } from './ports/armazenamento'
+
+/**
+ * Confere o ambiente na subida e, em produção, ENCERRA o processo se ele
+ * estiver errado (pendência 49).
+ *
+ * Antes, um `ambiente()` inválido virava "Failed to prepare server" no log e o
+ * processo seguia de pé respondendo 500 a toda requisição: o supervisor
+ * (systemd) via um serviço rodando, e o TI só descobria quando alguém
+ * reclamasse. Falhar alto é sair com código diferente de zero, que o
+ * supervisor acusa e registra na hora.
+ *
+ * Só em produção, pelo literal que o Next fixa no build (`AT-63`): em
+ * desenvolvimento, derrubar o `next dev` a cada `.env` meio escrito atrapalha,
+ * e a tela de erro já mostra o motivo. A mensagem é a de `ambiente()`, que
+ * nunca leva valor de segredo.
+ *
+ * `sair` e `escrever` são injetados só para o teste não encerrar a suíte.
+ */
+export async function conferirAmbienteNaSubida(
+  // Sai DEPOIS de o stderr esvaziar: no Windows (a validação do `A74`) a
+  // escrita em pipe é assíncrona, e sair na hora cortaria o motivo (revisão
+  // técnica do #183). O `write` vazio só chama de volta quando a fila andou.
+  sair: (codigo: number) => void = (codigo) => process.stderr.write('', () => process.exit(codigo)),
+  escrever: (texto: string) => void = (texto) => process.stderr.write(texto),
+): Promise<void> {
+  // A carga do módulo fica FORA do `try` da configuração: código que não
+  // carrega (build corrompido, dependência quebrada) não pode mandar o TI
+  // conferir o `.env` (revisão técnica do #183).
+  let ambiente: () => unknown
+  try {
+    ;({ ambiente } = await import('./servidor/ambiente'))
+  } catch (erro) {
+    const motivo = erro instanceof Error ? erro.message : String(erro)
+    escrever(`O servidor NÃO subiu: o código não carregou (confira o build e as dependências, não o .env). ${motivo}\n`)
+    if (process.env['NODE_ENV'] === 'production') sair(1)
+    return
+  }
+
+  try {
+    ambiente()
+  } catch (erro) {
+    const motivo = erro instanceof Error ? erro.message : String(erro)
+    if (process.env['NODE_ENV'] === 'production') {
+      escrever(`O servidor NÃO subiu: a configuração está errada. ${motivo}\n`)
+      sair(1)
+      return
+    }
+    escrever(`Configuração inválida (em produção, isto encerraria o servidor): ${motivo}\n`)
+  }
+}
 
 const MINUTOS_ENTRE_TENTATIVAS = 15
 
@@ -32,9 +83,11 @@ const MINUTOS_ENTRE_TENTATIVAS = 15
  * processo reiniciando sozinho, nenhum cookie da chave anterior chega, e o
  * aviso nunca sairia (2ª rodada de revisão do #146).
  *
- * Como a limpeza, nenhum erro aqui derruba o servidor. Um ambiente inválido
- * CHEGA aqui — nada o valida antes de `register` — e aparece como falha do
- * aviso; por isso as mensagens de `ambiente()` nunca levam valor de segredo.
+ * Como a limpeza, nenhum erro DO AVISO derruba o servidor. Em produção, um
+ * ambiente inválido já encerrou o processo antes, em `conferirAmbienteNaSubida`;
+ * em desenvolvimento ele chega aqui e aparece como falha do aviso. Nos dois
+ * casos a mensagem de `ambiente()` vai ao log, e por isso nunca leva valor de
+ * segredo.
  */
 export async function avisarTrocaDaChaveDeSessao(): Promise<void> {
   // O modo de desenvolvimento pode chamar `register` de novo ao recarregar:

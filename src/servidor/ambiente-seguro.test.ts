@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ambiente, limparCacheDeAmbiente, motivoDeNaoSerDesenvolvimento } from './ambiente'
+import { ambiente, limparCacheDeAmbiente, motivoDeEnderecoLocalInvalido, motivoDeNaoSerDesenvolvimento } from './ambiente'
 
 /**
  * Configurações que o sistema recusa, em vez de subir e degradar calado.
@@ -441,5 +441,12 @@ describe('em produção, o assistente não manda o que a equipe digita a fornece
     vi.stubEnv('IA_ADAPTER', ia)
     for (const [nome, valor] of Object.entries(extras)) vi.stubEnv(nome, valor)
     expect(() => ambiente()).not.toThrow()
+  })
+})
+
+describe('o endereço da IA local inválido não ecoa o valor (revisão de segurança do #183)', () => {
+  it('sem o http://, o "protocolo" lido é o usuário; a mensagem não o repete', () => {
+    const motivo = motivoDeEnderecoLocalInvalido('usuario:segredo@10.0.0.5:11434/v1')
+    expect(motivo).toBe('precisa ser http ou https.')
   })
 })
