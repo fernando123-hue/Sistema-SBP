@@ -1,4 +1,4 @@
-import { ambiente } from './ambiente'
+import { ambiente, motivoDeNaoSerDesenvolvimento } from './ambiente'
 
 export { acessoLocalEmArquivoEnv } from './ambiente'
 
@@ -48,8 +48,10 @@ export function acessoLocalHabilitado(): boolean {
   // `ambiente()` já recusa a variável fora de desenvolvimento; conferir aqui
   // de novo custa uma comparação e protege contra quem um dia afrouxar aquela.
   // Sinal POSITIVO (achado C-12): "não é production" deixava passar um
-  // servidor publicado com NODE_ENV herdado.
-  return configuracao.ACESSO_LOCAL_SEM_SENHA && configuracao.NODE_ENV === 'development'
+  // servidor publicado com NODE_ENV herdado. E o MESMO sinal da trava de
+  // `ambiente()` (pendência 47): o `NODE_ENV` do schema completa a ausência com
+  // `development`, e a redundância não protegeria nada se a trava afrouxasse.
+  return configuracao.ACESSO_LOCAL_SEM_SENHA && motivoDeNaoSerDesenvolvimento() === null
 }
 
 export function ehContaSintetica(email: string): boolean {

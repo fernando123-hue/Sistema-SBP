@@ -76,7 +76,9 @@ describe('ligar e desligar', () => {
   it('ligado sem NODE_ENV, o sistema recusa subir: a ausência não é desenvolvimento (pendência 47)', () => {
     configurar('1', 'development')
     Reflect.deleteProperty(process.env, 'NODE_ENV')
-    expect(() => ambiente()).toThrow(/NODE_ENV=\(ausente\)/)
+    expect(() => ambiente()).toThrow(/NODE_ENV ausente/)
+    // A segunda conferência lê o mesmo sinal: sem NODE_ENV, nunca habilita.
+    expect(() => acessoLocalHabilitado()).toThrow(/NODE_ENV ausente/)
   })
 
   it('desligado em produção, sobe normalmente e continua desligado', () => {

@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ambiente, limparCacheDeAmbiente } from './ambiente'
+import { ambiente, limparCacheDeAmbiente, motivoDeNaoSerDesenvolvimento } from './ambiente'
 
 /**
  * Configurações que o sistema recusa, em vez de subir e degradar calado.
@@ -76,13 +79,32 @@ describe('verificação de TLS desligada só em desenvolvimento (pendência 37)'
     // com `development`.
     vi.stubEnv('NODE_ENV', undefined)
     vi.stubEnv('NODE_TLS_REJECT_UNAUTHORIZED', '0')
-    expect(() => ambiente()).toThrow(/NODE_ENV=\(ausente\)/)
+    expect(() => ambiente()).toThrow(/NODE_ENV ausente/)
   })
 
   it('em desenvolvimento, NODE_TLS_REJECT_UNAUTHORIZED=0 continua subindo', () => {
     vi.stubEnv('NODE_ENV', 'development')
     vi.stubEnv('NODE_TLS_REJECT_UNAUTHORIZED', '0')
-    expect(() => ambiente()).not.toThrow()
+    // Pasta vazia: um `.env` da máquina com `NODE_ENV=development` daria
+    // vermelho sem defeito aqui.
+    emPasta({}, () => expect(() => ambiente()).not.toThrow())
+  })
+
+  it('dev:local atrás de proxy: acesso sem senha e TLS desligado juntos, em desenvolvimento declarado, sobe', () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('NODE_TLS_REJECT_UNAUTHORIZED', '0')
+    vi.stubEnv('ACESSO_LOCAL_SEM_SENHA', '1')
+    emPasta({}, () => expect(() => ambiente()).not.toThrow())
+  })
+
+  it('NODE_ENV=development vindo de um .env não é declarado: recusa (pendência 47, revisão de segurança)', () => {
+    // `process.loadEnvFile` preenche o NODE_ENV que falta; um cron sem a
+    // variável passaria por causa da linha no arquivo.
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('NODE_TLS_REJECT_UNAUTHORIZED', '0')
+    emPasta({ '.env': 'NODE_ENV=development\n' }, () =>
+      expect(() => ambiente()).toThrow(/NODE_ENV=development escrito em \.env/),
+    )
   })
 
   // `'false'` e `'00'` também NÃO desligam a verificação no Node (conferido
@@ -333,3 +355,56 @@ describe('chave anterior da sessão, para rotacionar sem derrubar todo mundo (C-
     expect(() => ambiente()).not.toThrow()
   })
 })
+
+describe('desenvolvimento declarado (pendência 47)', () => {
+  it.each([
+    ['NODE_ENV=development', '.env'],
+    ['export NODE_ENV="development"', '.env.local'],
+    ["  NODE_ENV = 'development'\r", '.env.development'],
+  ])('%j em %s não conta como declarado', (linha, arquivo) => {
+    vi.stubEnv('NODE_ENV', 'development')
+    const pasta = mkdtempSync(join(tmpdir(), 'sbp-nodeenv-'))
+    try {
+      writeFileSync(join(pasta, arquivo), `DATABASE_URL="x"\n${linha}\n`)
+      expect(motivoDeNaoSerDesenvolvimento(pasta)).toContain(arquivo)
+    } finally {
+      rmSync(pasta, { recursive: true, force: true })
+    }
+  })
+
+  it('linha comentada, outro valor ou só no .env.example não contam', () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    const pasta = mkdtempSync(join(tmpdir(), 'sbp-nodeenv-'))
+    try {
+      writeFileSync(join(pasta, '.env'), '# NODE_ENV=development\nNODE_ENV=production\n')
+      writeFileSync(join(pasta, '.env.example'), 'NODE_ENV=development\n')
+      expect(motivoDeNaoSerDesenvolvimento(pasta)).toBeNull()
+    } finally {
+      rmSync(pasta, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    [undefined, 'NODE_ENV ausente'],
+    ['test', 'NODE_ENV=test'],
+    ['production', 'NODE_ENV=production'],
+  ])('NODE_ENV=%j não é desenvolvimento', (valor, motivo) => {
+    vi.stubEnv('NODE_ENV', valor)
+    emPasta({}, () => expect(motivoDeNaoSerDesenvolvimento()).toBe(motivo))
+  })
+})
+
+/** Roda `corpo` com o processo numa pasta temporária contendo só `arquivos`. */
+function emPasta(arquivos: Record<string, string>, corpo: () => void): void {
+  const pasta = mkdtempSync(join(tmpdir(), 'sbp-amb-'))
+  const original = process.cwd()
+  try {
+    for (const [nome, conteudo] of Object.entries(arquivos)) writeFileSync(join(pasta, nome), conteudo)
+    process.chdir(pasta)
+    limparCacheDeAmbiente()
+    corpo()
+  } finally {
+    process.chdir(original)
+    rmSync(pasta, { recursive: true, force: true })
+  }
+}

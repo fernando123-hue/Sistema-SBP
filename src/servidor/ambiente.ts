@@ -312,14 +312,13 @@ export function ambiente(): Ambiente {
   // morar num arquivo `.env`: quem liga é o `npm run dev:local`, só para o
   // processo dele.
   //
-  // E `development` tem de estar ESCRITO (pendência 47): o schema completa a
-  // ausência com `development`, e um processo sem `NODE_ENV` passaria. O
-  // `dev:local` define o valor explicitamente.
+  // E o desenvolvimento tem de ser DECLARADO (pendência 47): ver
+  // `motivoDeNaoSerDesenvolvimento`.
   if (resultado.data.ACESSO_LOCAL_SEM_SENHA) {
-    const nodeEnvCru = process.env['NODE_ENV']
-    if (nodeEnvCru !== 'development') {
+    const motivo = motivoDeNaoSerDesenvolvimento()
+    if (motivo !== null) {
       throw new Error(
-        `ACESSO_LOCAL_SEM_SENHA=1 com NODE_ENV=${nodeEnvCru ?? '(ausente)'}. O acesso sem senha existe só para ` +
+        `ACESSO_LOCAL_SEM_SENHA=1 com ${motivo}. O acesso sem senha existe só para ` +
           'desenvolvimento local — desligue a variável antes de subir o sistema.',
       )
     }
@@ -347,14 +346,12 @@ export function ambiente(): Ambiente {
   // `process.env` em tempo de execução já está dentro do processo, e essa
   // barreira não é esta (revisão de segurança do #157).
   //
-  // O `NODE_ENV` é o CRU, não o do schema (pendência 47): lá a ausência vira
-  // `development`, e um script num cron (`db:expurgar`, `ia:avaliar`, sem
-  // `NODE_ENV`) passaria com a variável herdada da máquina. `next dev` e
-  // `dev:local` definem `development` sozinhos, então o desenvolvimento não muda.
-  const nodeEnvCru = process.env['NODE_ENV']
-  if (process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0' && nodeEnvCru !== 'development') {
+  // O desenvolvimento tem de ser DECLARADO (pendência 47): ver
+  // `motivoDeNaoSerDesenvolvimento`.
+  const motivoTls = process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0' ? motivoDeNaoSerDesenvolvimento() : null
+  if (motivoTls !== null) {
     throw new Error(
-      `NODE_TLS_REJECT_UNAUTHORIZED=0 com NODE_ENV=${nodeEnvCru ?? '(ausente)'} desliga a verificação de TLS de ` +
+      `NODE_TLS_REJECT_UNAUTHORIZED=0 com ${motivoTls} desliga a verificação de TLS de ` +
         'todo o processo, e o texto dos e-mails ficaria legível para quem estiver no caminho. Apague a variável; ' +
         'se a rede da empresa inspeciona TLS, aponte NODE_EXTRA_CA_CERTS para o certificado dela.',
     )
@@ -666,11 +663,9 @@ const ARQUIVOS_ENV = [
 // enxergar o mesmo que o carregador (revisão do PR).
 const LIGADO_EM_ARQUIVO = /^[ \t]*(?:export[ \t]+)?ACESSO_LOCAL_SEM_SENHA[ \t]*=[ \t]*["']?1["']?[ \t]*$/m
 
-/**
- * O primeiro arquivo `.env*` da pasta que liga o acesso sem senha, ou `null`.
- * Linha comentada ou com outro valor não conta.
- */
-export function acessoLocalEmArquivoEnv(pasta: string): string | null {
+const DESENVOLVIMENTO_EM_ARQUIVO = /^[ \t]*(?:export[ \t]+)?NODE_ENV[ \t]*=[ \t]*["']?development["']?[ \t]*$/m
+
+function primeiroArquivoEnvCom(pasta: string, padrao: RegExp): string | null {
   for (const arquivo of ARQUIVOS_ENV) {
     let conteudo: string
     try {
@@ -678,7 +673,48 @@ export function acessoLocalEmArquivoEnv(pasta: string): string | null {
     } catch {
       continue // arquivo que não existe não liga nada
     }
-    if (LIGADO_EM_ARQUIVO.test(conteudo)) return arquivo
+    if (padrao.test(conteudo)) return arquivo
+  }
+  return null
+}
+
+/**
+ * O primeiro arquivo `.env*` da pasta que liga o acesso sem senha, ou `null`.
+ * Linha comentada ou com outro valor não conta.
+ */
+export function acessoLocalEmArquivoEnv(pasta: string): string | null {
+  return primeiroArquivoEnvCom(pasta, LIGADO_EM_ARQUIVO)
+}
+
+/**
+ * Por que este processo NÃO conta como desenvolvimento declarado, ou `null`
+ * se conta. É o único sinal que libera as travas de desenvolvimento (acesso
+ * sem senha, TLS desligado) — pendência 47.
+ *
+ * Três coisas, todas achadas nas revisões do PR da pendência 47:
+ *
+ * - **Ausência não é desenvolvimento.** O schema completa `NODE_ENV` ausente
+ *   com `development`; um script por `tsx` num cron (`db:expurgar`,
+ *   `ia:avaliar`) passaria com a variável herdada da máquina. Por isso a
+ *   leitura é de `process.env`, não do schema.
+ * - **Escrito em `.env*` não é declarado.** `process.loadEnvFile` preenche o
+ *   `NODE_ENV` que falta, e um `.env` com `NODE_ENV=development` faria o
+ *   mesmo cron passar. Vale só o exportado no comando, como faz o `dev:local`.
+ * - **Dentro do servidor do Next, vale o modo do BUILD, não o do processo.**
+ *   O Next troca `process.env['NODE_ENV']` (com colchetes também) pelo valor
+ *   do build: conferido em `.next/server`, onde esta comparação vira
+ *   constante. Num `next build` + `next start`, as travas recusam sempre,
+ *   mesmo com `NODE_ENV` herdado como `development` — mais duro que o C-12
+ *   pedia, e de propósito. Só nos scripts por `tsx` e no vitest a leitura é a
+ *   do processo.
+ */
+export function motivoDeNaoSerDesenvolvimento(pasta: string = process.cwd()): string | null {
+  const nodeEnv = process.env['NODE_ENV']
+  if (nodeEnv === undefined) return 'NODE_ENV ausente'
+  if (nodeEnv !== 'development') return `NODE_ENV=${nodeEnv}`
+  const arquivo = primeiroArquivoEnvCom(pasta, DESENVOLVIMENTO_EM_ARQUIVO)
+  if (arquivo !== null) {
+    return `NODE_ENV=development escrito em ${arquivo} (vale só exportado no comando, como faz o npm run dev:local)`
   }
   return null
 }

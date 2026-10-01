@@ -1193,6 +1193,13 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 **Efeito que a equipe vai notar:** quem usa o computador no tema claro passa a ver o sistema claro. Não é mudança de escolha, é o tema funcionando como foi escrito; se o dono preferir outra coisa, `§ H.4` item 49. **Status:** ✅ corrigido; conferido por captura nos dois temas.
 
+### AT-53 — Desenvolvimento só conta quando declarado no comando (pendência 47) *(01/10/2026)*
+
+**Hipótese:** as duas travas que só o desenvolvimento libera (`NODE_TLS_REJECT_UNAUTHORIZED=0` e `ACESSO_LOCAL_SEM_SENHA=1`) exigem `NODE_ENV=development` **exportado no processo**: ausente não conta, e escrito num `.env*` também não (`motivoDeNaoSerDesenvolvimento`, `servidor/ambiente.ts`).
+**Motivo:** o schema completa `NODE_ENV` ausente com `development`, e `process.loadEnvFile` preenche o que falta a partir do `.env`; nos dois casos, um script por `tsx` num cron (`db:expurgar`, `ia:avaliar`) passaria pela trava com a variável herdada da máquina, abrindo banco e IA sem verificar certificado. O dono pediu em 01/10 que esta pendência fosse feita "da maneira mais segura possível"; é a primeira saída da pendência 47.
+**Impacto:** quem roda script local atrás de proxy com `NODE_TLS_REJECT_UNAUTHORIZED=0` passa a ver a recusa, que aponta `NODE_EXTRA_CA_CERTS`. `npm run dev` e `npm run dev:local` não mudam. No servidor do Next, o `NODE_ENV` lido é o do **build** (o Next troca `process.env['NODE_ENV']`, com colchetes também, conferido em `.next/server`): num `next start` as duas travas recusam sempre. As travas que só rodam em `production` (segredos públicos, `ANEXOS_SECRET`) não mudam: sem `NODE_ENV` continuam sem rodar, o limite do C-12 já escrito nelas.
+**Status:** ✅ decisão técnica, dentro do pedido do dono; revisões técnica e de segurança no PR.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
