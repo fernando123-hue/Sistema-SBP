@@ -216,7 +216,9 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
    * ela. Não é "na partida do servidor", e isso é escolha: a documentação do
    * Next não diz o que acontece quando `instrumentation.register` lança, nem se
    * ele roda no build — e uma conferência cujo efeito não se prova seria outra
-   * promessa sem prova.
+   * promessa sem prova. (Desde o `AT-65`, a CONFIGURAÇÃO é conferida no
+   * `register` e encerra o processo em produção, visto com `next start`; a
+   * chave dos anexos continua aqui, porque precisa do disco e de um anexo.)
    *
    * Instalação antiga, sem sentinela: antes de adotar a chave atual, ela é
    * testada contra um anexo cifrado que já exista. Sem isso, a primeira

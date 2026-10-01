@@ -38,12 +38,20 @@ describe('register', () => {
     expect(conferirAmbienteNaSubida).toHaveBeenCalledTimes(1)
     expect(avisarTrocaDaChaveDeSessao).toHaveBeenCalledTimes(1)
     expect(agendarLimpezaDiaria).toHaveBeenCalledTimes(1)
+    // A conferência vem PRIMEIRO: com a configuração errada, em produção o
+    // processo encerra antes de agendar rotina (pendência 49).
+    const ordem = (fn: { mock: { invocationCallOrder: number[] } }) => fn.mock.invocationCallOrder[0]!
+    expect(ordem(conferirAmbienteNaSubida)).toBeLessThan(ordem(avisarTrocaDaChaveDeSessao))
+    expect(ordem(conferirAmbienteNaSubida)).toBeLessThan(ordem(agendarLimpezaDiaria))
   })
 
   it('durante o build de produção, não liga nada', async () => {
     process.env.NEXT_RUNTIME = 'nodejs'
     process.env.NEXT_PHASE = 'phase-production-build'
     await register()
+    // O `next build` pode rodar numa máquina sem a configuração de produção:
+    // conferir ali encerraria o build.
+    expect(conferirAmbienteNaSubida).not.toHaveBeenCalled()
     expect(avisarTrocaDaChaveDeSessao).not.toHaveBeenCalled()
     expect(agendarLimpezaDiaria).not.toHaveBeenCalled()
   })
@@ -51,6 +59,7 @@ describe('register', () => {
   it('fora do runtime Node (edge), não liga nada', async () => {
     process.env.NEXT_RUNTIME = 'edge'
     await register()
+    expect(conferirAmbienteNaSubida).not.toHaveBeenCalled()
     expect(avisarTrocaDaChaveDeSessao).not.toHaveBeenCalled()
     expect(agendarLimpezaDiaria).not.toHaveBeenCalled()
   })

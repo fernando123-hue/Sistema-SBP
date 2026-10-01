@@ -42,11 +42,26 @@ import type { ArmazenamentoPort } from './ports/armazenamento'
  * `sair` e `escrever` são injetados só para o teste não encerrar a suíte.
  */
 export async function conferirAmbienteNaSubida(
-  sair: (codigo: number) => void = (codigo) => process.exit(codigo),
+  // Sai DEPOIS de o stderr esvaziar: no Windows (a validação do `A74`) a
+  // escrita em pipe é assíncrona, e sair na hora cortaria o motivo (revisão
+  // técnica do #183). O `write` vazio só chama de volta quando a fila andou.
+  sair: (codigo: number) => void = (codigo) => process.stderr.write('', () => process.exit(codigo)),
   escrever: (texto: string) => void = (texto) => process.stderr.write(texto),
 ): Promise<void> {
+  // A carga do módulo fica FORA do `try` da configuração: código que não
+  // carrega (build corrompido, dependência quebrada) não pode mandar o TI
+  // conferir o `.env` (revisão técnica do #183).
+  let ambiente: () => unknown
   try {
-    const { ambiente } = await import('./servidor/ambiente')
+    ;({ ambiente } = await import('./servidor/ambiente'))
+  } catch (erro) {
+    const motivo = erro instanceof Error ? erro.message : String(erro)
+    escrever(`O servidor NÃO subiu: o código não carregou (confira o build e as dependências, não o .env). ${motivo}\n`)
+    if (process.env['NODE_ENV'] === 'production') sair(1)
+    return
+  }
+
+  try {
     ambiente()
   } catch (erro) {
     const motivo = erro instanceof Error ? erro.message : String(erro)
@@ -68,9 +83,11 @@ const MINUTOS_ENTRE_TENTATIVAS = 15
  * processo reiniciando sozinho, nenhum cookie da chave anterior chega, e o
  * aviso nunca sairia (2ª rodada de revisão do #146).
  *
- * Como a limpeza, nenhum erro aqui derruba o servidor. Um ambiente inválido
- * CHEGA aqui — nada o valida antes de `register` — e aparece como falha do
- * aviso; por isso as mensagens de `ambiente()` nunca levam valor de segredo.
+ * Como a limpeza, nenhum erro DO AVISO derruba o servidor. Em produção, um
+ * ambiente inválido já encerrou o processo antes, em `conferirAmbienteNaSubida`;
+ * em desenvolvimento ele chega aqui e aparece como falha do aviso. Nos dois
+ * casos a mensagem de `ambiente()` vai ao log, e por isso nunca leva valor de
+ * segredo.
  */
 export async function avisarTrocaDaChaveDeSessao(): Promise<void> {
   // O modo de desenvolvimento pode chamar `register` de novo ao recarregar:

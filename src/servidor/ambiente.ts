@@ -683,7 +683,10 @@ export function motivoDeEnderecoLocalInvalido(valor: string): string | null {
     return 'não é um endereço válido.'
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    return `precisa ser http ou https (recebido "${url.protocol}").`
+    // Sem ecoar o "protocolo": em `usuario:senha@10.0.0.5:11434`, sem o
+    // `http://`, o `new URL` lê `usuario:` como protocolo, e a mensagem levava
+    // o usuário ao log do servidor (revisão de segurança do #183).
+    return 'precisa ser http ou https.'
   }
   // Credencial no endereço viaja em TODO pedido e aparece no log de acesso do
   // servidor e de qualquer proxy no meio. A mensagem não repete o valor.

@@ -73,3 +73,23 @@ describe('a subida confere o ambiente', () => {
     expect(sair).not.toHaveBeenCalled()
   })
 })
+
+describe('código que não carrega não manda conferir o .env (revisão técnica do #183)', () => {
+  it('em produção, falha ao carregar o módulo encerra com mensagem própria', async () => {
+    vi.resetModules()
+    vi.doMock('./servidor/ambiente', () => {
+      throw new Error('módulo quebrado')
+    })
+    vi.stubEnv('NODE_ENV', 'production')
+    const { conferirAmbienteNaSubida: conferir } = await import('./instrumentation-node')
+    const sair = vi.fn()
+    const escrito: string[] = []
+
+    await conferir(sair, (texto) => escrito.push(texto))
+
+    expect(sair).toHaveBeenCalledWith(1)
+    expect(escrito.join('')).toMatch(/o código não carregou \(confira o build e as dependências, não o \.env\)/)
+    vi.doUnmock('./servidor/ambiente')
+    vi.resetModules()
+  })
+})
