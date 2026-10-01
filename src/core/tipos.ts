@@ -394,6 +394,13 @@ export interface ResumoIngestao {
    * ele existe e precisa ser aberto direto no Outlook.
    */
   naoInterpretados: number
+  /**
+   * Quantas revisões esperam decisão humana AGORA, na fila inteira — não só
+   * as desta busca (`A69`, 4A). O que ficou de ontem também não entra na
+   * distribuição de hoje, e a Distribuição precisa dizer isso antes de a
+   * pessoa conferir a prévia e estranhar o número.
+   */
+  revisoesPendentes: number
 }
 
 export interface ItemEmRevisao {

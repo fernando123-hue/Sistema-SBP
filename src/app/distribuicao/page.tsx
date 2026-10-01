@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { hojeIso } from '../../core/util/datas'
@@ -315,6 +316,28 @@ export default function Distribuicao() {
               </strong>
             </>
           ) : null}
+        </Aviso>
+      ) : null}
+
+      {/*
+        Depois da busca, quantos itens esperam conferência e o caminho até eles
+        (`A69`, 4A). Item na Revisão não entra na prévia: sem este aviso, quem
+        acabou de buscar 30 ligantes via a prévia sem eles e não sabia por quê.
+        A fila inteira, não só a desta busca — o que ficou de ontem também está
+        parado. Um número da fila, nunca de uma pessoa (`A71`).
+      */}
+      {ingestao && ingestao.revisoesPendentes > 0 ? (
+        <Aviso tom="atencao">
+          <strong>
+            {ingestao.revisoesPendentes === 1
+              ? '1 item espera conferência na Revisão'
+              : `${ingestao.revisoesPendentes} itens esperam conferência na Revisão`}
+          </strong>
+          {ingestao.itensParaRevisao > 0 ? ` (${ingestao.itensParaRevisao} desta busca)` : ''}. Item em
+          conferência só entra na distribuição depois de aprovado.{' '}
+          <Link href="/revisao" className="font-medium underline underline-offset-2">
+            Abrir a Revisão
+          </Link>
         </Aviso>
       ) : null}
 

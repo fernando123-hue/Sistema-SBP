@@ -308,6 +308,7 @@ export async function sincronizar(
     naoLidas: 0,
     repetidas: 0,
     naoInterpretados: 0,
+    revisoesPendentes: 0,
   }
 
   const avisos: AvisoDaBusca[] = []
@@ -551,6 +552,11 @@ export async function sincronizar(
     detalhe: resumo,
     duracaoMs: Date.now() - inicio,
   })
+
+  // Depois do evento, e de propósito: o evento registra o que ESTA busca fez,
+  // e a fila inteira é um retrato do momento, não um resultado dela. Uma
+  // contagem, sem nome nem pessoa (`A71`): é a fila, não quem a deixou.
+  resumo.revisoesPendentes = await deps.banco.revisao.count({ where: { resolvidoEm: null } })
 
   return resumo
 }

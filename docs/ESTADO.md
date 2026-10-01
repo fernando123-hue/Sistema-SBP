@@ -4,7 +4,13 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 01/10/2026 — UM CARTÃO POR E-MAIL NA REVISÃO (`A69` 1A) (este bloco vence os de baixo)
+> ### 01/10/2026 — A DISTRIBUIÇÃO AVISA O QUE ESPERA CONFERÊNCIA (`A69` 4A) (este bloco vence os de baixo)
+>
+> - **O que entrou:** depois de "Buscar e-mails", a Distribuição diz quantos itens esperam conferência na Revisão (a fila inteira, e quantos desta busca) e leva até lá. Decisões em `AT-58`. Nível 2.
+> - **1A mesclado no #167** (`AT-57`): a revisão de segurança achou CPF a conferir escondido sob "desdobramento"; corrigido antes de mesclar.
+> - **Próximo do `A69`:** 5A+5B, o último.
+>
+> ### 01/10/2026 — UM CARTÃO POR E-MAIL NA REVISÃO (`A69` 1A) MESCLADO NO #167
 >
 > - **O que entrou:** na Revisão, as revisões de um e-mail de lista viram um cartão com a lista de nomes: tirar, corrigir, acrescentar e "Aprovar os N" (dois toques, tudo ou nada). E-mail com alerta ou valor para conferir continua item a item. Decisões em `AT-57`. Nível 3.
 > - **3A+3B mesclado no #165.** O aviso ao TI e ao encarregado de dados sobre CPF e matrícula na tela de quem executa (`A69`) é **tarefa do dono**; o repositório só registra.
