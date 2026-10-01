@@ -15,18 +15,18 @@ describe('camposParaCopiar (`A69`, 3B)', () => {
     })
 
     expect(campos).toEqual([
-      { campo: 'nome', rotulo: 'Nome', valor: 'Beltrana Sintética' },
-      { campo: 'cpf', rotulo: 'CPF', valor: '111.444.777-35' },
-      { campo: 'matricula', rotulo: 'Matrícula', valor: '48213' },
-      { campo: 'telefone', rotulo: 'Telefone', valor: '(11) 90000-0000' },
-      { campo: 'apelido', rotulo: 'apelido', valor: 'Bel' },
-      { campo: 'zona', rotulo: 'zona', valor: 'norte' },
+      { campo: 'nome', rotulo: 'Nome', conhecido: true, valor: 'Beltrana Sintética' },
+      { campo: 'cpf', rotulo: 'CPF', conhecido: true, valor: '111.444.777-35' },
+      { campo: 'matricula', rotulo: 'Matrícula', conhecido: true, valor: '48213' },
+      { campo: 'telefone', rotulo: 'Telefone', conhecido: true, valor: '(11) 90000-0000' },
+      { campo: 'apelido', rotulo: 'apelido', conhecido: false, valor: 'Bel' },
+      { campo: 'zona', rotulo: 'zona', conhecido: false, valor: 'norte' },
     ])
   })
 
   it('deixa de fora o campo vazio e tira os espaços das pontas do que vai ser copiado', () => {
     expect(camposParaCopiar({ cpf: '  111.444.777-35 ', crm: '   ', email: '' })).toEqual([
-      { campo: 'cpf', rotulo: 'CPF', valor: '111.444.777-35' },
+      { campo: 'cpf', rotulo: 'CPF', conhecido: true, valor: '111.444.777-35' },
     ])
   })
 
@@ -34,7 +34,7 @@ describe('camposParaCopiar (`A69`, 3B)', () => {
   // herdada (mesma armadilha de `lerSugestao`, 2ª rodada do #150).
   it('só lê chaves próprias com valor texto', () => {
     const campos = Object.assign(Object.create({ herdado: 'nao' }), { cpf: '111.444.777-35', numero: 5 })
-    expect(camposParaCopiar(campos)).toEqual([{ campo: 'cpf', rotulo: 'CPF', valor: '111.444.777-35' }])
+    expect(camposParaCopiar(campos)).toEqual([{ campo: 'cpf', rotulo: 'CPF', conhecido: true, valor: '111.444.777-35' }])
   })
 
   // O valor vai para a área de transferência e dali para o sistema da

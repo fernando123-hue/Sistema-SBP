@@ -112,7 +112,12 @@ export default function Fila() {
 
   const carregar = useCallback(async () => {
     try {
-      setItens(await api.buscar<ItemDaFila[]>('/fila'))
+      const lista = await api.buscar<ItemDaFila[]>('/fila')
+      setItens(lista)
+      // O item que saiu da fila leva junto os dados que a tela tinha dele
+      // (revisão de segurança do #165): CPF não fica no estado da tela.
+      const ficam = new Set(lista.map((item) => item.itemId))
+      setDados((atual) => Object.fromEntries(Object.entries(atual).filter(([itemId]) => ficam.has(itemId))))
     } catch (causa) {
       // Lista vazia, e não `null`: `null` é a condição que desenha "Carregando…",
       // então uma falha de rede deixava erro E carregando na tela ao mesmo
@@ -237,6 +242,9 @@ export default function Fila() {
     } catch (causa) {
       setFeito(null)
       setErro(mensagemDoErro(causa))
+      // A recusa do grupo manda atualizar a tela; a tela atualiza sozinha, e
+      // o erro continua à vista (`carregar` só o troca se ela mesma falhar).
+      void carregar()
     } finally {
       setOcupado(null)
       setConfirmandoConclusao(null)
@@ -267,6 +275,9 @@ export default function Fila() {
    * mão em vez de fingir que copiou.
    */
   async function copiar(valor: string) {
+    // Outro botão desarma o Concluir; e, armado, o anúncio de confirmação
+    // tomaria o lugar do "Copiado." (revisão técnica do #165).
+    setConfirmandoConclusao(null)
     // Limpa ANTES do `await`, como em `concluir`: copiar duas vezes seguidas
     // também é ouvido duas vezes.
     setFeito(null)
@@ -290,8 +301,6 @@ export default function Fila() {
     grupos: agruparPorEmail(lista),
   }))
   const todosOsGrupos = secoes.flatMap((secao) => secao.grupos)
-  /** A ordem da TELA: o grupo aparece na posição do item mais antigo dele. */
-  const ordemNaTela = todosOsGrupos.flatMap((grupo) => grupo.itens)
   const gruposJuntos = todosOsGrupos.filter((grupo) => grupo.itens.length > 1)
 
   // Onde está o que foi armado, na ordem da tela. A frase sai de
@@ -299,8 +308,13 @@ export default function Fila() {
   const grupoArmado = confirmandoConclusao?.startsWith(PREFIXO_DE_GRUPO)
     ? gruposJuntos.findIndex((grupo) => grupo.chave === confirmandoConclusao)
     : null
-  const itemArmado = ordemNaTela.findIndex((item) => item.itemId === confirmandoConclusao)
-
+  // A ordem da TELA: o grupo aparece na posição do item mais antigo dele, e a
+  // posição conta só os cartões À VISTA: os itens de um grupo fechado não
+  // têm Concluir próprio na tela (revisão técnica do #165).
+  const cartoesNaTela = todosOsGrupos.flatMap((grupo) =>
+    grupo.itens.length === 1 || abertos.has(grupo.chave) ? grupo.itens : [],
+  )
+  const itemArmado = cartoesNaTela.findIndex((item) => item.itemId === confirmandoConclusao)
 
   function cartaoDoItem(item: ItemDaFila) {
     return (
@@ -339,13 +353,13 @@ export default function Fila() {
           */}
           {item.emailId !== null ? (
             <Botao
-        tamanho="pequeno"
-        onClick={() => {
-          // Outro botão desarma o Concluir, como o "Não é comigo".
-          setConfirmandoConclusao(null)
-          void alternarDados(item)
-        }}
-      >
+              tamanho="pequeno"
+              onClick={() => {
+                // Outro botão desarma o Concluir, como o "Não é comigo".
+                setConfirmandoConclusao(null)
+                void alternarDados(item)
+              }}
+            >
               {dados[item.itemId] ? 'Esconder dados' : 'Ver dados'}
             </Botao>
           ) : null}
@@ -404,7 +418,7 @@ export default function Fila() {
 
         {dados[item.itemId] ? <PainelDosDados painel={dados[item.itemId]!} copiar={copiar} /> : null}
 
-      {saindo === item.itemId ? (
+        {saindo === item.itemId ? (
           <div className="mt-3 flex flex-col gap-2 border-t border-borda pt-3">
             <label
               className="text-xs text-tinta-suave"
@@ -477,13 +491,20 @@ export default function Fila() {
     )
   }
 
-  function alternarGrupo(chave: string) {
+  function alternarGrupo(grupo: GrupoDaFila<ItemDaFila>) {
     setConfirmandoConclusao(null)
     setFeito(null)
+    if (abertos.has(grupo.chave)) {
+      // Juntar de novo esconde os cartões, e com eles os dados abertos: ao
+      // reabrir, cada "Ver dados" lê de novo do servidor e entra na trilha
+      // (revisão técnica do #165).
+      const saem = new Set(grupo.itens.map((item) => item.itemId))
+      setDados((atual) => Object.fromEntries(Object.entries(atual).filter(([itemId]) => !saem.has(itemId))))
+    }
     setAbertos((atual) => {
       const novo = new Set(atual)
-      if (novo.has(chave)) novo.delete(chave)
-      else novo.add(chave)
+      if (novo.has(grupo.chave)) novo.delete(grupo.chave)
+      else novo.add(grupo.chave)
       return novo
     })
   }
@@ -521,7 +542,7 @@ export default function Fila() {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
-          <Botao tamanho="pequeno" onClick={() => alternarGrupo(grupo.chave)} desabilitado={ocupado !== null}>
+          <Botao tamanho="pequeno" onClick={() => alternarGrupo(grupo)} desabilitado={ocupado !== null}>
             Ver um por um
           </Botao>
           {/*
@@ -576,7 +597,7 @@ export default function Fila() {
                   gruposJuntos.length,
                   gruposJuntos[grupoArmado]?.itens.length ?? 0,
                 )
-              : pedidoDeConfirmacao('concluir', itemArmado, itens?.length ?? 0)
+              : pedidoDeConfirmacao('concluir', itemArmado, cartoesNaTela.length)
             : feito
         }
       />
@@ -607,7 +628,7 @@ export default function Fila() {
                           </p>
                           <Botao
                             tamanho="pequeno"
-                            onClick={() => alternarGrupo(grupo.chave)}
+                            onClick={() => alternarGrupo(grupo)}
                             desabilitado={ocupado !== null}
                           >
                             Juntar de novo
@@ -669,11 +690,16 @@ function PainelDosDados({ painel, copiar }: { painel: PainelDeDados; copiar: (va
           {painel.dados.campos.map((campo) => (
             <div key={campo.campo} className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <dt className="text-xs text-tinta-suave">{campo.rotulo}</dt>
+                <dt className="text-xs text-tinta-suave">
+                  {campo.rotulo}
+                  {/* Nome que veio do e-mail, não da casa: à vista, para não se
+                      passar por um campo nosso (revisão de segurança do #165). */}
+                  {campo.conhecido ? null : <span className="ml-1.5 italic">· nome escrito no e-mail</span>}
+                </dt>
                 <dd className="numerico text-sm break-all select-all">{campo.valor}</dd>
               </div>
               <Botao tamanho="pequeno" onClick={() => void copiar(campo.valor)}>
-                Copiar<span className="sr-only"> {campo.rotulo}</span>
+                Copiar<span className="sr-only">{campo.conhecido ? ` ${campo.rotulo}` : ' este valor'}</span>
               </Botao>
             </div>
           ))}

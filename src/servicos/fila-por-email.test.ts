@@ -4,7 +4,7 @@ import { ErroDeNegocio } from '../core/erros'
 import { serializar } from '../core/esquemas'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo, semearBase, type BaseSemeada } from '../testes/apoio'
-import { concluirDoMesmoEmail, lerDadosDoItem, minhaFila } from './fila'
+import { concluirDoMesmoEmail, lerDadosDoItem, minhaFila, transferir } from './fila'
 import { registrarManual } from './itens'
 
 /**
@@ -157,6 +157,83 @@ describe('concluirDoMesmoEmail (3A)', () => {
     await expect(tentativa).rejects.toThrow('Atualize a tela')
     expect(await banco.execucao.count()).toBe(0)
     expect(await banco.item.count({ where: { status: 'concluido' } })).toBe(0)
+    // Quem já foi dono está com a tela desatualizada, não sondando: nada de
+    // evento de negação com o nome dela (invariante 10).
+    expect(await banco.eventoProcessamento.count({ where: { etapa: 'autorizacao' } })).toBe(0)
+  })
+
+  // Revisão de segurança do #165: ids inventados chegavam à transação e
+  // travavam linhas antes de abortar.
+  it('id inexistente ou item sem dono recusa antes da transação, e nada é concluído', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const dono = base.colaboradores[0]!
+    const { itemIds } = await emailComItens(base, dono.id, 2)
+
+    await expect(
+      concluirDoMesmoEmail(banco, { itemIds: [...itemIds, 'nao-existe-1', 'nao-existe-2'] }, dono.ator),
+    ).rejects.toThrow('Nada foi concluído')
+    expect(await banco.execucao.count()).toBe(0)
+  })
+
+  // Corrida de verdade: quem chega primeiro vale, e o outro recebe recusa —
+  // nunca as duas coisas pela metade.
+  it('concluir o e-mail e transferir um item dele ao mesmo tempo: um dos dois, inteiro', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const [dono, outra] = base.colaboradores
+    const { itemIds } = await emailComItens(base, dono!.id, 5)
+
+    const [lote, transferencia] = await Promise.allSettled([
+      concluirDoMesmoEmail(banco, { itemIds }, dono!.ator),
+      transferir(banco, { itemId: itemIds[2]!, paraColaboradorId: outra!.id, justificativa: 'é da outra liga' }, dono!.ator),
+    ])
+
+    const concluidos = await banco.item.count({ where: { id: { in: itemIds }, status: 'concluido' } })
+    if (lote.status === 'fulfilled') {
+      expect(concluidos).toBe(5)
+      expect(transferencia.status).toBe('rejected')
+    } else {
+      expect(concluidos).toBe(0)
+      expect(transferencia.status).toBe('fulfilled')
+    }
+    expect(await banco.execucao.count()).toBe(concluidos)
+  })
+
+  // Um e-mail chega a 500 itens (`LIMITE_ITENS_POR_EMAIL`). A trava é uma
+  // consulta só e a transação tem prazo próprio (revisão técnica do #165).
+  it('conclui um e-mail de 500 itens', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const dono = base.colaboradores[0]!
+    const categoria = await banco.categoria.findFirstOrThrow({ where: { codigo: 'DOC_CADASTRO' } })
+    const email = await banco.email.create({
+      data: { messageId: 'quinhentos@teste.local', recebidoEm: new Date('2026-09-01T12:00:00Z') },
+    })
+    const itemIds = Array.from({ length: 500 }, (_, posicao) => `quinhentos-${String(posicao).padStart(3, '0')}`)
+    await banco.item.createMany({
+      data: itemIds.map((id, posicao) => ({
+        id,
+        emailId: email.id,
+        categoriaId: categoria.id,
+        sequencia: posicao + 1,
+        titulo: `Ligante sintético ${posicao}`,
+        payload: '{}',
+        status: 'distribuido',
+      })),
+    })
+    await banco.atribuicao.createMany({
+      data: itemIds.map((itemId) => ({
+        itemId,
+        colaboradorId: dono.id,
+        motivo: 'manual',
+        atribuidoPor: base.operadorId,
+        ativa: true,
+      })),
+    })
+
+    const feito = await concluirDoMesmoEmail(banco, { itemIds }, dono.ator)
+
+    expect(feito.concluidos).toBe(500)
+    expect(await banco.execucao.count()).toBe(500)
+    expect(await banco.logAuditoria.count({ where: { acao: 'concluido' } })).toBe(500)
   })
 
   it('não junta itens de e-mails diferentes', async () => {
@@ -243,9 +320,9 @@ describe('lerDadosDoItem (3B)', () => {
     expect(dados).toEqual({
       situacao: 'disponivel',
       campos: [
-        { campo: 'nome', rotulo: 'Nome', valor: 'Beltrana Sintética' },
-        { campo: 'cpf', rotulo: 'CPF', valor: CPF },
-        { campo: 'matricula', rotulo: 'Matrícula', valor: '48213' },
+        { campo: 'nome', rotulo: 'Nome', conhecido: true, valor: 'Beltrana Sintética' },
+        { campo: 'cpf', rotulo: 'CPF', conhecido: true, valor: CPF },
+        { campo: 'matricula', rotulo: 'Matrícula', conhecido: true, valor: '48213' },
       ],
     })
     const linhas = await banco.logAuditoria.findMany({ where: { acao: 'dados_do_item_lidos' } })
@@ -271,6 +348,16 @@ describe('lerDadosDoItem (3B)', () => {
     const eventos = await banco.eventoProcessamento.findMany({ where: { etapa: 'autorizacao' } })
     expect(eventos.length).toBeGreaterThan(0)
     expect(eventos.every((evento) => !(evento.mensagem ?? '').includes(itemIds[0]!))).toBe(true)
+  })
+
+  // Vale estar com o item, não o papel (revisão de segurança do #165).
+  it('operador lê os dados do item que está na fila DELE', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const { itemIds } = await emailComItens(base, base.operadorId, 1)
+
+    const dados = await lerDadosDoItem(banco, itemIds[0]!, base.operador)
+
+    expect(dados.situacao).toBe('disponivel')
   })
 
   // Item que saiu da fila não é caminho lateral para ler dado antigo.

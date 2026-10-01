@@ -20,6 +20,12 @@ export interface CampoParaCopiar {
   readonly campo: string
   /** O nome que a tela mostra: o da casa, quando o campo é conhecido. */
   readonly rotulo: string
+  /**
+   * `false` quando o nome do campo veio do e-mail, via IA. A tela o marca:
+   * sem isso, um "CPF do titular" escrito no e-mail apareceria logo abaixo do
+   * CPF verdadeiro com a mesma cara (revisão de segurança do #165).
+   */
+  readonly conhecido: boolean
   readonly valor: string
 }
 
@@ -49,7 +55,12 @@ export function camposParaCopiar(campos: Readonly<Record<string, unknown>>): Cam
     const valor = bruto.trim()
     if (valor === '') continue
     const conhecido = ROTULO.get(campo.toLowerCase())
-    lidos.push({ campo, rotulo: conhecido ?? textoParaExibir(campo), valor: textoParaExibir(valor) })
+    lidos.push({
+      campo,
+      rotulo: conhecido ?? textoParaExibir(campo),
+      conhecido: conhecido !== undefined,
+      valor: textoParaExibir(valor),
+    })
   }
 
   // Conhecidos na ordem da casa; o resto depois, em ordem alfabética, para a

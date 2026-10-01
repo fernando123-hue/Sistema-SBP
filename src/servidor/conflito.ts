@@ -46,10 +46,16 @@ export async function comNovaTentativaEmConflito<T>(operacao: () => Promise<T>):
   }
 }
 
-/** `banco.$transaction(corpo)`, repetida em impasse. */
+/**
+ * `banco.$transaction(corpo)`, repetida em impasse. `prazoMs` troca os 5 s
+ * padrão do Prisma, para a transação que trava muitas linhas de uma vez.
+ */
 export function transacaoComNovaTentativa<T>(
   banco: Banco,
   corpo: (tx: Transacao) => Promise<T>,
+  prazoMs?: number,
 ): Promise<T> {
-  return comNovaTentativaEmConflito(() => banco.$transaction(corpo))
+  return comNovaTentativaEmConflito(() =>
+    prazoMs === undefined ? banco.$transaction(corpo) : banco.$transaction(corpo, { timeout: prazoMs }),
+  )
 }

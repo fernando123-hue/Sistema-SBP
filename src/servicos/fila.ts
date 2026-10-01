@@ -1,6 +1,7 @@
 import { camposParaCopiar, type CampoParaCopiar } from '../core/dados-do-item'
 import { ErroDeNegocio } from '../core/erros'
 import { LIMITE_ITENS_POR_EMAIL, PayloadDoItemSchema, type Operacao } from '../core/esquemas'
+import { Prisma } from '../generated/prisma/client'
 import { ehOProprio, exigirPapel, type Ator } from '../servidor/ator'
 import { transacaoComNovaTentativa } from '../servidor/conflito'
 import { novaCorrelacao, registrarLog } from '../servidor/observabilidade'
@@ -299,6 +300,8 @@ const GRUPO_MUDOU =
  * itens de e-mails diferentes não se juntam: o dono escolheu agrupar por
  * e-mail porque é o e-mail que é o pedido (`A69`).
  */
+const PRAZO_DA_CONCLUSAO_EM_LOTE_MS = 20_000
+
 export async function concluirDoMesmoEmail(
   banco: Banco,
   entrada: { itemIds: readonly string[] },
@@ -325,59 +328,71 @@ export async function concluirDoMesmoEmail(
     await rastrearTentativaHorizontal(banco, alheio.itemId, ator, 'concluir item de outra pessoa')
     throw new ErroDeNegocio(GRUPO_MUDOU)
   }
+  // Id inexistente ou item sem dono também recusa ANTES de travar (revisão de
+  // segurança do #165): 500 ids inventados chegavam à transação, travavam o
+  // que podiam e só então abortavam — no InnoDB, segurando a criação de itens.
+  if (atuais.length !== ids.length) throw new ErroDeNegocio(GRUPO_MUDOU)
 
-  const concluidos = await transacaoComNovaTentativa(banco, async (tx) => {
-    for (const itemId of ids) await travarItem(tx, itemId)
+  const concluidos = await transacaoComNovaTentativa(
+    banco,
+    async (tx) => {
+      // UMA consulta, na ordem dos ids (revisão técnica do #165): 500 idas ao
+      // banco, uma por item, gastavam o prazo da transação esperando uma trava.
+      await tx.$queryRaw`SELECT id FROM \`Item\` WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`
 
-    const atribuicoes = await tx.atribuicao.findMany({
-      where: { itemId: { in: ids }, ativa: true },
-      select: { itemId: true, colaboradorId: true, item: { select: { status: true, emailId: true } } },
-    })
-    // Sem trilha de negação aqui dentro, como em `concluir`: chegar aqui é a
-    // corrida, e gravar numa transação que vai abortar afirmaria o que não
-    // ficou (invariante 14).
-    if (atribuicoes.length !== ids.length) throw new ErroDeNegocio(GRUPO_MUDOU)
-    if (atribuicoes.some((atribuicao) => !ehOProprio(ator, atribuicao.colaboradorId))) {
-      throw new ErroDeNegocio(GRUPO_MUDOU)
-    }
-    const emails = new Set(atribuicoes.map((atribuicao) => atribuicao.item.emailId))
-    if (emails.size !== 1 || emails.has(null)) {
-      throw new ErroDeNegocio('Concluir junto só vale para itens do mesmo e-mail. Conclua os outros um por um.')
-    }
+      const atribuicoes = await tx.atribuicao.findMany({
+        where: { itemId: { in: ids }, ativa: true },
+        select: { itemId: true, colaboradorId: true, item: { select: { status: true, emailId: true } } },
+      })
+      // Sem trilha de negação aqui dentro, como em `concluir`: chegar aqui é a
+      // corrida, e gravar numa transação que vai abortar afirmaria o que não
+      // ficou (invariante 14).
+      if (atribuicoes.length !== ids.length) throw new ErroDeNegocio(GRUPO_MUDOU)
+      if (atribuicoes.some((atribuicao) => !ehOProprio(ator, atribuicao.colaboradorId))) {
+        throw new ErroDeNegocio(GRUPO_MUDOU)
+      }
+      const emails = new Set(atribuicoes.map((atribuicao) => atribuicao.item.emailId))
+      if (emails.size !== 1 || emails.has(null)) {
+        throw new ErroDeNegocio('Concluir junto só vale para itens do mesmo e-mail. Conclua os outros um por um.')
+      }
 
-    const pendentes = atribuicoes.filter((atribuicao) => atribuicao.item.status !== 'concluido')
-    if (pendentes.length === 0) return 0
+      const pendentes = atribuicoes.filter((atribuicao) => atribuicao.item.status !== 'concluido')
+      if (pendentes.length === 0) return 0
 
-    const agora = new Date()
-    await tx.execucao.createMany({
-      data: pendentes.map((atribuicao) => ({
-        itemId: atribuicao.itemId,
-        colaboradorId: ator.colaboradorId,
-        concluidoEm: agora,
-        resultado: 'concluido',
-        observacao: null,
-      })),
-    })
-    await tx.item.updateMany({
-      where: { id: { in: pendentes.map((atribuicao) => atribuicao.itemId) } },
-      data: { status: 'concluido' },
-    })
-    await auditarLote(
-      tx,
-      pendentes.map((atribuicao) => ({
-        entidade: 'Item',
-        entidadeId: atribuicao.itemId,
-        acao: 'concluido' as const,
-        antes: { status: atribuicao.item.status },
-        // `junto`: quantos foram concluídos no mesmo toque. Com a correlação,
-        // a trilha responde "foi um por um ou o e-mail de uma vez?".
-        depois: { status: 'concluido', por: ator.colaboradorId, junto: pendentes.length },
-        usuario: ator.colaboradorId,
-        correlacaoId,
-      })),
-    )
-    return pendentes.length
-  })
+      const agora = new Date()
+      await tx.execucao.createMany({
+        data: pendentes.map((atribuicao) => ({
+          itemId: atribuicao.itemId,
+          colaboradorId: ator.colaboradorId,
+          concluidoEm: agora,
+          resultado: 'concluido',
+          observacao: null,
+        })),
+      })
+      await tx.item.updateMany({
+        where: { id: { in: pendentes.map((atribuicao) => atribuicao.itemId) } },
+        data: { status: 'concluido' },
+      })
+      await auditarLote(
+        tx,
+        pendentes.map((atribuicao) => ({
+          entidade: 'Item',
+          entidadeId: atribuicao.itemId,
+          acao: 'concluido' as const,
+          antes: { status: atribuicao.item.status },
+          // `junto`: quantos foram concluídos no mesmo toque. Com a correlação,
+          // a trilha responde "foi um por um ou o e-mail de uma vez?".
+          depois: { status: 'concluido', por: ator.colaboradorId, junto: pendentes.length },
+          usuario: ator.colaboradorId,
+          correlacaoId,
+        })),
+      )
+      return pendentes.length
+    },
+    // Folga para um e-mail de 500 itens esperar a trava de outra aba ou da
+    // limpeza diária; os 5 s padrão do Prisma acabavam num 500 genérico.
+    PRAZO_DA_CONCLUSAO_EM_LOTE_MS,
+  )
 
   return { concluidos }
 }
@@ -400,10 +415,12 @@ const ITEM_FORA_DA_FILA = 'Este item não está mais na sua fila. Atualize a tel
  *
  * ═══ SÓ QUEM ESTÁ COM O ITEM ═══
  *
- * Nem operador nem gestor: eles coordenam, não executam, e já leem o e-mail
- * inteiro na Revisão, onde ele é conferido. Dado pessoal na tela de quem
- * executa é a exposição nova que o `A69` aceitou — e só ela. Item de outra
- * pessoa é sondagem horizontal e deixa rastro, como concluir item alheio.
+ * Vale estar com o item, e não o papel: operador e gestor leem os dados do
+ * item que está na fila DELES, e não leem os da fila dos outros — coordenar
+ * não é executar, e eles já leem o e-mail inteiro na Revisão, onde ele é
+ * conferido. Dado pessoal na tela de quem executa é a exposição nova que o
+ * `A69` aceitou — e só ela. Item de outra pessoa é sondagem horizontal e
+ * deixa rastro, como concluir item alheio.
  *
  * ═══ SÓ ITEM ABERTO ═══
  *
