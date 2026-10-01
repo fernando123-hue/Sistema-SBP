@@ -1410,6 +1410,29 @@ A V1 do `A74`, com `IA_ADAPTER=local` e `NODE_ENV=production`, sobe.
 
 **Status:** 🟢 em vigor.
 
+### AT-64 — Permissões mínimas do banco, tabela a tabela, geradas da base *(01/10/2026)*
+
+**O que entrou:** `npm run db:sql-privilegios -- --usuario … --host …` (`scripts/sql-de-privilegios.ts`, `sqlDeConcessaoMinima` em `servidor/privilegios.ts`). Lê as tabelas que existem na base e imprime um `GRANT` por tabela: `SELECT, INSERT, UPDATE, DELETE` nas da aplicação, só `SELECT, INSERT` na trilha, nada em `_prisma_migrations`. A `03-SPEC § 14` passou a mandar usá-lo. Fecha a pendência 41.
+
+**Por quê:** o roteiro antigo dava os quatro privilégios em `sbp.*` e tentava `REVOKE` nas duas tabelas da trilha. O MySQL recusa com `ERROR 1147`, reproduzido aqui. Gerar da base, e não de uma lista escrita à mão, faz uma migração nova entrar na próxima geração sem ninguém lembrar.
+
+**Achado novo ao provar:** com usuário de senha, o MySQL 8.4 (`caching_sha2_password`) só aceita a conexão do conector com `allowPublicKeyRetrieval=true` na `DATABASE_URL`, ou com TLS. Sem isso, o sistema não conecta, e o erro é "pool failed to retrieve a connection", sem dizer por quê. Registrado no `.env.example` e na SPEC. A opção vale para banco na mesma máquina; banco em outra máquina usa TLS (pendência 48).
+
+**Decisões do agente:**
+- Os nomes viram texto de SQL e são conferidos (letras, números e `_`; o host aceita também `.`, `%`, `-` e `:`). Fora disso, recusa em vez de gerar SQL que faz outra coisa.
+- Base sem as tabelas da trilha recusa: as migrações vêm antes.
+- **O conferidor acusa o que o gerador promete não dar** (revisão de segurança do #182): `INDEX` na trilha, porque derrubar o índice do #147 reabre o oráculo de tempo, e `WITH GRANT OPTION` na trilha, porque quem repassa privilégio pode dar `DELETE` a outro login. Era o que a pendência 41 pedia; a primeira versão deste PR tinha adiado.
+- **`%` no host só com `--aceito-qualquer-host`:** copiado de um exemplo, ele alarga o usuário a qualquer origem sem ninguém decidir.
+
+**Prova:** `servidor/privilegios-sql.test.ts`: o formato do SQL; o que ele concede passa no próprio conferidor e não contém nenhum privilégio de estrutura, rotina ou repasse; nomes maliciosos recusam; `%` só com o pedido; base sem trilha recusa; `INDEX` e `WITH GRANT OPTION` na trilha são acusados. `scripts-encerram.test.ts`: o comando roda contra a base de teste pelo adaptador de verdade (`SHOW TABLES`) e encerra. Ponta a ponta num MySQL 8.4, numa base descartável:
+- migrar, gerar e aplicar;
+- o conferidor dá OK com `EXIGIR_PRIVILEGIO_MINIMO=sim`;
+- `db:preparar` funciona com o usuário mínimo;
+- `DELETE`, `UPDATE`, `DROP TRIGGER`, `ALTER TABLE` e `DROP TABLE` na trilha recusam com `ERROR 1142`;
+- sem `allowPublicKeyRetrieval`, a conexão falha.
+
+**Status:** 🟢 em vigor.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
