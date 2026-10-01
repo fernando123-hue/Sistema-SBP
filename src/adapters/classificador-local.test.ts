@@ -113,6 +113,27 @@ describe('as opções viram números', () => {
     expect(mensagem.trimEnd().endsWith('Resposta (só o número):')).toBe(true)
   })
 
+  it('na nota, só o número da opção aparece: nada de "2) nível 1"', () => {
+    const mensagem = mensagemDaPergunta('t', URGENCIA, opcoesDaPergunta(URGENCIA))
+    expect(mensagem).toContain('1) nada\n2) pouco\n3) muito')
+    expect(mensagem).not.toContain('nível')
+    const semDescricao: Pergunta = { tipo: 'nota', instrucoes: 'x', niveis: [null, null] }
+    expect(mensagemDaPergunta('t', semDescricao, opcoesDaPergunta(semDescricao))).toContain('1) grau 1 de 2\n2) grau 2 de 2')
+  })
+
+  it('pergunta com opções demais é recusada antes de qualquer chamada ao servidor', async () => {
+    const pedidos = servidorFalso([() => respostaComLogprobs([{ token: '1', p: 0.9 }, { token: '2', p: 0.1 }])])
+    const demais: Pergunta = {
+      tipo: 'escolha',
+      instrucoes: 'x',
+      opcoes: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`r${i}`, null])),
+    }
+    await expect(
+      classificador().classificar({ texto: 't', perguntas: { pedidos: PEDIDOS, demais } }),
+    ).rejects.toThrow(/até 9/)
+    expect(pedidos).toHaveLength(0)
+  })
+
   it('"não" legível só no sim/não; um rótulo "nao" de escolha sai como foi escrito', () => {
     expect(mensagemDaPergunta('t', SUSPEITA, opcoesDaPergunta(SUSPEITA))).toContain('2) não')
     const escolha: Pergunta = { tipo: 'escolha', instrucoes: 'x', opcoes: { sim: null, nao: null } }

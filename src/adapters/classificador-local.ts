@@ -191,8 +191,12 @@ export function semMarcacaoDeDialogo(texto: string): string {
 /** A mensagem da pergunta: o texto primeiro (prefixo comum), a pergunta depois. */
 export function mensagemDaPergunta(estado: string, pergunta: Pergunta, opcoes: readonly Opcao[]): string {
   const linhas = opcoes.map(({ numero, rotulo, descricao }) => {
-    const nome =
-      pergunta.tipo === 'nota' ? `nível ${rotulo}` : pergunta.tipo === 'sim_ou_nao' && rotulo === 'nao' ? 'não' : rotulo
+    // Na nota, o rótulo NOSSO é o nível a partir de 0, e o número da opção
+    // começa em 1. Escrever os dois ("2) nível 1") convidaria um modelo
+    // pequeno a responder o nível e ser lido como a opção vizinha, sem erro
+    // nenhum (2ª rodada da revisão técnica do #159). Aqui só um número aparece.
+    if (pergunta.tipo === 'nota') return `${numero}) ${descricao ?? `grau ${numero} de ${opcoes.length}`}`
+    const nome = pergunta.tipo === 'sim_ou_nao' && rotulo === 'nao' ? 'não' : rotulo
     return `${numero}) ${nome}${descricao ? ` — ${descricao}` : ''}`
   })
   return (
@@ -354,6 +358,10 @@ export function clienteClassificadorLocal(
 
   return {
     async perguntar({ estado, perguntas, modelo }) {
+      // Pergunta que o local não aceita (mais de nove opções) é defeito do
+      // código: recusada ANTES da primeira chamada, para não ser contada como
+      // falha do servidor nem custar as perguntas já feitas (2ª rodada do #159).
+      for (const pergunta of Object.values(perguntas)) opcoesDaPergunta(pergunta)
       const respostas: Record<string, Resposta> = {}
       let modeloUsado = modelo
       for (const [nome, pergunta] of Object.entries(perguntas)) {
