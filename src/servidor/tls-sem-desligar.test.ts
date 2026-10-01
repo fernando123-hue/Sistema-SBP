@@ -38,9 +38,13 @@ const EXTENSOES = /\.[cm]?[jt]sx?$/
  *   ligada). Só essa linha exata é aceita.
  */
 const LINHAS_ACEITAS_EM_AMBIENTE = [
-  /^\s*(?:\/\/|\*|\/\*)/, // comentário
+  // Comentário: `//`, ou `/*`/`*` sem código depois de um `*/` na mesma linha
+  // (3ª rodada da revisão técnica: `/**/ process.env[...] ||= "0"` passava).
+  /^\s*(?:\/\/|\/?\*(?!.*\*\/\s*\S))/,
   /^\s*const motivoTls = process\.env\['NODE_TLS_REJECT_UNAUTHORIZED'\] === '0' \? motivoDeNaoSerDesenvolvimento\(\) : null$/,
-  /^\s*`NODE_TLS_REJECT_UNAUTHORIZED=0 com \$\{motivoTls\} desliga [^`]*` \+$/,
+  // Sem `$` no resto: um `${...}` a mais esconderia uma escrita (3ª rodada da
+  // revisão de segurança).
+  /^\s*`NODE_TLS_REJECT_UNAUTHORIZED=0 com \$\{motivoTls\} desliga [^`$]*` \+$/,
 ]
 const SEMPRE_PROIBIDO_EM_AMBIENTE =
   /rejectUnauthorized|checkServerIdentity|delete\s+process\.env|(?:Reflect|Object)\.\w+\(\s*process\.env/
@@ -112,6 +116,10 @@ describe('ninguém desliga a verificação de TLS por fora da trava (pendências
       "Object.defineProperty(process.env, 'NODE_TLS_' + 'REJECT_UNAUTHORIZED', { value: '0' })",
       "Object.assign(process.env, { ['NODE_TLS_REJECT_UNAUTHORIZED']: '0' })",
       "const nome = 'NODE_TLS_REJECT_UNAUTHORIZED'",
+      '/**/ process.env["NODE_TLS_REJECT_UNAUTHORIZED"] ||= "0"',
+      '  * 0; */ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"',
+      "/* x */ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'",
+      "      `NODE_TLS_REJECT_UNAUTHORIZED=0 com ${motivoTls} desliga ${(process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0')}` +",
     ]) {
       expect(ofende('src/servidor/ambiente.ts', trecho), trecho).toBe(true)
     }
