@@ -396,6 +396,24 @@ export interface ResumoIngestao {
   naoInterpretados: number
 }
 
+/**
+ * O que a busca devolve à tela: o resumo DELA mais um retrato da fila de
+ * Revisão (`A69`, 4A).
+ *
+ * Fora de `ResumoIngestao` de propósito (revisão técnica do #170): o resumo
+ * vai inteiro para o `EventoProcessamento`, que é append-only, e um campo
+ * preenchido depois de gravar deixaria "0 pendentes" na trilha para sempre.
+ */
+export interface ResumoDaBusca extends ResumoIngestao {
+  /**
+   * Quantas revisões esperam decisão humana AGORA, na fila inteira — não só
+   * as desta busca. O que ficou de ontem também não entra na distribuição de
+   * hoje. `null` quando a contagem falhou: a busca já aconteceu e o resumo
+   * dela vale mais que este número (o aviso some, o log diz por quê).
+   */
+  revisoesPendentes: number | null
+}
+
 export interface ItemEmRevisao {
   revisaoId: string
   itemId: string
