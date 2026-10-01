@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { obterPrisma } from '../servidor/prisma'
+import { conferirTravaDaTrilha, type TriggerNoBanco } from '../servidor/privilegios'
 import { limparTudo } from '../testes/apoio'
 
 /**
@@ -23,7 +24,8 @@ import { limparTudo } from '../testes/apoio'
  *   1. **No código** (a varredura abaixo): ninguém em `src/` ou `scripts/`
  *      chama `update`/`delete`/`upsert` nessas duas tabelas. Pega o engano
  *      honesto, na hora de escrever, com mensagem que explica.
- *   2. **No banco** (a trigger da migração `trilha_append_only`): o próprio
+ *   2. **No banco** (as triggers da migração `trilha_restauravel_do_backup`,
+ *      `AT-66`, que substituíram as de `trilha_append_only`): o próprio
  *      MySQL recusa o `UPDATE`, venha ele do Prisma, de um script solto ou de
  *      um cliente de linha de comando aberto às pressas numa madrugada.
  *
@@ -154,5 +156,42 @@ describe('a trilha é append-only', () => {
 
     // E a linha continua como nasceu.
     expect((await banco.logAuditoria.findFirstOrThrow({})).acao).toBe('teste')
+  })
+
+  it('o BANCO recusa alterar uma linha de EventoProcessamento, a outra metade da trilha', async () => {
+    const banco = obterPrisma()
+    await limparTudo(banco)
+
+    await banco.eventoProcessamento.create({
+      data: { correlacaoId: 'correlacao-sintetica', etapa: 'teste', situacao: 'ok', mensagem: 'como nasceu' },
+    })
+
+    await expect(
+      banco.$executeRaw`UPDATE EventoProcessamento SET mensagem = 'reescrito'`,
+    ).rejects.toThrow(/append-only|45000|1644/i)
+    expect((await banco.eventoProcessamento.findFirstOrThrow({})).mensagem).toBe('como nasceu')
+  })
+
+  it('a trava está de pé na forma que o mysqldump restaura (AT-66), pela mesma conferência de db:conferir-trilha', async () => {
+    // Corpo de um comando só, criado num lote, ficava gravado com o `;` do
+    // fim, e o arquivo do `mysqldump` parava de restaurar naquela trigger:
+    // `LogAuditoria` voltava sem trava, e as tabelas seguintes não voltavam.
+    // A restauração de verdade foi provada à mão (`AT-66`); aqui se confere a
+    // forma, em toda trigger da base, não só nas duas de hoje.
+    const triggers = await obterPrisma().$queryRaw<TriggerNoBanco[]>`
+      SELECT TRIGGER_NAME AS nome, EVENT_OBJECT_TABLE AS tabela, EVENT_MANIPULATION AS evento,
+             ACTION_TIMING AS momento, ACTION_STATEMENT AS corpo
+      FROM information_schema.TRIGGERS
+      WHERE TRIGGER_SCHEMA = DATABASE()`
+    const [{ caixa }] = await obterPrisma().$queryRaw<[{ caixa: number | bigint }]>`
+      SELECT @@lower_case_table_names AS caixa`
+
+    expect(conferirTravaDaTrilha(triggers, Number(caixa))).toEqual({ semTrava: [], foraDaForma: [], nenhumaVisivel: false })
+    // A migração do AT-66 apaga as antigas no fim: sobrar uma delas é a troca
+    // pela metade.
+    expect(triggers.map((t) => t.nome).sort()).toEqual([
+      'EventoProcessamento_recusa_update',
+      'LogAuditoria_recusa_update',
+    ])
   })
 })
