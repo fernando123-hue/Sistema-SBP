@@ -73,6 +73,14 @@ describe('ligar e desligar', () => {
     expect(() => ambiente()).toThrow(/ACESSO_LOCAL_SEM_SENHA/)
   })
 
+  it('ligado sem NODE_ENV, o sistema recusa subir: a ausência não é desenvolvimento (pendência 47)', () => {
+    configurar('1', 'development')
+    Reflect.deleteProperty(process.env, 'NODE_ENV')
+    expect(() => ambiente()).toThrow(/NODE_ENV ausente/)
+    // A segunda conferência lê o mesmo sinal: sem NODE_ENV, nunca habilita.
+    expect(() => acessoLocalHabilitado()).toThrow(/NODE_ENV ausente/)
+  })
+
   it('desligado em produção, sobe normalmente e continua desligado', () => {
     // Produção recusa os segredos públicos da suíte (N-18).
     process.env['SESSAO_SECRET'] = 'q8Zr2vN6pW1xT4kL9mB3cF7hJ0sD5gYa'
@@ -216,7 +224,7 @@ describe('C-12: o acesso sem senha não pode morar num arquivo .env', () => {
     expect(acessoLocalEmArquivoEnv(pasta)).toBe(arquivo)
   })
 
-  it.each(['export ACESSO_LOCAL_SEM_SENHA=1', "  export\tACESSO_LOCAL_SEM_SENHA = '1'", 'ACESSO_LOCAL_SEM_SENHA=1\r'])(
+  it.each(['export ACESSO_LOCAL_SEM_SENHA=1', "  export\tACESSO_LOCAL_SEM_SENHA = '1'", 'ACESSO_LOCAL_SEM_SENHA=1\r', 'ACESSO_LOCAL_SEM_SENHA=1 # comentário no fim'])(
     'forma aceita pelo carregador de .env também é encontrada: %j',
     (linha) => {
       // `process.loadEnvFile` aceita `export`; a trava precisa ver o mesmo que ele.

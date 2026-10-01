@@ -239,8 +239,11 @@ export const OPCOES_DO_COOKIE = {
   // Secure SEMPRE, menos em desenvolvimento (achado C-12): "só em production"
   // deixava o cookie de sessão sem Secure num servidor publicado com NODE_ENV
   // herdado. Getter para valer o ambiente da hora, não o do carregamento.
-  // Colchetes DE PROPÓSITO: o Next troca `process.env.NODE_ENV` (com ponto)
-  // pelo valor do build; com colchetes a leitura é a do processo.
+  // CORRIGIDO nas revisões da pendência 47: dizia que, com colchetes, a
+  // leitura era a do processo. Não é: o Next troca `process.env['NODE_ENV']`
+  // também, e no build de produção este getter vira `return!0` (conferido em
+  // `.next/server`). O efeito é o seguro — Secure sempre em `next start` —,
+  // mas quem confiar no comentário antigo vai se enganar.
   get secure(): boolean {
     return process.env['NODE_ENV'] !== 'development'
   },
