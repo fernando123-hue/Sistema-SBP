@@ -24,10 +24,13 @@ function trava(tabela: Tabela, mudar: Partial<TriggerNoBanco> = {}): TriggerNoBa
 
 const AS_DUAS = [trava('LogAuditoria'), trava('EventoProcessamento')]
 const LIMPA = { semTrava: [], foraDaForma: [], nenhumaVisivel: false }
+/** `@@lower_case_table_names`: 0 no Linux (caixa conta), 1 no Windows. */
+const LINUX = 0
+const WINDOWS = 1
 
 describe('a trava da trilha', () => {
   it('as duas triggers com o corpo exato: nada a acusar', () => {
-    expect(conferirTravaDaTrilha(AS_DUAS)).toEqual(LIMPA)
+    expect(conferirTravaDaTrilha(AS_DUAS, LINUX)).toEqual(LIMPA)
   })
 
   it('o corpo esperado é o da migração, com os espaços normalizados', () => {
@@ -38,12 +41,21 @@ describe('a trava da trilha', () => {
     // Segunda rodada das revisões do #184: comparar com caixa dava alarme
     // falso com a trava de pé, justamente na máquina da V1.
     const windows = AS_DUAS.map((t) => ({ ...t, tabela: t.tabela.toLowerCase(), evento: 'update', momento: 'before' }))
-    expect(conferirTravaDaTrilha(windows)).toEqual(LIMPA)
+    expect(conferirTravaDaTrilha(windows, WINDOWS)).toEqual(LIMPA)
+  })
+
+  it('no Linux, uma tabela-sombra "logauditoria" com o corpo exato NÃO conta como trava da trilha', () => {
+    // Terceira rodada das revisões do #184, medido: com a comparação sempre
+    // sem caixa, isto dava OK e o UPDATE em LogAuditoria passava.
+    const sombra = trava('LogAuditoria', { nome: 'logauditoria_sombra', tabela: 'logauditoria' })
+    expect(conferirTravaDaTrilha([sombra, trava('EventoProcessamento')], LINUX).semTrava).toEqual(['LogAuditoria'])
+    // No Windows o mesmo nome É a tabela da trilha.
+    expect(conferirTravaDaTrilha([sombra, trava('EventoProcessamento')], WINDOWS).semTrava).toEqual([])
   })
 
   it('migração com CRLF: o \\r no corpo não muda nada', () => {
     const crlf = AS_DUAS.map((t) => ({ ...t, corpo: t.corpo.replace(/\n/g, '\r\n') }))
-    expect(conferirTravaDaTrilha(crlf)).toEqual(LIMPA)
+    expect(conferirTravaDaTrilha(crlf, LINUX)).toEqual(LIMPA)
   })
 
   it('durante a troca, as antigas ao lado das novas: as novas bastam, as antigas são acusadas pela forma', () => {
@@ -52,14 +64,14 @@ describe('a trava da trilha', () => {
       nome: 'LogAuditoria_append_only',
       corpo: "SIGNAL SQLSTATE '45000'\nSET MESSAGE_TEXT = 'LogAuditoria e append-only: grave um registro novo em vez de alterar o passado';",
     }
-    const resultado = conferirTravaDaTrilha([...AS_DUAS, antiga])
+    const resultado = conferirTravaDaTrilha([...AS_DUAS, antiga], LINUX)
     expect(resultado.semTrava).toEqual([])
     expect(resultado.foraDaForma).toHaveLength(1)
     expect(resultado.foraDaForma[0]).toMatch(/LogAuditoria_append_only/)
   })
 
   it('nenhuma trigger visível é dito como tal', () => {
-    expect(conferirTravaDaTrilha([])).toEqual({
+    expect(conferirTravaDaTrilha([], LINUX)).toEqual({
       semTrava: ['LogAuditoria', 'EventoProcessamento'],
       foraDaForma: [],
       nenhumaVisivel: true,
@@ -67,12 +79,12 @@ describe('a trava da trilha', () => {
   })
 
   it('falta a de uma tabela: acusa essa tabela', () => {
-    expect(conferirTravaDaTrilha([trava('LogAuditoria')]).semTrava).toEqual(['EventoProcessamento'])
+    expect(conferirTravaDaTrilha([trava('LogAuditoria')], LINUX).semTrava).toEqual(['EventoProcessamento'])
   })
 
   it('só a forma antiga, sem BEGIN … END: sem a trava da migração, e fora da forma', () => {
     const antigas = AS_DUAS.map((t) => ({ ...t, corpo: t.corpo.replace(/^BEGIN\s*/, '').replace(/\s*END$/, '') }))
-    const resultado = conferirTravaDaTrilha(antigas)
+    const resultado = conferirTravaDaTrilha(antigas, LINUX)
     expect(resultado.semTrava).toEqual(['LogAuditoria', 'EventoProcessamento'])
     expect(resultado.foraDaForma).toHaveLength(2)
   })
@@ -88,13 +100,13 @@ describe('a trava da trilha', () => {
       trava('LogAuditoria', { momento: 'AFTER' }),
       trava('LogAuditoria', { corpo: CORPO('EventoProcessamento') }),
     ]) {
-      expect(conferirTravaDaTrilha([falsa, trava('EventoProcessamento')]).semTrava).toEqual(['LogAuditoria'])
+      expect(conferirTravaDaTrilha([falsa, trava('EventoProcessamento')], LINUX).semTrava).toEqual(['LogAuditoria'])
     }
   })
 
   it('trigger fora da trilha, de um comando só, é acusada pela forma sem tirar a trava da trilha', () => {
     const outra: TriggerNoBanco = { nome: 'Item_teste', tabela: 'Item', evento: 'INSERT', momento: 'BEFORE', corpo: 'SET NEW.id = NEW.id' }
-    const resultado = conferirTravaDaTrilha([...AS_DUAS, outra])
+    const resultado = conferirTravaDaTrilha([...AS_DUAS, outra], LINUX)
     expect(resultado.semTrava).toEqual([])
     expect(resultado.foraDaForma).toEqual([expect.stringMatching(/Item_teste/)])
   })

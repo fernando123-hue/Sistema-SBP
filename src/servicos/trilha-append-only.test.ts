@@ -183,8 +183,10 @@ describe('a trilha é append-only', () => {
              ACTION_TIMING AS momento, ACTION_STATEMENT AS corpo
       FROM information_schema.TRIGGERS
       WHERE TRIGGER_SCHEMA = DATABASE()`
+    const [{ caixa }] = await obterPrisma().$queryRaw<[{ caixa: number | bigint }]>`
+      SELECT @@lower_case_table_names AS caixa`
 
-    expect(conferirTravaDaTrilha(triggers)).toEqual({ semTrava: [], foraDaForma: [], nenhumaVisivel: false })
+    expect(conferirTravaDaTrilha(triggers, Number(caixa))).toEqual({ semTrava: [], foraDaForma: [], nenhumaVisivel: false })
     // A migração do AT-66 apaga as antigas no fim: sobrar uma delas é a troca
     // pela metade.
     expect(triggers.map((t) => t.nome).sort()).toEqual([

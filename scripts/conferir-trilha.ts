@@ -27,8 +27,10 @@ async function principal(): Promise<void> {
            ACTION_TIMING AS momento, ACTION_STATEMENT AS corpo
     FROM information_schema.TRIGGERS
     WHERE TRIGGER_SCHEMA = DATABASE()`
+  const [{ caixa }] = await obterPrisma().$queryRaw<[{ caixa: number | bigint }]>`
+    SELECT @@lower_case_table_names AS caixa`
 
-  const { semTrava, foraDaForma, nenhumaVisivel } = conferirTravaDaTrilha(triggers)
+  const { semTrava, foraDaForma, nenhumaVisivel } = conferirTravaDaTrilha(triggers, Number(caixa))
 
   if (nenhumaVisivel) {
     escrever('Nenhuma trigger visível nesta base. Ou a trilha está sem trava, ou esta credencial não tem TRIGGER')
