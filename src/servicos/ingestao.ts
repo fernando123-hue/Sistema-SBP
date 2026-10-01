@@ -878,20 +878,11 @@ async function criarItens(
     if (!categoria) throw new CategoriaDesconhecidaError(extraido.categoriaCodigo)
 
     const { problema, ligaNoTexto } = contexto.problemasDaExtracao[posicao]!
-    const motivo = decidirRevisao(
-      extraido.confianca,
+    const motivo = motivoDeRevisaoDoItem(
+      extraido,
       categoria.limiarConfianca,
-      extraido.camposAusentes.length > 0,
-      interpretacao.conteudoSuspeito,
-      contexto.anexosRejeitados > 0,
-      // Desdobramento SEMPRE passa por humano.
-      //
-      // A decisão A1 e o requisito RF-04 dizem que a IA PROPÕE o desdobramento
-      // e ele é revisável. Na prática, um item de lista sempre tinha nome
-      // preenchido, logo zero campo ausente, logo confiança acima do limiar —
-      // e N unidades de carga entravam aprovadas sem ninguém olhar. Uma
-      // assinatura numerada no rodapé viraria três itens de trabalho.
-      interpretacao.itens.length > 1,
+      interpretacao,
+      contexto.anexosRejeitados,
       problema?.motivo ?? null,
     )
 
@@ -1102,12 +1093,48 @@ export function decidirRevisao(
 }
 
 /**
+ * Os gatilhos de `decidirRevisao` tirados de um item e do e-mail dele.
+ *
+ * Uma função só para a ingestão e para o gabarito (`avaliacao-da-ia.ts`):
+ * com os argumentos montados em dois lugares, uma mudança aqui deixaria a
+ * medição contando outra regra sem o compilador acusar (revisão técnica do
+ * #166).
+ */
+export function motivoDeRevisaoDoItem(
+  item: Interpretacao['itens'][number],
+  limiar: number,
+  interpretacao: Interpretacao,
+  anexosRejeitados: number,
+  problemaNaExtracao: MotivoDaConferencia | null,
+): MotivoRevisao | null {
+  return decidirRevisao(
+    item.confianca,
+    limiar,
+    item.camposAusentes.length > 0,
+    interpretacao.conteudoSuspeito,
+    anexosRejeitados > 0,
+    // Desdobramento SEMPRE passa por humano.
+    //
+    // A decisão A1 e o requisito RF-04 dizem que a IA PROPÕE o desdobramento
+    // e ele é revisável. Na prática, um item de lista sempre tinha nome
+    // preenchido, logo zero campo ausente, logo confiança acima do limiar —
+    // e N unidades de carga entravam aprovadas sem ninguém olhar. Uma
+    // assinatura numerada no rodapé viraria três itens de trabalho.
+    interpretacao.itens.length > 1,
+    problemaNaExtracao,
+  )
+}
+
+/**
  * A conferência da pendência 17 para todos os itens de um e-mail: o texto é
  * preparado uma vez. O texto é o que o modelo leu — assunto e corpo
  * (`adapters/ia-estruturada.ts`) —, então um valor que só existe no nome de um
  * anexo conta como fora do texto.
+ *
+ * Exportada para o gabarito (`avaliacao-da-ia.ts`) medir o efeito com a MESMA
+ * conta que a ingestão faz — uma cópia lá poderia divergir em silêncio.
  */
-function conferirItens(email: EmailBruto, interpretacao: Interpretacao): ConferenciaDoItem[] {
+export function conferirItens(email: EmailBruto, interpretacao: Interpretacao): ConferenciaDoItem[] {
   const texto = prepararTextoParaConferir(`${email.assunto}\n${email.corpo}`)
   return interpretacao.itens.map((item) => ({
     problema: conferirExtracao(texto, item.campos, item.ligaMencionada),
@@ -1120,7 +1147,7 @@ function conferirItens(email: EmailBruto, interpretacao: Interpretacao): Confere
  * campo apontado) e, à parte, se a liga citada está no texto — é isso que
  * decide se ela vira identidade, qualquer que seja o primeiro problema.
  */
-interface ConferenciaDoItem {
+export interface ConferenciaDoItem {
   readonly problema: ProblemaNaExtracao | null
   readonly ligaNoTexto: boolean
 }
