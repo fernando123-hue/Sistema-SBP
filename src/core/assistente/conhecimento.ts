@@ -98,7 +98,9 @@ export const MANUAL: readonly VerbeteDoManual[] = [
       'quem está elegível e quanto cada pessoa receberia — sem gravar nada. Confira e só então confirme. ' +
       'Confirmar grava as atribuições e some com a prévia: a partir daí os itens aparecem na fila de cada pessoa. ' +
       'Se algo estiver errado na prévia, corrija a causa antes de confirmar (escala, habilitação, afastamento, revisão pendente) e peça a prévia de novo. ' +
-      'Clicar confirmar duas vezes não distribui duas vezes: o dia é travado enquanto a rodada roda.',
+      'Clicar confirmar duas vezes não distribui duas vezes: o dia é travado enquanto a rodada roda. ' +
+      'Depois de gravar, a tela diz a hora, quantos itens foram distribuídos, que nenhum número foi digitado e que a conservação foi conferida: ' +
+      'a soma do que cada pessoa recebeu é igual ao que entrou, conferida antes de gravar; se não fechasse, nada seria gravado.',
   },
   {
     id: 'como-o-rateio-decide',
@@ -183,7 +185,9 @@ export const MANUAL: readonly VerbeteDoManual[] = [
       'Ao terminar um item, use Concluir. Ninguém declara quantidade no fim do dia — o número do painel é consequência dos itens concluídos, um a um. ' +
       'Os itens do mesmo e-mail, como uma lista de ligantes, aparecem juntos num cartão: "Concluir os N" conclui todos de uma vez, com o mesmo segundo toque de confirmação, ' +
       'e cada um continua contando no painel; "Ver um por um" abre os cartões de cada item, para concluir, devolver ou transferir só alguns. ' +
-      'Em item que veio de e-mail, "Ver dados" mostra o que a IA leu (CPF, matrícula, e-mail) com um botão de copiar, sem precisar voltar ao Outlook.',
+      'Em item que veio de e-mail, "Ver dados" mostra o que a IA leu (CPF, matrícula, e-mail) com um botão de copiar, sem precisar voltar ao Outlook. ' +
+      'Depois do primeiro item concluído no dia, o topo diz "Hoje você concluiu N": é só seu, ninguém mais vê esse número — nem a gestão —, ' +
+      'e ele recomeça à meia-noite. Não é meta nem comparação; é para você ver o dia andar.',
   },
   {
     id: 'devolver-e-transferir',

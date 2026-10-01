@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { hojeIso } from '../../core/util/datas'
+import { hojeIso, horaLocal } from '../../core/util/datas'
 import { decimal } from '../../core/util/numero'
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
@@ -20,6 +20,7 @@ import {
 import { NotasDoSetor } from '../../componentes/notas'
 import type { LinhaDaEscala, NaRede, ResumoDaBusca } from '../../core/tipos'
 import { avisoDaRevisao } from './aviso-da-revisao'
+import { registroDaGravacao } from './registro-da-gravacao'
 
 /**
  * O servidor já redigiu conforme o papel de quem pediu (decisão de 06/09/2026).
@@ -108,6 +109,12 @@ export default function Distribuicao() {
   const [escala, setEscala] = useState<NaRede<LinhaDaEscala>[] | null>(null)
   const [previa, setPrevia] = useState<Resumo | null>(null)
   const [confirmado, setConfirmado] = useState<Resumo | null>(null)
+  /**
+   * A hora em que a confirmação voltou, no fuso da operação (`A69`, 5B). A
+   * resposta só chega depois do commit, então é a hora da gravação com folga
+   * de milissegundos.
+   */
+  const [gravadoAs, setGravadoAs] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [ingestao, setIngestao] = useState<NaRede<ResumoDaBusca> | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
@@ -213,6 +220,7 @@ export default function Distribuicao() {
           categorias: [],
         })
         setConfirmado(resultado)
+        setGravadoAs(horaLocal(new Date()))
         setPrevia(null)
       }
     } catch (causa) {
@@ -415,7 +423,7 @@ export default function Distribuicao() {
           titulo={confirmado && !previa ? 'Distribuição gravada' : 'Prévia'}
           descricao={
             confirmado && !previa
-              ? `${confirmado.rodadasGravadas} rodadas registradas. Cada uma é auditável.`
+              ? registroDaGravacao(confirmado.totalDistribuido, confirmado.rodadasGravadas, gravadoAs ?? '--:--')
               : previa && previaCalculadaEm
                 ? `Calculada às ${previaCalculadaEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. ` +
                   'Confirmar refaz a conta com os dados deste momento: se chegou e-mail ou mudou o ' +
