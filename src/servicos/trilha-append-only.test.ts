@@ -155,4 +155,39 @@ describe('a trilha é append-only', () => {
     // E a linha continua como nasceu.
     expect((await banco.logAuditoria.findFirstOrThrow({})).acao).toBe('teste')
   })
+
+  it('o BANCO recusa alterar uma linha de EventoProcessamento, a outra metade da trilha', async () => {
+    const banco = obterPrisma()
+    await limparTudo(banco)
+
+    await banco.eventoProcessamento.create({
+      data: { correlacaoId: 'correlacao-sintetica', etapa: 'teste', situacao: 'ok', mensagem: 'como nasceu' },
+    })
+
+    await expect(
+      banco.$executeRaw`UPDATE EventoProcessamento SET mensagem = 'reescrito'`,
+    ).rejects.toThrow(/append-only|45000|1644/i)
+    expect((await banco.eventoProcessamento.findFirstOrThrow({})).mensagem).toBe('como nasceu')
+  })
+
+  it('toda trigger da base tem o corpo entre BEGIN e END: o backup restaura', async () => {
+    // Corpo de um comando só, criado num lote, ficava gravado com o `;` do
+    // fim, e o arquivo do `mysqldump` parava de restaurar naquela trigger,
+    // deixando de fora as tabelas seguintes (migração
+    // `20261001220000_trilha_restauravel_do_backup`). Vale para toda trigger,
+    // não só para as duas de hoje.
+    const triggers = await obterPrisma().$queryRaw<{ nome: string; corpo: string }[]>`
+      SELECT TRIGGER_NAME AS nome, ACTION_STATEMENT AS corpo
+      FROM information_schema.TRIGGERS
+      WHERE TRIGGER_SCHEMA = DATABASE()`
+
+    expect(triggers.map((t) => t.nome).sort()).toEqual([
+      'EventoProcessamento_append_only',
+      'LogAuditoria_append_only',
+    ])
+    for (const { nome, corpo } of triggers) {
+      expect({ nome, comeco: corpo.trim().slice(0, 5).toUpperCase() }).toEqual({ nome, comeco: 'BEGIN' })
+      expect({ nome, fim: corpo.trim().slice(-3).toUpperCase() }).toEqual({ nome, fim: 'END' })
+    }
+  })
 })

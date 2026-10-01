@@ -1445,6 +1445,18 @@ A V1 do `A74`, com `IA_ADAPTER=local` e `NODE_ENV=production`, sobe.
 
 **Status:** 🟢 em vigor.
 
+### AT-66 — O backup do banco restaura: corpo de trigger sempre entre `BEGIN` e `END` *(01/10/2026)*
+
+**O defeito, achado no ensaio da instalação:** um `mysqldump` da base não restaurava. A migração `20260918010000_trilha_append_only` criou as duas triggers da trilha num mesmo lote, com corpo de um comando só. O MySQL guardou o corpo de `LogAuditoria_append_only` com o `;` do fim. O de `EventoProcessamento_append_only`, último do arquivo, saiu sem. Conferido em `information_schema.TRIGGERS` nas bases `sbp`, `sbp_teste` e numa base nova. O `mysqldump` escreve o corpo dentro de `/*!50003 … */`, o `;` fecha o comando antes do `*/`, e a restauração para com `ERROR 1064`. O `mysql` aborta ali, e as tabelas depois de `LogAuditoria` no arquivo (`Nota` em diante) não voltavam. **Todo backup feito até aqui com `mysqldump` não restaura inteiro.** Nenhum foi feito em produção: o sistema ainda não está lá.
+
+**A correção:** a migração `20261001220000_trilha_restauravel_do_backup` recria as duas triggers com `BEGIN … END`. A trava não muda: o mesmo `BEFORE UPDATE` e a mesma mensagem. **Regra para o futuro:** corpo de trigger sempre entre `BEGIN` e `END`. `trilha-append-only.test.ts` confere isso em **toda** trigger da base, e também que o banco recusa `UPDATE` em `EventoProcessamento`, que até aqui só tinha a varredura de código.
+
+**Prova:** numa base com dado (17 linhas na trilha de auditoria, 14 e-mails, 17 itens), migrada pela credencial de manutenção, `mysqldump` e restauração numa base nova devolveram as 29 tabelas, as duas triggers e as mesmas contagens. `UPDATE` na trilha restaurada é recusado com `ERROR 1644`, a mensagem da trava, quando o usuário que migrou tem `TRIGGER` na base restaurada (ver o achado abaixo). Mutação: sem a migração nova, o teste das triggers fica vermelho. Sem a trigger de `EventoProcessamento`, os dois testes novos ficam vermelhos.
+
+**Achado junto, para a instalação:** a trigger roda como o `DEFINER`, que é quem migrou. Restaurada num servidor onde esse usuário não existe ou não tem `TRIGGER` na base, o `UPDATE` continua recusado, mas com `ERROR 1142` no lugar da mensagem da trava. A falha é fechada: a trava não abre. Por isso o roteiro manda migrar com a conta administradora do MySQL (`docs/INSTALACAO.md`).
+
+**Status:** 🟢 em vigor.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
