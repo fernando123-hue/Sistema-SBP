@@ -671,6 +671,60 @@ export const ResolucaoRevisaoSchema = z.object({
    */
   itensExtras: z.array(ItemDivididoSchema).max(LIMITE_ITENS_POR_DIVISAO_MANUAL).default([]),
 })
+export type ResolucaoRevisao = z.infer<typeof ResolucaoRevisaoSchema>
+
+/**
+ * Os motivos que podem ser decididos no cartão do e-mail (`A69`, 1A).
+ *
+ * Só os que perguntam "estes N são os que o e-mail pede?": a lista
+ * desdobrada e a confiança ou campo que faltou. Os outros apontam um VALOR
+ * para conferir (CPF que não fecha, dado fora do texto, duplicata) ou um
+ * ALERTA de segurança (conteúdo suspeito, anomalia, conferência interrompida)
+ * — e esses continuam item a item, com o formulário inteiro, porque é
+ * justamente neles que a revisão humana existe para alguma coisa. Mesmo
+ * raciocínio de `aprovarTodosPendentes`.
+ */
+export const MOTIVOS_DECIDIDOS_POR_EMAIL: readonly MotivoRevisao[] = [
+  'desdobramento',
+  'baixa_confianca',
+  'campo_ausente',
+]
+
+/**
+ * A decisão sobre o e-mail inteiro na Revisão (`A69`, 1A).
+ *
+ * `revisoes` precisa trazer TODAS as revisões pendentes do e-mail, uma vez
+ * cada: a decisão foi sobre os N nomes que a tela mostrou, e o serviço
+ * recusa tudo se o conjunto não bater. A categoria não vem: no cartão ela é
+ * a do item, e trocar categoria é decisão de um item só.
+ *
+ * `.strict()`: o corpo não carrega "quem decidiu" (invariante 5), e campo
+ * a mais é recusado em vez de ignorado em silêncio.
+ */
+export const ResolucaoDoEmailSchema = z
+  .object({
+    emailId: z.string().min(1),
+    revisoes: z
+      .array(
+        z
+          .object({
+            revisaoId: z.string().min(1),
+            titulo: z.string().min(1).max(300),
+            campos: CamposExtraidosSchema.default({}),
+            aprovar: z.boolean(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(LIMITE_ITENS_POR_EMAIL)
+      .refine((linhas) => new Set(linhas.map((linha) => linha.revisaoId)).size === linhas.length, {
+        message: 'A mesma revisão apareceu duas vezes.',
+      }),
+    /** Gente que o e-mail pede e a IA não separou. Nasce aprovada. */
+    novos: z.array(ItemDivididoSchema.strict()).max(LIMITE_ITENS_POR_DIVISAO_MANUAL).default([]),
+  })
+  .strict()
+export type ResolucaoDoEmail = z.infer<typeof ResolucaoDoEmailSchema>
 
 // ─── Registro manual de item ─────────────────────────────────
 

@@ -145,7 +145,10 @@ export const MANUAL: readonly VerbeteDoManual[] = [
       'ele espera revisão humana. A tela diz o motivo: confiança baixa, campo obrigatório ausente, suspeita de duplicata, ' +
       'conteúdo suspeito, e-mail que gerou vários itens, dado que não foi encontrado no e-mail, CPF que não confere, ou conferência ' +
       'interrompida num e-mail grande demais. Quando o problema é um dado, a tela aponta qual campo conferir. Na revisão você corrige a categoria e os campos, e pode dividir o item em vários ' +
-      '— um e-mail que lista trinta ligantes vale trinta itens de trabalho, não um. Item revisado entra na próxima distribuição.',
+      '— um e-mail que lista trinta ligantes vale trinta itens de trabalho, não um. Quando todos os itens de um e-mail de lista estão na revisão, ' +
+      'eles aparecem num cartão só: confira os nomes contra o e-mail, tire quem não é, corrija o nome, acrescente quem faltou e aprove todos de uma vez ' +
+      '("Ver um por um" volta ao formulário de cada item). E-mail com conteúdo suspeito ou dado para conferir continua item a item. ' +
+      'Item revisado entra na próxima distribuição.',
   },
   {
     id: 'conteudo-suspeito',
