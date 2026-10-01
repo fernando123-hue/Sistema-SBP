@@ -18,7 +18,7 @@ import {
   juntar,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
-import type { LinhaDaEscala, NaRede, ResumoDaBusca } from '../../core/tipos'
+import type { EstadoDaBusca, LinhaDaEscala, NaRede, ResumoDaBusca } from '../../core/tipos'
 import { avisoDaRevisao } from './aviso-da-revisao'
 import { registroDaGravacao } from './registro-da-gravacao'
 
@@ -82,6 +82,14 @@ interface Resumo {
 const hoje = hojeIso
 
 /** As frases da rodada de uma categoria. Vazio quando não houve rodada. */
+/** De quanto em quanto tempo a tela pergunta ao servidor até onde a busca chegou. */
+const INTERVALO_DO_ACOMPANHAMENTO_MS = 2000
+
+function textoDoAndamento(andamento: { total: number | null; lidos: number } | null): string {
+  if (andamento === null || andamento.total === null) return 'lendo a caixa…'
+  return `lendo ${andamento.lidos} de ${andamento.total}…`
+}
+
 function narrativaDe(resumo: Resumo | null, categoriaCodigo: string): string[] {
   return resumo?.narrativas.find((n) => n.categoriaCodigo === categoriaCodigo)?.linhas ?? []
 }
@@ -119,6 +127,55 @@ export default function Distribuicao() {
   const [erro, setErro] = useState<string | null>(null)
   const [ingestao, setIngestao] = useState<NaRede<ResumoDaBusca> | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
+  /** Até onde a busca chegou, enquanto ela roda no servidor. */
+  const [andamento, setAndamento] = useState<{ total: number | null; lidos: number } | null>(null)
+
+  /**
+   * Acompanha a busca que roda no servidor até ela terminar.
+   *
+   * A busca não depende desta tela: fechar a aba ou trocar de página não a
+   * interrompe, e quem voltar à Distribuição retoma o acompanhamento (o efeito
+   * logo abaixo). Antes, a requisição esperava a busca inteira, e com a IA
+   * local isso eram minutos de tela presa.
+   */
+  const acompanharBusca = useCallback(async (inicial: NaRede<EstadoDaBusca>) => {
+    let estado = inicial
+    while (estado.situacao === 'rodando') {
+      setAndamento({ total: estado.total, lidos: estado.lidos })
+      await new Promise((pronto) => setTimeout(pronto, INTERVALO_DO_ACOMPANHAMENTO_MS))
+      estado = await api.buscar<NaRede<EstadoDaBusca>>('/ingestao')
+    }
+    setAndamento(null)
+    if (estado.situacao === 'concluida') {
+      setIngestao(estado.resumo)
+      setPrevia(null)
+    } else if (estado.situacao === 'falhou') {
+      setErro(estado.erro)
+    }
+  }, [])
+
+  // Uma busca já rodando (outra pessoa clicou, ou esta página foi recarregada):
+  // a tela mostra o andamento em vez de oferecer um botão que não faria nada.
+  useEffect(() => {
+    let cancelado = false
+    api
+      .buscar<NaRede<EstadoDaBusca>>('/ingestao')
+      .then(async (estado) => {
+        if (cancelado || estado.situacao !== 'rodando') return
+        setOcupado('sincronizar')
+        try {
+          await acompanharBusca(estado)
+        } finally {
+          setOcupado(null)
+        }
+      })
+      .catch((causa: unknown) => {
+        if (!cancelado) setErro(mensagemDoErro(causa))
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [acompanharBusca])
 
   /**
    * Número da carga de escala mais recente. Só ela escreve na tela.
@@ -210,8 +267,7 @@ export default function Distribuicao() {
     setErro(null)
     try {
       if (acao === 'sincronizar') {
-        setIngestao(await api.enviar<NaRede<ResumoDaBusca>>('/ingestao'))
-        setPrevia(null)
+        await acompanharBusca(await api.enviar<NaRede<EstadoDaBusca>>('/ingestao'))
       } else if (acao === 'previa') {
         setPrevia(await api.enviar<Resumo>('/distribuicao/previa', { data, categorias: [] }))
         setPreviaCalculadaEm(new Date())
@@ -353,7 +409,7 @@ export default function Distribuicao() {
           descricao={`${dePlantao.length} de ${escala?.length ?? 0} disponíveis. Quem não está marcado não recebe nada.`}
           acao={
             <Botao onClick={() => executar('sincronizar')} desabilitado={ocupado !== null}>
-              {ocupado === 'sincronizar' ? 'buscando…' : 'Buscar e-mails'}
+              {ocupado === 'sincronizar' ? textoDoAndamento(andamento) : 'Buscar e-mails'}
             </Botao>
           }
         />

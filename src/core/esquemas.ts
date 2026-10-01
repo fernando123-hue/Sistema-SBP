@@ -161,6 +161,8 @@ export type AcaoAuditavel = z.infer<typeof AcaoAuditavelSchema>
  */
 export const OperacaoSchema = z.enum([
   'sincronizar ingestão',
+  /** A busca roda no servidor; a tela pergunta até onde ela chegou (`AT-62`). */
+  'acompanhar a busca de e-mails',
   'ver fila de revisão',
   'ver o e-mail de uma revisão',
   'resolver revisão',

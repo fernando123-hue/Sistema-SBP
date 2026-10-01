@@ -278,6 +278,21 @@ describe('rotas que guardam o papel sozinhas', () => {
     expect(JSON.stringify(await corpoDe(resposta))).not.toContain('credito')
   })
 
+  it('/api/ingestao: colaborador não busca nem acompanha; o andamento sai sem cache (`AT-62`)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const { GET, POST } = await import('./ingestao/route')
+
+    await entrarComo(base.colaboradores[0]!.id, 'colaborador')
+    expect((await POST()).status).toBe(403)
+    expect((await GET()).status).toBe(403)
+
+    await entrarComo(base.operador.colaboradorId, 'operador')
+    const andamento = await GET()
+    expect(andamento.status).toBe(200)
+    expect(andamento.headers.get('Cache-Control')).toBe('no-store')
+    expect(((await andamento.json()) as { dados: { situacao: string } }).dados.situacao).toBe('nenhuma')
+  })
+
   it('sem cookie nenhum, as quatro respondem 401 — e 401 não é 403', async () => {
     await semearBase(banco, { totalDeDias: 1 })
     cookieDaVez.valor = ''
