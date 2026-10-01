@@ -73,6 +73,12 @@ describe('ligar e desligar', () => {
     expect(() => ambiente()).toThrow(/ACESSO_LOCAL_SEM_SENHA/)
   })
 
+  it('ligado sem NODE_ENV, o sistema recusa subir: a ausência não é desenvolvimento (pendência 47)', () => {
+    configurar('1', 'development')
+    Reflect.deleteProperty(process.env, 'NODE_ENV')
+    expect(() => ambiente()).toThrow(/NODE_ENV=\(ausente\)/)
+  })
+
   it('desligado em produção, sobe normalmente e continua desligado', () => {
     // Produção recusa os segredos públicos da suíte (N-18).
     process.env['SESSAO_SECRET'] = 'q8Zr2vN6pW1xT4kL9mB3cF7hJ0sD5gYa'

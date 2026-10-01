@@ -71,6 +71,14 @@ describe('verificação de TLS desligada só em desenvolvimento (pendência 37)'
     expect(() => ambiente()).toThrow(/NODE_EXTRA_CA_CERTS/)
   })
 
+  it('sem NODE_ENV, NODE_TLS_REJECT_UNAUTHORIZED=0 é recusado: a ausência não é desenvolvimento (pendência 47)', () => {
+    // Script por `tsx` num cron não preenche NODE_ENV, e o schema o completaria
+    // com `development`.
+    vi.stubEnv('NODE_ENV', undefined)
+    vi.stubEnv('NODE_TLS_REJECT_UNAUTHORIZED', '0')
+    expect(() => ambiente()).toThrow(/NODE_ENV=\(ausente\)/)
+  })
+
   it('em desenvolvimento, NODE_TLS_REJECT_UNAUTHORIZED=0 continua subindo', () => {
     vi.stubEnv('NODE_ENV', 'development')
     vi.stubEnv('NODE_TLS_REJECT_UNAUTHORIZED', '0')

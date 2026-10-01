@@ -311,10 +311,15 @@ export function ambiente(): Ambiente {
   // publicado passava. Agora só DESENVOLVIMENTO libera, e a variável não pode
   // morar num arquivo `.env`: quem liga é o `npm run dev:local`, só para o
   // processo dele.
+  //
+  // E `development` tem de estar ESCRITO (pendência 47): o schema completa a
+  // ausência com `development`, e um processo sem `NODE_ENV` passaria. O
+  // `dev:local` define o valor explicitamente.
   if (resultado.data.ACESSO_LOCAL_SEM_SENHA) {
-    if (resultado.data.NODE_ENV !== 'development') {
+    const nodeEnvCru = process.env['NODE_ENV']
+    if (nodeEnvCru !== 'development') {
       throw new Error(
-        `ACESSO_LOCAL_SEM_SENHA=1 com NODE_ENV=${resultado.data.NODE_ENV}. O acesso sem senha existe só para ` +
+        `ACESSO_LOCAL_SEM_SENHA=1 com NODE_ENV=${nodeEnvCru ?? '(ausente)'}. O acesso sem senha existe só para ` +
           'desenvolvimento local — desligue a variável antes de subir o sistema.',
       )
     }
@@ -341,9 +346,15 @@ export function ambiente(): Ambiente {
   // "desligado". É conferido na partida, não depois: código que escreva em
   // `process.env` em tempo de execução já está dentro do processo, e essa
   // barreira não é esta (revisão de segurança do #157).
-  if (process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0' && resultado.data.NODE_ENV !== 'development') {
+  //
+  // O `NODE_ENV` é o CRU, não o do schema (pendência 47): lá a ausência vira
+  // `development`, e um script num cron (`db:expurgar`, `ia:avaliar`, sem
+  // `NODE_ENV`) passaria com a variável herdada da máquina. `next dev` e
+  // `dev:local` definem `development` sozinhos, então o desenvolvimento não muda.
+  const nodeEnvCru = process.env['NODE_ENV']
+  if (process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0' && nodeEnvCru !== 'development') {
     throw new Error(
-      `NODE_TLS_REJECT_UNAUTHORIZED=0 com NODE_ENV=${resultado.data.NODE_ENV} desliga a verificação de TLS de ` +
+      `NODE_TLS_REJECT_UNAUTHORIZED=0 com NODE_ENV=${nodeEnvCru ?? '(ausente)'} desliga a verificação de TLS de ` +
         'todo o processo, e o texto dos e-mails ficaria legível para quem estiver no caminho. Apague a variável; ' +
         'se a rede da empresa inspeciona TLS, aponte NODE_EXTRA_CA_CERTS para o certificado dela.',
     )
