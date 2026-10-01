@@ -229,9 +229,11 @@ export default function Fila() {
     setFeito(null)
     try {
       const ids = grupo.itens.map((item) => item.itemId)
-      const feitos = await api.enviar<{ concluidos: number }>('/fila/concluir-junto', { itemIds: ids })
+      await api.enviar('/fila/concluir-junto', { itemIds: ids })
       tirarDaLista(ids)
-      setFeito(`${feitos.concluidos} ${feitos.concluidos === 1 ? 'item concluído' : 'itens concluídos'}.`)
+      // Literal, como todo aviso da região (`§ AT-48`); quantos já foi dito
+      // no pedido de confirmação.
+      setFeito('Itens do e-mail concluídos.')
     } catch (causa) {
       setFeito(null)
       setErro(mensagemDoErro(causa))
@@ -292,17 +294,13 @@ export default function Fila() {
   const ordemNaTela = todosOsGrupos.flatMap((grupo) => grupo.itens)
   const gruposJuntos = todosOsGrupos.filter((grupo) => grupo.itens.length > 1)
 
-  function avisoDeConfirmacao(armado: string): string {
-    if (armado.startsWith(PREFIXO_DE_GRUPO)) {
-      const posicao = gruposJuntos.findIndex((grupo) => grupo.chave === armado)
-      return pedidoDeConfirmacaoDoGrupo(posicao, gruposJuntos.length, gruposJuntos[posicao]?.itens.length ?? 0)
-    }
-    return pedidoDeConfirmacao(
-      'concluir',
-      ordemNaTela.findIndex((item) => item.itemId === armado),
-      itens?.length ?? 0,
-    )
-  }
+  // Onde está o que foi armado, na ordem da tela. A frase sai de
+  // `pedidoDeConfirmacao*`, só com posição e quantidade (`§ AT-48`).
+  const grupoArmado = confirmandoConclusao?.startsWith(PREFIXO_DE_GRUPO)
+    ? gruposJuntos.findIndex((grupo) => grupo.chave === confirmandoConclusao)
+    : null
+  const itemArmado = ordemNaTela.findIndex((item) => item.itemId === confirmandoConclusao)
+
 
   function cartaoDoItem(item: ItemDaFila) {
     return (
@@ -569,7 +567,19 @@ export default function Fila() {
       {erro ? <Aviso>{erro}</Aviso> : null}
       {/* Qual item está armado, pela posição e pelo título: `pedido-de-confirmacao.ts`. */}
       {/* A ordem da TELA, agrupada por categoria e por e-mail — não a de `itens`. */}
-      <Anuncio mensagem={confirmandoConclusao ? avisoDeConfirmacao(confirmandoConclusao) : feito} />
+      <Anuncio
+        mensagem={
+          confirmandoConclusao
+            ? grupoArmado !== null
+              ? pedidoDeConfirmacaoDoGrupo(
+                  grupoArmado,
+                  gruposJuntos.length,
+                  gruposJuntos[grupoArmado]?.itens.length ?? 0,
+                )
+              : pedidoDeConfirmacao('concluir', itemArmado, itens?.length ?? 0)
+            : feito
+        }
+      />
 
       {itens === null ? (
         <Carregando />
