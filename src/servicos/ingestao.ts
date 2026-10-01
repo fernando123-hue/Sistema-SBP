@@ -74,6 +74,29 @@ export interface DependenciasIngestao {
    * = `nenhum`, o padrão): o sistema funciona igual sem ela.
    */
   classificador?: ClassificadorPort | null | undefined
+  /**
+   * Quem quer saber, e-mail a e-mail, até onde a busca chegou.
+   *
+   * Existe para a busca em segundo plano (`busca-em-segundo-plano.ts`): com a
+   * IA local, cada e-mail leva segundos, e a tela precisa dizer "12 de 40" em
+   * vez de girar sem fim. É só aviso: um erro aqui não para a busca.
+   */
+  aoProgredir?: ((andamento: AndamentoDaBusca) => void) | undefined
+}
+
+/** Até onde a busca chegou: `lidos` de `total` e-mails já tratados. */
+export interface AndamentoDaBusca {
+  total: number
+  lidos: number
+}
+
+function avisarAndamento(deps: DependenciasIngestao, andamento: AndamentoDaBusca): void {
+  if (!deps.aoProgredir) return
+  try {
+    deps.aoProgredir(andamento)
+  } catch (erro) {
+    registrarLog('aviso', 'o aviso de andamento da busca falhou; a busca segue', { erro: mensagemDoErro(erro) })
+  }
 }
 
 /**
@@ -362,7 +385,10 @@ export async function sincronizar(
     }
   }
 
-  for (const candidato of brutos) {
+  for (const [indice, candidato] of brutos.entries()) {
+    // Antes de tratar este: quantos já foram. O último aviso, depois do laço,
+    // fecha a conta.
+    avisarAndamento(deps, { total: brutos.length, lidos: indice })
     try {
       const email = EmailBrutoSchema.parse(candidato)
 
@@ -538,6 +564,8 @@ export async function sincronizar(
       })
     }
   }
+
+  avisarAndamento(deps, { total: brutos.length, lidos: brutos.length })
 
   resumo.repetidas = colisoes.length
   if (colisoes.length > 0) await registrarColisoes(deps.banco, correlacaoId, colisoes)

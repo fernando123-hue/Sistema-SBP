@@ -414,6 +414,18 @@ export interface ResumoDaBusca extends ResumoIngestao {
   revisoesPendentes: number | null
 }
 
+/**
+ * A busca de e-mails roda no servidor e a tela acompanha
+ * (`servicos/busca-em-segundo-plano.ts`). Só números e uma frase de erro já
+ * pronta para a tela: nunca texto de e-mail.
+ */
+export type EstadoDaBusca =
+  | { situacao: 'nenhuma' }
+  /** `total` é `null` enquanto a caixa ainda está sendo lida. */
+  | { situacao: 'rodando'; iniciadaEm: string; total: number | null; lidos: number }
+  | { situacao: 'concluida'; iniciadaEm: string; terminadaEm: string; resumo: ResumoDaBusca }
+  | { situacao: 'falhou'; iniciadaEm: string; terminadaEm: string; erro: string }
+
 export interface ItemEmRevisao {
   revisaoId: string
   itemId: string

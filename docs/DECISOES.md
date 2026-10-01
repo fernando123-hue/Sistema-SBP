@@ -1370,6 +1370,28 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 **Status:** 🟢 em vigor. Falta o roteiro de instalação completo para o TI (Node, systemd, proxy com HTTPS, backup), que é outro trabalho.
 
+### AT-62 — A busca de e-mails roda no servidor, e a tela só acompanha *(01/10/2026)*
+
+**O que entrou:** `POST /api/ingestao` só **inicia** a busca e responde na hora (202). A busca é a mesma `sincronizar`, rodando no próprio processo do servidor (`servicos/busca-em-segundo-plano.ts`). `GET /api/ingestao` devolve "rodando, N de M", o resumo final ou a frase de erro. Na Distribuição, o botão mostra "lendo 12 de 40…", e quem sai da tela e volta retoma o acompanhamento.
+
+**Por quê:** a medição real do #166 deu mediana de 11,3 s por e-mail com a IA local. Dentro da requisição, 30 e-mails seguravam a tela por seis minutos, 200 por quase quarenta, e um proxy reverso corta em 60 s: a tela mostrava erro com o servidor ainda trabalhando, e um segundo clique começava outra busca por cima.
+
+**Decisões do agente, que o dono pode rever:**
+- **No mesmo processo, sem fila nem infraestrutura nova** (`DIRECAO.md`; `A61`, um servidor só).
+- **Uma busca por vez.** Pedir de novo enquanto roda devolve a que está rodando, e a IA não é chamada duas vezes para o mesmo e-mail.
+- **Reinício do servidor no meio** perde só o andamento em memória. O que já foi gravado fica, e o resto volta na próxima busca, porque e-mail processado não é relido.
+- **O estado só tem números e a frase de erro**, com o mesmo critério de `rota()`: falha esperada de fronteira sai pela `mensagemPublica`; defeito vai inteiro para o log e a memória, e a tela recebe só o código.
+- **Só operador e gestor** iniciam e acompanham, os mesmos papéis de antes. O acompanhamento tem limite largo (120 por minuto), porque a tela pergunta a cada 2 s.
+- **Limite conhecido:** com mais de um processo atrás de um balanceador, cada um teria a própria "busca em andamento". Não é o desenho do `A61`, e nada duplica no banco mesmo assim.
+- **Nada fica preso em "rodando"** (revisões do #178): o estado sai de "rodando" mesmo quando a montagem da frase de erro falha. Uma busca que não avança um e-mail em **20 minutos** é dada como parada, e outra pode começar. A antiga, se um dia terminar, não escreve mais no estado. O teto vem de 300 s por pergunta à IA local, com uma repetição, mais a segunda opinião.
+- **O desfecho não se perde:** quem abre a Distribuição vê a última busca **do dia**, com a hora ("Busca das 14:11: …"), ou a frase de erro dela. Os avisos do resumo só aparecem uma vez. Servidor reiniciado no meio vira aviso para buscar de novo, não silêncio. Três falhas de rede seguidas fazem a tela dizer que a busca continua no servidor. O acompanhamento para quando a tela fecha, e só existe um por vez.
+- **Falha esperada também vai à trilha**, como `reprocessavel` e com a mesma frase da tela: o estado vive só em memória.
+- **A frase da recusa da Microsoft é mascarada** (revisão de segurança do #178): ela agora fica guardada no servidor e é servida a qualquer operador ou gestor. `IngestaoIndisponivelError.mensagemPublica` mascara GUID (tenant, aplicativo, rastreio), e-mail e números, e mantém o código `AADSTS…` e o status. A causa inteira continua no log.
+
+**Prova:** `servicos/busca-em-segundo-plano.test.ts`, com uma IA que o teste segura no meio: começa e volta na hora; o andamento sobe; o resumo chega; um segundo pedido não chama a IA; falha esperada e defeito; papel; cópia do estado. E `autorizacao-de-rotas.test.ts`: colaborador recebe 403 e o andamento sai sem cache. Visto rodando: 202 imediato, consultas de andamento e "14 e-mails lidos · 14 novos · 17 itens criados" na tela, com a IA de teste. O "lendo N de M" com a IA de verdade é a V1 do `A74`.
+
+**Status:** 🟢 em vigor.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.

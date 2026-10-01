@@ -284,7 +284,8 @@ Envelope único em toda resposta: `{ sucesso, dados, erro, correlacaoId? }`.
 
 ```
 ── Ingestão e revisão ───────────────────────────────────────
-POST   /api/ingestao                  dispara o adapter, cria Emails e Itens
+POST   /api/ingestao                  inicia a busca no servidor e volta na hora (202; 200 se já havia uma)
+GET    /api/ingestao                  até onde a busca chegou, ou como terminou (só números; AT-62)
 GET    /api/revisao                   fila abaixo do limiar
 POST   /api/revisao/resolver          aceita/corrige, grava valor_final (id no corpo)
 
