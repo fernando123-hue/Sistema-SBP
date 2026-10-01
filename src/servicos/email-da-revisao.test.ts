@@ -6,7 +6,7 @@ import type { IngestaoPort } from '../ports/ingestao'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
 import { sincronizar } from './ingestao'
-import { lerEmailDaRevisao, listarPendentes, resolver } from './revisao'
+import { LEITURAS_DE_EMAIL_POR_HORA, lerEmailDaRevisao, listarPendentes, resolver } from './revisao'
 
 /**
  * O e-mail ao lado do que a IA leu, na Revisão (`A69`, 2A).
@@ -208,5 +208,93 @@ describe('lerEmailDaRevisao', () => {
     await banco.item.update({ where: { id: pendente.itemId }, data: { emailId: null } })
 
     expect(await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).toEqual({ situacao: 'sem_email' })
+  })
+})
+
+describe('teto de leituras por hora (A72)', () => {
+  /** Linhas da trilha com a idade pedida; por padrão, gravadas como a leitura grava. */
+  async function leiturasFeitas(
+    usuario: string,
+    quantas: number,
+    minutosAtras: number,
+    { acao = 'email_lido_na_revisao', dominio }: { acao?: string; dominio?: string } = {},
+  ) {
+    const quando = new Date(Date.now() - minutosAtras * 60_000)
+    await banco.logAuditoria.createMany({
+      data: Array.from({ length: quantas }, (_, i) => ({
+        ...(dominio ? { dominio } : {}),
+        entidade: 'Email',
+        entidadeId: `email-anterior-${i}`,
+        acao,
+        usuario,
+        timestamp: quando,
+      })),
+    })
+  }
+
+  it('no teto, recusa sem dizer o número, sem ler e sem gravar leitura', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA, 30)
+
+    const leitura = lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)
+
+    // A frase inteira, do `A72 (d)`: nada de número, nada de "quanto falta".
+    await expect(leitura).rejects.toHaveProperty(
+      'message',
+      'A leitura de e-mails está indisponível nesta conta no momento. Confira pelos campos ao lado ou tente de novo mais tarde.',
+    )
+    expect(await banco.logAuditoria.count({ where: { acao: 'email_lido_na_revisao' } })).toBe(
+      LEITURAS_DE_EMAIL_POR_HORA,
+    )
+  })
+
+  it('no teto, nem revisão inexistente é revelada', async () => {
+    const { base } = await umaRevisaoPendente()
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA, 30)
+
+    await expect(lerEmailDaRevisao(banco, 'nao-existe', base.operador)).rejects.toThrow(/indisponível nesta conta/)
+  })
+
+  it('um a menos que o teto ainda lê', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA - 1, 30)
+
+    expect((await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).situacao).toBe('disponivel')
+  })
+
+  it('leitura de mais de uma hora atrás não conta', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA, 61)
+
+    expect((await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).situacao).toBe('disponivel')
+  })
+
+  it('o teto é de cada pessoa: as leituras de outra não contam', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    await leiturasFeitas('outra-pessoa', LEITURAS_DE_EMAIL_POR_HORA, 30)
+
+    expect((await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).situacao).toBe('disponivel')
+  })
+
+  it('só conta leitura de e-mail deste domínio: outra ação ou outro sistema não somam (invariante 14)', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA, 30, { acao: 'item_concluido' })
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA, 30, { dominio: 'outro_sistema' })
+
+    expect((await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).situacao).toBe('disponivel')
+  })
+
+  it('pedidos simultâneos no limite não passam juntos: só um lê a última vaga', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA - 1, 30)
+
+    const resultados = await Promise.allSettled(
+      Array.from({ length: 10 }, () => lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)),
+    )
+
+    expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    expect(await banco.logAuditoria.count({ where: { acao: 'email_lido_na_revisao' } })).toBe(
+      LEITURAS_DE_EMAIL_POR_HORA,
+    )
   })
 })
