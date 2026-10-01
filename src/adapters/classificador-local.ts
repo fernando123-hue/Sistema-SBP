@@ -193,13 +193,34 @@ function opcaoDoToken(token: string, quantas: number): number | null {
  * conta sem servidor.
  */
 export function probabilidadesDasOpcoes(
-  topo: readonly { readonly token: string; readonly logprob: number }[],
+  topo: readonly { readonly token: string; readonly logprob: number | null }[],
   quantas: number,
 ): number[] {
-  const massa = new Array<number>(quantas).fill(0)
+  // O mesmo token repetido no topo conta uma vez: um servidor que o repita não
+  // pode dobrar o voto de uma opção. `null` é como servidores escrevem
+  // -Infinity em JSON — probabilidade zero, não motivo para recusar a resposta.
+  const porToken = new Map<string, number>()
   for (const { token, logprob } of topo) {
+    const probabilidade = logprob === null ? 0 : Math.exp(logprob)
+    porToken.set(token, Math.max(porToken.get(token) ?? 0, probabilidade))
+  }
+  const comProbabilidade = [...porToken].filter(([, probabilidade]) => probabilidade > 0)
+
+  // Uma alternativa só com probabilidade é o servidor devolvendo o que SORTEOU
+  // (amostragem gulosa com `temperature: 0`), não o que o modelo achava de
+  // cada opção. Normalizar isso daria certeza a quem não teve (revisões do #159).
+  if (comProbabilidade.length < 2) throw defeitoDeForma('opcao', 'custom')
+
+  // A alternativa mais provável de TODAS precisa ser uma opção. Sem isto,
+  // "1" 0,26 + "2" 0,25 passava a massa mínima com "Olá" a 0,49 no topo: o
+  // modelo queria escrever outra coisa (revisões do #159).
+  const [maisProvavel] = comProbabilidade.reduce((maior, atual) => (atual[1] > maior[1] ? atual : maior))
+  if (opcaoDoToken(maisProvavel, quantas) === null) throw defeitoDeForma('opcao', 'custom')
+
+  const massa = new Array<number>(quantas).fill(0)
+  for (const [token, probabilidade] of comProbabilidade) {
     const indice = opcaoDoToken(token, quantas)
-    if (indice !== null) massa[indice]! += Math.exp(logprob)
+    if (indice !== null) massa[indice]! += probabilidade
   }
   const total = massa.reduce((soma, valor) => soma + valor, 0)
   if (!(total >= MASSA_MINIMA)) throw defeitoDeForma('opcao', 'custom')
@@ -225,9 +246,27 @@ export function respostaDasProbabilidades(pergunta: Pergunta, probabilidades: re
   return { tipo: 'nota', nota, confianca, probabilidades: porRotulo }
 }
 
+/**
+ * Sequências que o servidor local pode tomar por marcação do próprio diálogo
+ * (`<|im_start|>`, `[INST]`, `</s>`, `<start_of_turn>`): o template de chat é
+ * aplicado DEPOIS de montada a mensagem, e um e-mail que as escrevesse
+ * poderia abrir um papel novo fora dos delimitadores. Ganham um espaço no meio
+ * e deixam de ser o que eram. Não toca nos marcadores `<<<…>>>`. Cobertura
+ * conhecida e limites: revisões do #159 (não cobre `<<SYS>>` nem as variantes
+ * de largura total do DeepSeek, que só importam se o modelo trocar).
+ */
+export function semMarcacaoDeDialogo(texto: string): string {
+  return texto
+    .replace(/<\|/g, '< |')
+    .replace(/\|>/g, '| >')
+    .replace(/\[(\/?)INST\]/gi, '[$1 INST]')
+    .replace(/<(\/?)s>/gi, '<$1 s>')
+    .replace(/<(start|end)_of_turn>/gi, '< $1_of_turn>')
+}
+
 // ─── O fio: protocolo OpenAI ──────────────────────────────────────────────────
 
-const TopoSchema = z.array(z.object({ token: z.string(), logprob: z.number().max(0) }))
+const TopoSchema = z.array(z.object({ token: z.string(), logprob: z.number().max(0).nullable() }))
 
 const RespostaNoFioSchema = z.object({
   model: z.string().optional(),
@@ -310,7 +349,7 @@ export function clienteClassificadorLocal(
         model: modelo,
         messages: [
           { role: 'system', content: instrucoesDaPergunta(pergunta) },
-          { role: 'user', content: estado },
+          { role: 'user', content: semMarcacaoDeDialogo(estado) },
         ],
         temperature: 0,
         // Um token: o algarismo. O tempo fica quase todo na leitura do texto.
