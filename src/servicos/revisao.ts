@@ -167,6 +167,56 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaD
 }
 
 /**
+ * Teto de leituras de e-mail por pessoa, na última hora (`A72`).
+ *
+ * O limite por minuto da rota vive na memória do processo: zera ao reiniciar e
+ * não vale com duas instâncias. Este conta na trilha, que sobrevive aos dois,
+ * e para a leitura lenta que o limite por minuto deixa passar: uma sessão
+ * roubada lendo 30 por minuto levaria a caixa do setor inteira numa tarde.
+ *
+ * ALTO DE PROPÓSITO, E SEM PLACAR. Quem revisa abre algumas dezenas por hora; o
+ * teto existe para conta roubada, não para medir ninguém. Nenhuma tela mostra
+ * quanto falta, e a recusa não diz o número: um contador à vista viraria meta
+ * a administrar, a pressão que o dono recusou (`A44`, `A71`, invariante 10).
+ *
+ * CONTA E GRAVA EM FILA, POR PESSOA. Contar numa consulta e gravar noutra
+ * deixava passar a rajada: com 299 lidas, 30 pedidos simultâneos viam todos
+ * "299" e liam todos (revisão de segurança do #168). Por isso a conta que vale
+ * é a de dentro da transação que grava a leitura, com a linha da pessoa
+ * travada: o segundo pedido espera o primeiro gravar e conta 300. A conta logo
+ * no começo de `lerEmailDaRevisao` fica só para recusar antes de olhar a
+ * revisão.
+ */
+export const LEITURAS_DE_EMAIL_POR_HORA = 300
+
+const UMA_HORA_MS = 60 * 60 * 1000
+
+async function exigirLeiturasDentroDoTeto(banco: Transacao, ator: Ator): Promise<void> {
+  const lidas = await banco.logAuditoria.count({
+    where: {
+      dominio: DOMINIO_ATUAL,
+      acao: 'email_lido_na_revisao',
+      usuario: ator.colaboradorId,
+      timestamp: { gte: new Date(Date.now() - UMA_HORA_MS) },
+    },
+    // Pelo índice `[timestamp]`: lê a última hora inteira da trilha e filtra.
+    // No volume do setor são centenas de linhas; com milhares por hora, um
+    // índice `[usuario, acao, timestamp]` passa a valer.
+  })
+  if (lidas < LEITURAS_DE_EMAIL_POR_HORA) return
+
+  // No log técnico, que some na rotação e nenhuma tela lê: é o rastro para o
+  // TI investigar uma conta roubada, não um aviso a ninguém sobre a pessoa.
+  registrarLog('aviso', 'leitura de e-mail recusada: teto por hora atingido', {
+    colaboradorId: ator.colaboradorId,
+  })
+  throw new ErroDeNegocio(
+    'A leitura de e-mails está indisponível nesta conta no momento. Confira pelos campos ao lado ou tente de novo mais tarde.',
+    'LEITURA_DE_EMAIL_NO_TETO',
+  )
+}
+
+/**
  * O e-mail de UMA revisão, lido só quando a pessoa pede (`A69`, 2A).
  *
  * ═══ POR QUE SOB DEMANDA, E UMA DE CADA VEZ ═══
@@ -188,49 +238,6 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaD
  * quebrado, e falha alto (invariante 7): fingir "expurgado" esconderia a
  * perda.
  */
-/**
- * Teto de leituras de e-mail por pessoa, na última hora (`A72`).
- *
- * O limite por minuto da rota vive na memória do processo: zera ao reiniciar e
- * não vale com duas instâncias. Este conta na trilha, que sobrevive aos dois,
- * e para a leitura lenta que o limite por minuto deixa passar: uma sessão
- * roubada lendo 30 por minuto levaria a caixa do setor inteira numa tarde.
- *
- * ALTO DE PROPÓSITO, E SEM PLACAR. Quem revisa abre algumas dezenas por hora; o
- * teto existe para conta roubada, não para medir ninguém. Nenhuma tela mostra
- * quanto falta, e a recusa não diz o número: um contador à vista viraria meta
- * a administrar, a pressão que o dono recusou (`A44`, `A71`, invariante 10).
- *
- * Duas leituras simultâneas no limite podem passar as duas: a conta e a
- * gravação não estão na mesma transação. Aceito: o excesso é de uma ou duas
- * leituras, e o limite por minuto segura a rajada.
- */
-export const LEITURAS_DE_EMAIL_POR_HORA = 300
-
-const UMA_HORA_MS = 60 * 60 * 1000
-
-async function exigirLeiturasDentroDoTeto(banco: Banco, ator: Ator): Promise<void> {
-  const lidas = await banco.logAuditoria.count({
-    where: {
-      dominio: DOMINIO_ATUAL,
-      acao: 'email_lido_na_revisao',
-      usuario: ator.colaboradorId,
-      timestamp: { gte: new Date(Date.now() - UMA_HORA_MS) },
-    },
-  })
-  if (lidas < LEITURAS_DE_EMAIL_POR_HORA) return
-
-  // No log técnico, que some na rotação e nenhuma tela lê: é o rastro para o
-  // TI investigar uma conta roubada, não um aviso a ninguém sobre a pessoa.
-  registrarLog('aviso', 'leitura de e-mail recusada: teto por hora atingido', {
-    colaboradorId: ator.colaboradorId,
-  })
-  throw new ErroDeNegocio(
-    'A leitura de e-mails está indisponível nesta conta no momento. Confira pelos campos ao lado ou tente de novo mais tarde.',
-    'LEITURA_DE_EMAIL_NO_TETO',
-  )
-}
-
 export async function lerEmailDaRevisao(
   banco: Banco,
   revisaoId: string,
@@ -276,15 +283,19 @@ export async function lerEmailDaRevisao(
     )
   }
 
-  // Escrita avulsa, fora de transação, e de propósito: ler não tem fato
-  // transacional para acompanhar (invariante 14). Vem ANTES de devolver o
-  // corpo: se a trilha não grava, a leitura falha e nada sai.
-  await auditar(banco, {
-    entidade: 'Email',
-    entidadeId: email.id,
-    acao: 'email_lido_na_revisao',
-    depois: { revisaoId },
-    usuario: ator.colaboradorId,
+  // Vem ANTES de devolver o corpo: se a trilha não grava, a leitura falha e
+  // nada sai. A transação é só para o teto (`A72`): a linha da pessoa travada
+  // põe as leituras dela em fila, e cada uma conta as anteriores já gravadas.
+  await transacaoComNovaTentativa(banco, async (tx) => {
+    await tx.$queryRaw`SELECT id FROM \`Colaborador\` WHERE id = ${ator.colaboradorId} FOR UPDATE`
+    await exigirLeiturasDentroDoTeto(tx, ator)
+    await auditar(tx, {
+      entidade: 'Email',
+      entidadeId: email.id,
+      acao: 'email_lido_na_revisao',
+      depois: { revisaoId },
+      usuario: ator.colaboradorId,
+    })
   })
 
   const corpo = email.conteudo.corpo

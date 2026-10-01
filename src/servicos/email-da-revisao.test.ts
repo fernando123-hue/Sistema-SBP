@@ -212,14 +212,20 @@ describe('lerEmailDaRevisao', () => {
 })
 
 describe('teto de leituras por hora (A72)', () => {
-  /** Leituras já feitas, gravadas como a leitura grava, com a idade pedida. */
-  async function leiturasFeitas(usuario: string, quantas: number, minutosAtras: number) {
+  /** Linhas da trilha com a idade pedida; por padrão, gravadas como a leitura grava. */
+  async function leiturasFeitas(
+    usuario: string,
+    quantas: number,
+    minutosAtras: number,
+    { acao = 'email_lido_na_revisao', dominio }: { acao?: string; dominio?: string } = {},
+  ) {
     const quando = new Date(Date.now() - minutosAtras * 60_000)
     await banco.logAuditoria.createMany({
       data: Array.from({ length: quantas }, (_, i) => ({
+        ...(dominio ? { dominio } : {}),
         entidade: 'Email',
         entidadeId: `email-anterior-${i}`,
-        acao: 'email_lido_na_revisao',
+        acao,
         usuario,
         timestamp: quando,
       })),
@@ -232,8 +238,11 @@ describe('teto de leituras por hora (A72)', () => {
 
     const leitura = lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)
 
-    await expect(leitura).rejects.toThrow(/indisponível nesta conta/)
-    await expect(leitura).rejects.not.toThrow(new RegExp(String(LEITURAS_DE_EMAIL_POR_HORA)))
+    // A frase inteira, do `A72 (d)`: nada de número, nada de "quanto falta".
+    await expect(leitura).rejects.toHaveProperty(
+      'message',
+      'A leitura de e-mails está indisponível nesta conta no momento. Confira pelos campos ao lado ou tente de novo mais tarde.',
+    )
     expect(await banco.logAuditoria.count({ where: { acao: 'email_lido_na_revisao' } })).toBe(
       LEITURAS_DE_EMAIL_POR_HORA,
     )
@@ -265,5 +274,27 @@ describe('teto de leituras por hora (A72)', () => {
     await leiturasFeitas('outra-pessoa', LEITURAS_DE_EMAIL_POR_HORA, 30)
 
     expect((await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).situacao).toBe('disponivel')
+  })
+
+  it('só conta leitura de e-mail deste domínio: outra ação ou outro sistema não somam (invariante 14)', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA, 30, { acao: 'item_concluido' })
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA, 30, { dominio: 'outro_sistema' })
+
+    expect((await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).situacao).toBe('disponivel')
+  })
+
+  it('pedidos simultâneos no limite não passam juntos: só um lê a última vaga', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA - 1, 30)
+
+    const resultados = await Promise.allSettled(
+      Array.from({ length: 10 }, () => lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)),
+    )
+
+    expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
+    expect(await banco.logAuditoria.count({ where: { acao: 'email_lido_na_revisao' } })).toBe(
+      LEITURAS_DE_EMAIL_POR_HORA,
+    )
   })
 })
