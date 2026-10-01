@@ -4,7 +4,14 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 01/10/2026 — A DISTRIBUIÇÃO AVISA O QUE ESPERA CONFERÊNCIA (`A69` 4A) (este bloco vence os de baixo)
+> ### 01/10/2026 — "HOJE VOCÊ CONCLUIU N" E O REGISTRO DA DISTRIBUIÇÃO (`A69` 5A + 5B) (este bloco vence os de baixo)
+>
+> - **O que entrou:** na Minha fila, "Hoje você concluiu N", que a rota só devolve a quem está na sessão, contado do dia de São Paulo sem nada guardado; na Distribuição, depois de confirmar, a hora, quantos itens, "nenhum número digitado" e "conservação conferida". Decisões em `AT-59`. Nível 3 (rota nova).
+> - **4A mesclado no #170** (`AT-58`).
+> - **Com este PR, o `A69` fica completo.**
+> - **Pergunta aberta ao dono (`§ H.4` 51):** o Painel ainda dá à gestão os concluídos por pessoa (`A24`). Até a resposta, a fila não diz "só você vê".
+>
+> ### 01/10/2026 — A DISTRIBUIÇÃO AVISA O QUE ESPERA CONFERÊNCIA (`A69` 4A)
 >
 > - **O que entrou:** depois de "Buscar e-mails", a Distribuição diz quantos itens esperam conferência na Revisão (a fila inteira, e quantos desta busca) e leva até lá. Decisões em `AT-58`. Nível 2.
 > - **1A mesclado no #167** (`AT-57`): a revisão de segurança achou CPF a conferir escondido sob "desdobramento"; corrigido antes de mesclar.

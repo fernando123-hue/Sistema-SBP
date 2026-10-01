@@ -1,5 +1,6 @@
 import { camposParaCopiar, type CampoParaCopiar } from '../core/dados-do-item'
 import { ErroDeNegocio } from '../core/erros'
+import { deslocarDias, inicioDoDia, paraDataIso } from '../core/util/datas'
 import { LIMITE_ITENS_POR_EMAIL, PayloadDoItemSchema, type Operacao } from '../core/esquemas'
 import { Prisma } from '../generated/prisma/client'
 import { ehOProprio, exigirPapel, type Ator } from '../servidor/ator'
@@ -129,6 +130,48 @@ export async function minhaFila(
     atribuidoEm: atribuicao.atribuidoEm,
     criadoEm: atribuicao.item.criadoEm,
   }))
+}
+
+/**
+ * Quantos itens o `Ator` concluiu hoje (`A69`, 5A).
+ *
+ * Palavras do dono: "apenas o funcionário da conta específica verá quantos ele
+ * fez no dia e sempre será resetado no fim do dia". E o `A71`: número de
+ * trabalho por pessoa na mão de outro vira pressão.
+ *
+ * ═══ SÓ DE QUEM PERGUNTA ═══
+ *
+ * Não há parâmetro de pessoa, de propósito — diferente de `minhaFila`, que
+ * deixa operador e gestor verem a fila de outro para remanejar carga. Este
+ * número não serve para remanejar nada; serve para a própria pessoa ver o dia
+ * andar. Um `colaboradorId` opcional aqui seria o primeiro passo para "ver o
+ * de fulano", que é decisão separada do dono (invariante 10).
+ *
+ * ═══ NADA GUARDADO, NADA A ZERAR ═══
+ *
+ * Contado das `Execucao` do dia de São Paulo a cada leitura. "Recomeçar no fim
+ * do dia" é o dia mudar: não existe contador para alguém esquecer de zerar,
+ * nem coluna nova para alguém consultar por pessoa depois.
+ *
+ * `agora` existe para o teste fixar a virada do dia; a rota não o passa.
+ */
+export async function concluidosHoje(
+  banco: Banco,
+  ator: Ator,
+  agora: Date = new Date(),
+): Promise<{ data: string; concluidos: number }> {
+  const data = paraDataIso(agora)
+  const concluidos = await banco.execucao.count({
+    where: {
+      colaboradorId: ator.colaboradorId,
+      // Devolver e cancelar também gravam `Execucao`, e não são trabalho feito.
+      resultado: 'concluido',
+      // Dia de São Paulo (`core/util/datas.ts`): em UTC, a partir das 21h o
+      // número já seria o de amanhã.
+      concluidoEm: { gte: inicioDoDia(data), lt: inicioDoDia(deslocarDias(data, 1)) },
+    },
+  })
+  return { data, concluidos }
 }
 
 /**

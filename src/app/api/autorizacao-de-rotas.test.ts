@@ -179,6 +179,31 @@ describe('rotas que guardam o papel sozinhas', () => {
     expect(cabecalhos.every((valor) => valor === 'no-store')).toBe(true)
   })
 
+  it('GET /api/fila/hoje: só o número de quem está na sessão, sem parâmetro e sem cache (`A69`, 5A; `A71`)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const { GET } = await import('./fila/hoje/route')
+    const ler = (consulta = '') => GET(new Request(`http://teste.local/api/fila/hoje${consulta}`))
+
+    cookieDaVez.valor = ''
+    expect((await ler()).status).toBe(401)
+
+    await entrarComo(base.colaboradores[0]!.id, 'colaborador')
+    const propria = await ler()
+    expect(propria.status).toBe(200)
+    expect(propria.headers.get('Cache-Control')).toBe('no-store')
+    const corpo = (await propria.json()) as { dados: { concluidos: number; data: string } }
+    expect(corpo.dados.concluidos).toBe(0)
+    expect(Object.keys(corpo.dados).sort()).toEqual(['concluidos', 'data'])
+
+    // Invariante 5: pedir o de outra pessoa é recusado, não respondido com o próprio.
+    await entrarComo(base.operadorId, 'operador')
+    const daOperadora = (await (await ler()).json()) as { dados: { concluidos: number } }
+    expect(daOperadora.dados.concluidos).toBe(0)
+    const alheia = await ler(`?colaborador=${base.colaboradores[0]!.id}`)
+    expect(alheia.status).toBe(400)
+    expect(alheia.headers.get('Cache-Control')).toBe('no-store')
+  })
+
   it('POST /api/fila/concluir-junto: quem conclui vem da sessão, a lista tem teto, e há limite por pessoa (`A69`, 3A)', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     const { POST } = await import('./fila/concluir-junto/route')
