@@ -108,6 +108,8 @@ export const AcaoAuditavelSchema = z.enum([
   'escala_definida',
   // Pessoas e acesso
   'colaborador_criado',
+  /** `AT-61`: a primeira gestora de um servidor novo, pelo terminal. Autor `sistema`, sem sessão. */
+  'primeiro_gestor_criado',
   'habilitacao_definida',
   'acesso_reativado',
   'acesso_desativado',
@@ -866,7 +868,10 @@ export const AtivacaoSchema = z.object({
  * entre elas.
  */
 export const CadastroDeColaboradorSchema = z.object({
-  nome: z.string().trim().min(1).max(255),
+  // 200 é a coluna (`Colaborador.nome`, VarChar(200)). Com 255 aqui, um nome
+  // de 201 a 255 passava pela validação e o banco recusava com erro cru: 500
+  // na tela e mensagem do Prisma no terminal (revisão técnica do #176).
+  nome: z.string().trim().min(1).max(200),
   email: z.string().trim().toLowerCase().pipe(z.email()).pipe(z.string().max(320)),
   papel: PapelSchema,
   categorias: z.array(CategoriaCodigoSchema).max(20).default([]),
