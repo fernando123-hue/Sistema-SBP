@@ -110,3 +110,37 @@ export function ligaQueFicouDeFora(sugestao: Sugestao, semLiga: boolean): string
   // tela não pode afirmar que uma liga ficou de fora (4ª rodada do #150).
   return semLiga && citada && chaveDaLiga(citada) !== null ? citada : null
 }
+
+/**
+ * O selo de confiança só quando ela é o motivo da revisão (`A69`, 2B).
+ *
+ * Num item que veio para cá porque o CPF não confere, "92%" em verde ao lado
+ * dizia "pode confiar" justamente do dado que a pessoa precisa conferir. A
+ * confiança é a própria IA que dá e não prova nada sobre o valor (`A62`).
+ */
+export function mostraConfianca(motivo: string): boolean {
+  return motivo === 'baixa_confianca'
+}
+
+/** O nome que a tela mostra para o campo apontado. */
+export function rotuloDoCampo(campo: string): string {
+  return campo === CAMPO_DA_LIGA ? ROTULO_DO_CAMPO_DA_LIGA : campo
+}
+
+/**
+ * O corpo partido em volta do trecho marcado. Trecho que não cabe no texto não
+ * marca nada: melhor nenhum destaque que um destaque no lugar errado.
+ */
+export function partesDoCorpo(
+  corpo: string,
+  trecho: { readonly inicio: number; readonly fim: number } | null,
+): { antes: string; marcado: string | null; depois: string } {
+  if (!trecho || trecho.inicio < 0 || trecho.fim > corpo.length || trecho.fim <= trecho.inicio) {
+    return { antes: corpo, marcado: null, depois: '' }
+  }
+  return {
+    antes: corpo.slice(0, trecho.inicio),
+    marcado: corpo.slice(trecho.inicio, trecho.fim),
+    depois: corpo.slice(trecho.fim),
+  }
+}

@@ -4,6 +4,12 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
+> ### 01/10/2026 — REVISÃO COM O E-MAIL AO LADO (`A69` 2A + 2B) EM PR (este bloco vence os de baixo)
+>
+> - **PR do branch `claude/project-thread-ifuquf`:** "Ver o e-mail" na Revisão, lido sob demanda, com o trecho do campo apontado marcado; selo de confiança só na baixa confiança; tema sempre claro (`A67 (d)`). Decisões em `AT-53`. Nível 3.
+> - `verificar`: 143 arquivos, 1766 testes.
+> - **Próximo do `A69`:** 3A+3B, a Minha fila em lista e detalhe. O Jev próprio (P2) segue em outra frente.
+>
 > ### 30/09/2026, fim da noite — JEV PRÓPRIO DECIDIDO (`A70`); NEXT CORRIGIDO (este bloco vence os de baixo)
 >
 > - **#155 mesclado:** Next 16.3.5 → 16.3.6. O `npm audit` passou a acusar falha crítica (GHSA-vcvr-r3jv-pc5j, RCE em `next/og`) e deixava a auditoria vermelha em todo PR. O código não usa `next/og`. Revisões técnica e de segurança aprovaram; ficou a pendência 46.

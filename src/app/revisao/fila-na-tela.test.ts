@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
 import { CAMPO_DA_LIGA } from '../../core/conferencia-da-extracao'
-import { depoisDeResolver, estadoDaFila, filaDaResposta, ligaQueFicouDeFora, lerSugestao, seloDoCampo } from './fila-na-tela'
+import {
+  depoisDeResolver,
+  estadoDaFila,
+  filaDaResposta,
+  ligaQueFicouDeFora,
+  lerSugestao,
+  mostraConfianca,
+  partesDoCorpo,
+  rotuloDoCampo,
+  seloDoCampo,
+} from './fila-na-tela'
 
 /**
  * A fila de revisão na tela, depois de cada decisão (achado N-30).
@@ -130,5 +140,46 @@ describe('selo do campo apontado', () => {
     const lida = lerSugestao('{"campos":{"__proto__":"Fulana Sintética"}}')
     expect(seloDoCampo('__proto__', lida)).toBe('confira: __proto__')
     expect(Object.getPrototypeOf(lida.campos)).toBeNull()
+  })
+})
+
+describe('selo de confiança (`A69`, 2B)', () => {
+  it('aparece só quando a confiança é o motivo da revisão', () => {
+    expect(mostraConfianca('baixa_confianca')).toBe(true)
+  })
+
+  it('some quando o motivo é outro: ali ele dizia "confiável" ao lado de um dado a conferir', () => {
+    for (const motivo of [
+      'campo_ausente',
+      'valor_fora_do_texto',
+      'cpf_invalido',
+      'conteudo_suspeito',
+      'desdobramento',
+      'conferencia_incompleta',
+    ]) {
+      expect(mostraConfianca(motivo)).toBe(false)
+    }
+  })
+})
+
+describe('o e-mail ao lado (`A69`, 2A)', () => {
+  it('parte o corpo em antes, marcado e depois', () => {
+    expect(partesDoCorpo('ficha de Ana Teste, ok', { inicio: 9, fim: 18 })).toEqual({
+      antes: 'ficha de ',
+      marcado: 'Ana Teste',
+      depois: ', ok',
+    })
+  })
+
+  it('sem trecho, ou com trecho fora do texto, nada é marcado', () => {
+    expect(partesDoCorpo('texto', null)).toEqual({ antes: 'texto', marcado: null, depois: '' })
+    expect(partesDoCorpo('texto', { inicio: 3, fim: 50 })).toEqual({ antes: 'texto', marcado: null, depois: '' })
+    expect(partesDoCorpo('texto', { inicio: 3, fim: 3 })).toEqual({ antes: 'texto', marcado: null, depois: '' })
+    expect(partesDoCorpo('texto', { inicio: -1, fim: 2 })).toEqual({ antes: 'texto', marcado: null, depois: '' })
+  })
+
+  it('a liga aparece com o rótulo curto, e o resto com o nome do campo', () => {
+    expect(rotuloDoCampo(CAMPO_DA_LIGA)).toBe('liga citada')
+    expect(rotuloDoCampo('nome')).toBe('nome')
   })
 })

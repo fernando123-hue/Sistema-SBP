@@ -1193,6 +1193,21 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 **Efeito que a equipe vai notar:** quem usa o computador no tema claro passa a ver o sistema claro. Não é mudança de escolha, é o tema funcionando como foi escrito; se o dono preferir outra coisa, `§ H.4` item 49. **Status:** ✅ corrigido; conferido por captura nos dois temas.
 
+### AT-53 — O e-mail ao lado do que a IA leu, na Revisão (`A69`, 2A e 2B) *(01/10/2026)*
+
+**O que entrou:** o botão "Ver o e-mail" em cada cartão da Revisão lê o corpo do servidor só no clique (`GET /api/revisao/[id]/email`, `servicos/revisao.ts → lerEmailDaRevisao`) e o mostra à esquerda do que a IA leu, com o valor do campo apontado marcado em amarelo (`core/trecho-do-email.ts`). O selo de confiança aparece só quando o motivo da revisão é `baixa_confianca` (2B). Junto, o tema sempre claro (`A67 (d)`): o bloco escuro saiu de `globals.css`.
+
+**Decisões do agente, que o dono pode rever:**
+
+- **Só operador e gestor**, os mesmos papéis da Revisão, e **só de revisão pendente**: resolvida, a rota recusa. Não é caminho lateral para ler e-mail antigo.
+- **Cada leitura vai para a trilha** (`email_lido_na_revisao`): quem leu e qual e-mail, nunca o texto. O corpo tem nome e CPF de associado, e "quem viu isto?" é a pergunta que o encarregado de dados vai fazer.
+- **30 leituras por minuto por pessoa.** Quem revisa abre uma por vez; um laço percorrendo ids leria a caixa do setor inteira.
+- **Texto, nunca HTML**, e os controles de direção (U+202A–U+202E, U+2066–U+2069, LRM, RLM, ALM) trocados por "�", com o mesmo tamanho, para o trecho marcado continuar no lugar.
+- **O trecho marcado é ajuda para os olhos, não conferência.** A procura segue a regra da pendência 17 (palavra inteira, número só pelos dígitos sem cortar grupo), com teto de tentativas contra texto feito para custar caro. Quando não acha, a tela diz "não consegui apontar", nunca "não está".
+- **Expurgado diz que foi expurgado, e quando** (invariante 11). Sem conteúdo e sem carimbo de expurgo **falha alto** (invariante 7).
+
+**Status:** 🟡 em PR; 3A+3B (Minha fila) é o próximo item do `A69`. O TI e o encarregado de dados devem ser avisados antes da rodada paralela, como o `A69` pede.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
