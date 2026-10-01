@@ -1300,8 +1300,12 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 - **A fila inteira, não só a desta busca.** O que ficou na Revisão de ontem também não entra na distribuição de hoje; "M desta busca" vem entre parênteses quando houver.
 - **Só depois da busca**, como o `A69` diz. Ao abrir a Distribuição sem buscar, o aviso não aparece (a aba Revisão continua no menu).
-- **Contado depois de gravar o evento da busca:** o `EventoProcessamento` registra o que a busca fez, e a fila é um retrato do momento, não um resultado dela.
+- **Contado depois de gravar o evento da busca, e fora do resumo gravado** (`ResumoDaBusca`, não `ResumoIngestao`): o `EventoProcessamento` registra o que a busca fez, e a fila é um retrato do momento, não um resultado dela. A primeira versão punha o campo no resumo e a trilha, que é append-only, gravava "0 pendentes" para sempre (revisão técnica do #170).
+- **Se a contagem falhar, a busca responde assim mesmo**, sem o aviso, e o log diz por quê: o resumo da busca traz avisos que só aparecem uma vez (e-mail sem item, e-mail que a IA não entendeu).
+- **"M desta busca" só quando cabe no total:** se alguém aprovou itens enquanto a busca rodava, a parte não passa do todo.
 - **Um número da fila, nunca de uma pessoa** (`A71`). Quem vê é quem pode buscar (operador e gestor), os mesmos que abrem a Revisão.
+
+**Fora deste PR (revisão técnica do #170):** o aviso fica na tela até a próxima busca, mesmo depois de "Confirmar" ou de resolver a Revisão em outra aba (é o retrato da hora da busca, como o resumo dela); e o `role="status"` nasce com o texto, padrão que o aviso da busca já usa.
 
 **Status:** 🟡 em PR.
 

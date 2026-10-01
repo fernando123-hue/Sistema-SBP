@@ -11,7 +11,7 @@ import { CategoriaDesconhecidaError, ErroOperacional } from '../core/erros'
 import { chaveDaLiga } from '../core/ligas'
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { prepararConteudoExterno, validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
-import type { ResumoIngestao } from '../core/tipos'
+import type { ResumoDaBusca, ResumoIngestao } from '../core/tipos'
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { ClassificadorPort } from '../ports/classificador'
 import {
@@ -288,7 +288,7 @@ async function registrarColisoes(banco: Banco, correlacaoId: string, colisoes: r
 export async function sincronizar(
   deps: DependenciasIngestao,
   ator: Ator = ATOR_SISTEMA,
-): Promise<ResumoIngestao> {
+): Promise<ResumoDaBusca> {
   exigirPapel(ator, 'sincronizar ingestão', 'operador', 'gestor')
   const usuario = ator.colaboradorId
   const correlacaoId = novaCorrelacao()
@@ -308,7 +308,6 @@ export async function sincronizar(
     naoLidas: 0,
     repetidas: 0,
     naoInterpretados: 0,
-    revisoesPendentes: 0,
   }
 
   const avisos: AvisoDaBusca[] = []
@@ -553,12 +552,27 @@ export async function sincronizar(
     duracaoMs: Date.now() - inicio,
   })
 
-  // Depois do evento, e de propósito: o evento registra o que ESTA busca fez,
-  // e a fila inteira é um retrato do momento, não um resultado dela. Uma
-  // contagem, sem nome nem pessoa (`A71`): é a fila, não quem a deixou.
-  resumo.revisoesPendentes = await deps.banco.revisao.count({ where: { resolvidoEm: null } })
+  // Depois do evento, e FORA do resumo gravado: o evento registra o que ESTA
+  // busca fez, e a fila inteira é um retrato do momento, não um resultado
+  // dela. Uma contagem, sem nome nem pessoa (`A71`): é a fila, não quem a
+  // deixou.
+  //
+  // Falhar aqui não derruba a resposta: a busca já gravou tudo, e o resumo
+  // dela traz avisos que só aparecem uma vez (e-mail sem item, e-mail que a
+  // IA não entendeu). Perder esses avisos por causa de um número de apoio
+  // seria trocar o essencial pelo acessório (revisão técnica do #170).
+  let revisoesPendentes: number | null
+  try {
+    revisoesPendentes = await deps.banco.revisao.count({ where: { resolvidoEm: null } })
+  } catch (erro) {
+    revisoesPendentes = null
+    registrarLog('erro', 'contagem da fila de revisão falhou depois da busca; o aviso da Distribuição não aparece', {
+      correlacaoId,
+      erro: mensagemDoErro(erro),
+    })
+  }
 
-  return resumo
+  return { ...resumo, revisoesPendentes }
 }
 
 interface ResultadoDeUm {

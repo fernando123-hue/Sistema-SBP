@@ -89,4 +89,20 @@ describe('a busca diz quantas revisões esperam decisão (`A69`, 4A)', () => {
     expect(vazia.novos).toBe(0)
     expect(vazia.revisoesPendentes).toBe(3)
   })
+
+  // Revisão técnica do #170: o resumo vai inteiro para o evento, que é
+  // append-only. A fila contada depois não pode aparecer ali como um zero
+  // falso — nem como número nenhum: não é resultado da busca.
+  it('a contagem da fila não entra no evento gravado da busca', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    await sincronizar({ banco, ingestao: caixaCom('a@teste.local'), ia }, base.operador)
+
+    const evento = await banco.eventoProcessamento.findFirstOrThrow({
+      where: { etapa: 'ingestao', situacao: 'sucesso' },
+      orderBy: { criadoEm: 'desc' },
+    })
+    expect(evento.detalhe).toContain('itensParaRevisao')
+    expect(evento.detalhe).not.toContain('revisoesPendentes')
+  })
 })
+
