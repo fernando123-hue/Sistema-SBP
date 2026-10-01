@@ -467,6 +467,27 @@ export function ambiente(): Ambiente {
     )
   }
 
+  // O assistente recebe o que a pessoa digita, e a pergunta real da operação
+  // é "o que quer dizer este e-mail?" com o e-mail colado junto (invariante
+  // 13). Com a caixa simulada, a trava de cima não roda, e um servidor da
+  // empresa com `IA_ADAPTER=gemini` mandava a pergunta, com nome e CPF de
+  // associado, à camada gratuita cujos termos não excluem treino (`A38`).
+  // Em produção há gente de verdade digitando: o fornecedor precisa ou não
+  // tirar o texto da casa, ou estar autorizado para dado real (auditoria de
+  // segurança de 01/10/2026, `AT-63`). A rotina do Gemini (`A50`) roda por
+  // script, fora de produção, e segue permitida.
+  if (
+    resultado.data.NODE_ENV === 'production' &&
+    IA_TIRA_O_TEXTO_DA_CASA[resultado.data.IA_ADAPTER] &&
+    !IA_PARA_DADO_REAL[resultado.data.IA_ADAPTER]
+  ) {
+    throw new Error(
+      `IA_ADAPTER="${resultado.data.IA_ADAPTER}" com NODE_ENV=production: o assistente mandaria a esse fornecedor ` +
+        'o que a equipe digita, inclusive e-mail de associado colado na pergunta, e ele não pode receber dado ' +
+        'real (decisões A38 e A50). Use IA_ADAPTER="local" ou a IA contratada.',
+    )
+  }
+
   // Igual à atual, a troca não aconteceu: quem configurou acha que rotacionou,
   // e o segredo antigo segue assinando tudo. Contida uma na outra, a nova foi
   // derivada da velha ("<velha>-v2"), e quem tiver a velha adivinha a nova —
@@ -584,6 +605,20 @@ const IA_PARA_DADO_REAL = {
   // e-mail de associado depois de medido pelo gabarito (`npm run ia:avaliar`)
   // e de ele decidir. Trocar esta linha é a decisão, não um efeito colateral
   // de configurar o endereço.
+  local: false,
+} as const satisfies Record<z.infer<typeof AmbienteSchema>['IA_ADAPTER'], boolean>
+
+/**
+ * Quais IAs mandam o texto para fora da casa (`AT-63`).
+ *
+ * Amarrada ao enum como a de cima: um fornecedor novo não compila sem dizer
+ * para onde o texto vai. `mock` não chama ninguém; `local` fala com a máquina
+ * da associação (`motivoDeEnderecoLocalInvalido` recusa endereço público).
+ */
+const IA_TIRA_O_TEXTO_DA_CASA = {
+  mock: false,
+  anthropic: true,
+  gemini: true,
   local: false,
 } as const satisfies Record<z.infer<typeof AmbienteSchema>['IA_ADAPTER'], boolean>
 

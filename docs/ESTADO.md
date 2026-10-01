@@ -27,7 +27,7 @@
 >    - `npm run verificar` no Windows.
 >
 >    Em `http://localhost` o login funciona: o navegador aceita o cookie `Secure` em localhost e ignora o HSTS em HTTP. **Acesso de outros computadores da rede já exige HTTPS.**
-> 3. **A trava de dado real cobrir o assistente** (auditoria de segurança, MÉDIO): hoje `IA_PARA_DADO_REAL` só vale com a caixa real ligada.
+> 3. ~~**A trava de dado real cobrir o assistente**~~ **Feita (`AT-63`):** em produção, o servidor recusa subir com IA que tire o texto da casa sem autorização para dado real.
 > 4. Os PRs do Dependabot #173 e #174 **juntos** (`init` e `analyze` do CodeQL na mesma versão); `nivel-de-risco.ts` com `src/componentes/` e autenticação, expurgo e auditoria no nível 3.
 > 5. **V2:** o dono traz os modelos; a anonimização acontece na máquina dele, antes do commit.
 > 6. **V3:** roteiro de instalação para o TI:
