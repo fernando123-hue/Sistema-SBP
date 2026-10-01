@@ -131,7 +131,7 @@ describe('scripts que usam o banco encerram sozinhos', () => {
                 {
                   finish_reason: 'length',
                   message: { content: '2' },
-                  logprobs: { content: [{ token: '2', logprob: -0.1, top_logprobs: [{ token: '2', logprob: -0.1 }] }] },
+                  logprobs: { content: [{ token: '2', logprob: -0.1, top_logprobs: [{ token: '2', logprob: -0.1 }, { token: '1', logprob: -2.4 }] }] },
                 },
               ],
             }),

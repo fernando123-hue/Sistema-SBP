@@ -4,7 +4,26 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 01/10/2026 — MINHA FILA EM LISTA E DETALHE (`A69` 3A + 3B) (este bloco vence os de baixo)
+> ### 01/10/2026 — "HOJE VOCÊ CONCLUIU N" E O REGISTRO DA DISTRIBUIÇÃO (`A69` 5A + 5B) (este bloco vence os de baixo)
+>
+> - **O que entrou:** na Minha fila, "Hoje você concluiu N", que a rota só devolve a quem está na sessão, contado do dia de São Paulo sem nada guardado; na Distribuição, depois de confirmar, a hora, quantos itens, "nenhum número digitado" e "conservação conferida". Decisões em `AT-59`. Nível 3 (rota nova).
+> - **4A mesclado no #170** (`AT-58`).
+> - **Com este PR, o `A69` fica completo.**
+> - **Pergunta aberta ao dono (`§ H.4` 51):** o Painel ainda dá à gestão os concluídos por pessoa (`A24`). Até a resposta, a fila não diz "só você vê".
+>
+> ### 01/10/2026 — A DISTRIBUIÇÃO AVISA O QUE ESPERA CONFERÊNCIA (`A69` 4A)
+>
+> - **O que entrou:** depois de "Buscar e-mails", a Distribuição diz quantos itens esperam conferência na Revisão (a fila inteira, e quantos desta busca) e leva até lá. Decisões em `AT-58`. Nível 2.
+> - **1A mesclado no #167** (`AT-57`): a revisão de segurança achou CPF a conferir escondido sob "desdobramento"; corrigido antes de mesclar.
+> - **Próximo do `A69`:** 5A+5B, o último.
+>
+> ### 01/10/2026 — UM CARTÃO POR E-MAIL NA REVISÃO (`A69` 1A) MESCLADO NO #167
+>
+> - **O que entrou:** na Revisão, as revisões de um e-mail de lista viram um cartão com a lista de nomes: tirar, corrigir, acrescentar e "Aprovar os N" (dois toques, tudo ou nada). E-mail com alerta ou valor para conferir continua item a item. Decisões em `AT-57`. Nível 3.
+> - **3A+3B mesclado no #165.** O aviso ao TI e ao encarregado de dados sobre CPF e matrícula na tela de quem executa (`A69`) é **tarefa do dono**; o repositório só registra.
+> - **Próximo do `A69`:** 4A, depois 5A+5B, um PR cada.
+>
+> ### 01/10/2026 — MINHA FILA EM LISTA E DETALHE (`A69` 3A + 3B) MESCLADO NO #165
 >
 > - **O que entrou:** na Minha fila, os itens do mesmo e-mail viram um cartão com "Concluir os N" (dois toques, tudo ou nada) e "Ver um por um"; cada item de e-mail tem "Ver dados", com o que a IA leu e um "Copiar" por campo. Decisões em `AT-56`. Nível 3.
 > - **Próximo do `A69`:** 1A (um cartão por e-mail na Revisão), 4A e 5A+5B, um PR cada.
@@ -14,7 +33,8 @@
 > - **#163:** "Ver o e-mail" na Revisão, lido sob demanda, com o trecho do campo apontado marcado; selo de confiança só na baixa confiança; tema sempre claro (`A67 (d)`). Decisões em `AT-55`. Nível 3.
 > - `verificar` com a main de 01/10 (#160, #161, #162): 147 arquivos, 1831 testes.
 > - **Próximo do `A69`:** 3A+3B, a Minha fila em lista e detalhe. O Jev próprio (P2) segue em outra frente.
-> - **`A71` (01/10, decisão do dono):** nenhum relatório de quantos e-mails cada pessoa leu, nem para o encarregado nem para a gestão; se o número existir, só a própria pessoa o vê. O teto de leituras por hora (`§ H.4` 50) segue aberto.
+> - **`A71` (01/10, decisão do dono):** nenhum relatório de quantos e-mails cada pessoa leu, nem para o encarregado nem para a gestão; se o número existir, só a própria pessoa o vê.
+> - **`A72` (01/10, decisão do dono):** teto de 300 leituras de e-mail por pessoa na última hora, contado na trilha, sem placar e com recusa neutra (`servicos/revisao.ts`). Fecha o `§ H.4` 50.
 >
 > ### 01/10/2026 — JEV PRÓPRIO, P2: CLASSIFICADOR LOCAL CONSTRUÍDO (`AT-54`) (vence os de baixo, menos o de cima)
 >

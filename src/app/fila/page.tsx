@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
@@ -18,6 +18,7 @@ import { pedidoDeConfirmacao, pedidoDeConfirmacaoDoGrupo } from '../../component
 import type { CampoParaCopiar } from '../../core/dados-do-item'
 import { hojeIso } from '../../core/util/datas'
 import { agruparPorEmail, amostraDosTitulos, type GrupoDaFila } from './grupos'
+import { textoDoDia } from './texto-do-dia'
 
 interface ItemDaFila {
   itemId: string
@@ -109,6 +110,34 @@ export default function Fila() {
    * guardado na tela além do tempo em que alguém o está usando.
    */
   const [dados, setDados] = useState<Readonly<Record<string, PainelDeDados>>>({})
+  /**
+   * Quantos a pessoa concluiu hoje (`A69`, 5A). Só dela: a rota não aceita
+   * id de ninguém (`A71`). `null` enquanto não chegou ou se a contagem falhou.
+   */
+  const [concluidosHoje, setConcluidosHoje] = useState<number | null>(null)
+  /**
+   * Número da última leitura pedida. Dois "Concluir" seguidos disparam duas
+   * leituras, e a resposta da primeira pode chegar depois: sem isto, o número
+   * menor e velho sobrescrevia o novo (revisão técnica do #171).
+   */
+  const leituraDoDia = useRef(0)
+
+  /**
+   * Relê o número do dia. Uma falha aqui não vira erro na tela: a fila é o
+   * trabalho, a frase é só acompanhamento, e um aviso vermelho por causa dela
+   * assustaria sem pedir nada a ninguém. A frase some até a próxima leitura;
+   * o rastro da falha fica no log do servidor (`rota`) e no console.
+   */
+  const atualizarDia = useCallback(async () => {
+    const minha = ++leituraDoDia.current
+    try {
+      const { concluidos } = await api.buscar<{ concluidos: number }>('/fila/hoje')
+      if (minha === leituraDoDia.current) setConcluidosHoje(concluidos)
+    } catch (causa) {
+      console.warn('Não foi possível ler quantos itens você concluiu hoje.', causa)
+      if (minha === leituraDoDia.current) setConcluidosHoje(null)
+    }
+  }, [])
 
   const carregar = useCallback(async () => {
     try {
@@ -129,7 +158,8 @@ export default function Fila() {
 
   useEffect(() => {
     void carregar()
-  }, [carregar])
+    void atualizarDia()
+  }, [carregar, atualizarDia])
 
   /** Tira os itens da lista e esquece os dados que a tela tinha deles. */
   function tirarDaLista(ids: readonly string[]) {
@@ -148,6 +178,7 @@ export default function Fila() {
       await api.enviar(`/itens/${item.itemId}/concluir`)
       tirarDaLista([item.itemId])
       setFeito('Item concluído.')
+      void atualizarDia()
     } catch (causa) {
       setFeito(null)
       setErro(mensagemDoErro(causa))
@@ -239,6 +270,7 @@ export default function Fila() {
       // Literal, como todo aviso da região (`§ AT-48`); quantos já foi dito
       // no pedido de confirmação.
       setFeito('Itens do e-mail concluídos.')
+      void atualizarDia()
     } catch (causa) {
       setFeito(null)
       setErro(mensagemDoErro(causa))
@@ -574,6 +606,8 @@ export default function Fila() {
     )
   }
 
+  const fraseDoDia = textoDoDia(concluidosHoje)
+
   return (
     <div className="flex flex-col gap-5">
       <CabecalhoDeSecao
@@ -584,6 +618,15 @@ export default function Fila() {
             : `${itens.length} ${itens.length === 1 ? 'item' : 'itens'} para trabalhar, o que entrou há mais tempo primeiro. O que não terminar hoje continua seu amanhã.`
         }
       />
+
+      {/* Texto (`<p>`), nunca campo: número do sistema não é digitável
+          (invariante 4). A rota só devolve o de quem está na sessão; a frase
+          NÃO diz "só você vê" porque o Painel de operador e gestor ainda mostra
+          concluídos por pessoa (`A24`; pergunta em `§ H.4`, revisão de
+          segurança do #171). Não prometer o que o sistema não cumpre. */}
+      {fraseDoDia ? (
+        <p className="-mt-3 text-sm text-tinta-suave">{fraseDoDia} O número recomeça à meia-noite.</p>
+      ) : null}
 
       {erro ? <Aviso>{erro}</Aviso> : null}
       {/* Qual item está armado, pela posição e pelo título: `pedido-de-confirmacao.ts`. */}

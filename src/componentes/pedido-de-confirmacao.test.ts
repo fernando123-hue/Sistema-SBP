@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { pedidoDeConfirmacao, pedidoDeConfirmacaoDoGrupo } from './pedido-de-confirmacao'
+import { pedidoDeConfirmacao, pedidoDeConfirmacaoDoEmail, pedidoDeConfirmacaoDoGrupo } from './pedido-de-confirmacao'
 
 describe('pedidoDeConfirmacao (pendência 5)', () => {
   it('diz qual item pela posição, no formato do leitor de tela', () => {
@@ -55,5 +55,30 @@ describe('pedidoDeConfirmacaoDoGrupo (`A69`, 3A)', () => {
 
   it('não recebe texto que venha do e-mail', () => {
     expect(pedidoDeConfirmacaoDoGrupo.length).toBe(3)
+  })
+})
+
+describe('pedidoDeConfirmacaoDoEmail (`A69`, 1A)', () => {
+  it('aprovar todos diz quantos e qual e-mail', () => {
+    expect(pedidoDeConfirmacaoDoEmail('aprovar', 0, 2, 3, 0)).toBe(
+      'Para aprovar os 3 itens do e-mail 1 de 2, aperte o mesmo botão de novo.',
+    )
+  })
+
+  // Tirar da lista é descartar, e descartar não tem volta: o aviso diz.
+  it('aprovar com itens tirados avisa que eles serão descartados', () => {
+    expect(pedidoDeConfirmacaoDoEmail('aprovar', 1, 2, 2, 1)).toBe(
+      'Para aprovar 2 e descartar 1 do e-mail 2 de 2, aperte o mesmo botão de novo. Descartar não tem volta.',
+    )
+  })
+
+  it('descartar o e-mail inteiro', () => {
+    expect(pedidoDeConfirmacaoDoEmail('descartar', -1, 2, 0, 3)).toBe(
+      'Para descartar os 3 itens deste e-mail, aperte o mesmo botão de novo. Descartar não tem volta.',
+    )
+  })
+
+  it('não recebe texto que venha do e-mail', () => {
+    expect(pedidoDeConfirmacaoDoEmail.length).toBe(5)
   })
 })

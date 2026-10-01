@@ -1,8 +1,9 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { hojeIso } from '../../core/util/datas'
+import { hojeIso, horaLocal } from '../../core/util/datas'
 import { decimal } from '../../core/util/numero'
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
@@ -17,7 +18,9 @@ import {
   juntar,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
-import type { LinhaDaEscala, NaRede, ResumoIngestao } from '../../core/tipos'
+import type { LinhaDaEscala, NaRede, ResumoDaBusca } from '../../core/tipos'
+import { avisoDaRevisao } from './aviso-da-revisao'
+import { registroDaGravacao } from './registro-da-gravacao'
 
 /**
  * O servidor já redigiu conforme o papel de quem pediu (decisão de 06/09/2026).
@@ -106,8 +109,15 @@ export default function Distribuicao() {
   const [escala, setEscala] = useState<NaRede<LinhaDaEscala>[] | null>(null)
   const [previa, setPrevia] = useState<Resumo | null>(null)
   const [confirmado, setConfirmado] = useState<Resumo | null>(null)
+  /**
+   * A hora em que a confirmação voltou, no fuso da operação (`A69`, 5B),
+   * pelo relógio deste computador. A resposta só chega depois do commit;
+   * a hora exata da gravação, pelo servidor, está em cada rodada
+   * (`RodadaDistribuicao.executadoEm`).
+   */
+  const [gravadoAs, setGravadoAs] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
-  const [ingestao, setIngestao] = useState<NaRede<ResumoIngestao> | null>(null)
+  const [ingestao, setIngestao] = useState<NaRede<ResumoDaBusca> | null>(null)
   const [ocupado, setOcupado] = useState<string | null>(null)
 
   /**
@@ -200,7 +210,7 @@ export default function Distribuicao() {
     setErro(null)
     try {
       if (acao === 'sincronizar') {
-        setIngestao(await api.enviar<NaRede<ResumoIngestao>>('/ingestao'))
+        setIngestao(await api.enviar<NaRede<ResumoDaBusca>>('/ingestao'))
         setPrevia(null)
       } else if (acao === 'previa') {
         setPrevia(await api.enviar<Resumo>('/distribuicao/previa', { data, categorias: [] }))
@@ -211,6 +221,7 @@ export default function Distribuicao() {
           categorias: [],
         })
         setConfirmado(resultado)
+        setGravadoAs(horaLocal(new Date()))
         setPrevia(null)
       }
     } catch (causa) {
@@ -239,6 +250,7 @@ export default function Distribuicao() {
    */
   const nadaADistribuir = comItens.length > 0 && comErro.length === comItens.length
   const total = comItens.reduce((soma, linha) => soma + linha.quantidade, 0)
+  const aviso = ingestao ? avisoDaRevisao(ingestao.revisoesPendentes, ingestao.itensParaRevisao) : null
 
   return (
     <div className="flex flex-col gap-6">
@@ -315,6 +327,23 @@ export default function Distribuicao() {
               </strong>
             </>
           ) : null}
+        </Aviso>
+      ) : null}
+
+      {/*
+        Depois da busca, quantos itens esperam conferência e o caminho até eles
+        (`A69`, 4A). Item na Revisão não entra na prévia: sem este aviso, quem
+        acabou de buscar 30 ligantes via a prévia sem eles e não sabia por quê.
+        A fila inteira, não só a desta busca — o que ficou de ontem também está
+        parado. Um número da fila, nunca de uma pessoa (`A71`).
+      */}
+      {aviso ? (
+        <Aviso tom="atencao">
+          <strong>{aviso.titulo}</strong>
+          {aviso.complemento}. Item em conferência só entra na distribuição depois de aprovado.{' '}
+          <Link href="/revisao" className="font-medium underline underline-offset-2">
+            Abrir a Revisão
+          </Link>
         </Aviso>
       ) : null}
 
@@ -395,7 +424,14 @@ export default function Distribuicao() {
           titulo={confirmado && !previa ? 'Distribuição gravada' : 'Prévia'}
           descricao={
             confirmado && !previa
-              ? `${confirmado.rodadasGravadas} rodadas registradas. Cada uma é auditável.`
+              ? registroDaGravacao(
+                  confirmado.totalDistribuido,
+                  confirmado.rodadasGravadas,
+                  gravadoAs ?? '--:--',
+                  // Havia o que distribuir e nada foi gravado: plantão mudou
+                  // depois da prévia, ou cadastro inválido (revisão técnica do #171).
+                  comItens.length > 0 || confirmado.categoriasInvalidas.length > 0,
+                )
               : previa && previaCalculadaEm
                 ? `Calculada às ${previaCalculadaEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. ` +
                   'Confirmar refaz a conta com os dados deste momento: se chegou e-mail ou mudou o ' +
