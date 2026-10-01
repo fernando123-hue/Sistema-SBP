@@ -18,6 +18,7 @@ import { IngestaoMock } from '../src/adapters/ingestao-mock'
 import { sequenciaDeDatas } from '../src/core/util/datas'
 import { atorDaSessao } from '../src/servidor/ator'
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
+import { exigirBaseSintetica } from '../src/servicos/base-sintetica'
 import { confirmar, previa } from '../src/servicos/distribuicao'
 import { concluir, minhaFila } from '../src/servicos/fila'
 import { sincronizar } from '../src/servicos/ingestao'
@@ -37,6 +38,9 @@ function linha(texto: string): void {
 
 async function principal(): Promise<void> {
   const banco = obterPrisma()
+  // Antes de gravar qualquer coisa: a demo aprova em massa as revisões
+  // pendentes da base inteira, as reais junto.
+  await exigirBaseSintetica(banco, 'a demo')
   const datas = sequenciaDeDatas(DATA_INICIAL, DIAS)
 
   const registro = await banco.colaborador.findFirst({ where: { papel: 'operador' } })

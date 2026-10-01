@@ -67,9 +67,9 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 | `npm run verificar` | Typecheck + toda a suíte de testes |
 | `npm test` | Testes (unitários + integração) |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run demo` | Fluxo completo ponta a ponta |
+| `npm run demo` | Fluxo completo ponta a ponta. Recusa base com dado da operação (e-mail que não veio do dublê, pessoa fora de `@exemplo.test`) e `NODE_ENV=production`: ela aprova em massa as revisões pendentes |
 | `npm run ia:experimentar` | Compara mock e modelo real em 4 casos. Único caminho que gasta crédito |
-| `npm run db:seed` | Cadastro base sintético |
+| `npm run db:seed` | Cadastro base sintético. Mesma trava da demo |
 | `PERMITIR_LIMPEZA=sim npm run db:limpar` | Apaga dados transacionais, preserva o cadastro. Exige o opt-in explícito: sem ele, recusa — a trava anterior deduzia segurança da ausência de `NODE_ENV` |
 | `npm run db:expurgar` | Roda agora a limpeza diária que o servidor já roda sozinho: apaga o motivo das ausências cujo prazo venceu (`A17`). **Irreversível**; uma execução por dia — se o servidor já rodou hoje, não faz nada. O prazo é o da tela de acesso, não de variável de ambiente |
 | `npm run anexos:conferir` | Diz quantos anexos ainda estão em texto puro no disco |

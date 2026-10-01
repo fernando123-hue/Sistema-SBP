@@ -10,3 +10,9 @@
 # confundido com chave pela regra genérica. Trocado por randomUUID() no commit seguinte;
 # o commit antigo fica no PR porque push forçado é bloqueado.
 2ad11aad7ee09ff759cbe6cdecae6264ad447793:src/servidor/ambiente-seguro.test.ts:generic-api-key:25
+#
+# 01/10/2026, PR #175 — valores sintéticos de SESSAO_SECRET e BUSCA_SECRET num teste
+# (não são segredo de nada), confundidos com chave pela regra genérica. Trocados por
+# randomBytes() no commit seguinte; o commit antigo fica no PR porque push forçado é bloqueado.
+77375a32cdb680a93820986cb7c716a2a9e7ccb1:src/servicos/base-sintetica.test.ts:generic-api-key:69
+77375a32cdb680a93820986cb7c716a2a9e7ccb1:src/servicos/base-sintetica.test.ts:generic-api-key:70
