@@ -1314,7 +1314,7 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 ### AT-59 — "Hoje você concluiu N" e o registro da distribuição sem número digitado (`A69`, 5A + 5B) *(01/10/2026)*
 
-**O que entrou:** (5A) na Minha fila, depois do primeiro item concluído no dia, o topo diz "Hoje você concluiu N itens. Só você vê este número, e ele recomeça à meia-noite."; (5B) depois de "Confirmar", a Distribuição diz "Gravada às HH:MM · N itens · nenhum número digitado · conservação conferida. K rodadas registradas, cada uma auditável."
+**O que entrou:** (5A) na Minha fila, depois do primeiro item concluído no dia, o topo diz "Hoje você concluiu N itens. O número recomeça à meia-noite."; (5B) depois de "Confirmar", a Distribuição diz "Gravada às HH:MM · N itens · nenhum número digitado · conservação conferida. K rodadas registradas, cada uma auditável."
 
 **Como se cumpre a decisão do dono no 5A** ("apenas o funcionário da conta específica verá quantos ele fez no dia e sempre será resetado no fim do dia", e o `A71`):
 
