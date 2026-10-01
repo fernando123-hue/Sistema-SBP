@@ -452,7 +452,7 @@ camadas — duas no repositório e uma aqui:
 | Camada | O que impede | Onde vive |
 |---|---|---|
 | Varredura de código | `update`/`delete`/`upsert` na trilha escritos no sistema | `src/servicos/trilha-append-only.test.ts` |
-| TRIGGER do MySQL | qualquer `UPDATE`, venha de onde vier | migração `20260918010000_trilha_append_only` |
+| TRIGGER do MySQL | qualquer `UPDATE`, venha de onde vier | migração `20261001220000_trilha_restauravel_do_backup` (`AT-66`); conferida por `npm run db:conferir-trilha` |
 | **Privilégio do usuário** | `DELETE`, `DROP`, `ALTER` e `TRIGGER` na trilha | **este documento, aplicado na implantação** |
 
 A terceira é a única que vale contra um cliente de linha de comando aberto

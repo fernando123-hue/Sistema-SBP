@@ -37,7 +37,7 @@
 >    - backup do banco **sem** a pasta de segredos;
 >    - `db:preparar` rodado num terminal.
 >
-> **Achado no ensaio da instalação (`AT-66`), corrigido:** o `mysqldump` da base não restaurava. A trigger de `LogAuditoria` tinha o corpo gravado com um `;` no fim, e a restauração parava nela, deixando de fora as tabelas seguintes. Uma migração nova recria as duas triggers com `BEGIN … END`. **Na máquina do dono, a base da V1 precisa de `npx prisma migrate deploy` antes de qualquer teste de backup.**
+> **Achado no ensaio da instalação (`AT-66`), corrigido:** o `mysqldump` da base não restaurava. A trigger de `LogAuditoria` tinha o corpo gravado com um `;` no fim, e a restauração parava nela, deixando de fora as tabelas seguintes. Uma migração nova cria as triggers na forma certa antes de apagar as antigas, e `npm run db:conferir-trilha` confere a trava. **Na máquina do dono, a base da V1 precisa de `npx prisma migrate deploy` com a conta administradora do MySQL (a `root` local), seguido de `npm run db:conferir-trilha` com a mesma conta.** Se o deploy parar com `P3018`, a trava antiga continua de pé: `npx prisma migrate resolve --rolled-back 20261001220000_trilha_restauravel_do_backup` e rodar de novo com a conta administradora.
 >
 > **Achados da auditoria ainda abertos** (não bloqueiam a V1):
 > - ~~pendência 41~~ resolvida no `AT-64` (concessões tabela a tabela por `npm run db:sql-privilegios`; `allowPublicKeyRetrieval=true` na `DATABASE_URL` com usuário de senha); ~~pendência 49~~ resolvida no `AT-65` (configuração errada encerra o servidor de produção com código 1);

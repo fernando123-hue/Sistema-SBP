@@ -179,3 +179,63 @@ export function sqlDeConcessaoMinima(tabelas: readonly string[], alvo: AlvoDaCon
   )
   return linhas.join('\n')
 }
+
+/** Uma linha de `information_schema.TRIGGERS`, só o que a conferência usa. */
+export interface TriggerNoBanco {
+  nome: string
+  tabela: string
+  /** `INSERT`, `UPDATE` ou `DELETE`. */
+  evento: string
+  /** `BEFORE` ou `AFTER`. */
+  momento: string
+  corpo: string
+}
+
+/**
+ * O que falta para a trava da trilha estar de pé, numa frase por problema.
+ *
+ * Lista vazia: cada tabela da trilha tem uma trigger `BEFORE UPDATE` que
+ * recusa com `SIGNAL`, e toda trigger da base tem o corpo entre `BEGIN` e
+ * `END`. Corpo fora dessa forma não volta de um `mysqldump` (`AT-66`).
+ *
+ * POR QUE uma conferência e não só a migração: a trava some sem nenhum erro na
+ * aplicação. Uma migração que parou no meio e foi dada como aplicada à mão, ou
+ * uma restauração interrompida, deixam o sistema subindo normal com o passado
+ * reescrevível (revisão de segurança do #184).
+ *
+ * LIMITE: o MySQL só mostra as triggers a quem tem `TRIGGER` na tabela, e o
+ * usuário da aplicação não tem, de propósito (`AT-64`). Nenhuma trigger
+ * visível é tratado como problema, com a frase dizendo as duas causas
+ * possíveis: errar para o lado de acusar é o lado certo.
+ */
+export function problemasDaTravaDaTrilha(triggers: readonly TriggerNoBanco[]): string[] {
+  if (triggers.length === 0) {
+    return [
+      'Nenhuma trigger visível nesta base. Ou a trilha está sem trava, ou esta credencial não tem TRIGGER ' +
+        '(a da aplicação não tem, de propósito). Rode com a conta administradora do MySQL.',
+    ]
+  }
+
+  const problemas: string[] = []
+  for (const tabela of TABELAS_DA_TRILHA) {
+    const trava = triggers.some(
+      (t) =>
+        t.tabela === tabela &&
+        t.evento.toUpperCase() === 'UPDATE' &&
+        t.momento.toUpperCase() === 'BEFORE' &&
+        /\bSIGNAL\s+SQLSTATE\s+'45000'/i.test(t.corpo),
+    )
+    if (!trava) problemas.push(`${tabela} sem a trigger BEFORE UPDATE que recusa reescrever o passado.`)
+  }
+  for (const t of triggers) {
+    if (!corpoRestauravel(t.corpo)) {
+      problemas.push(`A trigger ${t.nome} não tem o corpo entre BEGIN e END, a forma que o backup (mysqldump) restaura.`)
+    }
+  }
+  return problemas
+}
+
+function corpoRestauravel(corpo: string): boolean {
+  const limpo = corpo.trim().toUpperCase()
+  return limpo.startsWith('BEGIN') && limpo.endsWith('END')
+}

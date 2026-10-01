@@ -1445,15 +1445,33 @@ A V1 do `A74`, com `IA_ADAPTER=local` e `NODE_ENV=production`, sobe.
 
 **Status:** 🟢 em vigor.
 
-### AT-66 — O backup do banco restaura: corpo de trigger sempre entre `BEGIN` e `END` *(01/10/2026)*
+### AT-66 — O backup do banco restaura, e a trava da trilha é conferida *(01/10/2026)*
 
-**O defeito, achado no ensaio da instalação:** um `mysqldump` da base não restaurava. A migração `20260918010000_trilha_append_only` criou as duas triggers da trilha num mesmo lote, com corpo de um comando só. O MySQL guardou o corpo de `LogAuditoria_append_only` com o `;` do fim. O de `EventoProcessamento_append_only`, último do arquivo, saiu sem. Conferido em `information_schema.TRIGGERS` nas bases `sbp`, `sbp_teste` e numa base nova. O `mysqldump` escreve o corpo dentro de `/*!50003 … */`, o `;` fecha o comando antes do `*/`, e a restauração para com `ERROR 1064`. O `mysql` aborta ali, e as tabelas depois de `LogAuditoria` no arquivo (`Nota` em diante) não voltavam. **Todo backup feito até aqui com `mysqldump` não restaura inteiro.** Nenhum foi feito em produção: o sistema ainda não está lá.
+**O defeito, achado no ensaio da instalação:** um `mysqldump` da base não restaurava. A migração `20260918010000_trilha_append_only` criou as duas triggers da trilha num mesmo lote, com corpo de um comando só. O MySQL guardou o corpo de `LogAuditoria_append_only` com o `;` do fim. O de `EventoProcessamento_append_only`, último do arquivo, saiu sem. Conferido em `information_schema.TRIGGERS` nas bases `sbp`, `sbp_teste` e numa base nova. O `mysqldump` escreve o corpo dentro de `/*!50003 … */`, o `;` fecha o comando antes do `*/`, e a restauração para com `ERROR 1064`. Medido: voltam 19 das 29 tabelas, de `Nota` em diante nada volta, e **`LogAuditoria` volta sem a trava**. Nenhum backup foi feito em produção: o sistema ainda não está lá.
 
-**A correção:** a migração `20261001220000_trilha_restauravel_do_backup` recria as duas triggers com `BEGIN … END`. A trava não muda: o mesmo `BEFORE UPDATE` e a mesma mensagem. **Regra para o futuro:** corpo de trigger sempre entre `BEGIN` e `END`. `trilha-append-only.test.ts` confere isso em **toda** trigger da base, e também que o banco recusa `UPDATE` em `EventoProcessamento`, que até aqui só tinha a varredura de código.
+**A correção:** a migração `20261001220000_trilha_restauravel_do_backup` cria `LogAuditoria_recusa_update` e `EventoProcessamento_recusa_update`, com o corpo entre `BEGIN` e `END`, e só **depois** apaga as antigas. A trava não muda: o mesmo `BEFORE UPDATE` e a mesma mensagem.
 
-**Prova:** numa base com dado (17 linhas na trilha de auditoria, 14 e-mails, 17 itens), migrada pela credencial de manutenção, `mysqldump` e restauração numa base nova devolveram as 29 tabelas, as duas triggers e as mesmas contagens. `UPDATE` na trilha restaurada é recusado com `ERROR 1644`, a mensagem da trava, quando o usuário que migrou tem `TRIGGER` na base restaurada (ver o achado abaixo). Mutação: sem a migração nova, o teste das triggers fica vermelho. Sem a trigger de `EventoProcessamento`, os dois testes novos ficam vermelhos.
+**Por que criar antes de apagar (revisões técnica e de segurança do #184):** DDL no MySQL não é transacional. A primeira versão apagava primeiro, e um `CREATE` que falhasse deixava a trilha sem trava, com a aplicação subindo normal. Isso acontecia com credencial sem `SUPER` e binlog ligado (`ERROR 1419`), e também com o arquivo rodado pelo cliente `mysql` sem `DELIMITER`. O MySQL 8 aceita duas triggers no mesmo evento, então as novas nascem ao lado das antigas.
 
-**Achado junto, para a instalação:** a trigger roda como o `DEFINER`, que é quem migrou. Restaurada num servidor onde esse usuário não existe ou não tem `TRIGGER` na base, o `UPDATE` continua recusado, mas com `ERROR 1142` no lugar da mensagem da trava. A falha é fechada: a trava não abre. Por isso o roteiro manda migrar com a conta administradora do MySQL (`docs/INSTALACAO.md`).
+**Conferência nova, `npm run db:conferir-trilha`:** a trava sumia sem nenhum erro na aplicação, por exemplo com uma migração que parou e foi dada como aplicada à mão, ou com uma restauração interrompida. O comando lê `information_schema.TRIGGERS` e sai com código 1 em três casos: falta a trigger `BEFORE UPDATE` com `SIGNAL` numa tabela da trilha; alguma trigger da base tem o corpo fora de `BEGIN … END`; ou nenhuma trigger aparece. **Roda com a conta administradora**, depois de migrar e depois de restaurar: o MySQL só mostra as triggers a quem tem `TRIGGER`, e o usuário da aplicação não tem, de propósito (`AT-64`). Por isso a conferência não está no `db:privilegios`, que roda com a credencial da aplicação. **Regra para o futuro:** corpo de trigger sempre entre `BEGIN` e `END`.
+
+**Prova (MySQL 8.4.11, binlog ligado), numa base com as triggers antigas e linhas na trilha:**
+- a conferência acusa a forma antiga (código 1);
+- `prisma migrate deploy` com credencial sem `SUPER` falha com `ERROR 1419`, as triggers antigas ficam, e `UPDATE` nas duas tabelas segue recusado com `ERROR 1644`;
+- `mysql < migration.sql` falha no primeiro `BEGIN`, com o mesmo resultado;
+- `prisma migrate resolve --rolled-back` e `deploy` com a conta administradora: as duas novas no lugar, `UPDATE` recusado, conferência OK;
+- backup da base antiga restaurado: 19 tabelas, `LogAuditoria` sem trigger, conferência com código 1;
+- backup da base nova restaurado: exit 0, 29 tabelas, as duas triggers, conferência OK e `UPDATE` recusado.
+
+Mutações, todas vermelhas:
+- sem a migração nova;
+- sem apagar as antigas;
+- a forma do corpo sempre aceita;
+- sem exigir `SIGNAL`;
+- aceitar `AFTER`;
+- lista vazia sem frase própria.
+
+**O `DEFINER`:** a trigger roda como quem migrou. Num servidor onde esse usuário não existe, o `UPDATE` é recusado com `ERROR 1449`. Onde ele existe sem `TRIGGER` na base, com `ERROR 1142`. Nos dois casos a falha é fechada: a trava não abre, só a mensagem muda. Por isso a instalação migra e restaura com a conta administradora do MySQL. O roteiro de instalação vem no PR seguinte.
 
 **Status:** 🟢 em vigor.
 
