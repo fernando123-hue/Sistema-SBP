@@ -885,6 +885,7 @@ Nenhuma resposta foi inventada. As que seguem abertas estão em `ESTADO.md`.
 
     **Recomendação:** não. O Jev serve de **régua de comparação** no mesmo gabarito, nunca de professor. Se um dia for professor, só depois de lidos os termos.
 49. ~~**O sistema abre sempre claro, ou segue o tema do computador?**~~ **Respondida em 30/09 (`A67`): sempre claro por enquanto; outras opções depois.** *(30/09/2026, `A65` e `AT-52`)* Até aqui ele abria **sempre escuro**, por um defeito (`AT-52`); corrigido, passa a seguir o computador, que na maioria das máquinas de escritório é claro. O modelo do Stitch é claro. **Opções:** (a) sempre claro, como o modelo; (b) seguir o computador (como fica depois da correção); (c) um botão para cada pessoa escolher. **Recomendação:** (b) agora, que não custa nada e respeita quem trabalha com o escuro; (c) só se alguém da equipe pedir.
+50. **Teto de leituras de e-mail por hora, e quem olha o volume?** *(01/10/2026, revisão de segurança do #163, `AT-55`)* A Revisão passou a mostrar o corpo do e-mail, com nome e CPF. O limite é de 30 leituras por minuto por pessoa, contra rajada; isso ainda permite ler a fila pendente inteira em minutos com uma sessão roubada, e o limite vive na memória do processo (zera ao reiniciar e não vale com mais de uma instância). Cada leitura já fica na trilha (`email_lido_na_revisao`). **Pergunta:** quer um teto por hora (sugestão: 300) e uma consulta de volume por pessoa para o encarregado de dados olhar? *Recomendação:* sim às duas antes do primeiro e-mail real; nenhuma bloqueia a rodada paralela com dado sintético.
 
 ### AT-36 — O gabarito da IA: respostas escritas pelo agente, cinco dimensões de peso igual *(17/09/2026)*
 
@@ -1218,6 +1219,26 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 **Prova:** `adapters/classificador-local.test.ts` (servidor falso), `core/avaliacao/classificacao.test.ts`, `servicos/avaliacao-do-classificador.test.ts`, o script rodando de ponta a ponta em `scripts/scripts-encerram.test.ts`, e a varredura de `segunda-opiniao.test.ts`, que passa a aceitar exatamente dois lugares chamando `classificar`, cada um com as próprias perguntas constantes.
 
 **Status:** 🟡 provisória: nenhum servidor real foi medido. Rodar `classificador:avaliar` com o Ollama (P1) confirma ou derruba cada hipótese acima.
+
+### AT-55 — O e-mail ao lado do que a IA leu, na Revisão (`A69`, 2A e 2B) *(01/10/2026)*
+
+**O que entrou:** o botão "Ver o e-mail" em cada cartão da Revisão lê o corpo do servidor só no clique (`GET /api/revisao/[id]/email`, `servicos/revisao.ts → lerEmailDaRevisao`) e o mostra à esquerda do que a IA leu, com o valor do campo apontado marcado em amarelo (`core/trecho-do-email.ts`). O selo de confiança aparece só quando o motivo da revisão é `baixa_confianca` (2B). Junto, o tema sempre claro (`A67 (d)`): o bloco escuro saiu de `globals.css`.
+
+**Decisões do agente, que o dono pode rever:**
+
+- **Só operador e gestor**, os mesmos papéis da Revisão, e **só de revisão pendente**: resolvida, a rota recusa. Não é caminho lateral para ler e-mail antigo.
+- **Cada leitura vai para a trilha** (`email_lido_na_revisao`): quem leu e qual e-mail, nunca o texto. O corpo tem nome e CPF de associado, e "quem viu isto?" é a pergunta que o encarregado de dados vai fazer.
+- **30 leituras por minuto por pessoa.** Quem revisa abre uma por vez; um laço percorrendo ids leria a caixa do setor inteira.
+- **Texto, nunca HTML**, e os controles de direção (U+202A–U+202E, U+2066–U+2069, LRM, RLM, ALM) trocados por "�", com o mesmo tamanho, para o trecho marcado continuar no lugar.
+- **O trecho marcado é ajuda para os olhos, não conferência.** A procura segue a regra da pendência 17 (palavra inteira, número só pelos dígitos sem cortar grupo), com teto de tentativas contra texto feito para custar caro. Quando não acha, a tela diz "não consegui apontar", nunca "não está".
+- **Expurgado diz que foi expurgado, e quando** (invariante 11). Sem conteúdo e sem carimbo de expurgo **falha alto** (invariante 7).
+- **Formatação invisível à vista.** Todo `\p{Cf}` (largura zero, hífen suave, U+FEFF, controles de direção, caracteres de tag) vira "\uFFFD" com o mesmo tamanho: a IA recebe o texto com eles, e quem revisa precisa ver que havia algo ali. Remetente com letras de alfabetos misturados (o "о" cirílico) ganha um aviso.
+- **A marca é a primeira ocorrência, e a tela diz quantas há** ("aparece 3 vezes: confira qual é a certa"): um remetente pode pôr o valor numa citação no topo.
+- **Sem cache:** a rota responde `Cache-Control: no-store` (`semCache` em `servidor/http.ts`).
+- **Teto de custo:** texto que, decomposto, passa de 400 mil unidades não é procurado ("ﷺ" vira 18 unidades); a tela diz "não consegui apontar".
+- **Limitações conhecidas:** número separado de outro por até 3 caracteres conta como o mesmo número, então um CPF colado a outro número com " / " não é marcado; e o teto de leituras por hora e o olhar do encarregado de dados sobre o volume são pergunta ao dono (`§ H.4` item 50).
+
+**Status:** 🟡 em PR; 3A+3B (Minha fila) é o próximo item do `A69`. O TI e o encarregado de dados devem ser avisados antes da rodada paralela, como o `A69` pede.
 
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 

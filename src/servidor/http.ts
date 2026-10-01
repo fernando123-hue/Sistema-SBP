@@ -39,6 +39,19 @@ export function responder<T>(dados: T, status = 200): Response {
   return Response.json({ sucesso: true, dados, erro: null } satisfies Envelope<T>, { status })
 }
 
+/**
+ * A resposta não fica guardada em cache nenhum: nem no navegador, nem num
+ * proxy no caminho. Para rota que devolve conteúdo de associado — o corpo de
+ * um e-mail, com nome e CPF —, num computador compartilhado do setor
+ * (revisão de segurança do #163). Vale para a resposta de erro também: é a
+ * rota inteira que não se guarda.
+ */
+export function semCache(resposta: Response): Response {
+  resposta.headers.set('Cache-Control', 'no-store')
+  resposta.headers.append('Vary', 'Cookie')
+  return resposta
+}
+
 export function responderErro(mensagem: string, status: number, correlacaoId?: string): Response {
   return Response.json(
     {

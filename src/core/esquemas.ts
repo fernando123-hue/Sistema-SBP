@@ -94,6 +94,8 @@ export const AcaoAuditavelSchema = z.enum([
   'revisao_recusada',
   'revisao_aprovada_em_massa',
   'item_criado_por_divisao_de_revisao',
+  /** `A69` (2A): quem abriu o corpo de um e-mail na Revisão. Nunca o que estava escrito. */
+  'email_lido_na_revisao',
   // Item
   'item_registrado_manualmente',
   'concluido',
@@ -156,6 +158,7 @@ export type AcaoAuditavel = z.infer<typeof AcaoAuditavelSchema>
 export const OperacaoSchema = z.enum([
   'sincronizar ingestão',
   'ver fila de revisão',
+  'ver o e-mail de uma revisão',
   'resolver revisão',
   'aprovar revisões em massa',
   'ver prévia da distribuição',

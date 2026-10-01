@@ -11,6 +11,7 @@ import { transacaoComNovaTentativa } from '../servidor/conflito'
 import { chaveDeBusca } from '../servidor/cpf-protegido'
 import { novaCorrelacao, registrarLog } from '../servidor/observabilidade'
 import type { ItemEmRevisao } from '../core/tipos'
+import { acharTrecho, textoParaExibir, valorProcurado, type EmailDaRevisao } from '../core/trecho-do-email'
 import type { Banco, Transacao } from '../servidor/prisma'
 import { auditar } from './auditoria'
 
@@ -162,6 +163,116 @@ export async function listarPendentes(banco: Banco, limite = 100): Promise<FilaD
   }))
 
   return { itens, total }
+}
+
+/**
+ * O e-mail de UMA revisão, lido só quando a pessoa pede (`A69`, 2A).
+ *
+ * ═══ POR QUE SOB DEMANDA, E UMA DE CADA VEZ ═══
+ *
+ * A lista não traz o corpo de propósito (achado N-34): até 200 mil caracteres
+ * por e-mail, e quem enche a Revisão é justamente e-mail suspeito. Aqui o corpo
+ * sai por revisão, para quem clicou, e cada leitura fica na trilha — sem o
+ * texto, só quem leu e qual e-mail —, porque o corpo tem nome e CPF de
+ * associado e a pergunta "quem viu isto?" precisa de resposta.
+ *
+ * Só revisão PENDENTE: resolvida, a decisão já foi tomada, e esta rota não é
+ * caminho lateral para ler e-mail antigo de quem quer que seja.
+ *
+ * ═══ O QUE VOLTA ═══
+ *
+ * Texto, nunca HTML, sem controles de direção (`textoParaExibir`). Expurgado
+ * pela retenção diz que foi expurgado e quando (invariante 11); item manual
+ * diz que não há e-mail. Sem conteúdo E sem carimbo de expurgo é dado
+ * quebrado, e falha alto (invariante 7): fingir "expurgado" esconderia a
+ * perda.
+ */
+export async function lerEmailDaRevisao(
+  banco: Banco,
+  revisaoId: string,
+  ator: Ator,
+): Promise<EmailDaRevisao> {
+  exigirPapel(ator, 'ver o e-mail de uma revisão', 'operador', 'gestor')
+
+  const revisao = await banco.revisao.findUnique({
+    where: { id: revisaoId },
+    select: {
+      resolvidoEm: true,
+      campoIncerto: true,
+      sugestaoIa: true,
+      item: {
+        select: {
+          email: {
+            select: {
+              id: true,
+              recebidoEm: true,
+              conteudoExpurgadoEm: true,
+              conteudo: { select: { remetente: true, assunto: true, corpo: true } },
+            },
+          },
+        },
+      },
+    },
+  })
+  if (!revisao) throw new ErroDeNegocio('Esta revisão não foi encontrada. Atualize a tela.')
+  if (revisao.resolvidoEm) {
+    throw new ErroDeNegocio('Esta revisão já foi resolvida. Atualize a tela para ver a próxima.')
+  }
+
+  const email = revisao.item.email
+  if (!email) return { situacao: 'sem_email' }
+  if (email.conteudoExpurgadoEm) {
+    return { situacao: 'expurgado', expurgadoEm: email.conteudoExpurgadoEm.toISOString() }
+  }
+  if (!email.conteudo) {
+    throw new Error(
+      `Email "${email.id}" sem conteúdo e sem carimbo de expurgo. O conteúdo sumiu fora da retenção — investigue antes de mostrar qualquer coisa.`,
+    )
+  }
+
+  // Escrita avulsa, fora de transação, e de propósito: ler não tem fato
+  // transacional para acompanhar (invariante 14). Vem ANTES de devolver o
+  // corpo: se a trilha não grava, a leitura falha e nada sai.
+  await auditar(banco, {
+    entidade: 'Email',
+    entidadeId: email.id,
+    acao: 'email_lido_na_revisao',
+    depois: { revisaoId },
+    usuario: ator.colaboradorId,
+  })
+
+  const corpo = email.conteudo.corpo
+  const valor = valorProcurado(revisao.campoIncerto, sugestaoParaProcurar(revisao.sugestaoIa))
+  return {
+    situacao: 'disponivel',
+    remetente: textoParaExibir(email.conteudo.remetente),
+    assunto: textoParaExibir(email.conteudo.assunto),
+    recebidoEm: email.recebidoEm.toISOString(),
+    corpo: textoParaExibir(corpo),
+    campo: revisao.campoIncerto,
+    trecho: valor === null ? null : acharTrecho(corpo, valor),
+  }
+}
+
+/**
+ * A sugestão gravada, só com o que a procura usa. Ilegível vira vazia: aqui
+ * é leitura para os olhos, e a falta do trecho marcado já é dita na tela.
+ */
+function sugestaoParaProcurar(texto: string): {
+  campos: Record<string, unknown>
+  ligaMencionada: string | null
+} {
+  try {
+    const bruto: unknown = JSON.parse(texto)
+    if (bruto === null || typeof bruto !== 'object') return { campos: {}, ligaMencionada: null }
+    const { campos, ligaMencionada } = bruto as { campos?: unknown; ligaMencionada?: unknown }
+    return {
+      campos: campos !== null && typeof campos === 'object' ? (campos as Record<string, unknown>) : {},
+      ligaMencionada: typeof ligaMencionada === 'string' ? ligaMencionada : null,
+    }
+  } catch {
+    return { campos: {}, ligaMencionada: null }
+  }
 }
 
 export async function resolver(

@@ -74,43 +74,23 @@
 }
 
 /*
-  ═══ O TEMA ESCURO NUNCA TINHA FUNCIONADO COMO TEMA ═══
+  ═══ SEMPRE CLARO, POR ENQUANTO (`DECISOES.md § A67 (d)`) ═══
 
-  Estava escrito como `@media (prefers-color-scheme: dark) { @theme { … } }`. O
-  Tailwind 4 tira o `@theme` de dentro do `@media` e emite as variáveis direto
-  em `:root` — então as cores escuras sobrescreviam as claras em TODO
-  computador, e o sistema sempre abriu escuro (visto no CSS gerado em
-  30/09/2026). Variável comum dentro do `@media`, fora de camada, vence as do
-  `@theme` só quando o computador pede o escuro.
+  Havia um bloco `@media (prefers-color-scheme: dark)` que trocava as cores
+  quando o computador pedia o escuro. O dono decidiu o tema sempre claro até
+  existir outra opção, e o bloco saiu inteiro: deixá-lo "desligado" seria
+  manter um segundo jogo de cores que ninguém confere. `color-scheme: light`
+  faz o mesmo com o que o navegador desenha sozinho (barra de rolagem, campos
+  de data, o fundo antes do CSS chegar).
+
+  Se o escuro voltar, a armadilha que derrubou a primeira versão continua de
+  pé: o Tailwind 4 tira o `@theme` de dentro do `@media` e o emite direto em
+  `:root`, e as cores escuras sobrescreviam as claras em TODO computador
+  (`AT-52`). Variável comum em `:root` dentro do `@media`, fora de camada,
+  é o caminho que funciona.
 */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-tinta: oklch(0.95 0.008 285);
-    --color-tinta-suave: oklch(0.8 0.02 285);
-    --color-tinta-fraca: oklch(0.7 0.025 285);
-
-    --color-papel: oklch(0.23 0.035 285);
-    --color-papel-fundo: oklch(0.18 0.035 285);
-    --color-borda: oklch(0.33 0.035 285);
-    --color-borda-forte: oklch(0.43 0.04 285);
-
-    --color-acento: oklch(0.76 0.11 285);
-    --color-acento-claro: oklch(0.33 0.07 285);
-    --color-acento-escuro: oklch(0.86 0.08 285);
-    /* No escuro o acento é claro, então o texto sobre ele tem de ser escuro. */
-    --color-sobre-acento: oklch(0.18 0.04 285);
-
-    --color-ok: oklch(0.78 0.13 155);
-    --color-ok-claro: oklch(0.28 0.05 155);
-    --color-atencao: oklch(0.85 0.13 75);
-    --color-atencao-claro: oklch(0.3 0.05 75);
-    --color-alerta: oklch(0.78 0.16 25);
-    --color-alerta-claro: oklch(0.3 0.06 25);
-  }
-}
-
 html {
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
 body {

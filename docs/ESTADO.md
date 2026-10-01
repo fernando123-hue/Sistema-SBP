@@ -4,7 +4,13 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 01/10/2026 — JEV PRÓPRIO, P2: CLASSIFICADOR LOCAL CONSTRUÍDO (`AT-54`) (este bloco vence os de baixo)
+> ### 01/10/2026 — REVISÃO COM O E-MAIL AO LADO (`A69` 2A + 2B) MESCLADO NO #163 (este bloco vence os de baixo)
+>
+> - **#163:** "Ver o e-mail" na Revisão, lido sob demanda, com o trecho do campo apontado marcado; selo de confiança só na baixa confiança; tema sempre claro (`A67 (d)`). Decisões em `AT-55`. Nível 3.
+> - `verificar` com a main de 01/10 (#160, #161, #162): 147 arquivos, 1831 testes.
+> - **Próximo do `A69`:** 3A+3B, a Minha fila em lista e detalhe. O Jev próprio (P2) segue em outra frente.
+>
+> ### 01/10/2026 — JEV PRÓPRIO, P2: CLASSIFICADOR LOCAL CONSTRUÍDO (`AT-54`) (vence os de baixo, menos o de cima)
 >
 > - **O que entrou:** `adapters/classificador-local.ts` (IA local respondendo perguntas fechadas pelos *logprobs*, atrás da mesma política do Jev), `CLASSIFICADOR_ADAPTER="local"` e `npm run classificador:avaliar` (gabarito sintético: quantidade, categoria, suspeita e tempo por e-mail).
 > - **Não medido:** nenhum servidor real respondeu ainda. A rede desta nuvem bloqueia Ollama e Hugging Face; a medição real fica com a sessão na máquina do dono ("Projeto SBP local"). Com o Ollama no ar: `CLASSIFICADOR_ADAPTER=local IA_LOCAL_URL=http://127.0.0.1:11434/v1 CLASSIFICADOR_MODELO=qwen2.5:1.5b npm run classificador:avaliar`.

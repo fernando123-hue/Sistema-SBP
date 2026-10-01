@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
@@ -16,8 +16,18 @@ import {
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
 import { pedidoDeConfirmacao } from '../../componentes/pedido-de-confirmacao'
-import { depoisDeResolver, estadoDaFila, filaDaResposta, ligaQueFicouDeFora, lerSugestao, seloDoCampo } from './fila-na-tela'
+import { EmailAoLado, type EstadoDoEmail } from './email-ao-lado'
+import {
+  depoisDeResolver,
+  estadoDaFila,
+  filaDaResposta,
+  ligaQueFicouDeFora,
+  lerSugestao,
+  mostraConfianca,
+  seloDoCampo,
+} from './fila-na-tela'
 import type { ItemEmRevisao, NaRede } from '../../core/tipos'
+import type { EmailDaRevisao } from '../../core/trecho-do-email'
 
 /** A forma vem do núcleo; a tela lê o que sobrevive ao JSON (`H-D7`). */
 type ItemNaTela = NaRede<ItemEmRevisao>
@@ -89,6 +99,50 @@ export default function Revisao() {
    */
   const [feito, setFeito] = useState<string | null>(null)
   const [edicao, setEdicao] = useState<Record<string, Edicao>>({})
+  /**
+   * O e-mail de cada revisão ABERTA (`A69`, 2A). Lido do servidor só no
+   * clique, um por vez: a lista não traz o corpo de propósito (achado N-34).
+   */
+  const [emails, setEmails] = useState<Record<string, EstadoDoEmail>>({})
+  /**
+   * O pedido VIGENTE de cada revisão. Lido do estado, o clique duplo antes do
+   * re-render disparava duas leituras (duas linhas na trilha), e abrir →
+   * fechar → abrir com a primeira em voo mostrava a resposta dela como se
+   * fosse da segunda (revisão técnica do #163). Só o pedido vigente grava.
+   */
+  const pedidos = useRef(new Map<string, number>())
+  const proximoPedido = useRef(0)
+  /** Em voo: o segundo clique de um clique duplo chega antes do re-render e é ignorado. */
+  const emVoo = useRef(new Set<string>())
+
+  function fecharEmail(revisaoId: string) {
+    pedidos.current.delete(revisaoId)
+    emVoo.current.delete(revisaoId)
+    setEmails(({ [revisaoId]: _fechado, ...resto }) => resto)
+  }
+
+  async function alternarEmail(revisaoId: string) {
+    if (emVoo.current.has(revisaoId)) return
+    if (pedidos.current.has(revisaoId)) {
+      fecharEmail(revisaoId)
+      return
+    }
+    proximoPedido.current += 1
+    const pedido = proximoPedido.current
+    pedidos.current.set(revisaoId, pedido)
+    emVoo.current.add(revisaoId)
+    setEmails((mapa) => ({ ...mapa, [revisaoId]: { fase: 'carregando' } }))
+    let proximo: EstadoDoEmail
+    try {
+      const email = await api.buscar<EmailDaRevisao>(`/revisao/${encodeURIComponent(revisaoId)}/email`)
+      proximo = { fase: 'pronto', email }
+    } catch (causa) {
+      proximo = { fase: 'erro', mensagem: mensagemDoErro(causa) }
+    }
+    if (pedidos.current.get(revisaoId) !== pedido) return
+    emVoo.current.delete(revisaoId)
+    setEmails((mapa) => ({ ...mapa, [revisaoId]: proximo }))
+  }
 
   const carregar = useCallback(async () => {
     try {
@@ -96,6 +150,11 @@ export default function Revisao() {
         await api.buscar<{ itens: ItemNaTela[]; total: number }>('/revisao'),
       )
       const lista = resposta.itens
+      // O corpo de um e-mail não fica na memória da aba depois de a revisão
+      // sair da fila: a retenção não alcança o navegador (revisão técnica do #163).
+      pedidos.current.clear()
+      emVoo.current.clear()
+      setEmails({})
       setFila({ itens: lista, total: resposta.total, pedirMais: false })
       setEdicao(
         Object.fromEntries(
@@ -207,6 +266,7 @@ export default function Revisao() {
         const depois = depoisDeResolver(anterior.itens, anterior.total, item.revisaoId)
         return { itens: depois.itens, total: depois.total, pedirMais: depois.recarregar }
       })
+      fecharEmail(item.revisaoId)
       definirConfirmando(null)
       setFeito(aprovar ? 'Item aprovado.' : 'Item descartado.')
     } catch (causa) {
@@ -274,192 +334,211 @@ export default function Revisao() {
           {pendentes.map((item) => {
             const info = MOTIVO[item.motivo] ?? { texto: item.motivo, tom: 'neutro' as const }
             const atual = edicao[item.revisaoId]
+            const email = emails[item.revisaoId]
 
             return (
               <li key={item.revisaoId}>
                 <Cartao className="px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Selo tom={info.tom}>{info.texto}</Selo>
-                    <SeloDeConfianca valor={item.confianca} limiar={item.limiarConfianca} />
+                    {mostraConfianca(item.motivo) ? (
+                      <SeloDeConfianca valor={item.confianca} limiar={item.limiarConfianca} />
+                    ) : null}
                     {item.campoIncerto ? (
                       <Selo>{seloDoCampo(item.campoIncerto, lerSugestao(item.sugestaoIa))}</Selo>
                     ) : null}
-                  </div>
-
-                  {/* A liga que a IA citou não é campo editável, e quando ela não
-                      bate com o e-mail o item fica sem liga: quem revisa precisa
-                      ver o nome para saber o que conferir (revisão técnica do #150). */}
-                  {ligaQueFicouDeFora(lerSugestao(item.sugestaoIa), item.semLiga) ? (
-                    <p className="mt-2 text-xs text-tinta-suave">
-                      {/* <bdi>: o nome vem da IA, e um controle de direção nele
-                          desenharia o resto da frase invertido (4ª rodada de segurança). */}
-                      liga citada pela IA: <bdi>{ligaQueFicouDeFora(lerSugestao(item.sugestaoIa), item.semLiga)}</bdi> · o
-                      item ficou sem liga
-                    </p>
-                  ) : null}
-
-                  <p className="mt-2 text-xs text-tinta-suave">
-                    de {item.remetente ?? 'origem manual'}
-                    {item.assunto ? ` · ${item.assunto}` : ''}
-                  </p>
-
-                  {item.motivo === 'conteudo_suspeito' ? (
-                    <div className="mt-2">
-                      <Aviso tom="alerta">
-                        O conteúdo deste e-mail tentou dar instruções ao sistema. Foi tratado como
-                        dado comum e não teve efeito nenhum sobre a distribuição. Confira antes de
-                        aprovar.
-                      </Aviso>
-                    </div>
-                  ) : null}
-
-                  {Object.keys(atual?.campos ?? {}).length > 0 ? (
-                    <div className="mt-3 grid grid-cols-2 gap-2 rounded-md bg-papel-fundo px-3 py-2 sm:grid-cols-3">
-                      {Object.entries(atual?.campos ?? {}).map(([chave, valor]) => (
-                        <label key={chave} className="flex flex-col gap-1">
-                          <span className="text-xs text-tinta-fraca">{chave}</span>
-                          <input
-                            value={valor}
-                            onChange={(evento) => mudarCampo(item.revisaoId, chave, evento.target.value)}
-                            className="min-h-9 rounded-md border border-borda-forte bg-papel px-2 text-sm"
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs text-tinta-fraca">Título</span>
-                      <input
-                        value={atual?.titulo ?? item.titulo}
-                        onChange={(evento) =>
-                          mudarEdicao(item.revisaoId, { titulo: evento.target.value })
-                        }
-                        className="min-h-10 rounded-md border border-borda-forte bg-papel px-2.5 text-sm"
-                      />
-                    </label>
-
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs text-tinta-fraca">Categoria</span>
-                      <select
-                        value={atual?.categoria ?? item.categoriaCodigo}
-                        onChange={(evento) =>
-                          mudarEdicao(item.revisaoId, { categoria: evento.target.value })
-                        }
-                        className="min-h-10 rounded-md border border-borda-forte bg-papel px-2.5 text-sm"
-                      >
-                        {CATEGORIAS.map((codigo) => (
-                          <option key={codigo} value={codigo}>
-                            {codigo.toLowerCase().replaceAll('_', ' ')}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-
-                  <div className="mt-3 flex flex-col gap-2 rounded-md border border-dashed border-borda-forte px-3 py-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-tinta-fraca">
-                        Este e-mail escondia mais gente? Adicione os itens que a IA não separou.
-                      </span>
+                    <span className="ml-auto">
                       <Botao
                         variante="secundario"
                         tamanho="pequeno"
-                        onClick={() =>
-                          adicionarExtra(item.revisaoId, Object.keys(atual?.campos ?? {}))
-                        }
+                        onClick={() => void alternarEmail(item.revisaoId)}
+                        desabilitado={email?.fase === 'carregando'}
                       >
-                        + item
+                        {email ? 'Fechar o e-mail' : 'Ver o e-mail'}
                       </Botao>
-                    </div>
+                    </span>
+                  </div>
 
-                    {(atual?.extras ?? []).map((extra, indice) => (
-                      <div
-                        key={indice}
-                        className="flex flex-col gap-2 rounded-md bg-papel-fundo px-2.5 py-2 sm:flex-row sm:items-start"
-                      >
-                        <input
-                          value={extra.titulo}
-                          required
-                          aria-label="título do item novo"
-                          placeholder="título do item (obrigatório)"
-                          onChange={(evento) =>
-                            mudarExtra(item.revisaoId, indice, { titulo: evento.target.value })
-                          }
-                          className="min-h-9 flex-1 rounded-md border border-borda-forte bg-papel px-2 text-sm"
-                        />
-                        {Object.keys(extra.campos).map((chave) => (
+                  {/* Aberto, o e-mail vai à esquerda e o que a IA leu à direita; em tela estreita, um embaixo do outro. */}
+                  <div className={email ? 'mt-3 grid gap-4 lg:grid-cols-2' : ''}>
+                    {email ? <EmailAoLado estado={email} /> : null}
+                    <div className="min-w-0">
+                      {/* A liga que a IA citou não é campo editável, e quando ela não
+                          bate com o e-mail o item fica sem liga: quem revisa precisa
+                          ver o nome para saber o que conferir (revisão técnica do #150). */}
+                      {ligaQueFicouDeFora(lerSugestao(item.sugestaoIa), item.semLiga) ? (
+                        <p className="mt-2 text-xs text-tinta-suave">
+                          {/* <bdi>: o nome vem da IA, e um controle de direção nele
+                              desenharia o resto da frase invertido (4ª rodada de segurança). */}
+                          liga citada pela IA: <bdi>{ligaQueFicouDeFora(lerSugestao(item.sugestaoIa), item.semLiga)}</bdi> · o
+                          item ficou sem liga
+                        </p>
+                      ) : null}
+
+                      <p className="mt-2 text-xs text-tinta-suave">
+                        de {item.remetente ?? 'origem manual'}
+                        {item.assunto ? ` · ${item.assunto}` : ''}
+                      </p>
+
+                      {item.motivo === 'conteudo_suspeito' ? (
+                        <div className="mt-2">
+                          <Aviso tom="alerta">
+                            O conteúdo deste e-mail tentou dar instruções ao sistema. Foi tratado como
+                            dado comum e não teve efeito nenhum sobre a distribuição. Confira antes de
+                            aprovar.
+                          </Aviso>
+                        </div>
+                      ) : null}
+
+                      {Object.keys(atual?.campos ?? {}).length > 0 ? (
+                        <div className="mt-3 grid grid-cols-2 gap-2 rounded-md bg-papel-fundo px-3 py-2 sm:grid-cols-3">
+                          {Object.entries(atual?.campos ?? {}).map(([chave, valor]) => (
+                            <label key={chave} className="flex flex-col gap-1">
+                              <span className="text-xs text-tinta-fraca">{chave}</span>
+                              <input
+                                value={valor}
+                                onChange={(evento) => mudarCampo(item.revisaoId, chave, evento.target.value)}
+                                className="min-h-9 rounded-md border border-borda-forte bg-papel px-2 text-sm"
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs text-tinta-fraca">Título</span>
                           <input
-                            key={chave}
-                            value={extra.campos[chave] ?? ''}
-                            placeholder={chave}
-                            aria-label={`${chave} do item novo`}
+                            value={atual?.titulo ?? item.titulo}
                             onChange={(evento) =>
-                              mudarExtra(item.revisaoId, indice, {
-                                campos: { ...extra.campos, [chave]: evento.target.value },
-                              })
+                              mudarEdicao(item.revisaoId, { titulo: evento.target.value })
                             }
-                            className="min-h-9 flex-1 rounded-md border border-borda-forte bg-papel px-2 text-sm"
+                            className="min-h-10 rounded-md border border-borda-forte bg-papel px-2.5 text-sm"
                           />
+                        </label>
+
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs text-tinta-fraca">Categoria</span>
+                          <select
+                            value={atual?.categoria ?? item.categoriaCodigo}
+                            onChange={(evento) =>
+                              mudarEdicao(item.revisaoId, { categoria: evento.target.value })
+                            }
+                            className="min-h-10 rounded-md border border-borda-forte bg-papel px-2.5 text-sm"
+                          >
+                            {CATEGORIAS.map((codigo) => (
+                              <option key={codigo} value={codigo}>
+                                {codigo.toLowerCase().replaceAll('_', ' ')}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="mt-3 flex flex-col gap-2 rounded-md border border-dashed border-borda-forte px-3 py-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-tinta-fraca">
+                            Este e-mail escondia mais gente? Adicione os itens que a IA não separou.
+                          </span>
+                          <Botao
+                            variante="secundario"
+                            tamanho="pequeno"
+                            onClick={() =>
+                              adicionarExtra(item.revisaoId, Object.keys(atual?.campos ?? {}))
+                            }
+                          >
+                            + item
+                          </Botao>
+                        </div>
+
+                        {(atual?.extras ?? []).map((extra, indice) => (
+                          <div
+                            key={indice}
+                            className="flex flex-col gap-2 rounded-md bg-papel-fundo px-2.5 py-2 sm:flex-row sm:items-start"
+                          >
+                            <input
+                              value={extra.titulo}
+                              required
+                              aria-label="título do item novo"
+                              placeholder="título do item (obrigatório)"
+                              onChange={(evento) =>
+                                mudarExtra(item.revisaoId, indice, { titulo: evento.target.value })
+                              }
+                              className="min-h-9 flex-1 rounded-md border border-borda-forte bg-papel px-2 text-sm"
+                            />
+                            {Object.keys(extra.campos).map((chave) => (
+                              <input
+                                key={chave}
+                                value={extra.campos[chave] ?? ''}
+                                placeholder={chave}
+                                aria-label={`${chave} do item novo`}
+                                onChange={(evento) =>
+                                  mudarExtra(item.revisaoId, indice, {
+                                    campos: { ...extra.campos, [chave]: evento.target.value },
+                                  })
+                                }
+                                className="min-h-9 flex-1 rounded-md border border-borda-forte bg-papel px-2 text-sm"
+                              />
+                            ))}
+                            <Botao
+                              variante="perigo"
+                              tamanho="pequeno"
+                              onClick={() => removerExtra(item.revisaoId, indice)}
+                            >
+                              remover
+                            </Botao>
+                          </div>
                         ))}
+                      </div>
+
+                      {/*
+                        ═══ DESCARTAR PEDE DOIS CLIQUES, APROVAR NÃO ═══
+
+                        Descartar grava `cancelado` e não existe caminho de volta —
+                        nem serviço, nem rota, nem tela —, e a idempotência por
+                        `messageId` impede que uma nova sincronização recrie o item.
+                        Um clique errado numa fila de 40 revisões resolvidas em
+                        sequência apaga o pedido de um associado para sempre.
+
+                        Arquivar uma NOTA, que não apaga nada de operacional, já
+                        exigia dois cliques. A assimetria era ao contrário.
+
+                        E o rótulo de progresso ia para o botão errado: `ocupado`
+                        guardava só o id, então quem clicava em Descartar via o botão
+                        "Aprovar", ao lado, anunciar "salvando…".
+                      */}
+                      <div className="mt-3 flex justify-end gap-2">
                         <Botao
                           variante="perigo"
                           tamanho="pequeno"
-                          onClick={() => removerExtra(item.revisaoId, indice)}
+                          onClick={() => {
+                            if (confirmando === item.revisaoId) {
+                              void resolver(item, false)
+                              return
+                            }
+                            definirConfirmando(item.revisaoId)
+                            setFeito(null)
+                          }}
+                          desabilitado={ocupado !== null}
                         >
-                          remover
+                          {ocupado?.revisaoId === item.revisaoId && !ocupado.aprovar
+                            ? 'descartando…'
+                            : confirmando === item.revisaoId
+                              ? 'Confirmar: descartar para sempre'
+                              : 'Descartar'}
+                        </Botao>
+                        <Botao
+                          variante="principal"
+                          tamanho="pequeno"
+                          onClick={() => resolver(item, true)}
+                          desabilitado={ocupado !== null}
+                        >
+                          {ocupado?.revisaoId === item.revisaoId && ocupado.aprovar
+                            ? 'salvando…'
+                            : 'Aprovar'}
                         </Botao>
                       </div>
-                    ))}
-                  </div>
-
-                  {/*
-                    ═══ DESCARTAR PEDE DOIS CLIQUES, APROVAR NÃO ═══
-
-                    Descartar grava `cancelado` e não existe caminho de volta —
-                    nem serviço, nem rota, nem tela —, e a idempotência por
-                    `messageId` impede que uma nova sincronização recrie o item.
-                    Um clique errado numa fila de 40 revisões resolvidas em
-                    sequência apaga o pedido de um associado para sempre.
-
-                    Arquivar uma NOTA, que não apaga nada de operacional, já
-                    exigia dois cliques. A assimetria era ao contrário.
-
-                    E o rótulo de progresso ia para o botão errado: `ocupado`
-                    guardava só o id, então quem clicava em Descartar via o botão
-                    "Aprovar", ao lado, anunciar "salvando…".
-                  */}
-                  <div className="mt-3 flex justify-end gap-2">
-                    <Botao
-                      variante="perigo"
-                      tamanho="pequeno"
-                      onClick={() => {
-                        if (confirmando === item.revisaoId) {
-                          void resolver(item, false)
-                          return
-                        }
-                        definirConfirmando(item.revisaoId)
-                        setFeito(null)
-                      }}
-                      desabilitado={ocupado !== null}
-                    >
-                      {ocupado?.revisaoId === item.revisaoId && !ocupado.aprovar
-                        ? 'descartando…'
-                        : confirmando === item.revisaoId
-                          ? 'Confirmar: descartar para sempre'
-                          : 'Descartar'}
-                    </Botao>
-                    <Botao
-                      variante="principal"
-                      tamanho="pequeno"
-                      onClick={() => resolver(item, true)}
-                      desabilitado={ocupado !== null}
-                    >
-                      {ocupado?.revisaoId === item.revisaoId && ocupado.aprovar
-                        ? 'salvando…'
-                        : 'Aprovar'}
-                    </Botao>
+                    </div>
                   </div>
                 </Cartao>
               </li>
