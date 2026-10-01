@@ -224,7 +224,7 @@ describe('C-12: o acesso sem senha não pode morar num arquivo .env', () => {
     expect(acessoLocalEmArquivoEnv(pasta)).toBe(arquivo)
   })
 
-  it.each(['export ACESSO_LOCAL_SEM_SENHA=1', "  export\tACESSO_LOCAL_SEM_SENHA = '1'", 'ACESSO_LOCAL_SEM_SENHA=1\r'])(
+  it.each(['export ACESSO_LOCAL_SEM_SENHA=1', "  export\tACESSO_LOCAL_SEM_SENHA = '1'", 'ACESSO_LOCAL_SEM_SENHA=1\r', 'ACESSO_LOCAL_SEM_SENHA=1 # comentário no fim'])(
     'forma aceita pelo carregador de .env também é encontrada: %j',
     (linha) => {
       // `process.loadEnvFile` aceita `export`; a trava precisa ver o mesmo que ele.

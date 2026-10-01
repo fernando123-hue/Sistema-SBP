@@ -361,6 +361,11 @@ describe('desenvolvimento declarado (pendência 47)', () => {
     ['NODE_ENV=development', '.env'],
     ['export NODE_ENV="development"', '.env.local'],
     ["  NODE_ENV = 'development'\r", '.env.development'],
+    // O `process.loadEnvFile` aceita comentário no fim da linha (segunda
+    // revisão técnica): a trava precisa ver o mesmo que o carregador.
+    ['NODE_ENV=development # só para testar', '.env'],
+    ['NODE_ENV="development" # x', '.env'],
+    ['NODE_ENV=`development`', '.env.local'],
   ])('%j em %s não conta como declarado', (linha, arquivo) => {
     vi.stubEnv('NODE_ENV', 'development')
     const pasta = mkdtempSync(join(tmpdir(), 'sbp-nodeenv-'))
@@ -394,7 +399,10 @@ describe('desenvolvimento declarado (pendência 47)', () => {
   })
 })
 
-/** Roda `corpo` com o processo numa pasta temporária contendo só `arquivos`. */
+/**
+ * Roda `corpo` com o processo numa pasta temporária contendo só `arquivos`.
+ * `process.chdir` exige o pool `forks` do vitest (o padrão); em `threads`, lança.
+ */
 function emPasta(arquivos: Record<string, string>, corpo: () => void): void {
   const pasta = mkdtempSync(join(tmpdir(), 'sbp-amb-'))
   const original = process.cwd()

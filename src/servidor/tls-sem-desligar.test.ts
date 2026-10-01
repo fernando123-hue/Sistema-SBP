@@ -25,18 +25,36 @@ const PROIBIDO = /NODE_TLS|rejectUnauthorized|checkServerIdentity/
 const EXTENSOES = /\.[cm]?[jt]sx?$/
 
 /**
- * Os dois usos legítimos, cada um com o que continua proibido dentro dele.
+ * Os dois usos legítimos, cada um com uma lista FECHADA do que é aceito.
  *
- * - `ambiente.ts` LÊ a variável para recusá-la (e a cita em comentário e
- *   mensagem). Nele, é proibido escrevê-la (`.X =`, `['X'] =`, `X:` num objeto
- *   de ambiente), apagar de `process.env` e mexer nas opções de TLS.
+ * - `ambiente.ts` LÊ a variável para recusá-la. Toda linha dele que cite
+ *   `NODE_TLS` tem de ser comentário, a leitura exata da trava ou a linha da
+ *   mensagem de erro; e ali também não pode haver opção de TLS nem escrita em
+ *   `process.env` por `defineProperty`, `assign`, `Reflect` ou `delete`.
+ *   Lista fechada, e não uma regex de "escrita": a segunda revisão de
+ *   segurança mostrou `||=`, `??=`, `defineProperty` e `assign` escapando
+ *   daquela.
  * - `vitest.config.ts` a ESVAZIA para a suíte (vazia, a verificação fica
  *   ligada). Só essa linha exata é aceita.
  */
-const ESCRITA_OU_OPCAO =
-  /(?:\.|\[\s*['"`])NODE_TLS_REJECT_UNAUTHORIZED['"`]?\s*\]?\s*=(?!=)|NODE_TLS_REJECT_UNAUTHORIZED['"`]?\s*:|delete\s+process\.env|Reflect\.(?:deleteProperty|set)\(\s*process\.env|rejectUnauthorized|checkServerIdentity/
+const LINHAS_ACEITAS_EM_AMBIENTE = [
+  /^\s*(?:\/\/|\*|\/\*)/, // comentário
+  /^\s*const motivoTls = process\.env\['NODE_TLS_REJECT_UNAUTHORIZED'\] === '0' \? motivoDeNaoSerDesenvolvimento\(\) : null$/,
+  /^\s*`NODE_TLS_REJECT_UNAUTHORIZED=0 com \$\{motivoTls\} desliga [^`]*` \+$/,
+]
+const SEMPRE_PROIBIDO_EM_AMBIENTE =
+  /rejectUnauthorized|checkServerIdentity|delete\s+process\.env|(?:Reflect|Object)\.\w+\(\s*process\.env/
+
+function ambienteOfende(conteudo: string): boolean {
+  if (SEMPRE_PROIBIDO_EM_AMBIENTE.test(conteudo)) return true
+  return conteudo
+    .split('\n')
+    .filter((linha) => PROIBIDO.test(linha))
+    .some((linha) => !LINHAS_ACEITAS_EM_AMBIENTE.some((aceita) => aceita.test(linha)))
+}
+
 const PERMITIDOS: Record<string, (conteudo: string) => boolean> = {
-  'src/servidor/ambiente.ts': (conteudo) => ESCRITA_OU_OPCAO.test(conteudo),
+  'src/servidor/ambiente.ts': ambienteOfende,
   'vitest.config.ts': (conteudo) => PROIBIDO.test(conteudo.replace("NODE_TLS_REJECT_UNAUTHORIZED: '',", '')),
 }
 
@@ -89,15 +107,25 @@ describe('ninguém desliga a verificação de TLS por fora da trava (pendências
       "delete process.env['NODE_TLS_REJECT_UNAUTHORIZED']",
       "Reflect.deleteProperty(process.env, 'NODE_ENV')",
       'tls.connect({ rejectUnauthorized: false })',
+      "process.env.NODE_TLS_REJECT_UNAUTHORIZED ||= '0'",
+      "process.env['NODE_TLS_REJECT_UNAUTHORIZED'] ??= '0'",
+      "Object.defineProperty(process.env, 'NODE_TLS_' + 'REJECT_UNAUTHORIZED', { value: '0' })",
+      "Object.assign(process.env, { ['NODE_TLS_REJECT_UNAUTHORIZED']: '0' })",
+      "const nome = 'NODE_TLS_REJECT_UNAUTHORIZED'",
     ]) {
       expect(ofende('src/servidor/ambiente.ts', trecho), trecho).toBe(true)
     }
     expect(ofende('src/servidor/ambiente.ts', "spawn(cmd, { env: { NODE_TLS_REJECT_UNAUTHORIZED: '0' } })")).toBe(true)
     expect(ofende('vitest.config.ts', "NODE_TLS_REJECT_UNAUTHORIZED: '0',")).toBe(true)
     // O que a trava faz continua permitido: ler, citar em comentário e em mensagem.
-    expect(ofende('src/servidor/ambiente.ts', "process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0'")).toBe(false)
-    expect(ofende('src/servidor/ambiente.ts', '// `NODE_TLS_REJECT_UNAUTHORIZED=0` desliga')).toBe(false)
-    expect(ofende('src/servidor/ambiente.ts', '`NODE_TLS_REJECT_UNAUTHORIZED=0 com ${motivo}`')).toBe(false)
+    expect(
+      ofende(
+        'src/servidor/ambiente.ts',
+        "  const motivoTls = process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0' ? motivoDeNaoSerDesenvolvimento() : null",
+      ),
+    ).toBe(false)
+    expect(ofende('src/servidor/ambiente.ts', '  // `NODE_TLS_REJECT_UNAUTHORIZED=0` desliga')).toBe(false)
+    expect(ofende('src/servidor/ambiente.ts', '      `NODE_TLS_REJECT_UNAUTHORIZED=0 com ${motivoTls} desliga a verificação` +')).toBe(false)
     expect(ofende('vitest.config.ts', "NODE_TLS_REJECT_UNAUTHORIZED: '',")).toBe(false)
 
     const vistos = codigoDoRepositorio().map((caminho) => relative(RAIZ, caminho).split('\\').join('/'))

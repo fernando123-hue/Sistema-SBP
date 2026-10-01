@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { parseEnv } from 'node:util'
 
 import { z } from 'zod'
 
@@ -665,7 +666,17 @@ const LIGADO_EM_ARQUIVO = /^[ \t]*(?:export[ \t]+)?ACESSO_LOCAL_SEM_SENHA[ \t]*=
 
 const DESENVOLVIMENTO_EM_ARQUIVO = /^[ \t]*(?:export[ \t]+)?NODE_ENV[ \t]*=[ \t]*["']?development["']?[ \t]*$/m
 
-function primeiroArquivoEnvCom(pasta: string, padrao: RegExp): string | null {
+/**
+ * O primeiro arquivo `.env*` da pasta em que `chave` vale `valor`, ou `null`.
+ *
+ * Duas leituras, e basta uma achar: o `parseEnv` do próprio Node (o parser do
+ * `process.loadEnvFile`), que enxerga exatamente o que o carregador vai pôr no
+ * processo — inclusive com comentário no fim da linha, que a regex sozinha
+ * deixava passar (segunda revisão técnica do PR da pendência 47) —, e a regex,
+ * mais larga em formas que o Node de hoje não carrega mas outro carregador
+ * (`dotenv`, o do Next) poderia. Errar para o lado de recusar é o lado certo.
+ */
+function primeiroArquivoEnvCom(pasta: string, padrao: RegExp, chave: string, valor: string): string | null {
   for (const arquivo of ARQUIVOS_ENV) {
     let conteudo: string
     try {
@@ -673,9 +684,17 @@ function primeiroArquivoEnvCom(pasta: string, padrao: RegExp): string | null {
     } catch {
       continue // arquivo que não existe não liga nada
     }
-    if (padrao.test(conteudo)) return arquivo
+    if (padrao.test(conteudo) || valorNoParserDoNode(conteudo, chave) === valor) return arquivo
   }
   return null
+}
+
+function valorNoParserDoNode(conteudo: string, chave: string): string | undefined {
+  try {
+    return parseEnv(conteudo)[chave]
+  } catch {
+    return undefined // arquivo que o Node não lê também não carrega nada; a regex segue valendo
+  }
 }
 
 /**
@@ -683,7 +702,7 @@ function primeiroArquivoEnvCom(pasta: string, padrao: RegExp): string | null {
  * Linha comentada ou com outro valor não conta.
  */
 export function acessoLocalEmArquivoEnv(pasta: string): string | null {
-  return primeiroArquivoEnvCom(pasta, LIGADO_EM_ARQUIVO)
+  return primeiroArquivoEnvCom(pasta, LIGADO_EM_ARQUIVO, 'ACESSO_LOCAL_SEM_SENHA', '1')
 }
 
 /**
@@ -707,12 +726,18 @@ export function acessoLocalEmArquivoEnv(pasta: string): string | null {
  *   mesmo com `NODE_ENV` herdado como `development` — mais duro que o C-12
  *   pedia, e de propósito. Só nos scripts por `tsx` e no vitest a leitura é a
  *   do processo.
+ *
+ * LIMITE CONHECIDO: só os arquivos de `ARQUIVOS_ENV` na pasta atual. Um
+ * `NODE_ENV=development` que chegue por `node --env-file=outro.env`,
+ * `dotenv -e` ou pela própria crontab entra no processo como declarado, e não
+ * há como distinguir. Os arquivos são relidos a cada chamada de propósito: uma
+ * edição do `.env` com o servidor de pé tem de valer na hora.
  */
 export function motivoDeNaoSerDesenvolvimento(pasta: string = process.cwd()): string | null {
   const nodeEnv = process.env['NODE_ENV']
   if (nodeEnv === undefined) return 'NODE_ENV ausente'
   if (nodeEnv !== 'development') return `NODE_ENV=${nodeEnv}`
-  const arquivo = primeiroArquivoEnvCom(pasta, DESENVOLVIMENTO_EM_ARQUIVO)
+  const arquivo = primeiroArquivoEnvCom(pasta, DESENVOLVIMENTO_EM_ARQUIVO, 'NODE_ENV', 'development')
   if (arquivo !== null) {
     return `NODE_ENV=development escrito em ${arquivo} (vale só exportado no comando, como faz o npm run dev:local)`
   }
