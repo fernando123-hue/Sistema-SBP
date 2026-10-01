@@ -5,11 +5,11 @@ import {
   PayloadDoItemSchema,
   ResolucaoRevisaoSchema,
   ResolucaoDoEmailSchema,
-  MOTIVOS_DECIDIDOS_POR_EMAIL,
   type ResolucaoRevisao,
   SugestaoIaGravadaSchema,
   serializar,
 } from '../core/esquemas'
+import { decidivelNoCartao } from '../core/revisao-por-email'
 import { camposAlterados, compararRevisao, type DecisaoHumana } from '../core/qualidade-ia'
 import { exigirPapel, type Ator } from '../servidor/ator'
 import { transacaoComNovaTentativa } from '../servidor/conflito'
@@ -529,19 +529,24 @@ async function resolverTravada(
  *
  * ═══ TUDO OU NADA ═══
  *
- * As revisões pendentes do e-mail são travadas NUMA consulta, em ordem de id
- * (ordem fixa: duas pessoas no mesmo e-mail esperam uma pela outra em vez de
- * se travarem). O conjunto pedido tem de ser IGUAL ao conjunto travado: faltou
+ * As revisões pendentes do e-mail são travadas pela chave, numa consulta, em
+ * ordem de id; nada além delas é travado antes de `resolverTravada` escrever.
+ * O conjunto pedido tem de ser IGUAL ao conjunto pendente: faltou
  * uma, sobrou uma de outro e-mail, alguém resolveu uma enquanto a tela estava
  * aberta — nada é decidido e a pessoa atualiza. Decidir "os outros dois" de um
  * cartão que mostrava três seria decidir sobre uma lista que ninguém viu.
  *
  * ═══ O QUE CONTINUA ITEM A ITEM ═══
  *
- * E-mail marcado como suspeito, e qualquer revisão com motivo fora de
- * `MOTIVOS_DECIDIDOS_POR_EMAIL`. A tela nem oferece o cartão nesses casos;
- * a recusa aqui é para quem chamar a rota sem a tela.
+ * Tudo que `decidivelNoCartao` deixa de fora: e-mail suspeito, motivo de
+ * alerta, e — mesmo com motivo `desdobramento` — campo apontado com valor
+ * para conferir ou liga citada que ficou de fora (revisão de segurança do
+ * #167). A tela nem oferece o cartão nesses casos; a recusa aqui é para quem
+ * chamar a rota sem a tela.
  */
+const LISTA_MUDOU =
+  'A lista deste e-mail mudou desde que você abriu a tela. Nada foi decidido: atualize e confira de novo.'
+
 export async function resolverEmailDaRevisao(
   banco: Banco,
   entrada: unknown,
@@ -560,36 +565,68 @@ export async function resolverEmailDaRevisao(
   return transacaoComNovaTentativa(
     banco,
     async (tx) => {
-      const travadas = await tx.$queryRaw<{ id: string; motivo: string; emailSuspeito: number | boolean }[]>`
-        SELECT r.id AS id, r.motivo AS motivo, e.conteudoSuspeito AS emailSuspeito
-        FROM \`Revisao\` r
-        JOIN \`Item\` i ON i.id = r.itemId
-        JOIN \`Email\` e ON e.id = i.emailId
-        WHERE i.emailId = ${dados.emailId} AND r.resolvidoEm IS NULL
-        ORDER BY r.id
-        FOR UPDATE`
+      // Dois passos, e a trava SÓ em `Revisao` (revisões técnica e de
+      // segurança do #167). Um `JOIN … FOR UPDATE` travava também os `Item` do
+      // e-mail (inclusive os já em execução), a linha `Email` e lacunas de
+      // índice, por até 20 s, e na ordem do plano de leitura — não na do
+      // `ORDER BY`. Aqui: primeiro quais revisões o e-mail tem pendentes
+      // (leitura comum), depois a trava delas pela chave, em ordem de id. A
+      // leitura com trava enxerga o valor mais novo, então quem resolveu uma
+      // delas no meio aparece como resolvida e a decisão inteira é recusada.
+      const pendentes = await tx.$queryRaw<{ id: string }[]>`
+        SELECT r.id AS id
+        FROM \`Revisao\` r JOIN \`Item\` i ON i.id = r.itemId
+        WHERE i.emailId = ${dados.emailId} AND r.resolvidoEm IS NULL`
 
       const pedidas = new Set(dados.revisoes.map((linha) => linha.revisaoId))
       const conjuntoBate =
-        travadas.length === pedidas.size && travadas.every((travada) => pedidas.has(travada.id))
-      if (!conjuntoBate) {
-        throw new ErroDeNegocio(
-          'A lista deste e-mail mudou desde que você abriu a tela. Nada foi decidido: atualize e confira de novo.',
-        )
-      }
-      // `tinyint(1)` volta como número no SQL cru.
-      const suspeito = travadas.some((travada) => Boolean(travada.emailSuspeito))
-      const foraDoCartao = travadas.some(
-        (travada) => !(MOTIVOS_DECIDIDOS_POR_EMAIL as readonly string[]).includes(travada.motivo),
-      )
-      if (suspeito || foraDoCartao) {
-        throw new ErroDeNegocio('Este e-mail precisa ser decidido item a item. Nada foi decidido.')
+        pendentes.length === pedidas.size && pendentes.every((pendente) => pedidas.has(pendente.id))
+      if (!conjuntoBate) throw new ErroDeNegocio(LISTA_MUDOU)
+
+      const ids = [...pedidas].sort()
+      const travadas = await tx.$queryRaw<
+        { id: string; resolvidoEm: Date | null; motivo: string; campoIncerto: string | null; sugestaoIa: string }[]
+      >`
+        SELECT id, resolvidoEm, motivo, campoIncerto, sugestaoIa
+        FROM \`Revisao\` WHERE id IN (${Prisma.join(ids)})
+        ORDER BY id
+        FOR UPDATE`
+      if (travadas.length !== ids.length || travadas.some((travada) => travada.resolvidoEm !== null)) {
+        throw new ErroDeNegocio(LISTA_MUDOU)
       }
 
       const itens = await tx.revisao.findMany({
-        where: { id: { in: [...pedidas] } },
-        select: { id: true, item: { select: { categoria: { select: { codigo: true } } } } },
+        where: { id: { in: ids } },
+        select: {
+          id: true,
+          item: {
+            select: {
+              emailId: true,
+              ligaId: true,
+              categoria: { select: { codigo: true } },
+              email: { select: { conteudoSuspeito: true } },
+            },
+          },
+        },
       })
+      const doItem = new Map(itens.map((linha) => [linha.id, linha.item]))
+
+      // A mesma regra da tela, de novo aqui: a tela sozinha não é trava.
+      const foraDoCartao = travadas.some((travada) => {
+        const item = doItem.get(travada.id)
+        return (
+          item === undefined ||
+          item.emailId !== dados.emailId ||
+          !decidivelNoCartao({
+            motivo: travada.motivo,
+            campoIncerto: travada.campoIncerto,
+            sugestaoIa: travada.sugestaoIa,
+            semLiga: item.ligaId === null,
+            emailSuspeito: item.email?.conteudoSuspeito ?? true,
+          })
+        )
+      })
+      if (foraDoCartao) throw new ErroDeNegocio('Este e-mail precisa ser decidido item a item. Nada foi decidido.')
       const categoriaDe = new Map(itens.map((linha) => [linha.id, linha.item.categoria.codigo]))
 
       // Os acrescentados vão como "itens extras" da PRIMEIRA aprovada: herdam
@@ -627,8 +664,10 @@ export async function resolverEmailDaRevisao(
  * Aprovação em massa das exceções ROTINEIRAS.
  *
  * Cobre só `baixa_confianca` e `campo_ausente`. Conteúdo suspeito, anexo
- * rejeitado e desdobramento continuam exigindo decisão item a item — são
- * justamente os casos em que a revisão humana existe para alguma coisa.
+ * rejeitado e desdobramento continuam fora daqui — são justamente os casos em
+ * que a revisão humana existe para alguma coisa. O desdobramento limpo tem o
+ * cartão do e-mail (`resolverEmailDaRevisao`), onde a pessoa vê a lista
+ * inteira antes de aprovar; esta função não vê nada.
  */
 export async function aprovarTodosPendentes(
   banco: Banco,

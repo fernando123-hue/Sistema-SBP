@@ -217,6 +217,59 @@ describe('resolverEmailDaRevisao (1A)', () => {
     expect(await banco.revisao.count({ where: { resolvidoEm: { not: null } } })).toBe(0)
   })
 
+  // O achado Alto da revisão de segurança do #167: numa lista, o motivo é
+  // sempre `desdobramento`, e o CPF que não fechou fica só no campo apontado.
+  it('campo apontado com valor para conferir tira o e-mail do cartão, mesmo com motivo desdobramento', async () => {
+    const { base, itens } = await umaListaNaRevisao()
+    await banco.revisao.update({ where: { id: itens[1]!.revisaoId }, data: { campoIncerto: 'nome' } })
+
+    await expect(
+      resolverEmailDaRevisao(banco, { emailId: itens[0]!.emailId!, revisoes: decisaoDe(itens), novos: [] }, base.operador),
+    ).rejects.toThrow('item a item')
+    expect(await banco.revisao.count({ where: { resolvidoEm: { not: null } } })).toBe(0)
+  })
+
+  it('campo apontado que faltou não tira o e-mail do cartão', async () => {
+    const { base, itens } = await umaListaNaRevisao()
+    await banco.revisao.update({ where: { id: itens[1]!.revisaoId }, data: { campoIncerto: 'crm' } })
+
+    const feito = await resolverEmailDaRevisao(banco, { emailId: itens[0]!.emailId!, revisoes: decisaoDe(itens), novos: [] }, base.operador)
+    expect(feito.aprovados).toBe(3)
+  })
+
+  // A medida de acerto da IA é a mesma da decisão avulsa (`A23(c)`).
+  it('grava valorFinal e acerto da IA em cada revisão, como a decisão avulsa', async () => {
+    const { base, itens } = await umaListaNaRevisao()
+    await resolverEmailDaRevisao(banco, { emailId: itens[0]!.emailId!, revisoes: decisaoDe(itens), novos: [] }, base.operador)
+
+    const revisoes = await banco.revisao.findMany()
+    expect(revisoes.every((revisao) => revisao.valorFinal !== null && revisao.desfecho !== null)).toBe(true)
+  })
+
+  // A decisão avulsa e o cartão no mesmo e-mail, ao mesmo tempo: uma vence
+  // inteira, a outra é recusada inteira. Nunca metade de cada.
+  it('corrida com a decisão avulsa: só uma vence', async () => {
+    const { base, itens } = await umaListaNaRevisao()
+
+    const resultados = await Promise.allSettled([
+      resolverEmailDaRevisao(
+        banco,
+        { emailId: itens[0]!.emailId!, revisoes: decisaoDe(itens).map((linha) => ({ ...linha, aprovar: false })), novos: [] },
+        base.operador,
+      ),
+      resolver(
+        banco,
+        { revisaoId: itens[0]!.revisaoId, categoriaCodigo: 'LIGANTE', titulo: itens[0]!.titulo, campos: {}, aprovar: true },
+        base.operador,
+      ),
+    ])
+
+    expect(resultados.filter((resultado) => resultado.status === 'fulfilled')).toHaveLength(1)
+    const resolvidas = await banco.revisao.count({ where: { resolvidoEm: { not: null } } })
+    // O cartão venceu: as 3 resolvidas por ele. A avulsa venceu: só ela.
+    expect(resolvidas).toBe(resultados[0]!.status === 'fulfilled' ? 3 : 1)
+  })
+
   it('acrescentar gente sem aprovar ninguém é recusado', async () => {
     const { base, itens } = await umaListaNaRevisao()
 

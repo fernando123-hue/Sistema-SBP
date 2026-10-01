@@ -27,6 +27,7 @@ import {
   ligaQueFicouDeFora,
   lerSugestao,
   mostraConfianca,
+  prefixoDoTitulo,
   seloDoCampo,
 } from './fila-na-tela'
 import type { ItemEmRevisao, NaRede } from '../../core/tipos'
@@ -64,6 +65,9 @@ interface EdicaoDoCartao {
 
 const CARTAO_VAZIO: EdicaoDoCartao = { tirados: [], novos: [] }
 
+/** Chave estável de cada pessoa nova: com o índice, remover a do meio levava o foco para a vizinha. */
+let proximaChave = 0
+
 /**
  * `confirmando` guarda o id da revisão armada, ou esta marca mais a ação e o
  * e-mail: um estado só, para nunca haver dois botões armados ao mesmo tempo.
@@ -75,11 +79,6 @@ function armadoNoEmail(acao: 'aprovar' | 'descartar', emailId: string): string {
   return `${ARMADO_NO_EMAIL}${acao}:${emailId}`
 }
 
-/** O nome no fim do título ("Inclusão de ligante — Fulana"): o que vem antes. */
-function prefixoDoTitulo(titulo: string, nome: string | undefined): string | null {
-  if (nome === undefined || !titulo.endsWith(nome)) return null
-  return titulo.slice(0, titulo.length - nome.length)
-}
 
 const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutro' }> = {
   baixa_confianca: { texto: 'confiança abaixo do mínimo', tom: 'atencao' },
@@ -190,6 +189,8 @@ export default function Revisao() {
       emVoo.current.clear()
       setEmails({})
       setCartoes({})
+      // Lista nova, nada armado: o aviso armado de antes falaria de outra lista.
+      definirConfirmando(null)
       setFila({ itens: lista, total: resposta.total, pedirMais: false })
       setEdicao(
         Object.fromEntries(
@@ -338,7 +339,9 @@ export default function Revisao() {
   function acrescentarNoCartao(emailId: string, primeira: ItemNaTela | undefined) {
     const atual = primeira ? edicao[primeira.revisaoId] : undefined
     const prefixo = atual ? (prefixoDoTitulo(atual.titulo, atual.campos.nome) ?? '') : ''
-    mudarCartao(emailId, (cartao) => ({ ...cartao, novos: [...cartao.novos, { titulo: prefixo, nome: '' }] }))
+    proximaChave += 1
+    const chave = proximaChave
+    mudarCartao(emailId, (cartao) => ({ ...cartao, novos: [...cartao.novos, { chave, titulo: prefixo, nome: '' }] }))
   }
 
   function mudarNovoDoCartao(emailId: string, indice: number, parcial: Partial<PessoaNova>) {
@@ -387,6 +390,7 @@ export default function Revisao() {
       revisoes.some((linha) => linha.aprovar && linha.titulo.trim() === '') ||
       novos.some((novo) => novo.titulo === '' || (novo.titulo === prefixo && novo.campos.nome === undefined))
     ) {
+      definirConfirmando(null)
       setErro('Há item sem título na lista. Preencha o título ou tire o item antes de aprovar.')
       return
     }
@@ -499,6 +503,13 @@ export default function Revisao() {
                         titulo: atual?.titulo ?? item.titulo,
                         nome: atual && Object.hasOwn(atual.campos, 'nome') ? (atual.campos.nome ?? '') : null,
                         tirado: cartao.tirados.includes(item.revisaoId),
+                        // O campo que faltou e a confiança baixa, por linha:
+                        // no cartão eles somiam (revisões do #167). Valor para
+                        // conferir não chega aqui (`decidivelNoCartao`).
+                        selos: [
+                          ...(item.campoIncerto ? [seloDoCampo(item.campoIncerto, lerSugestao(item.sugestaoIa))] : []),
+                          ...(mostraConfianca(item.motivo) ? [`confiança ${Math.round(item.confianca * 100)}%`] : []),
+                        ],
                       }
                     })}
                     novos={cartao.novos}

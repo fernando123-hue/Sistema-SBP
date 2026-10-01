@@ -1,5 +1,5 @@
 import { CAMPO_DA_LIGA, ROTULO_DO_CAMPO_DA_LIGA } from '../../core/conferencia-da-extracao'
-import { MOTIVOS_DECIDIDOS_POR_EMAIL } from '../../core/esquemas'
+import { decidivelNoCartao } from '../../core/revisao-por-email'
 import { chaveDaLiga } from '../../core/ligas'
 
 /**
@@ -170,15 +170,24 @@ export type BlocoDaRevisao<T> = { tipo: 'item'; item: T } | { tipo: 'email'; ema
  * - a lista tem TODAS as pendentes do e-mail (`pendentesNoEmail`): "Aprovar
  *   os 3" de um e-mail com 5 decidiria sobre nomes que ninguém viu;
  * - são duas ou mais;
- * - nenhum motivo pede um valor conferido ou é alerta de segurança, e o
- *   e-mail não foi marcado como suspeito (`MOTIVOS_DECIDIDOS_POR_EMAIL`);
+ * - nenhuma revisão pede um valor conferido ou é alerta de segurança, nem
+ *   mesmo escondida sob o motivo `desdobramento` (`decidivelNoCartao`);
  * - a pessoa não pediu "Ver um por um".
  *
  * O cartão fica onde a primeira revisão do e-mail aparece: a ordem da fila
  * (menor confiança primeiro) continua valendo. O serviço confere tudo de novo.
  */
 export function blocosDaRevisao<
-  T extends { revisaoId: string; emailId: string | null; pendentesNoEmail: number; motivo: string; emailSuspeito: boolean },
+  T extends {
+    revisaoId: string
+    emailId: string | null
+    pendentesNoEmail: number
+    motivo: string
+    emailSuspeito: boolean
+    campoIncerto: string | null
+    sugestaoIa: string
+    semLiga: boolean
+  },
 >(itens: readonly T[], separados: ReadonlySet<string>): BlocoDaRevisao<T>[] {
   const porEmail = new Map<string, T[]>()
   for (const item of itens) {
@@ -189,10 +198,7 @@ export function blocosDaRevisao<
     !separados.has(emailId) &&
     doEmail.length >= 2 &&
     doEmail.every(
-      (item) =>
-        item.pendentesNoEmail === doEmail.length &&
-        !item.emailSuspeito &&
-        (MOTIVOS_DECIDIDOS_POR_EMAIL as readonly string[]).includes(item.motivo),
+      (item) => item.pendentesNoEmail === doEmail.length && decidivelNoCartao(item),
     )
 
   const blocos: BlocoDaRevisao<T>[] = []
@@ -208,4 +214,20 @@ export function blocosDaRevisao<
     }
   }
   return blocos
+}
+
+/**
+ * O começo do título quando ele termina no nome ("Inclusão de ligante — "
+ * de "Inclusão de ligante — Fulana"): corrigir o nome corrige o título.
+ *
+ * Só em fronteira de palavra — "Ana" não é o fim de "Mariana" — e nome vazio
+ * só vale quando o título termina em espaço, que é a linha nova recém-criada
+ * (revisão técnica do #167: `endsWith('')` casava com qualquer título).
+ */
+export function prefixoDoTitulo(titulo: string, nome: string | undefined): string | null {
+  if (nome === undefined) return null
+  if (nome === '') return /\s$/.test(titulo) ? titulo : null
+  if (!titulo.endsWith(nome)) return null
+  const prefixo = titulo.slice(0, titulo.length - nome.length)
+  return prefixo === '' || /\s$/.test(prefixo) ? prefixo : null
 }

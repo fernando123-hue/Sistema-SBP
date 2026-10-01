@@ -10,9 +10,13 @@ export interface LinhaDoCartao {
   /** O nome que a IA leu, quando a sugestão tem `nome`. Editável. */
   nome: string | null
   tirado: boolean
+  /** "falta: crm", "confiança 62%": o que o formulário avulso mostraria. */
+  selos: readonly string[]
 }
 
 export interface PessoaNova {
+  /** Chave estável da linha na tela; não vai ao servidor. */
+  chave: number
   titulo: string
   nome: string
 }
@@ -62,12 +66,14 @@ export function CartaoDoEmail({
   aoMudarLinha: (revisaoId: string, parcial: { titulo?: string; nome?: string }) => void
   aoTirar: (revisaoId: string) => void
   aoAcrescentar: () => void
-  aoMudarNovo: (indice: number, parcial: Partial<PessoaNova>) => void
+  aoMudarNovo: (indice: number, parcial: Partial<Omit<PessoaNova, 'chave'>>) => void
   aoRemoverNovo: (indice: number) => void
   aoAprovar: () => void
   aoDescartar: () => void
 }) {
-  const ficam = linhas.filter((linha) => !linha.tirado).length + novos.length
+  const originaisQueFicam = linhas.filter((linha) => !linha.tirado).length
+  const ficam = originaisQueFicam + novos.length
+  const parado = ocupado !== null
 
   return (
     <Cartao className="px-4 py-3">
@@ -92,8 +98,15 @@ export function CartaoDoEmail({
         {email ? <EmailAoLado estado={email} /> : null}
         <div className="min-w-0">
           <p className="mt-2 text-xs text-tinta-suave">
-            de {remetente ?? 'origem manual'}
-            {assunto ? ` · ${assunto}` : ''}
+            {/* <bdi>: remetente e assunto vêm de fora, e um controle de
+                direção neles desenharia o resto da linha invertido. */}
+            de <bdi>{remetente ?? 'origem manual'}</bdi>
+            {assunto ? (
+              <>
+                {' · '}
+                <bdi>{assunto}</bdi>
+              </>
+            ) : null}
           </p>
           <p className="mt-1 text-xs text-tinta-suave">
             Confira a lista contra o e-mail. Tire quem não é, corrija o nome e acrescente quem faltou.
@@ -108,10 +121,13 @@ export function CartaoDoEmail({
                 }`}
               >
                 <span className="w-6 shrink-0 text-xs text-tinta-fraca">{indice + 1}.</span>
+                {linha.selos.map((selo) => (
+                  <Selo key={selo}>{selo}</Selo>
+                ))}
                 {linha.nome !== null ? (
                   <input
                     value={linha.nome}
-                    disabled={linha.tirado}
+                    disabled={linha.tirado || parado}
                     aria-label={`nome do item ${indice + 1}`}
                     onChange={(evento) => aoMudarLinha(linha.revisaoId, { nome: evento.target.value })}
                     className="min-h-9 flex-1 rounded-md border border-borda-forte bg-papel px-2 text-sm"
@@ -119,7 +135,7 @@ export function CartaoDoEmail({
                 ) : null}
                 <input
                   value={linha.titulo}
-                  disabled={linha.tirado}
+                  disabled={linha.tirado || parado}
                   aria-label={`título do item ${indice + 1}`}
                   onChange={(evento) => aoMudarLinha(linha.revisaoId, { titulo: evento.target.value })}
                   className={`min-h-9 flex-1 rounded-md border border-borda-forte bg-papel px-2 text-sm ${
@@ -147,13 +163,14 @@ export function CartaoDoEmail({
             </div>
             {novos.map((novo, indice) => (
               <div
-                key={indice}
+                key={novo.chave}
                 className="flex flex-col gap-2 rounded-md bg-papel-fundo px-2.5 py-2 sm:flex-row sm:items-start"
               >
                 <input
                   value={novo.nome}
                   aria-label={`nome da pessoa nova ${indice + 1}`}
                   placeholder="nome"
+                  disabled={parado}
                   onChange={(evento) => aoMudarNovo(indice, { nome: evento.target.value })}
                   className="min-h-9 flex-1 rounded-md border border-borda-forte bg-papel px-2 text-sm"
                 />
@@ -162,19 +179,22 @@ export function CartaoDoEmail({
                   required
                   aria-label={`título da pessoa nova ${indice + 1}`}
                   placeholder="título do item (obrigatório)"
+                  disabled={parado}
                   onChange={(evento) => aoMudarNovo(indice, { titulo: evento.target.value })}
                   className="min-h-9 flex-1 rounded-md border border-borda-forte bg-papel px-2 text-sm"
                 />
-                <Botao variante="perigo" tamanho="pequeno" onClick={() => aoRemoverNovo(indice)}>
-                  remover
+                <Botao variante="perigo" tamanho="pequeno" onClick={() => aoRemoverNovo(indice)} desabilitado={parado}>
+                  {`remover a pessoa nova ${indice + 1}`}
                 </Botao>
               </div>
             ))}
           </div>
 
-          {ficam === 0 ? (
+          {originaisQueFicam === 0 ? (
             <div className="mt-3">
-              <Aviso tom="atencao">Todos foram tirados. Para recusar o e-mail inteiro, use Descartar o e-mail.</Aviso>
+              <Aviso tom="atencao">
+                Todos os itens do e-mail foram tirados. Para recusar o e-mail inteiro, use Descartar o e-mail.
+              </Aviso>
             </div>
           ) : null}
 
@@ -192,7 +212,9 @@ export function CartaoDoEmail({
               variante="principal"
               tamanho="pequeno"
               onClick={aoAprovar}
-              desabilitado={ocupado !== null || ficam === 0}
+              // Pessoa nova vai junto com um item aprovado do e-mail: sem
+              // nenhum, o servidor recusa (revisão técnica do #167).
+              desabilitado={parado || originaisQueFicam === 0}
             >
               {ocupado === 'aprovar'
                 ? 'salvando…'

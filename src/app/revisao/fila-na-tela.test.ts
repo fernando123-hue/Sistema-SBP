@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { CAMPO_DA_LIGA } from '../../core/conferencia-da-extracao'
 import {
   blocosDaRevisao,
+  prefixoDoTitulo,
   depoisDeResolver,
   depoisDeResolverVarias,
   estadoDaFila,
@@ -187,12 +188,15 @@ describe('o e-mail ao lado (`A69`, 2A)', () => {
 })
 
 describe('blocosDaRevisao (`A69`, 1A)', () => {
-  const linha = (revisaoId: string, emailId: string | null, extra: Partial<{ pendentesNoEmail: number; motivo: string; emailSuspeito: boolean }> = {}) => ({
+  const linha = (revisaoId: string, emailId: string | null, extra: Partial<{ pendentesNoEmail: number; motivo: string; emailSuspeito: boolean; campoIncerto: string }> = {}) => ({
     revisaoId,
     emailId,
     pendentesNoEmail: extra.pendentesNoEmail ?? 2,
     motivo: extra.motivo ?? 'desdobramento',
     emailSuspeito: extra.emailSuspeito ?? false,
+    campoIncerto: extra.campoIncerto ?? null,
+    sugestaoIa: JSON.stringify({ campos: { nome: 'Fulana Sintética', cpf: '111.111.111-11' }, ligaMencionada: null }),
+    semLiga: false,
   })
   const tipos = (blocos: ReturnType<typeof blocosDaRevisao<ReturnType<typeof linha>>>) =>
     blocos.map((bloco) => (bloco.tipo === 'email' ? `email:${bloco.itens.map((i) => i.revisaoId).join('+')}` : bloco.item.revisaoId))
@@ -217,6 +221,13 @@ describe('blocosDaRevisao (`A69`, 1A)', () => {
     expect(tipos(blocosDaRevisao([linha('a', 'e1'), linha('b', 'e1', { motivo: 'conteudo_suspeito' })], new Set()))).toEqual(['a', 'b'])
   })
 
+  // Revisão de segurança do #167: o CPF que não fechou numa lista fica sob o
+  // motivo `desdobramento`, só no campo apontado.
+  it('campo apontado com valor fica item a item, mesmo com motivo desdobramento', () => {
+    expect(tipos(blocosDaRevisao([linha('a', 'e1'), linha('b', 'e1', { campoIncerto: 'cpf' })], new Set()))).toEqual(['a', 'b'])
+    expect(tipos(blocosDaRevisao([linha('a', 'e1'), linha('b', 'e1', { campoIncerto: 'crm' })], new Set()))).toEqual(['email:a+b'])
+  })
+
   it('"Ver um por um" separa o e-mail', () => {
     expect(tipos(blocosDaRevisao([linha('a', 'e1'), linha('b', 'e1')], new Set(['e1'])))).toEqual(['a', 'b'])
   })
@@ -230,5 +241,24 @@ describe('depoisDeResolverVarias', () => {
 
   it('não desconta o que já não estava na lista', () => {
     expect(depoisDeResolverVarias([item('a')], 1, ['a', 'z'])).toEqual({ itens: [], total: 0, recarregar: false })
+  })
+})
+
+describe('prefixoDoTitulo', () => {
+  it('acha o começo do título que termina no nome', () => {
+    expect(prefixoDoTitulo('Inclusão de ligante — Fulana Sintética', 'Fulana Sintética')).toBe('Inclusão de ligante — ')
+  })
+
+  it('não corta no meio de uma palavra', () => {
+    expect(prefixoDoTitulo('Inclusão — Mariana', 'Ana')).toBeNull()
+  })
+
+  it('nome vazio só vale para a linha nova, que termina em espaço', () => {
+    expect(prefixoDoTitulo('Inclusão de ligante — ', '')).toBe('Inclusão de ligante — ')
+    expect(prefixoDoTitulo('Inclusão de ligante', '')).toBeNull()
+  })
+
+  it('sem nome não há prefixo', () => {
+    expect(prefixoDoTitulo('Qualquer coisa', undefined)).toBeNull()
   })
 })
