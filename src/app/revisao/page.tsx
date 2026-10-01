@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
@@ -104,12 +104,33 @@ export default function Revisao() {
    * clique, um por vez: a lista não traz o corpo de propósito (achado N-34).
    */
   const [emails, setEmails] = useState<Record<string, EstadoDoEmail>>({})
+  /**
+   * O pedido VIGENTE de cada revisão. Lido do estado, o clique duplo antes do
+   * re-render disparava duas leituras (duas linhas na trilha), e abrir →
+   * fechar → abrir com a primeira em voo mostrava a resposta dela como se
+   * fosse da segunda (revisão técnica do #163). Só o pedido vigente grava.
+   */
+  const pedidos = useRef(new Map<string, number>())
+  const proximoPedido = useRef(0)
+  /** Em voo: o segundo clique de um clique duplo chega antes do re-render e é ignorado. */
+  const emVoo = useRef(new Set<string>())
+
+  function fecharEmail(revisaoId: string) {
+    pedidos.current.delete(revisaoId)
+    emVoo.current.delete(revisaoId)
+    setEmails(({ [revisaoId]: _fechado, ...resto }) => resto)
+  }
 
   async function alternarEmail(revisaoId: string) {
-    if (emails[revisaoId]) {
-      setEmails(({ [revisaoId]: _fechado, ...resto }) => resto)
+    if (emVoo.current.has(revisaoId)) return
+    if (pedidos.current.has(revisaoId)) {
+      fecharEmail(revisaoId)
       return
     }
+    proximoPedido.current += 1
+    const pedido = proximoPedido.current
+    pedidos.current.set(revisaoId, pedido)
+    emVoo.current.add(revisaoId)
     setEmails((mapa) => ({ ...mapa, [revisaoId]: { fase: 'carregando' } }))
     let proximo: EstadoDoEmail
     try {
@@ -118,8 +139,9 @@ export default function Revisao() {
     } catch (causa) {
       proximo = { fase: 'erro', mensagem: mensagemDoErro(causa) }
     }
-    // Fechado enquanto carregava continua fechado.
-    setEmails((mapa) => (mapa[revisaoId] ? { ...mapa, [revisaoId]: proximo } : mapa))
+    if (pedidos.current.get(revisaoId) !== pedido) return
+    emVoo.current.delete(revisaoId)
+    setEmails((mapa) => ({ ...mapa, [revisaoId]: proximo }))
   }
 
   const carregar = useCallback(async () => {
@@ -128,6 +150,11 @@ export default function Revisao() {
         await api.buscar<{ itens: ItemNaTela[]; total: number }>('/revisao'),
       )
       const lista = resposta.itens
+      // O corpo de um e-mail não fica na memória da aba depois de a revisão
+      // sair da fila: a retenção não alcança o navegador (revisão técnica do #163).
+      pedidos.current.clear()
+      emVoo.current.clear()
+      setEmails({})
       setFila({ itens: lista, total: resposta.total, pedirMais: false })
       setEdicao(
         Object.fromEntries(
@@ -239,6 +266,7 @@ export default function Revisao() {
         const depois = depoisDeResolver(anterior.itens, anterior.total, item.revisaoId)
         return { itens: depois.itens, total: depois.total, pedirMais: depois.recarregar }
       })
+      fecharEmail(item.revisaoId)
       definirConfirmando(null)
       setFeito(aprovar ? 'Item aprovado.' : 'Item descartado.')
     } catch (causa) {
@@ -324,6 +352,7 @@ export default function Revisao() {
                         variante="secundario"
                         tamanho="pequeno"
                         onClick={() => void alternarEmail(item.revisaoId)}
+                        desabilitado={email?.fase === 'carregando'}
                       >
                         {email ? 'Fechar o e-mail' : 'Ver o e-mail'}
                       </Botao>

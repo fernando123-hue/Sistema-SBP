@@ -42,26 +42,52 @@ export type EmailDaRevisao =
 export interface TrechoMarcado {
   readonly inicio: number
   readonly fim: number
+  /**
+   * Quantas vezes o valor aparece, contando até `VEZES_CONTADAS`. A marca é
+   * a PRIMEIRA: um remetente pode pôr o valor numa citação no topo, e a tela
+   * precisa dizer que há outras para ninguém tomar a marca por confirmação.
+   */
+  readonly vezes: number
+}
+
+/** Acima disto a tela diz "várias vezes": o número exato não muda o que fazer. */
+export const VEZES_CONTADAS = 10
+
+/**
+ * Formatação invisível (`\p{Cf}`): largura zero, hífen suave, U+FEFF, controles
+ * de direção e os caracteres de tag (U+E0000 em diante). Invisíveis para quem
+ * lê, e a IA recebe o texto com eles: quem revisa conferiria um e-mail
+ * diferente do que o modelo leu, e um controle de direção faz a tela desenhar
+ * "fdp.exe" como "exe.pdf" (revisão de segurança do #163).
+ *
+ * Trocados por U+FFFD, UMA unidade por unidade UTF-16 (o caractere de tag são
+ * duas, e vira dois sinais): o tamanho do texto não muda, e o trecho calculado
+ * sobre o original continua valendo no texto exibido. Por propriedade, e não
+ * por lista: um caractere invisível colado no fonte some justamente para quem
+ * revisa a lista (mesma regra de `seguranca/dobra.ts`).
+ */
+const FORMATACAO_INVISIVEL = /\p{Cf}/gu
+
+/** O texto do remetente pronto para a tela: igual ao original, com a formatação invisível à vista. */
+export function textoParaExibir(texto: string): string {
+  return texto.replace(FORMATACAO_INVISIVEL, (caractere) => '\uFFFD'.repeat(caractere.length))
 }
 
 /**
- * Controles de direção: LRE, RLE, PDF, LRO, RLO, LRI, RLI, FSI, PDI, LRM, RLM
- * e ALM. Com eles, o remetente faz a tela desenhar "fdp.exe" como "exe.pdf",
- * ou inverter o fim de uma frase. Trocados por U+FFFD, que é UMA unidade
- * UTF-16 como cada um deles: o tamanho do texto não muda, e o trecho calculado
- * sobre o original continua valendo no texto exibido.
+ * Letras latinas junto de cirílicas ou gregas. No remetente, é o desenho de
+ * quem se passa por outro endereço com um "о" cirílico; em nome de pessoa
+ * brasileira, quase nunca é legítimo. A tela avisa; não decide nada.
  */
-const CONTROLE_DE_DIRECAO = /[‪-‮⁦-⁩‎‏؜]/g
-
-/** O texto do remetente pronto para a tela: igual ao original, menos os controles de direção. */
-export function textoParaExibir(texto: string): string {
-  return texto.replace(CONTROLE_DE_DIRECAO, '�')
+export function misturaAlfabetos(texto: string): boolean {
+  return /\p{Script=Latin}/u.test(texto) && /[\p{Script=Cyrillic}\p{Script=Greek}]/u.test(texto)
 }
 
 /**
  * O valor que a revisão manda conferir: o do campo apontado, ou a liga citada.
- * Só chave PRÓPRIA com texto: o nome do campo vem da IA, e "toString" acharia
- * a função herdada (mesma armadilha de `lerSugestao`, 2ª rodada do #150).
+ * Só chave PRÓPRIA: o nome do campo vem da IA, e "toString" acharia a função
+ * herdada (mesma armadilha de `lerSugestao`, 2ª rodada do #150). Número vira
+ * texto: um CPF gravado como número JSON não pode virar "não consegui apontar"
+ * (revisão técnica do #163).
  */
 export function valorProcurado(
   campo: string | null,
@@ -74,7 +100,8 @@ export function valorProcurado(
       : Object.hasOwn(sugestao.campos, campo)
         ? sugestao.campos[campo]
         : null
-  return typeof valor === 'string' && valor.trim() !== '' ? valor : null
+  const texto = typeof valor === 'number' && Number.isFinite(valor) ? String(valor) : valor
+  return typeof texto === 'string' && texto.trim() !== '' ? texto : null
 }
 
 /**
@@ -85,6 +112,15 @@ export function valorProcurado(
  */
 const MAXIMO_DE_TENTATIVAS = 1_000
 
+/**
+ * Teto do texto DECOMPOSTO. O corpo tem até 200 mil caracteres, mas a forma de
+ * compatibilidade multiplica: "ﷺ" vira 18 unidades, e 200 mil deles faziam a
+ * procura levar quase 2 s de CPU síncrona, com o servidor parado para todo
+ * mundo (revisão técnica do #163). O `normalize` nativo mede isso em
+ * milissegundos, antes de qualquer laço. Passou, a procura desiste.
+ */
+const MAIOR_TEXTO_DECOMPOSTO = 400_000
+
 /** Quantos números seguidos do texto podem formar o número do valor (CPF formatado são 4). */
 const MAIOR_JUNCAO_DE_NUMEROS = 6
 
@@ -92,7 +128,7 @@ const MAIOR_JUNCAO_DE_NUMEROS = 6
 const MAIOR_SEPARACAO_DE_GRUPOS = 3
 
 /**
- * Onde o valor aparece no texto, ou nulo.
+ * Onde o valor aparece no texto (a primeira vez, e quantas vezes), ou nulo.
  *
  * Duas procuras, a mesma regra de `conferencia-da-extracao.ts` em versão de
  * marcador:
@@ -101,17 +137,42 @@ const MAIOR_SEPARACAO_DE_GRUPOS = 3
  *     repetidos, e sem cortar palavra ao meio ("Ana Souza" não marca dentro de
  *     "Mariana Souza");
  *   - número só pelos dígitos, juntando grupos próximos sem cortar nenhum
- *     ("12345678909" marca "123.456.789-09", e "1234567890" não marca nada).
+ *     ("12345678909" marca "123.456.789-09"; "1234567890" e "456789" não
+ *     marcam nada, porque cortariam um número do texto).
  */
 export function acharTrecho(texto: string, valor: string): TrechoMarcado | null {
   const alvo = normalizar(dobrar(valor).dobrado).texto.trim()
   if (alvo.replace(/[^\p{L}\p{Nd}]/gu, '').length < TAMANHO_MINIMO_CONFERIDO) return null
+  if (texto.normalize('NFKD').length > MAIOR_TEXTO_DECOMPOSTO) return null
 
   const dobrado = dobrar(texto)
-  const porPalavra = procurarPorPalavra(dobrado.dobrado, alvo)
-  const achado = porPalavra ?? (/^[\d ]+$/.test(alvo) ? procurarPorDigitos(dobrado.dobrado, alvo) : null)
-  if (!achado) return null
-  return { inicio: dobrado.inicio[achado.inicio]!, fim: dobrado.fim[achado.fim - 1]! }
+  const achados =
+    procurarPorPalavra(dobrado.dobrado, alvo) ??
+    (/^[\d ]+$/.test(alvo) ? procurarPorDigitos(dobrado.dobrado, alvo) : null)
+  if (!achados) return null
+  const [primeiro, vezes] = achados
+  return { inicio: dobrado.inicio[primeiro.inicio]!, fim: dobrado.fim[primeiro.fim - 1]!, vezes }
+}
+
+/** Posições na forma dobrada. */
+interface Intervalo {
+  readonly inicio: number
+  readonly fim: number
+}
+
+/**
+ * A primeira ocorrência e quantas houve, até `VEZES_CONTADAS`, dentro do teto
+ * de tentativas. Nenhuma: nulo.
+ */
+function contar(ocorrencias: Iterable<Intervalo>): [Intervalo, number] | null {
+  let primeiro: Intervalo | null = null
+  let vezes = 0
+  for (const ocorrencia of ocorrencias) {
+    primeiro ??= ocorrencia
+    vezes += 1
+    if (vezes >= VEZES_CONTADAS) break
+  }
+  return primeiro ? [primeiro, vezes] : null
 }
 
 interface Normalizado {
@@ -150,22 +211,24 @@ function normalizar(dobrado: string): Normalizado {
 
 const LETRA_DIGITO_OU_ARROBA = /[\p{L}\p{Nd}@]/u
 
-function procurarPorPalavra(dobrado: string, alvo: string): TrechoMarcado | null {
+function procurarPorPalavra(dobrado: string, alvo: string): [Intervalo, number] | null {
   const { texto, origem } = normalizar(dobrado)
-  let de = 0
-  for (let tentativa = 0; tentativa < MAXIMO_DE_TENTATIVAS; tentativa += 1) {
-    const posicao = texto.indexOf(alvo, de)
-    if (posicao < 0) return null
-    const fim = posicao + alvo.length
-    const comecaInteiro = posicao === 0 || texto[posicao - 1] === ' '
-    const terminaInteiro = fim === texto.length || texto[fim] === ' '
-    if (comecaInteiro && terminaInteiro) return { inicio: origem[posicao]!, fim: origem[fim - 1]! + 1 }
-    de = posicao + 1
+  function* ocorrencias(): Generator<Intervalo> {
+    let de = 0
+    for (let tentativa = 0; tentativa < MAXIMO_DE_TENTATIVAS; tentativa += 1) {
+      const posicao = texto.indexOf(alvo, de)
+      if (posicao < 0) return
+      de = posicao + 1
+      const fim = posicao + alvo.length
+      const comecaInteiro = posicao === 0 || texto[posicao - 1] === ' '
+      const terminaInteiro = fim === texto.length || texto[fim] === ' '
+      if (comecaInteiro && terminaInteiro) yield { inicio: origem[posicao]!, fim: origem[fim - 1]! + 1 }
+    }
   }
-  return null
+  return contar(ocorrencias())
 }
 
-function procurarPorDigitos(dobrado: string, alvo: string): TrechoMarcado | null {
+function procurarPorDigitos(dobrado: string, alvo: string): [Intervalo, number] | null {
   const procurado = alvo.replace(/ /g, '')
   const posicoes: number[] = []
   const partes: string[] = []
@@ -177,29 +240,34 @@ function procurarPorDigitos(dobrado: string, alvo: string): TrechoMarcado | null
     }
   }
   const digitos = partes.join('')
+  /** Os dois dígitos são do mesmo número formatado: colados, ou separados por ".", "-", ") ". */
+  const mesmoNumero = (a: number, b: number) => posicoes[b]! - posicoes[a]! - 1 <= MAIOR_SEPARACAO_DE_GRUPOS
 
-  let de = 0
-  for (let tentativa = 0; tentativa < MAXIMO_DE_TENTATIVAS; tentativa += 1) {
-    const k = digitos.indexOf(procurado, de)
-    if (k < 0) return null
-    de = k + 1
-    const ultimo = k + procurado.length - 1
-    // Não corta grupo: o dígito antes e o depois têm de estar em outro número.
-    if (k > 0 && posicoes[k]! - posicoes[k - 1]! === 1) continue
-    if (ultimo + 1 < posicoes.length && posicoes[ultimo + 1]! - posicoes[ultimo]! === 1) continue
-    // Grupos próximos, e poucos: "123, … bem depois 456" não é "123456".
-    let grupos = 1
-    let perto = true
-    for (let j = k + 1; j <= ultimo; j += 1) {
-      const salto = posicoes[j]! - posicoes[j - 1]!
-      if (salto === 1) continue
-      grupos += 1
-      if (salto - 1 > MAIOR_SEPARACAO_DE_GRUPOS || grupos > MAIOR_JUNCAO_DE_NUMEROS) {
-        perto = false
-        break
+  function* ocorrencias(): Generator<Intervalo> {
+    let de = 0
+    for (let tentativa = 0; tentativa < MAXIMO_DE_TENTATIVAS; tentativa += 1) {
+      const k = digitos.indexOf(procurado, de)
+      if (k < 0) return
+      de = k + 1
+      const ultimo = k + procurado.length - 1
+      // Não corta número: o dígito antes e o depois têm de estar LONGE, e não
+      // só fora do grupo. Com "colado" apenas, "456789" marcava "456.789",
+      // um pedaço do CPF "123.456.789-09" (revisão técnica do #163).
+      if (k > 0 && mesmoNumero(k - 1, k)) continue
+      if (ultimo + 1 < posicoes.length && mesmoNumero(ultimo, ultimo + 1)) continue
+      // Grupos próximos, e poucos: "123, … bem depois 456" não é "123456".
+      let grupos = 1
+      let perto = true
+      for (let j = k + 1; j <= ultimo; j += 1) {
+        if (posicoes[j]! - posicoes[j - 1]! === 1) continue
+        grupos += 1
+        if (!mesmoNumero(j - 1, j) || grupos > MAIOR_JUNCAO_DE_NUMEROS) {
+          perto = false
+          break
+        }
       }
+      if (perto) yield { inicio: posicoes[k]!, fim: posicoes[ultimo]! + 1 }
     }
-    if (perto) return { inicio: posicoes[k]!, fim: posicoes[ultimo]! + 1 }
   }
-  return null
+  return contar(ocorrencias())
 }

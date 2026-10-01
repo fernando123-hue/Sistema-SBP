@@ -132,6 +132,8 @@ describe('rotas que guardam o papel sozinhas', () => {
     expect(resposta.status).toBe(403)
     // 403 e não "não encontrada": a recusa não diz se a revisão existe.
     expect(JSON.stringify(await corpoDe(resposta))).not.toContain('encontrada')
+    // A rota inteira não se guarda em cache: a resposta de sucesso tem nome e CPF.
+    expect(resposta.headers.get('Cache-Control')).toBe('no-store')
   })
 
   it('GET /api/revisao/[id]/email tem limite por pessoa: um laço não lê a caixa do setor inteira', async () => {
@@ -142,10 +144,16 @@ describe('rotas que guardam o papel sozinhas', () => {
     const ler = () =>
       GET(new Request('http://teste.local/api/revisao/x/email'), { params: Promise.resolve({ id: `x` }) })
     const respostas: number[] = []
-    for (let i = 0; i < 31; i += 1) respostas.push((await ler()).status)
+    const cabecalhos: (string | null)[] = []
+    for (let i = 0; i < 31; i += 1) {
+      const resposta = await ler()
+      respostas.push(resposta.status)
+      cabecalhos.push(resposta.headers.get('Cache-Control'))
+    }
 
     expect(respostas.slice(0, 30).every((status) => status !== 429)).toBe(true)
     expect(respostas[30]).toBe(429)
+    expect(cabecalhos.every((valor) => valor === 'no-store')).toBe(true)
   })
 
   it('GET /api/rodadas/[id] recusa colaborador — o livro-razão não é material aberto', async () => {

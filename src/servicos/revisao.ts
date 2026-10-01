@@ -230,6 +230,9 @@ export async function lerEmailDaRevisao(
     )
   }
 
+  // Escrita avulsa, fora de transação, e de propósito: ler não tem fato
+  // transacional para acompanhar (invariante 14). Vem ANTES de devolver o
+  // corpo: se a trilha não grava, a leitura falha e nada sai.
   await auditar(banco, {
     entidade: 'Email',
     entidadeId: email.id,

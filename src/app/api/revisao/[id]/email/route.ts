@@ -1,5 +1,5 @@
 import { lerEmailDaRevisao } from '../../../../../servicos/revisao'
-import { limitar, responder, rota } from '../../../../../servidor/http'
+import { limitar, responder, rota, semCache } from '../../../../../servidor/http'
 import { obterPrisma } from '../../../../../servidor/prisma'
 import { exigirAtor } from '../../../../../servidor/sessao'
 
@@ -22,13 +22,16 @@ export async function GET(
   _requisicao: Request,
   contexto: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  return rota(async () => {
-    const ator = await exigirAtor()
+  // Sem cache: a resposta tem o corpo do e-mail (revisão de segurança do #163).
+  return semCache(
+    await rota(async () => {
+      const ator = await exigirAtor()
 
-    const recusa = limitar(`email-da-revisao:${ator.colaboradorId}`, LEITURAS_POR_MINUTO, 60)
-    if (recusa) return recusa
+      const recusa = limitar(`email-da-revisao:${ator.colaboradorId}`, LEITURAS_POR_MINUTO, 60)
+      if (recusa) return recusa
 
-    const { id } = await contexto.params
-    return responder(await lerEmailDaRevisao(obterPrisma(), id, ator))
-  })
+      const { id } = await contexto.params
+      return responder(await lerEmailDaRevisao(obterPrisma(), id, ator))
+    }),
+  )
 }

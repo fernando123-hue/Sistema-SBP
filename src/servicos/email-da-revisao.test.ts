@@ -24,7 +24,7 @@ beforeEach(async () => {
 
 const CORPO =
   'Prezados,\nsegue a ficha de CARLA  Teste Sintética, CPF 123.456.789-09.\n' +
-  'Arquivo: ‮fdp.exe‬\nObrigada.'
+  'Arquivo: \u202Efdp.exe\u202C\nObrigada.'
 
 const ingestao: IngestaoPort = {
   nome: 'teste',
@@ -94,8 +94,8 @@ describe('lerEmailDaRevisao', () => {
     const email = await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)
 
     if (email.situacao !== 'disponivel') throw new Error('esperava o e-mail disponível')
-    expect(email.corpo).not.toMatch(/[‪-‮]/)
-    expect(email.corpo).toContain('�')
+    expect(email.corpo).not.toMatch(/[\u202A-\u202E]/)
+    expect(email.corpo).toContain('\uFFFD')
   })
 
   it('valor que não está no e-mail fica sem trecho, e não com um trecho parecido', async () => {
@@ -110,6 +110,18 @@ describe('lerEmailDaRevisao', () => {
     if (email.situacao !== 'disponivel') throw new Error('esperava o e-mail disponível')
     expect(email.trecho).toBeNull()
     expect(email.campo).toBe('nome')
+  })
+
+  it('sugestão ilegível não derruba a leitura: o e-mail sai, sem trecho marcado', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    for (const sugestaoIa of ['não é json', 'null', '{"campos":null}', '{"campos":5}']) {
+      await banco.revisao.update({ where: { id: pendente.revisaoId }, data: { sugestaoIa } })
+
+      const email = await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)
+
+      if (email.situacao !== 'disponivel') throw new Error('esperava o e-mail disponível')
+      expect(email.trecho).toBeNull()
+    }
   })
 
   it('cada leitura fica na trilha, com quem leu e qual e-mail, e sem o texto', async () => {

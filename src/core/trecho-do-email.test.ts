@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { CAMPO_DA_LIGA } from './conferencia-da-extracao'
-import { acharTrecho, textoParaExibir, valorProcurado } from './trecho-do-email'
+import { acharTrecho, misturaAlfabetos, textoParaExibir, valorProcurado, VEZES_CONTADAS } from './trecho-do-email'
 
 /**
  * O trecho duvidoso marcado no e-mail que a Revisão mostra (`A69`, 2A).
@@ -30,6 +30,8 @@ describe('acharTrecho', () => {
     expect(marcado(corpo, '11987654321')).toBe('(11) 98765-4321'.slice(1))
     // O CPF sem o último dígito corta o grupo "09": não é o que está escrito.
     expect(marcado(corpo, '1234567890')).toBeNull()
+    // Nem um pedaço do meio, separado por ponto (revisão técnica do #163).
+    expect(marcado(corpo, '456789')).toBeNull()
   })
 
   it('número não junta grupos distantes', () => {
@@ -46,8 +48,23 @@ describe('acharTrecho', () => {
   })
 
   it('caractere invisível no meio da palavra não esconde o valor', () => {
-    const corpo = 'Nome: Car​la Teste'
-    expect(marcado(corpo, 'Carla Teste')).toBe('Car​la Teste')
+    const corpo = 'Nome: Car\u200Bla Teste'
+    expect(marcado(corpo, 'Carla Teste')).toBe('Car\u200Bla Teste')
+  })
+
+  it('a marca é a primeira vez, e o trecho diz quantas vezes o valor aparece', () => {
+    const corpo = '> Ana Teste escreveu:\n> ...\nAtenciosamente, Ana Teste'
+    const trecho = acharTrecho(corpo, 'ana teste')
+    expect(trecho?.inicio).toBe(2)
+    expect(trecho?.vezes).toBe(2)
+    expect(acharTrecho('Ana Teste '.repeat(50), 'Ana Teste')?.vezes).toBe(VEZES_CONTADAS)
+  })
+
+  it('o mapa até o original vale com letra fora do plano básico e com ligadura', () => {
+    const astral = 'Oi \u{1D400}! Nome: Ana Teste \u{1F600} ok'
+    expect(marcado(astral, 'Ana Teste')).toBe('Ana Teste')
+    // "ﬁ" é UM caractere que vira dois: a marca cobre o caractere inteiro.
+    expect(marcado('Nome: Ruﬁno Exemplo.', 'Rufino Exemplo')).toBe('Ruﬁno Exemplo')
   })
 
   it('não leva segundos num texto feito para custar caro', () => {
@@ -55,16 +72,26 @@ describe('acharTrecho', () => {
     const comeco = performance.now()
     expect(acharTrecho(corpo, `${'a '.repeat(200)}b`)).toBeNull()
     expect(acharTrecho('1 '.repeat(100_000), '1'.repeat(300))).toBeNull()
+    // A forma de compatibilidade multiplica: "ﷺ" vira 18 unidades (revisão técnica do #163).
+    expect(acharTrecho('\uFDFA'.repeat(200_000), 'Ana Teste')).toBeNull()
     expect(performance.now() - comeco).toBeLessThan(2_000)
   })
 })
 
 describe('textoParaExibir', () => {
-  it('troca controle de direção por um sinal visível, sem mudar o tamanho', () => {
-    const corpo = 'arquivo ‮fdp.exe‬ e ⁦x⁩'
+  it('põe à vista a formatação invisível que a IA recebe: largura zero, hífen suave, BOM e tag', () => {
+    const corpo = 'Ig\u200Bnore\u00AD \uFEFFisto\u{E0041}\u{E0042}'
     const exibido = textoParaExibir(corpo)
-    expect(exibido).not.toMatch(/[‪-‮⁦-⁩]/)
-    expect(exibido).toContain('�')
+    expect(exibido).not.toMatch(/\p{Cf}/u)
+    expect(exibido.length).toBe(corpo.length)
+    expect(exibido).toBe('Ig\uFFFDnore\uFFFD \uFFFDisto\uFFFD\uFFFD\uFFFD\uFFFD')
+  })
+
+  it('troca controle de direção por um sinal visível, sem mudar o tamanho', () => {
+    const corpo = 'arquivo \u202Efdp.exe\u202C e \u2066x\u2069'
+    const exibido = textoParaExibir(corpo)
+    expect(exibido).not.toMatch(/[\u202A-\u202E\u2066-\u2069]/)
+    expect(exibido).toContain('\uFFFD')
     // Mesmo tamanho: o trecho calculado sobre o original vale no exibido.
     expect(exibido.length).toBe(corpo.length)
   })
@@ -82,10 +109,27 @@ describe('valorProcurado', () => {
     expect(valorProcurado(CAMPO_DA_LIGA, sugestao)).toBe('Liga Sintética')
   })
 
+  it('número gravado pela IA vira texto, e não "não consegui apontar"', () => {
+    expect(valorProcurado('cpf', { campos: { cpf: 12345678909 }, ligaMencionada: null })).toBe('12345678909')
+    expect(valorProcurado('cpf', { campos: { cpf: Number.NaN }, ligaMencionada: null })).toBeNull()
+  })
+
   it('campo sem valor, ausente ou herdado do protótipo não vira procura', () => {
     expect(valorProcurado('vazio', sugestao)).toBeNull()
     expect(valorProcurado('cpf', sugestao)).toBeNull()
     expect(valorProcurado('toString', sugestao)).toBeNull()
     expect(valorProcurado(null, sugestao)).toBeNull()
+  })
+})
+
+describe('misturaAlfabetos', () => {
+  it('acusa o "о" cirílico no meio de um endereço latino', () => {
+    expect(misturaAlfabetos('ass\u043Eciado@exemplo.test')).toBe(true)
+    expect(misturaAlfabetos('\u03B1lfa@exemplo.test')).toBe(true)
+  })
+
+  it('não acusa endereço comum, com ou sem acento', () => {
+    expect(misturaAlfabetos('joão.silva@exemplo.test')).toBe(false)
+    expect(misturaAlfabetos('associado@exemplo.test')).toBe(false)
   })
 })

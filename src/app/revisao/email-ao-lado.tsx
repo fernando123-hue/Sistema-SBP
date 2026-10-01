@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 
 import { Aviso } from '../../componentes/matrizes'
-import type { EmailDaRevisao } from '../../core/trecho-do-email'
+import { misturaAlfabetos, VEZES_CONTADAS, type EmailDaRevisao } from '../../core/trecho-do-email'
 import { partesDoCorpo, rotuloDoCampo } from './fila-na-tela'
 
 /** O que a tela sabe do e-mail de uma revisão: pedido, chegou, ou falhou. */
@@ -30,9 +30,9 @@ function quando(iso: string): string {
  *
  * O corpo é do remetente. Ele entra como filho de texto do React, que escapa
  * tudo: um `<script>` no e-mail aparece como as letras "<script>". Não há
- * `dangerouslySetInnerHTML` aqui, e não pode haver. Os controles de direção já
- * chegam trocados por "�" (`textoParaExibir`), para o remetente não desenhar
- * "exe.pdf" no lugar de "fdp.exe".
+ * `dangerouslySetInnerHTML` aqui, e não pode haver. A formatação invisível já
+ * chega trocada pelo sinal U+FFFD (`textoParaExibir`): quem revisa vê que havia
+ * algo ali, e o remetente não desenha "exe.pdf" no lugar de "fdp.exe".
  */
 export function EmailAoLado({ estado }: { estado: EstadoDoEmail }) {
   const caixa = useRef<HTMLDivElement>(null)
@@ -75,7 +75,8 @@ export function EmailAoLado({ estado }: { estado: EstadoDoEmail }) {
   const partes = partesDoCorpo(email.corpo, email.trecho)
   return (
     <section aria-label="E-mail original" className="flex min-w-0 flex-col gap-2">
-      <div className="text-xs text-tinta-suave">
+      {/* `break-words`: assunto de mil caracteres sem espaço empurrava os botões para fora do cartão. */}
+      <div className="text-xs break-words text-tinta-suave">
         <p>
           de <bdi>{email.remetente}</bdi> · recebido em {quando(email.recebidoEm)}
         </p>
@@ -84,10 +85,24 @@ export function EmailAoLado({ estado }: { estado: EstadoDoEmail }) {
         </p>
       </div>
 
+      {misturaAlfabetos(email.remetente) ? (
+        <Aviso tom="alerta">
+          O endereço do remetente mistura letras de alfabetos diferentes, como um “о” cirílico no lugar do
+          “o”. Pode ser alguém se passando por outro endereço.
+        </Aviso>
+      ) : null}
+
       {email.campo !== null ? (
         partes.marcado !== null ? (
           <p className="text-xs text-tinta-suave">
-            Marcado em amarelo: onde o e-mail traz <bdi>{rotuloDoCampo(email.campo)}</bdi>.
+            {/* "A primeira vez", e quantas: a marca não é conferência, e um remetente pode pôr o valor
+                numa citação no topo (revisão de segurança do #163). */}
+            Marcado em amarelo: a primeira vez que o e-mail traz <bdi>{rotuloDoCampo(email.campo)}</bdi>.
+            {email.trecho && email.trecho.vezes > 1
+              ? email.trecho.vezes >= VEZES_CONTADAS
+                ? ' Aparece muitas vezes no texto: confira qual é a certa.'
+                : ` Aparece ${email.trecho.vezes} vezes no texto: confira qual é a certa.`
+              : ''}
           </p>
         ) : (
           <p className="text-xs text-atencao">
