@@ -71,8 +71,11 @@ const AmbienteSchema = z.object({
    * separada de `IA_ADAPTER` porque é OUTRO fornecedor, com outra decisão de
    * dado — e a trava `CLASSIFICADOR_PARA_DADO_REAL` abaixo é por fornecedor.
    */
-  CLASSIFICADOR_ADAPTER: z.enum(['nenhum', 'mock', 'typesafe']).default('nenhum'),
-  /** Vazio = o padrão do fornecedor (`jev-latest` na TypeSafe). */
+  CLASSIFICADOR_ADAPTER: z.enum(['nenhum', 'mock', 'typesafe', 'local']).default('nenhum'),
+  /**
+   * Vazio = o padrão do fornecedor (`jev-latest` na TypeSafe). Com `local` é
+   * obrigatório: cada servidor serve o modelo que baixaram nele.
+   */
   CLASSIFICADOR_MODELO: z
     .string()
     .default('')
@@ -403,6 +406,25 @@ export function ambiente(): Ambiente {
     if (recusa) throw new Error(`IA_LOCAL_URL ${recusa}`)
   }
 
+  // O classificador local (`A70`) fala com o MESMO servidor da IA local, e
+  // tem as mesmas exigências dela, cobradas na partida.
+  if (resultado.data.CLASSIFICADOR_ADAPTER === 'local') {
+    if (!resultado.data.IA_LOCAL_URL) {
+      throw new Error(
+        'CLASSIFICADOR_ADAPTER="local" exige IA_LOCAL_URL: o endereço do servidor de modelo compatível com OpenAI ' +
+          '(por exemplo http://127.0.0.1:11434/v1).',
+      )
+    }
+    if (!resultado.data.CLASSIFICADOR_MODELO) {
+      throw new Error(
+        'CLASSIFICADOR_ADAPTER="local" exige CLASSIFICADOR_MODELO: cada servidor local serve o modelo que ' +
+          'baixaram nele, e não há padrão que valha para todos.',
+      )
+    }
+    const recusa = motivoDeEnderecoLocalInvalido(resultado.data.IA_LOCAL_URL)
+    if (recusa) throw new Error(`IA_LOCAL_URL ${recusa}`)
+  }
+
   if (resultado.data.CLASSIFICADOR_ADAPTER === 'typesafe' && !resultado.data.TYPESAFE_API_KEY?.trim()) {
     throw new Error('CLASSIFICADOR_ADAPTER="typesafe" exige TYPESAFE_API_KEY configurada.')
   }
@@ -573,6 +595,11 @@ const CLASSIFICADOR_PARA_DADO_REAL = {
   nenhum: true,
   mock: false,
   typesafe: false,
+  // Nasce `false` como `IA_PARA_DADO_REAL.local` (`A56 (e)`, `A70`): o texto
+  // não sai da casa, mas o classificador local só opina sobre e-mail de
+  // associado depois de medido no gabarito (`npm run classificador:avaliar`)
+  // e de o dono decidir. Trocar esta linha é a decisão.
+  local: false,
 } as const satisfies Record<z.infer<typeof AmbienteSchema>['CLASSIFICADOR_ADAPTER'], boolean>
 
 /**
@@ -589,7 +616,7 @@ const CLASSIFICADOR_PARA_DADO_REAL = {
  * porque resolvê-lo aqui seria consulta de DNS na partida — e o mesmo nome
  * pode resolver para outra coisa depois.
  */
-function motivoDeEnderecoLocalInvalido(valor: string): string | null {
+export function motivoDeEnderecoLocalInvalido(valor: string): string | null {
   let url: URL
   try {
     url = new URL(valor)

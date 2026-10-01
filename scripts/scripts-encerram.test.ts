@@ -112,4 +112,57 @@ describe('scripts que usam o banco encerram sozinhos', () => {
       expect(resultado.saida.trim().split('\n')).toHaveLength(1)
     })
   })
+
+  // `A70`, P2: o mesmo, para a avaliação do classificador local — que também
+  // conta as chamadas em `UsoDaIa` e, por isso, abre o banco.
+  describe('classificador:avaliar contra um servidor de modelo falso', () => {
+    let servidor: Server
+    let endereco: string
+
+    beforeAll(async () => {
+      servidor = createServer((pedido, saida) => {
+        pedido.resume()
+        pedido.on('end', () => {
+          saida.writeHead(200, { 'content-type': 'application/json' })
+          saida.end(
+            JSON.stringify({
+              model: 'modelo-falso',
+              choices: [
+                {
+                  finish_reason: 'length',
+                  message: { content: 'B' },
+                  logprobs: { content: [{ token: 'B', logprob: -0.1, top_logprobs: [{ token: 'B', logprob: -0.1 }] }] },
+                },
+              ],
+            }),
+          )
+        })
+      })
+      await new Promise<void>((pronto) => servidor.listen(0, '127.0.0.1', pronto))
+      endereco = `http://127.0.0.1:${(servidor.address() as AddressInfo).port}`
+    })
+
+    afterAll(async () => {
+      await new Promise<void>((fechado) => servidor.close(() => fechado()))
+      await obterPrisma().usoDaIa.deleteMany({})
+    })
+
+    it('termina depois da linha JSON, com a nota de cada caso', async () => {
+      const resultado = await rodar('avaliar-classificador.ts', ['--json'], {
+        CLASSIFICADOR_ADAPTER: 'local',
+        CLASSIFICADOR_MODELO: 'modelo-falso',
+        IA_LOCAL_URL: endereco,
+        INGESTAO_ADAPTER: 'mock',
+      })
+
+      expect(resultado.encerrou).toBe(true)
+      expect(resultado.codigo).toBe(0)
+      const linhas = resultado.saida.trim().split('\n')
+      expect(linhas).toHaveLength(1)
+      const relatorio = JSON.parse(linhas[0]!)
+      // "B" é "um" na quantidade: o servidor falso acerta todo caso de um item.
+      expect(relatorio).toMatchObject({ fornecedor: 'local', modelos: ['modelo-falso'], falhas: 0 })
+      expect(relatorio.porPergunta.quantidade.acerto).toBeGreaterThan(0)
+    })
+  })
 })
