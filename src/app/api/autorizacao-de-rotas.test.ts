@@ -156,6 +156,89 @@ describe('rotas que guardam o papel sozinhas', () => {
     expect(cabecalhos.every((valor) => valor === 'no-store')).toBe(true)
   })
 
+  it('GET /api/itens/[id]/dados não se guarda em cache e tem limite por pessoa (`A69`, 3B)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    await entrarComo(base.colaboradores[0]!.id, 'colaborador')
+
+    const { GET } = await import('./itens/[id]/dados/route')
+    const ler = () =>
+      GET(new Request('http://teste.local/api/itens/x/dados'), { params: Promise.resolve({ id: 'x' }) })
+    const respostas: number[] = []
+    const cabecalhos: (string | null)[] = []
+    for (let i = 0; i < 61; i += 1) {
+      const resposta = await ler()
+      respostas.push(resposta.status)
+      cabecalhos.push(resposta.headers.get('Cache-Control'))
+    }
+
+    // Item que não existe: a mesma recusa de negócio de item alheio, sem dizer qual dos dois.
+    expect(respostas[0]).toBe(422)
+    expect(respostas.slice(0, 60).every((status) => status !== 429)).toBe(true)
+    expect(respostas[60]).toBe(429)
+    // A resposta de sucesso tem CPF: nem ela nem a recusa vão para cache.
+    expect(cabecalhos.every((valor) => valor === 'no-store')).toBe(true)
+  })
+
+  it('POST /api/fila/concluir-junto: quem conclui vem da sessão, a lista tem teto, e há limite por pessoa (`A69`, 3A)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const { POST } = await import('./fila/concluir-junto/route')
+    const enviar = (corpo: unknown) =>
+      POST(
+        new Request('http://teste.local/api/fila/concluir-junto', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(corpo),
+        }),
+      )
+
+    cookieDaVez.valor = ''
+    expect((await enviar({ itemIds: ['x'] })).status).toBe(401)
+
+    await entrarComo(base.colaboradores[0]!.id, 'colaborador')
+    // Invariante 5: "quem" no corpo é recusado, não ignorado.
+    expect((await enviar({ itemIds: ['x'], colaboradorId: base.colaboradores[1]!.id })).status).toBe(400)
+    expect((await enviar({ itemIds: Array.from({ length: 501 }, (_, i) => `id-${i}`) })).status).toBe(400)
+
+    const respostas: number[] = []
+    for (let i = 0; i < 20; i += 1) respostas.push((await enviar({ itemIds: ['x'] })).status)
+    // Os dois 400 acima já contaram: o limite é por pessoa, não por resposta boa.
+    expect(respostas.includes(429)).toBe(true)
+    expect(respostas.filter((status) => status !== 429).every((status) => status === 422)).toBe(true)
+  })
+
+  it('POST /api/revisao/resolver-email: só quem revisa, corpo estrito, lista com teto e limite por pessoa (`A69`, 1A)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const { POST } = await import('./revisao/resolver-email/route')
+    const enviar = (corpo: unknown) =>
+      POST(
+        new Request('http://teste.local/api/revisao/resolver-email', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(corpo),
+        }),
+      )
+    const linha = { revisaoId: 'x', titulo: 'Item sintético', campos: {}, aprovar: true }
+
+    cookieDaVez.valor = ''
+    expect((await enviar({ emailId: 'e', revisoes: [linha] })).status).toBe(401)
+
+    await entrarComo(base.colaboradores[0]!.id, 'colaborador')
+    expect((await enviar({ emailId: 'e', revisoes: [linha] })).status).toBe(403)
+
+    await entrarComo(base.operadorId, 'operador')
+    // Invariante 5: "quem" no corpo é recusado, não ignorado.
+    expect((await enviar({ emailId: 'e', revisoes: [linha], resolvidoPor: base.colaboradores[0]!.id })).status).toBe(400)
+    expect((await enviar({ emailId: 'e', revisoes: [{ ...linha, resolvidoPor: 'y' }] })).status).toBe(400)
+    const muitas = Array.from({ length: 501 }, (_, i) => ({ ...linha, revisaoId: `r-${i}` }))
+    expect((await enviar({ emailId: 'e', revisoes: muitas })).status).toBe(400)
+
+    const respostas: number[] = []
+    for (let i = 0; i < 20; i += 1) respostas.push((await enviar({ emailId: 'e', revisoes: [linha] })).status)
+    expect(respostas.includes(429)).toBe(true)
+    // E-mail inexistente: conjunto não bate, nada decidido.
+    expect(respostas.filter((status) => status !== 429).every((status) => status === 422)).toBe(true)
+  })
+
   it('GET /api/rodadas/[id] recusa colaborador — o livro-razão não é material aberto', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     await entrarComo(base.colaboradores[0]!.id, 'colaborador')

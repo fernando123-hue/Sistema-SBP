@@ -1,11 +1,13 @@
+import { camposParaCopiar, type CampoParaCopiar } from '../core/dados-do-item'
 import { ErroDeNegocio } from '../core/erros'
-import type { Operacao } from '../core/esquemas'
+import { LIMITE_ITENS_POR_EMAIL, PayloadDoItemSchema, type Operacao } from '../core/esquemas'
+import { Prisma } from '../generated/prisma/client'
 import { ehOProprio, exigirPapel, type Ator } from '../servidor/ator'
 import { transacaoComNovaTentativa } from '../servidor/conflito'
 import { novaCorrelacao, registrarLog } from '../servidor/observabilidade'
 import type { Banco, Transacao } from '../servidor/prisma'
-import { registrarNegacao } from '../servidor/rastro-de-negacao'
-import { auditar } from './auditoria'
+import { registrarNegacao, type Tentativa } from '../servidor/rastro-de-negacao'
+import { auditar, auditarLote } from './auditoria'
 
 /**
  * Fila individual e execução.
@@ -33,6 +35,11 @@ export interface ItemDaFila {
   categoriaCodigo: string
   categoriaRotulo: string
   status: string
+  /**
+   * O e-mail de origem, para a tela juntar os itens dele (`A69`, 3A). `null`
+   * é item registrado à mão, que nunca entra em grupo.
+   */
+  emailId: string | null
   remetente: string | null
   assunto: string | null
   recebidoEm: Date | null
@@ -96,6 +103,7 @@ export async function minhaFila(
           titulo: true,
           status: true,
           criadoEm: true,
+          emailId: true,
           categoria: { select: { codigo: true, rotulo: true } },
           email: {
             select: {
@@ -114,6 +122,7 @@ export async function minhaFila(
     categoriaCodigo: atribuicao.item.categoria.codigo,
     categoriaRotulo: atribuicao.item.categoria.rotulo,
     status: atribuicao.item.status,
+    emailId: atribuicao.item.emailId,
     remetente: atribuicao.item.email?.conteudo?.remetente ?? null,
     assunto: atribuicao.item.email?.conteudo?.assunto ?? null,
     recebidoEm: atribuicao.item.email?.recebidoEm ?? null,
@@ -167,31 +176,42 @@ async function conferirPermissaoAntesDeTravar(
   // Sem responsável, a transação dá a mensagem certa.
   if (!atual || ehOProprio(ator, atual.colaboradorId)) return
   if (operacao === null) {
-    // Sondagem HORIZONTAL (pendência 8): a recusa era calada — quem varresse
-    // ids para concluir o que não é dele não deixava linha nenhuma. A resposta
-    // continua a mesma, e a frase explica bem o caso legítimo: a tela estava
-    // aberta quando o item foi remanejado. Esse caso NÃO vira evento — quem já
-    // foi responsável pelo item está com a tela desatualizada, não sondando, e
-    // uma linha de "negação" com o nome dela, numa trilha que nunca é apagada,
-    // seria lida como acusação (invariante 10; revisões do #130). Fica no log.
-    const jaFoiResponsavel = await banco.atribuicao.findFirst({
-      // Encerrada é `ativa: null` (libera o índice único `(itemId, ativa)`).
-      where: { itemId, colaboradorId: ator.colaboradorId, ativa: null },
-      select: { id: true },
-    })
-    if (jaFoiResponsavel) {
-      // Com `tipo`: quem conta tentativas horizontais no log acha esta também.
-      registrarLog('info', 'concluir recusado: o item mudou de responsável', {
-        colaboradorId: ator.colaboradorId,
-        tipo: 'horizontal',
-        motivo: 'tela desatualizada',
-      })
-    } else {
-      await registrarNegacao(banco, ator, 'concluir item de outra pessoa')
-    }
+    await rastrearTentativaHorizontal(banco, itemId, ator, 'concluir item de outra pessoa')
     throw new ErroDeNegocio('Só o responsável ativo pode concluir o item. Use transferência.')
   }
   exigirPapel(ator, operacao, 'operador', 'gestor')
+}
+
+/**
+ * Sondagem HORIZONTAL (pendência 8): a recusa era calada — quem varresse ids
+ * para mexer no que não é dele não deixava linha nenhuma. A resposta continua
+ * a mesma, e a frase explica bem o caso legítimo: a tela estava aberta quando
+ * o item foi remanejado. Esse caso NÃO vira evento — quem já foi responsável
+ * pelo item está com a tela desatualizada, não sondando, e uma linha de
+ * "negação" com o nome dela, numa trilha que nunca é apagada, seria lida como
+ * acusação (invariante 10; revisões do #130). Fica no log.
+ */
+async function rastrearTentativaHorizontal(
+  banco: Banco,
+  itemId: string,
+  ator: Ator,
+  tentativa: Tentativa,
+): Promise<void> {
+  const jaFoiResponsavel = await banco.atribuicao.findFirst({
+    // Encerrada é `ativa: null` (libera o índice único `(itemId, ativa)`).
+    where: { itemId, colaboradorId: ator.colaboradorId, ativa: null },
+    select: { id: true },
+  })
+  if (jaFoiResponsavel) {
+    // Com `tipo`: quem conta tentativas horizontais no log acha esta também.
+    registrarLog('info', `${tentativa}: recusado, o item mudou de responsável`, {
+      colaboradorId: ator.colaboradorId,
+      tipo: 'horizontal',
+      motivo: 'tela desatualizada',
+    })
+  } else {
+    await registrarNegacao(banco, ator, tentativa)
+  }
 }
 
 export async function concluir(
@@ -242,6 +262,228 @@ export async function concluir(
       correlacaoId,
     })
   })
+}
+
+/**
+ * O grupo de "Concluir os N" que não fecha mais como a tela o viu. Diz que
+ * nada foi feito: concluir os outros calado deixaria a pessoa achando que
+ * fechou o e-mail, com um item dele ainda andando por aí.
+ */
+const GRUPO_MUDOU =
+  'Algum item deste e-mail não está mais com você — talvez tenha sido transferido, devolvido ou ' +
+  'concluído em outra tela. Nada foi concluído. Atualize a tela e tente de novo.'
+
+/**
+ * Conclui juntos os itens de UM e-mail (`A69`, 3A).
+ *
+ * Uma lista de 34 ligantes é um pedido só: o trabalho é feito de uma vez no
+ * sistema da associação, e depois a pessoa clicava 68 vezes aqui. Agora são
+ * dois toques — mas no banco continua sendo item a item: uma `Execucao` e uma
+ * linha de trilha por item, com a mesma correlação. O Painel conta os N, como
+ * contava antes.
+ *
+ * ═══ AS MESMAS REGRAS DE `concluir`, PARA CADA ITEM ═══
+ *
+ * Só o responsável ativo; item já concluído fica de fora sem nova execução; a
+ * permissão é conferida antes de travar (revisão de segurança do #66), e de
+ * novo com tudo travado.
+ *
+ * ═══ TUDO OU NADA ═══
+ *
+ * Uma transação só. Se um item do grupo mudou de mão desde que a tela abriu,
+ * nenhum é concluído e a mensagem diz isso: o "Concluir os N" que a pessoa
+ * confirmou não é mais o que está no banco.
+ *
+ * ═══ SÓ ITENS DO MESMO E-MAIL ═══
+ *
+ * Não é um "concluir tudo" disfarçado. Item à mão (sem e-mail) não entra, e
+ * itens de e-mails diferentes não se juntam: o dono escolheu agrupar por
+ * e-mail porque é o e-mail que é o pedido (`A69`).
+ */
+const PRAZO_DA_CONCLUSAO_EM_LOTE_MS = 20_000
+
+export async function concluirDoMesmoEmail(
+  banco: Banco,
+  entrada: { itemIds: readonly string[] },
+  ator: Ator,
+): Promise<{ concluidos: number }> {
+  // Ordenados: duas conclusões em lote que se cruzam travam na mesma ordem e
+  // não se esperam em círculo.
+  const ids = [...new Set(entrada.itemIds)].sort()
+  if (ids.length === 0) throw new ErroDeNegocio('Nenhum item para concluir.')
+  if (ids.length > LIMITE_ITENS_POR_EMAIL) {
+    throw new ErroDeNegocio(`Um e-mail tem no máximo ${LIMITE_ITENS_POR_EMAIL} itens; a lista enviada tem ${ids.length}.`)
+  }
+
+  const correlacaoId = novaCorrelacao()
+
+  // Antes de travar, como em `concluir`: quem não tem nada com os itens não os
+  // segura enquanto espera a recusa.
+  const atuais = await banco.atribuicao.findMany({
+    where: { itemId: { in: ids }, ativa: true },
+    select: { itemId: true, colaboradorId: true },
+  })
+  const alheio = atuais.find((atual) => !ehOProprio(ator, atual.colaboradorId))
+  if (alheio) {
+    await rastrearTentativaHorizontal(banco, alheio.itemId, ator, 'concluir item de outra pessoa')
+    throw new ErroDeNegocio(GRUPO_MUDOU)
+  }
+  // Id inexistente ou item sem dono também recusa ANTES de travar (revisão de
+  // segurança do #165): 500 ids inventados chegavam à transação, travavam o
+  // que podiam e só então abortavam — no InnoDB, segurando a criação de itens.
+  if (atuais.length !== ids.length) throw new ErroDeNegocio(GRUPO_MUDOU)
+
+  const concluidos = await transacaoComNovaTentativa(
+    banco,
+    async (tx) => {
+      // UMA consulta, na ordem dos ids (revisão técnica do #165): 500 idas ao
+      // banco, uma por item, gastavam o prazo da transação esperando uma trava.
+      await tx.$queryRaw`SELECT id FROM \`Item\` WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`
+
+      const atribuicoes = await tx.atribuicao.findMany({
+        where: { itemId: { in: ids }, ativa: true },
+        select: { itemId: true, colaboradorId: true, item: { select: { status: true, emailId: true } } },
+      })
+      // Sem trilha de negação aqui dentro, como em `concluir`: chegar aqui é a
+      // corrida, e gravar numa transação que vai abortar afirmaria o que não
+      // ficou (invariante 14).
+      if (atribuicoes.length !== ids.length) throw new ErroDeNegocio(GRUPO_MUDOU)
+      if (atribuicoes.some((atribuicao) => !ehOProprio(ator, atribuicao.colaboradorId))) {
+        throw new ErroDeNegocio(GRUPO_MUDOU)
+      }
+      const emails = new Set(atribuicoes.map((atribuicao) => atribuicao.item.emailId))
+      if (emails.size !== 1 || emails.has(null)) {
+        throw new ErroDeNegocio('Concluir junto só vale para itens do mesmo e-mail. Conclua os outros um por um.')
+      }
+
+      const pendentes = atribuicoes.filter((atribuicao) => atribuicao.item.status !== 'concluido')
+      if (pendentes.length === 0) return 0
+
+      const agora = new Date()
+      await tx.execucao.createMany({
+        data: pendentes.map((atribuicao) => ({
+          itemId: atribuicao.itemId,
+          colaboradorId: ator.colaboradorId,
+          concluidoEm: agora,
+          resultado: 'concluido',
+          observacao: null,
+        })),
+      })
+      await tx.item.updateMany({
+        where: { id: { in: pendentes.map((atribuicao) => atribuicao.itemId) } },
+        data: { status: 'concluido' },
+      })
+      await auditarLote(
+        tx,
+        pendentes.map((atribuicao) => ({
+          entidade: 'Item',
+          entidadeId: atribuicao.itemId,
+          acao: 'concluido' as const,
+          antes: { status: atribuicao.item.status },
+          // `junto`: quantos foram concluídos no mesmo toque. Com a correlação,
+          // a trilha responde "foi um por um ou o e-mail de uma vez?".
+          depois: { status: 'concluido', por: ator.colaboradorId, junto: pendentes.length },
+          usuario: ator.colaboradorId,
+          correlacaoId,
+        })),
+      )
+      return pendentes.length
+    },
+    // Folga para um e-mail de 500 itens esperar a trava de outra aba ou da
+    // limpeza diária; os 5 s padrão do Prisma acabavam num 500 genérico.
+    PRAZO_DA_CONCLUSAO_EM_LOTE_MS,
+  )
+
+  return { concluidos }
+}
+
+export type DadosDoItem =
+  | { situacao: 'disponivel'; campos: CampoParaCopiar[] }
+  | { situacao: 'expurgado'; expurgadoEm: string }
+
+/**
+ * A mesma frase para "não existe", "não é seu" e "já saiu da fila": a recusa
+ * não diz se o item existe nem de quem ele é.
+ */
+const ITEM_FORA_DA_FILA = 'Este item não está mais na sua fila. Atualize a tela.'
+
+/**
+ * Os dados que a IA leu de UM item da própria fila (`A69`, 3B).
+ *
+ * Hoje quem executa volta ao Outlook para copiar CPF e matrícula que o
+ * sistema já leu. Aqui eles saem sob demanda, como texto, um item por vez.
+ *
+ * ═══ SÓ QUEM ESTÁ COM O ITEM ═══
+ *
+ * Vale estar com o item, e não o papel: operador e gestor leem os dados do
+ * item que está na fila DELES, e não leem os da fila dos outros — coordenar
+ * não é executar, e eles já leem o e-mail inteiro na Revisão, onde ele é
+ * conferido. Dado pessoal na tela de quem executa é a exposição nova que o
+ * `A69` aceitou — e só ela. Item de outra pessoa é sondagem horizontal e
+ * deixa rastro, como concluir item alheio.
+ *
+ * ═══ SÓ ITEM ABERTO ═══
+ *
+ * Concluído, devolvido ou cancelado saiu da fila: esta rota não é caminho
+ * lateral para ler dado antigo.
+ *
+ * ═══ CADA LEITURA NA TRILHA, SEM OS VALORES ═══
+ *
+ * "Quem viu o CPF deste associado?" é a pergunta que o encarregado de dados
+ * vai fazer. A linha diz quem e qual item, e quantos campos — nunca quais
+ * valores (`A23(d)`). Vem ANTES de devolver: se a trilha não grava, nada sai.
+ *
+ * Expurgado diz que saiu, e quando (invariante 11). Payload ilegível falha
+ * alto (invariante 7): "nenhum dado" esconderia um dado quebrado.
+ */
+export async function lerDadosDoItem(banco: Banco, itemId: string, ator: Ator): Promise<DadosDoItem> {
+  const item = await banco.item.findUnique({
+    where: { id: itemId },
+    select: {
+      status: true,
+      payload: true,
+      dadosExtraidosExpurgadosEm: true,
+      atribuicoes: { where: { ativa: true }, select: { colaboradorId: true } },
+    },
+  })
+  const responsavel = item?.atribuicoes[0]?.colaboradorId ?? null
+  if (!item || responsavel === null) throw new ErroDeNegocio(ITEM_FORA_DA_FILA)
+  if (!ehOProprio(ator, responsavel)) {
+    await rastrearTentativaHorizontal(banco, itemId, ator, 'ver os dados de item de outra pessoa')
+    throw new ErroDeNegocio(ITEM_FORA_DA_FILA)
+  }
+  // Os mesmos status que `minhaFila` lista.
+  if (item.status !== 'distribuido' && item.status !== 'em_andamento') {
+    throw new ErroDeNegocio(ITEM_FORA_DA_FILA)
+  }
+
+  if (item.dadosExtraidosExpurgadosEm) {
+    return { situacao: 'expurgado', expurgadoEm: item.dadosExtraidosExpurgadosEm.toISOString() }
+  }
+
+  let bruto: unknown
+  try {
+    bruto = JSON.parse(item.payload)
+  } catch {
+    throw new Error(`Item "${itemId}" com payload que não é JSON. Investigue antes de mostrar qualquer coisa.`)
+  }
+  const lido = PayloadDoItemSchema.safeParse(bruto)
+  if (!lido.success) {
+    throw new Error(`Item "${itemId}" com payload fora do esquema. Investigue antes de mostrar qualquer coisa.`)
+  }
+  const campos = camposParaCopiar(lido.data.campos)
+
+  // Escrita avulsa, fora de transação, e de propósito: ler não tem fato
+  // transacional para acompanhar (invariante 14), como em `lerEmailDaRevisao`.
+  await auditar(banco, {
+    entidade: 'Item',
+    entidadeId: itemId,
+    acao: 'dados_do_item_lidos',
+    depois: { quantosCampos: campos.length },
+    usuario: ator.colaboradorId,
+  })
+
+  return { situacao: 'disponivel', campos }
 }
 
 /**

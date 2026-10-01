@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import { CAMPO_DA_LIGA } from '../../core/conferencia-da-extracao'
 import {
+  blocosDaRevisao,
+  prefixoDoTitulo,
   depoisDeResolver,
+  depoisDeResolverVarias,
   estadoDaFila,
   filaDaResposta,
   ligaQueFicouDeFora,
@@ -181,5 +184,81 @@ describe('o e-mail ao lado (`A69`, 2A)', () => {
   it('a liga aparece com o rótulo curto, e o resto com o nome do campo', () => {
     expect(rotuloDoCampo(CAMPO_DA_LIGA)).toBe('liga citada')
     expect(rotuloDoCampo('nome')).toBe('nome')
+  })
+})
+
+describe('blocosDaRevisao (`A69`, 1A)', () => {
+  const linha = (revisaoId: string, emailId: string | null, extra: Partial<{ pendentesNoEmail: number; motivo: string; emailSuspeito: boolean; campoIncerto: string }> = {}) => ({
+    revisaoId,
+    emailId,
+    pendentesNoEmail: extra.pendentesNoEmail ?? 2,
+    motivo: extra.motivo ?? 'desdobramento',
+    emailSuspeito: extra.emailSuspeito ?? false,
+    campoIncerto: extra.campoIncerto ?? null,
+    sugestaoIa: JSON.stringify({ campos: { nome: 'Fulana Sintética', cpf: '111.111.111-11' }, ligaMencionada: null }),
+    semLiga: false,
+  })
+  const tipos = (blocos: ReturnType<typeof blocosDaRevisao<ReturnType<typeof linha>>>) =>
+    blocos.map((bloco) => (bloco.tipo === 'email' ? `email:${bloco.itens.map((i) => i.revisaoId).join('+')}` : bloco.item.revisaoId))
+
+  it('junta as revisões do mesmo e-mail onde a primeira aparece', () => {
+    const blocos = blocosDaRevisao([linha('a', 'e1'), linha('x', null, { pendentesNoEmail: 1 }), linha('b', 'e1')], new Set())
+    expect(tipos(blocos)).toEqual(['email:a+b', 'x'])
+  })
+
+  it('não junta quando a lista não tem todas as pendentes do e-mail', () => {
+    const blocos = blocosDaRevisao([linha('a', 'e1', { pendentesNoEmail: 3 }), linha('b', 'e1', { pendentesNoEmail: 3 })], new Set())
+    expect(tipos(blocos)).toEqual(['a', 'b'])
+  })
+
+  it('não junta e-mail de uma revisão só', () => {
+    expect(tipos(blocosDaRevisao([linha('a', 'e1', { pendentesNoEmail: 1 })], new Set()))).toEqual(['a'])
+  })
+
+  it('e-mail suspeito ou motivo de alerta fica item a item', () => {
+    expect(tipos(blocosDaRevisao([linha('a', 'e1'), linha('b', 'e1', { emailSuspeito: true })], new Set()))).toEqual(['a', 'b'])
+    expect(tipos(blocosDaRevisao([linha('a', 'e1'), linha('b', 'e1', { motivo: 'cpf_invalido' })], new Set()))).toEqual(['a', 'b'])
+    expect(tipos(blocosDaRevisao([linha('a', 'e1'), linha('b', 'e1', { motivo: 'conteudo_suspeito' })], new Set()))).toEqual(['a', 'b'])
+  })
+
+  // Revisão de segurança do #167: o CPF que não fechou numa lista fica sob o
+  // motivo `desdobramento`, só no campo apontado.
+  it('campo apontado com valor fica item a item, mesmo com motivo desdobramento', () => {
+    expect(tipos(blocosDaRevisao([linha('a', 'e1'), linha('b', 'e1', { campoIncerto: 'cpf' })], new Set()))).toEqual(['a', 'b'])
+    expect(tipos(blocosDaRevisao([linha('a', 'e1'), linha('b', 'e1', { campoIncerto: 'crm' })], new Set()))).toEqual(['email:a+b'])
+  })
+
+  it('"Ver um por um" separa o e-mail', () => {
+    expect(tipos(blocosDaRevisao([linha('a', 'e1'), linha('b', 'e1')], new Set(['e1'])))).toEqual(['a', 'b'])
+  })
+})
+
+describe('depoisDeResolverVarias', () => {
+  it('tira todas e desconta do total, pedindo a próxima leva se a lista acabou', () => {
+    expect(depoisDeResolverVarias([item('a'), item('b'), item('c')], 9, ['a', 'c'])).toEqual({ itens: [item('b')], total: 7, recarregar: false })
+    expect(depoisDeResolverVarias([item('a'), item('b')], 5, ['a', 'b'])).toEqual({ itens: [], total: 3, recarregar: true })
+  })
+
+  it('não desconta o que já não estava na lista', () => {
+    expect(depoisDeResolverVarias([item('a')], 1, ['a', 'z'])).toEqual({ itens: [], total: 0, recarregar: false })
+  })
+})
+
+describe('prefixoDoTitulo', () => {
+  it('acha o começo do título que termina no nome', () => {
+    expect(prefixoDoTitulo('Inclusão de ligante — Fulana Sintética', 'Fulana Sintética')).toBe('Inclusão de ligante — ')
+  })
+
+  it('não corta no meio de uma palavra', () => {
+    expect(prefixoDoTitulo('Inclusão — Mariana', 'Ana')).toBeNull()
+  })
+
+  it('nome vazio só vale para a linha nova, que termina em espaço', () => {
+    expect(prefixoDoTitulo('Inclusão de ligante — ', '')).toBe('Inclusão de ligante — ')
+    expect(prefixoDoTitulo('Inclusão de ligante', '')).toBeNull()
+  })
+
+  it('sem nome não há prefixo', () => {
+    expect(prefixoDoTitulo('Qualquer coisa', undefined)).toBeNull()
   })
 })

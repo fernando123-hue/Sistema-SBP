@@ -15,15 +15,19 @@ import {
   Vazio,
 } from '../../componentes/matrizes'
 import { NotasDoSetor } from '../../componentes/notas'
-import { pedidoDeConfirmacao } from '../../componentes/pedido-de-confirmacao'
+import { pedidoDeConfirmacao, pedidoDeConfirmacaoDoEmail } from '../../componentes/pedido-de-confirmacao'
+import { CartaoDoEmail, type PessoaNova } from './cartao-do-email'
 import { EmailAoLado, type EstadoDoEmail } from './email-ao-lado'
 import {
+  blocosDaRevisao,
   depoisDeResolver,
+  depoisDeResolverVarias,
   estadoDaFila,
   filaDaResposta,
   ligaQueFicouDeFora,
   lerSugestao,
   mostraConfianca,
+  prefixoDoTitulo,
   seloDoCampo,
 } from './fila-na-tela'
 import type { ItemEmRevisao, NaRede } from '../../core/tipos'
@@ -52,6 +56,29 @@ interface Edicao {
   campos: Record<string, string>
   extras: ItemExtra[]
 }
+
+/** O que a pessoa mexeu no cartão de um e-mail (`A69`, 1A). */
+interface EdicaoDoCartao {
+  tirados: string[]
+  novos: PessoaNova[]
+}
+
+const CARTAO_VAZIO: EdicaoDoCartao = { tirados: [], novos: [] }
+
+/** Chave estável de cada pessoa nova: com o índice, remover a do meio levava o foco para a vizinha. */
+let proximaChave = 0
+
+/**
+ * `confirmando` guarda o id da revisão armada, ou esta marca mais a ação e o
+ * e-mail: um estado só, para nunca haver dois botões armados ao mesmo tempo.
+ * Id de revisão não tem dois-pontos (cuid).
+ */
+const ARMADO_NO_EMAIL = 'email:'
+
+function armadoNoEmail(acao: 'aprovar' | 'descartar', emailId: string): string {
+  return `${ARMADO_NO_EMAIL}${acao}:${emailId}`
+}
+
 
 const MOTIVO: Record<string, { texto: string; tom: 'atencao' | 'alerta' | 'neutro' }> = {
   baixa_confianca: { texto: 'confiança abaixo do mínimo', tom: 'atencao' },
@@ -99,6 +126,12 @@ export default function Revisao() {
    */
   const [feito, setFeito] = useState<string | null>(null)
   const [edicao, setEdicao] = useState<Record<string, Edicao>>({})
+  /** Por e-mail: quem foi tirado e quem foi acrescentado no cartão (`A69`, 1A). */
+  const [cartoes, setCartoes] = useState<Record<string, EdicaoDoCartao>>({})
+  /** E-mails que a pessoa pediu para ver um por um. */
+  const [separados, setSeparados] = useState<ReadonlySet<string>>(new Set())
+  const blocos = pendentes === null ? [] : blocosDaRevisao(pendentes, separados)
+  const emailsNaTela = blocos.flatMap((bloco) => (bloco.tipo === 'email' ? [bloco] : []))
   /**
    * O e-mail de cada revisão ABERTA (`A69`, 2A). Lido do servidor só no
    * clique, um por vez: a lista não traz o corpo de propósito (achado N-34).
@@ -155,6 +188,9 @@ export default function Revisao() {
       pedidos.current.clear()
       emVoo.current.clear()
       setEmails({})
+      setCartoes({})
+      // Lista nova, nada armado: o aviso armado de antes falaria de outra lista.
+      definirConfirmando(null)
       setFila({ itens: lista, total: resposta.total, pedirMais: false })
       setEdicao(
         Object.fromEntries(
@@ -277,6 +313,124 @@ export default function Revisao() {
     }
   }
 
+  function mudarCartao(emailId: string, mudar: (atual: EdicaoDoCartao) => EdicaoDoCartao) {
+    // Mexeu na lista, o número do segundo toque mudou: desarma.
+    definirConfirmando((armado) => (armado?.endsWith(`:${emailId}`) ? null : armado))
+    setCartoes((mapa) => ({ ...mapa, [emailId]: mudar(mapa[emailId] ?? CARTAO_VAZIO) }))
+  }
+
+  /** Corrigir o nome corrige também o fim do título, quando o título termina nele. */
+  function mudarLinhaDoCartao(emailId: string, revisaoId: string, parcial: { titulo?: string; nome?: string }) {
+    const atual = edicao[revisaoId]
+    if (!atual) return
+    definirConfirmando((armado) => (armado?.endsWith(`:${emailId}`) ? null : armado))
+    if (parcial.titulo !== undefined) {
+      mudarEdicao(revisaoId, { titulo: parcial.titulo })
+      return
+    }
+    if (parcial.nome === undefined) return
+    const prefixo = prefixoDoTitulo(atual.titulo, atual.campos.nome)
+    mudarEdicao(revisaoId, {
+      campos: { ...atual.campos, nome: parcial.nome },
+      ...(prefixo === null ? {} : { titulo: `${prefixo}${parcial.nome}` }),
+    })
+  }
+
+  function acrescentarNoCartao(emailId: string, primeira: ItemNaTela | undefined) {
+    const atual = primeira ? edicao[primeira.revisaoId] : undefined
+    const prefixo = atual ? (prefixoDoTitulo(atual.titulo, atual.campos.nome) ?? '') : ''
+    proximaChave += 1
+    const chave = proximaChave
+    mudarCartao(emailId, (cartao) => ({ ...cartao, novos: [...cartao.novos, { chave, titulo: prefixo, nome: '' }] }))
+  }
+
+  function mudarNovoDoCartao(emailId: string, indice: number, parcial: Partial<PessoaNova>) {
+    mudarCartao(emailId, (cartao) => ({
+      ...cartao,
+      novos: cartao.novos.map((novo, i) => {
+        if (i !== indice) return novo
+        // Título que ainda é "prefixo + nome" acompanha o nome digitado.
+        const prefixo = parcial.nome !== undefined ? prefixoDoTitulo(novo.titulo, novo.nome) : null
+        return {
+          ...novo,
+          ...parcial,
+          ...(prefixo !== null && parcial.nome !== undefined ? { titulo: `${prefixo}${parcial.nome}` } : {}),
+        }
+      }),
+    }))
+  }
+
+  /**
+   * "Aprovar os N" ou "Descartar o e-mail" (`A69`, 1A). Tudo ou nada no
+   * servidor: se a lista do e-mail mudou, nada é decidido.
+   */
+  async function resolverEmail(emailId: string, itens: readonly ItemNaTela[], aprovar: boolean) {
+    const cartao = cartoes[emailId] ?? CARTAO_VAZIO
+    const revisoes = itens.map((item) => {
+      const fica = aprovar && !cartao.tirados.includes(item.revisaoId)
+      const atual = edicao[item.revisaoId]
+      // Quem sai vai com o título como veio: a decisão é só "não é este".
+      return fica
+        ? { revisaoId: item.revisaoId, titulo: atual?.titulo ?? item.titulo, campos: atual?.campos ?? {}, aprovar: true }
+        : { revisaoId: item.revisaoId, titulo: item.titulo, campos: {}, aprovar: false }
+    })
+    const novos = aprovar
+      ? cartao.novos.map((novo) => ({
+          titulo: novo.titulo.trim(),
+          campos: novo.nome.trim() === '' ? {} : { nome: novo.nome.trim() },
+        }))
+      : []
+
+    // Mesma regra do cartão avulso: nada some calado por falta de título. E
+    // pessoa nova só com o começo do título ("Inclusão de ligante — ") é
+    // linha esquecida em branco, não uma pessoa.
+    const primeira = itens[0] ? edicao[itens[0].revisaoId] : undefined
+    const prefixo = primeira ? prefixoDoTitulo(primeira.titulo, primeira.campos.nome)?.trim() : undefined
+    if (
+      revisoes.some((linha) => linha.aprovar && linha.titulo.trim() === '') ||
+      novos.some((novo) => novo.titulo === '' || (novo.titulo === prefixo && novo.campos.nome === undefined))
+    ) {
+      definirConfirmando(null)
+      setErro('Há item sem título na lista. Preencha o título ou tire o item antes de aprovar.')
+      return
+    }
+
+    setOcupado({ revisaoId: `${ARMADO_NO_EMAIL}${emailId}`, aprovar })
+    setErro(null)
+    setFeito(null)
+    try {
+      await api.enviar('/revisao/resolver-email', { emailId, revisoes, novos })
+      const ids = itens.map((item) => item.revisaoId)
+      setFila((anterior) => {
+        if (!anterior) return anterior
+        const depois = depoisDeResolverVarias(anterior.itens, anterior.total, ids)
+        return { itens: depois.itens, total: depois.total, pedirMais: depois.recarregar }
+      })
+      for (const id of ids) fecharEmail(id)
+      setCartoes(({ [emailId]: _decidido, ...resto }) => resto)
+      definirConfirmando(null)
+      setFeito(aprovar ? 'Lista do e-mail aprovada.' : 'E-mail descartado.')
+    } catch (causa) {
+      setFeito(null)
+      definirConfirmando(null)
+      setErro(mensagemDoErro(causa))
+    } finally {
+      setOcupado(null)
+    }
+  }
+
+  /** O aviso do segundo toque no cartão: só números (`§ AT-48`). */
+  function avisoDoEmail(armado: string): string {
+    const [, acao, emailId] = armado.split(':')
+    const posicao = emailsNaTela.findIndex((bloco) => bloco.emailId === emailId)
+    const bloco = emailsNaTela[posicao]
+    const cartao = (emailId ? cartoes[emailId] : undefined) ?? CARTAO_VAZIO
+    const total = bloco?.itens.length ?? 0
+    if (acao === 'descartar') return pedidoDeConfirmacaoDoEmail('descartar', posicao, emailsNaTela.length, 0, total)
+    const tirados = bloco ? bloco.itens.filter((item) => cartao.tirados.includes(item.revisaoId)).length : 0
+    return pedidoDeConfirmacaoDoEmail('aprovar', posicao, emailsNaTela.length, total - tirados + cartao.novos.length, tirados)
+  }
+
   function camposSugeridos(item: ItemNaTela): Record<string, string> {
     try {
       const sugestao = JSON.parse(item.sugestaoIa) as { campos?: Record<string, string> }
@@ -313,11 +467,13 @@ export default function Revisao() {
       <Anuncio
         mensagem={
           confirmando
-            ? pedidoDeConfirmacao(
-                'descartar',
-                fila?.itens.findIndex((item) => item.revisaoId === confirmando) ?? -1,
-                fila?.itens.length ?? 0,
-              )
+            ? confirmando.startsWith(ARMADO_NO_EMAIL)
+              ? avisoDoEmail(confirmando)
+              : pedidoDeConfirmacao(
+                  'descartar',
+                  fila?.itens.findIndex((item) => item.revisaoId === confirmando) ?? -1,
+                  fila?.itens.length ?? 0,
+                )
             : feito
         }
       />
@@ -331,7 +487,83 @@ export default function Revisao() {
         />
       ) : (
         <ul className="flex flex-col gap-3">
-          {pendentes.map((item) => {
+          {blocos.map((bloco) => {
+            if (bloco.tipo === 'email') {
+              const { emailId, itens } = bloco
+              const primeira = itens[0]!
+              const cartao = cartoes[emailId] ?? CARTAO_VAZIO
+              const emVoo = ocupado?.revisaoId === `${ARMADO_NO_EMAIL}${emailId}`
+              return (
+                <li key={`${ARMADO_NO_EMAIL}${emailId}`}>
+                  <CartaoDoEmail
+                    linhas={itens.map((item) => {
+                      const atual = edicao[item.revisaoId]
+                      return {
+                        revisaoId: item.revisaoId,
+                        titulo: atual?.titulo ?? item.titulo,
+                        nome: atual && Object.hasOwn(atual.campos, 'nome') ? (atual.campos.nome ?? '') : null,
+                        tirado: cartao.tirados.includes(item.revisaoId),
+                        // O campo que faltou e a confiança baixa, por linha:
+                        // no cartão eles somiam (revisões do #167). Valor para
+                        // conferir não chega aqui (`decidivelNoCartao`).
+                        selos: [
+                          ...(item.campoIncerto ? [seloDoCampo(item.campoIncerto, lerSugestao(item.sugestaoIa))] : []),
+                          ...(mostraConfianca(item.motivo) ? [`confiança ${Math.round(item.confianca * 100)}%`] : []),
+                        ],
+                      }
+                    })}
+                    novos={cartao.novos}
+                    remetente={primeira.remetente}
+                    assunto={primeira.assunto}
+                    email={emails[primeira.revisaoId]}
+                    confirmando={
+                      confirmando === armadoNoEmail('aprovar', emailId)
+                        ? 'aprovar'
+                        : confirmando === armadoNoEmail('descartar', emailId)
+                          ? 'descartar'
+                          : null
+                    }
+                    ocupado={emVoo ? (ocupado?.aprovar ? 'aprovar' : 'descartar') : ocupado !== null ? 'bloqueado' : null}
+                    aoAlternarEmail={() => void alternarEmail(primeira.revisaoId)}
+                    aoSeparar={() => {
+                      definirConfirmando(null)
+                      setSeparados((anterior) => new Set([...anterior, emailId]))
+                    }}
+                    aoMudarLinha={(revisaoId, parcial) => mudarLinhaDoCartao(emailId, revisaoId, parcial)}
+                    aoTirar={(revisaoId) =>
+                      mudarCartao(emailId, (atual) => ({
+                        ...atual,
+                        tirados: atual.tirados.includes(revisaoId)
+                          ? atual.tirados.filter((id) => id !== revisaoId)
+                          : [...atual.tirados, revisaoId],
+                      }))
+                    }
+                    aoAcrescentar={() => acrescentarNoCartao(emailId, primeira)}
+                    aoMudarNovo={(indice, parcial) => mudarNovoDoCartao(emailId, indice, parcial)}
+                    aoRemoverNovo={(indice) =>
+                      mudarCartao(emailId, (atual) => ({ ...atual, novos: atual.novos.filter((_, i) => i !== indice) }))
+                    }
+                    aoAprovar={() => {
+                      if (confirmando === armadoNoEmail('aprovar', emailId)) {
+                        void resolverEmail(emailId, itens, true)
+                        return
+                      }
+                      definirConfirmando(armadoNoEmail('aprovar', emailId))
+                      setFeito(null)
+                    }}
+                    aoDescartar={() => {
+                      if (confirmando === armadoNoEmail('descartar', emailId)) {
+                        void resolverEmail(emailId, itens, false)
+                        return
+                      }
+                      definirConfirmando(armadoNoEmail('descartar', emailId))
+                      setFeito(null)
+                    }}
+                  />
+                </li>
+              )
+            }
+            const item = bloco.item
             const info = MOTIVO[item.motivo] ?? { texto: item.motivo, tom: 'neutro' as const }
             const atual = edicao[item.revisaoId]
             const email = emails[item.revisaoId]

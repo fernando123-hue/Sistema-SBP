@@ -20,7 +20,7 @@ const JANELA_DO_RASTRO_DE_NEGACAO_MS = 10 * 60 * 1000
  * um comentário — garante que nenhum id, título ou nome entra aqui (revisão
  * de segurança do #130).
  */
-export type Tentativa = Operacao | 'concluir item de outra pessoa'
+export type Tentativa = Operacao | 'concluir item de outra pessoa' | 'ver os dados de item de outra pessoa'
 
 /**
  * Registra uma recusa de autorização: log sempre, evento no máximo uma vez por

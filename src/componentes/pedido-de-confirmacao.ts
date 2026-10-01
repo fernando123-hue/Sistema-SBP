@@ -18,3 +18,40 @@ export function pedidoDeConfirmacao(acao: 'concluir' | 'descartar', posicao: num
   const nome = acao === 'concluir' ? 'Concluir' : 'Descartar'
   return `Para ${acao} ${qual}, aperte o mesmo botão de novo. ${nome} não tem volta.`
 }
+
+/**
+ * O mesmo aviso para "Concluir os N" da Minha fila (`A69`, 3A).
+ *
+ * Diz QUANTOS, porque é isso que o segundo toque decide, e QUAL grupo pela
+ * posição: dois e-mails de 34 ligantes dariam a mesma frase, e o leitor de
+ * tela não repetiria o aviso ao armar o segundo. Nenhum texto do e-mail entra
+ * (`§ AT-48`), pela mesma razão do aviso de um item.
+ */
+export function pedidoDeConfirmacaoDoGrupo(posicao: number, total: number, quantos: number): string {
+  const qual = posicao < 0 || total < 1 ? 'deste e-mail' : `do e-mail ${posicao + 1} de ${total}`
+  return `Para concluir os ${quantos} itens ${qual}, aperte o mesmo botão de novo. Concluir não tem volta.`
+}
+
+/**
+ * O aviso do cartão do e-mail na Revisão (`A69`, 1A).
+ *
+ * Diz quantos são aprovados e quantos descartados, porque é isso que o
+ * segundo toque decide: tirar alguém da lista é descartá-lo, e descartar não
+ * tem volta. Qual e-mail, pela posição — nunca pelo assunto (`§ AT-48`).
+ */
+export function pedidoDeConfirmacaoDoEmail(
+  acao: 'aprovar' | 'descartar',
+  posicao: number,
+  total: number,
+  aprovados: number,
+  descartados: number,
+): string {
+  const qual = posicao < 0 || total < 1 ? 'deste e-mail' : `do e-mail ${posicao + 1} de ${total}`
+  if (acao === 'descartar') {
+    return `Para descartar os ${descartados} itens ${qual}, aperte o mesmo botão de novo. Descartar não tem volta.`
+  }
+  if (descartados === 0) {
+    return `Para aprovar os ${aprovados} itens ${qual}, aperte o mesmo botão de novo.`
+  }
+  return `Para aprovar ${aprovados} e descartar ${descartados} ${qual}, aperte o mesmo botão de novo. Descartar não tem volta.`
+}
