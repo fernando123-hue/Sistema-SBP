@@ -2,6 +2,7 @@ import { CATEGORIAS_CADASTRO, limiarConfiancaSemente } from '../src/core/config'
 import { deslocarDias, hojeIso, sequenciaDeDatas } from '../src/core/util/datas'
 import { gerarHash, sortearSenhaProvisoria } from '../src/servidor/credenciais'
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
+import { exigirBaseSintetica } from '../src/servicos/base-sintetica'
 
 /**
  * Seed.
@@ -78,6 +79,8 @@ export const TOTAL_DE_DIAS = 45
  */
 async function principal(): Promise<void> {
   const banco = obterPrisma()
+  // Gente inventada, com senha impressa no terminal, não entra na base da operação.
+  await exigirBaseSintetica(banco, 'o seed')
   const provisorias: { email: string; senha: string }[] = []
 
   for (const [posicao, categoria] of CATEGORIAS_CADASTRO.entries()) {
