@@ -19,7 +19,7 @@
 > - **#176 (`AT-61`):** `npm run db:preparar -- --nome … --email …` cria as categorias e a primeira gestora real. **O servidor nunca roda o seed.**
 >
 > **Próximo, na ordem:**
-> 1. **Busca de e-mails sem prender a tela.** `POST /api/ingestao` processa tudo dentro da requisição. A 11 s por e-mail, 200 e-mails dão ~38 min, e um proxy corta em 60 s. Vira processamento no próprio servidor (sem fila nem infraestrutura nova), uma busca por vez, com o andamento na tela.
+> 1. ~~**Busca de e-mails sem prender a tela.**~~ **Feita no #178 (`AT-62`):** a busca roda no servidor, uma por vez, e a tela mostra "lendo N de M". O "lendo N de M" com a IA de verdade é conferido na V1.
 > 2. **V1 na máquina do dono**, pelas sessões locais:
 >    - `next build` + `next start` com `NODE_ENV=production`;
 >    - base nova preparada com `db:preparar`, IA local, segunda opinião local e e-mails fictícios;

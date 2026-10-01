@@ -43,9 +43,24 @@ export type { EstadoDaBusca }
 
 interface Registro {
   estado: EstadoDaBusca
-  /** Só para os testes esperarem o fim; ninguém mais a aguarda. */
+  /** Qual busca é a atual. Só ela escreve no estado. */
+  numero: number
+  /** Quando a busca atual deu o último sinal de vida: começou ou avançou um e-mail. */
+  ultimoAvancoEm: number
+  /** Só para os testes esperarem o fim de TODAS as buscas, inclusive a dada como parada. */
   andamento: Promise<void> | null
 }
+
+/**
+ * Sem avançar um e-mail por este tempo, a busca é dada como parada.
+ *
+ * Uma pergunta à IA local tem prazo de 300 s e pode ser repetida uma vez, e a
+ * segunda opinião faz até três perguntas de 60 s: um e-mail difícil leva até
+ * ~13 min. Vinte minutos sem avançar não é e-mail lento, é algo pendurado, e
+ * sem este teto a busca ficaria "rodando" até o servidor reiniciar, recusando
+ * toda busca nova (revisões do #178).
+ */
+export const LIMITE_SEM_AVANCO_MS = 20 * 60_000
 
 /**
  * No `globalThis`, e não num `let` do módulo: o modo de desenvolvimento
@@ -54,7 +69,7 @@ interface Registro {
  */
 function registro(): Registro {
   const global = globalThis as typeof globalThis & { buscaDeEmails?: Registro }
-  global.buscaDeEmails ??= { estado: { situacao: 'nenhuma' }, andamento: null }
+  global.buscaDeEmails ??= { estado: { situacao: 'nenhuma' }, numero: 0, ultimoAvancoEm: 0, andamento: null }
   return global.buscaDeEmails
 }
 
@@ -74,36 +89,65 @@ export interface PedidoDeBusca {
 export function iniciarBusca(deps: DependenciasIngestao, ator: Ator): PedidoDeBusca {
   exigirPapel(ator, 'sincronizar ingestão', 'operador', 'gestor')
   const atual = registro()
-  if (atual.estado.situacao === 'rodando') return { iniciada: false, estado: { ...atual.estado } }
-
-  const iniciadaEm = new Date().toISOString()
-  const rodando: EstadoDaBusca = { situacao: 'rodando', iniciadaEm, total: null, lidos: 0 }
-  atual.estado = rodando
-
-  const aoProgredir = ({ total, lidos }: { total: number; lidos: number }): void => {
-    // Só enquanto ESTA busca é a que roda: um aviso atrasado nunca apaga o
-    // resultado que já foi gravado no estado.
-    if (atual.estado.situacao === 'rodando' && atual.estado.iniciadaEm === iniciadaEm) {
-      atual.estado = { situacao: 'rodando', iniciadaEm, total, lidos }
+  if (atual.estado.situacao === 'rodando') {
+    if (Date.now() - atual.ultimoAvancoEm < LIMITE_SEM_AVANCO_MS) {
+      return { iniciada: false, estado: { ...atual.estado } }
     }
+    // Parada há tempo demais. A busca antiga pode até terminar um dia, mas não
+    // escreve mais no estado: o número dela deixou de ser o atual.
+    registrarLog('erro', 'busca de e-mails sem avançar; dada como parada para deixar outra começar', {
+      iniciadaEm: atual.estado.iniciadaEm,
+      lidos: atual.estado.lidos,
+      total: atual.estado.total,
+    })
   }
 
-  atual.andamento = sincronizar({ ...deps, aoProgredir }, ator).then(
-    (resumo) => {
-      atual.estado = { situacao: 'concluida', iniciadaEm, terminadaEm: new Date().toISOString(), resumo }
-    },
-    async (erro: unknown) => {
-      atual.estado = {
-        situacao: 'falhou',
-        iniciadaEm,
-        terminadaEm: new Date().toISOString(),
-        erro: await mensagemDaFalha(deps, erro),
-      }
-    },
-  )
+  const numero = atual.numero + 1
+  const iniciadaEm = new Date().toISOString()
+  const rodando: EstadoDaBusca = { situacao: 'rodando', iniciadaEm, total: null, lidos: 0 }
+  atual.numero = numero
+  atual.estado = rodando
+  atual.ultimoAvancoEm = Date.now()
+
+  /** Só a busca atual escreve: uma antiga que termine atrasada não apaga a nova. */
+  const escrever = (estado: EstadoDaBusca): void => {
+    if (atual.numero === numero) atual.estado = estado
+  }
+
+  const aoProgredir = ({ total, lidos }: { total: number; lidos: number }): void => {
+    if (atual.numero !== numero || atual.estado.situacao !== 'rodando') return
+    atual.ultimoAvancoEm = Date.now()
+    atual.estado = { situacao: 'rodando', iniciadaEm, total, lidos }
+  }
+
+  const desta = sincronizar({ ...deps, aoProgredir }, ator)
+    .then(
+      (resumo) => {
+        escrever({ situacao: 'concluida', iniciadaEm, terminadaEm: new Date().toISOString(), resumo })
+      },
+      async (erro: unknown) => {
+        // A frase é montada com cuidado, mas o estado SEMPRE sai de "rodando":
+        // um erro aqui dentro deixava a busca presa e recusava toda busca nova
+        // até o servidor reiniciar (revisões do #178).
+        let frase = FRASE_DE_ULTIMO_RECURSO
+        try {
+          frase = await mensagemDaFalha(deps, erro)
+        } finally {
+          escrever({ situacao: 'falhou', iniciadaEm, terminadaEm: new Date().toISOString(), erro: frase })
+        }
+      },
+    )
+    .catch((erro: unknown) => {
+      // Só chega aqui o que falhou ao montar a frase. O estado já saiu de
+      // "rodando" no `finally`; resta não deixar a promessa sem dono.
+      process.stderr.write(`a busca de e-mails falhou ao registrar a própria falha: ${String(erro)}\n`)
+    })
+  atual.andamento = Promise.all([atual.andamento, desta]).then(() => undefined)
 
   return { iniciada: true, estado: { ...rodando } }
 }
+
+const FRASE_DE_ULTIMO_RECURSO = 'A busca parou por um erro do sistema, e nem o registro dele foi possível. Avise a gestão com o horário.'
 
 /** O estado da busca atual, ou da última. Só números: nada de texto de e-mail. */
 export function estadoDaBusca(ator: Ator): EstadoDaBusca {
@@ -122,6 +166,20 @@ export function estadoDaBusca(ator: Ator): EstadoDaBusca {
 async function mensagemDaFalha(deps: DependenciasIngestao, erro: unknown): Promise<string> {
   if (erro instanceof ErroOperacional) {
     registrarLog('aviso', 'a busca de e-mails parou numa falha esperada', { codigo: erro.codigo, erro: erro.message })
+    // Na trilha também: o estado vive só em memória, e uma busca que parou
+    // antes de ler a caixa (credencial recusada) não deixava rastro nenhum
+    // (revisão de segurança do #178). A mesma frase da tela, nunca a crua.
+    try {
+      await registrarEvento(deps.banco, {
+        correlacaoId: novaCorrelacao(),
+        etapa: 'ingestao',
+        situacao: 'reprocessavel',
+        mensagem: erro.mensagemPublica,
+        detalhe: { codigo: erro.codigo },
+      })
+    } catch (aoGravar) {
+      registrarLog('erro', 'falha ao registrar o evento da busca que parou', { erro: mensagemDoErro(aoGravar) })
+    }
     return erro.mensagemPublica
   }
 
@@ -148,7 +206,7 @@ async function mensagemDaFalha(deps: DependenciasIngestao, erro: unknown): Promi
   return `A busca parou por um erro do sistema. Avise a gestão com o código ${correlacaoId}.`
 }
 
-/** Só para testes: espera a busca atual terminar e zera o registro. */
+/** Só para testes: espera todas as buscas iniciadas terminarem. */
 export async function esperarBuscaParaTeste(): Promise<void> {
   await registro().andamento
 }

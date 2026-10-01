@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { IaMock } from '../adapters/ia-mock'
 import { IngestaoMock } from '../adapters/ingestao-mock'
@@ -6,10 +6,17 @@ import type { EmailBruto } from '../core/esquemas'
 import { sequenciaDeDatas } from '../core/util/datas'
 import type { AiPort } from '../ports/ia'
 import { InterpretacaoIndisponivelError } from '../ports/ia'
+import { ErroOperacional } from '../core/erros'
 import { PermissaoNegadaError } from '../servidor/ator'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, limparTudo, semearBase } from '../testes/apoio'
-import { esperarBuscaParaTeste, estadoDaBusca, iniciarBusca, zerarBuscaParaTeste } from './busca-em-segundo-plano'
+import {
+  esperarBuscaParaTeste,
+  estadoDaBusca,
+  iniciarBusca,
+  LIMITE_SEM_AVANCO_MS,
+  zerarBuscaParaTeste,
+} from './busca-em-segundo-plano'
 
 /**
  * A busca de e-mails roda no servidor e a tela só acompanha.
@@ -53,12 +60,24 @@ async function ate(condicao: () => boolean): Promise<void> {
   expect(condicao()).toBe(true)
 }
 
+/** Como `ate`, para uma condição que precisa perguntar ao banco. */
+async function ateNoBanco(condicao: () => Promise<boolean>): Promise<void> {
+  for (let i = 0; i < 500 && !(await condicao()); i += 1) await new Promise((pronto) => setTimeout(pronto, 10))
+  expect(await condicao()).toBe(true)
+}
+
+/** Quantas buscas gravaram o evento de fechamento ("N novos · M duplicados · K itens"). */
+function buscasFechadas(): Promise<number> {
+  return banco.eventoProcessamento.count({ where: { etapa: 'ingestao', mensagem: { contains: ' novos · ' } } })
+}
+
 beforeEach(async () => {
   zerarBuscaParaTeste()
   await limparTudo(banco)
 })
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   await esperarBuscaParaTeste()
   zerarBuscaParaTeste()
 })
@@ -133,6 +152,11 @@ describe('a busca roda no servidor e a tela acompanha', () => {
     // O critério de `rota()`: falha esperada de fronteira sai pela
     // `mensagemPublica`, que cada classe decide quanto da causa pode mostrar.
     expect(fim.erro).toBe(recusa.mensagemPublica)
+    // Na trilha também, com a mesma frase: o estado vive só em memória.
+    const evento = await banco.eventoProcessamento.findFirst({
+      where: { etapa: 'ingestao', situacao: 'reprocessavel', mensagem: recusa.mensagemPublica },
+    })
+    expect(evento).not.toBeNull()
   })
 
   it('um defeito qualquer vira frase com código para rastrear, nunca a mensagem crua', async () => {
@@ -177,5 +201,69 @@ describe('a busca roda no servidor e a tela acompanha', () => {
     visto.situacao = 'concluida'
     expect(estadoDaBusca(base.operador).situacao).toBe('rodando')
     segurada.soltar()
+  })
+})
+
+describe('a busca nunca fica presa em "rodando" (revisões do #178)', () => {
+  it('um erro ao montar a frase da falha ainda tira a busca de "rodando", e outra pode começar', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    class ErroTraicoeiro extends ErroOperacional {
+      readonly codigo = 'TRAICOEIRO'
+      readonly statusHttp = 503 as const
+      override get mensagemPublica(): string {
+        throw new Error('a frase quebrou')
+      }
+    }
+    const quebraAFrase: AiPort = {
+      nome: 'quebra-a-frase',
+      interpretar: async () => {
+        throw new ErroTraicoeiro('x')
+      },
+    }
+    // Erro operacional por e-mail não para o lote; o que para é a leitura da caixa.
+    const deps = {
+      ...dependencias(quebraAFrase),
+      ingestao: { nome: 'caixa', buscarNovos: async () => { throw new ErroTraicoeiro('x') } },
+    }
+
+    iniciarBusca(deps, base.operador)
+    await esperarBuscaParaTeste()
+
+    const fim = estadoDaBusca(base.operador)
+    if (fim.situacao !== 'falhou') throw new Error(`esperava falhou, veio ${fim.situacao}`)
+    expect(fim.erro).toMatch(/nem o registro dele foi possível/)
+    expect(iniciarBusca(dependencias(new IaMock()), base.operador).iniciada).toBe(true)
+  })
+
+  it(`sem avançar por ${LIMITE_SEM_AVANCO_MS / 60_000} min, outra busca assume; a antiga, quando termina, não apaga a nova`, async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const antiga = iaSegurada()
+    iniciarBusca(dependencias(antiga.ia), base.operador)
+    await ate(() => antiga.chamadas() === 1)
+
+    // Antes do limite, pedir de novo devolve a que está rodando.
+    expect(iniciarBusca(dependencias(new IaMock()), base.operador).iniciada).toBe(false)
+
+    const nova = iaSegurada()
+    const agora = Date.now()
+    vi.spyOn(Date, 'now').mockReturnValue(agora + LIMITE_SEM_AVANCO_MS + 1)
+    const pedido = iniciarBusca(dependencias(nova.ia), base.operador)
+    vi.restoreAllMocks()
+    expect(pedido.iniciada).toBe(true)
+    if (pedido.estado.situacao !== 'rodando') throw new Error('inalcançável')
+    const daNova = pedido.estado.iniciadaEm
+    await ate(() => nova.chamadas() === 1)
+
+    // A antiga termina PRIMEIRO, com a nova ainda segurada: o fim dela fica na
+    // trilha (`sincronizar` grava o evento de fechamento), mas não no estado.
+    antiga.soltar()
+    await ateNoBanco(async () => (await buscasFechadas()) === 1)
+    expect(estadoDaBusca(base.operador)).toMatchObject({ situacao: 'rodando', iniciadaEm: daNova })
+
+    nova.soltar()
+    await esperarBuscaParaTeste()
+    const fim = estadoDaBusca(base.operador)
+    if (fim.situacao !== 'concluida') throw new Error(`esperava concluída, veio ${fim.situacao}`)
+    expect(fim.iniciadaEm).toBe(daNova)
   })
 })

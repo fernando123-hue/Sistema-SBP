@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { hojeIso, horaLocal } from '../../core/util/datas'
+import { hojeIso, horaLocal, paraDataIso } from '../../core/util/datas'
 import { decimal } from '../../core/util/numero'
 import { api, mensagemDoErro } from '../../componentes/api'
 import {
@@ -81,15 +81,22 @@ interface Resumo {
 // fuso da operação. Com `toISOString()`, a tela abria em amanhã depois das 21h.
 const hoje = hojeIso
 
-/** As frases da rodada de uma categoria. Vazio quando não houve rodada. */
 /** De quanto em quanto tempo a tela pergunta ao servidor até onde a busca chegou. */
 const INTERVALO_DO_ACOMPANHAMENTO_MS = 2000
+
+/**
+ * Quantas perguntas de andamento seguidas podem falhar antes de a tela desistir
+ * de acompanhar. Um tropeço de rede não é motivo para dizer que a busca parou:
+ * ela continua no servidor de qualquer jeito.
+ */
+const FALHAS_TOLERADAS_NO_ACOMPANHAMENTO = 3
 
 function textoDoAndamento(andamento: { total: number | null; lidos: number } | null): string {
   if (andamento === null || andamento.total === null) return 'lendo a caixa…'
   return `lendo ${andamento.lidos} de ${andamento.total}…`
 }
 
+/** As frases da rodada de uma categoria. Vazio quando não houve rodada. */
 function narrativaDe(resumo: Resumo | null, categoriaCodigo: string): string[] {
   return resumo?.narrativas.find((n) => n.categoriaCodigo === categoriaCodigo)?.linhas ?? []
 }
@@ -129,6 +136,31 @@ export default function Distribuicao() {
   const [ocupado, setOcupado] = useState<string | null>(null)
   /** Até onde a busca chegou, enquanto ela roda no servidor. */
   const [andamento, setAndamento] = useState<{ total: number | null; lidos: number } | null>(null)
+  /** A hora em que a busca mostrada terminou: o resumo pode ser de uma busca de antes. */
+  const [buscaTerminadaAs, setBuscaTerminadaAs] = useState<string | null>(null)
+  /** Se a tela ainda está aberta: o laço de acompanhamento para quando ela fecha. */
+  const montada = useRef(true)
+  /** Um laço de acompanhamento só: o da abertura e o do clique não correm juntos. */
+  const acompanhando = useRef(false)
+
+  /** O desfecho de uma busca, na tela. `deAntes`: achada ao abrir, e não acompanhada. */
+  const mostrarDesfecho = useCallback((estado: NaRede<EstadoDaBusca>, vinhaRodando: boolean) => {
+    if (estado.situacao === 'concluida') {
+      setIngestao(estado.resumo)
+      setBuscaTerminadaAs(horaLocal(new Date(estado.terminadaEm)))
+      setPrevia(null)
+    } else if (estado.situacao === 'falhou') {
+      setErro(
+        vinhaRodando
+          ? estado.erro
+          : `A última busca, às ${horaLocal(new Date(estado.terminadaEm))}, parou: ${estado.erro}`,
+      )
+    } else if (estado.situacao === 'nenhuma' && vinhaRodando) {
+      // O servidor reiniciou no meio: o andamento em memória se perdeu. Não é
+      // silêncio — a pessoa precisa saber que tem de buscar de novo.
+      setErro('A busca foi interrompida antes do fim (o servidor reiniciou). Busque de novo: o que já foi lido não se perde.')
+    }
+  }, [])
 
   /**
    * Acompanha a busca que roda no servidor até ela terminar.
@@ -137,45 +169,88 @@ export default function Distribuicao() {
    * interrompe, e quem voltar à Distribuição retoma o acompanhamento (o efeito
    * logo abaixo). Antes, a requisição esperava a busca inteira, e com a IA
    * local isso eram minutos de tela presa.
+   *
+   * Revisões do #178: o laço para quando a tela fecha, só existe um por vez, e
+   * um tropeço de rede não encerra o acompanhamento na primeira falha.
    */
-  const acompanharBusca = useCallback(async (inicial: NaRede<EstadoDaBusca>) => {
-    let estado = inicial
-    while (estado.situacao === 'rodando') {
-      setAndamento({ total: estado.total, lidos: estado.lidos })
-      await new Promise((pronto) => setTimeout(pronto, INTERVALO_DO_ACOMPANHAMENTO_MS))
-      estado = await api.buscar<NaRede<EstadoDaBusca>>('/ingestao')
-    }
-    setAndamento(null)
-    if (estado.situacao === 'concluida') {
-      setIngestao(estado.resumo)
-      setPrevia(null)
-    } else if (estado.situacao === 'falhou') {
-      setErro(estado.erro)
-    }
-  }, [])
+  const acompanharBusca = useCallback(
+    async (inicial: NaRede<EstadoDaBusca>) => {
+      if (acompanhando.current) return
+      acompanhando.current = true
+      setOcupado('sincronizar')
+      try {
+        let estado = inicial
+        let vinhaRodando = false
+        let falhasSeguidas = 0
+        while (estado.situacao === 'rodando') {
+          vinhaRodando = true
+          setAndamento({ total: estado.total, lidos: estado.lidos })
+          await new Promise((pronto) => setTimeout(pronto, INTERVALO_DO_ACOMPANHAMENTO_MS))
+          if (!montada.current) return
+          try {
+            estado = await api.buscar<NaRede<EstadoDaBusca>>('/ingestao')
+            falhasSeguidas = 0
+          } catch {
+            falhasSeguidas += 1
+            if (falhasSeguidas >= FALHAS_TOLERADAS_NO_ACOMPANHAMENTO) {
+              setErro(
+                'Não foi possível acompanhar a busca agora. Ela continua no servidor: volte a esta tela em alguns minutos para ver o resultado.',
+              )
+              return
+            }
+          }
+        }
+        if (montada.current) mostrarDesfecho(estado, vinhaRodando)
+      } finally {
+        acompanhando.current = false
+        if (montada.current) {
+          setAndamento(null)
+          setOcupado(null)
+        }
+      }
+    },
+    [mostrarDesfecho],
+  )
 
-  // Uma busca já rodando (outra pessoa clicou, ou esta página foi recarregada):
-  // a tela mostra o andamento em vez de oferecer um botão que não faria nada.
+  // Ao abrir: uma busca rodando (outra pessoa clicou, ou a página foi
+  // recarregada) é acompanhada em vez de oferecer um botão que não faria
+  // nada. Uma que terminou hoje mostra o desfecho: os avisos do resumo (e-mail
+  // sem item, e-mail que a IA não entendeu) só aparecem uma vez, e quem saiu
+  // da tela antes do fim não pode perdê-los (revisões do #178).
   useEffect(() => {
-    let cancelado = false
+    montada.current = true
     api
       .buscar<NaRede<EstadoDaBusca>>('/ingestao')
-      .then(async (estado) => {
-        if (cancelado || estado.situacao !== 'rodando') return
-        setOcupado('sincronizar')
-        try {
-          await acompanharBusca(estado)
-        } finally {
-          setOcupado(null)
+      .then((estado) => {
+        if (!montada.current) return
+        if (estado.situacao === 'rodando') {
+          void acompanharBusca(estado)
+        } else if (estado.situacao !== 'nenhuma' && paraDataIso(new Date(estado.terminadaEm)) === hojeIso()) {
+          mostrarDesfecho(estado, false)
         }
       })
       .catch((causa: unknown) => {
-        if (!cancelado) setErro(mensagemDoErro(causa))
+        if (montada.current) setErro(mensagemDoErro(causa))
       })
     return () => {
-      cancelado = true
+      montada.current = false
     }
-  }, [acompanharBusca])
+  }, [acompanharBusca, mostrarDesfecho])
+
+  /** O clique em "Buscar e-mails": pede ao servidor e acompanha. */
+  async function buscarEmails() {
+    setErro(null)
+    setOcupado('sincronizar')
+    try {
+      await acompanharBusca(await api.enviar<NaRede<EstadoDaBusca>>('/ingestao'))
+    } catch (causa) {
+      setErro(mensagemDoErro(causa))
+    } finally {
+      // Se outro laço já acompanha esta busca, é ele quem libera o botão.
+      if (!acompanhando.current && montada.current) setOcupado(null)
+    }
+  }
+
 
   /**
    * Número da carga de escala mais recente. Só ela escreve na tela.
@@ -262,13 +337,11 @@ export default function Distribuicao() {
    */
   const [previaCalculadaEm, setPreviaCalculadaEm] = useState<Date | null>(null)
 
-  async function executar(acao: 'sincronizar' | 'previa' | 'confirmar') {
+  async function executar(acao: 'previa' | 'confirmar') {
     setOcupado(acao)
     setErro(null)
     try {
-      if (acao === 'sincronizar') {
-        await acompanharBusca(await api.enviar<NaRede<EstadoDaBusca>>('/ingestao'))
-      } else if (acao === 'previa') {
+      if (acao === 'previa') {
         setPrevia(await api.enviar<Resumo>('/distribuicao/previa', { data, categorias: [] }))
         setPreviaCalculadaEm(new Date())
       } else {
@@ -346,6 +419,7 @@ export default function Distribuicao() {
               : "ok"
           }
         >
+          {buscaTerminadaAs ? `Busca das ${buscaTerminadaAs}: ` : null}
           {ingestao.recebidos} e-mails lidos · {ingestao.novos} novos ·{' '}
           {ingestao.duplicados} já conhecidos · {ingestao.itensCriados} itens criados
           {ingestao.emailsSemItem > 0 ? (
@@ -408,7 +482,7 @@ export default function Distribuicao() {
           titulo="Plantão"
           descricao={`${dePlantao.length} de ${escala?.length ?? 0} disponíveis. Quem não está marcado não recebe nada.`}
           acao={
-            <Botao onClick={() => executar('sincronizar')} desabilitado={ocupado !== null}>
+            <Botao onClick={() => void buscarEmails()} desabilitado={ocupado !== null}>
               {ocupado === 'sincronizar' ? textoDoAndamento(andamento) : 'Buscar e-mails'}
             </Botao>
           }

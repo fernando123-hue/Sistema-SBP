@@ -8,6 +8,7 @@ import {
   type EmailBruto,
 } from '../core/esquemas'
 import { ErroOperacional } from '../core/erros'
+import { resumoDeTransporte } from '../core/seguranca/resumo-de-transporte'
 import { resumoDeValidacao } from '../core/seguranca/resumo-de-validacao'
 import type { IngestaoPort, PedidoDeBusca } from '../ports/ingestao'
 import { ambiente } from '../servidor/ambiente'
@@ -128,7 +129,27 @@ export class IngestaoIndisponivelError extends ErroOperacional {
   constructor(readonly causa: string) {
     super(`Não foi possível ler a caixa de e-mail: ${causa}`)
   }
+
+  /**
+   * O que a tela mostra: a causa com e-mail, número e identificador (GUID)
+   * mascarados. O código `AADSTS…` e o status ficam, porque são eles que
+   * dizem o que arrumar; a causa inteira continua em `message`, para o log.
+   *
+   * Desde a busca em segundo plano (`AT-62`), esta frase fica guardada no
+   * servidor e é servida a qualquer operador ou gestor que abra a
+   * Distribuição, e o corpo de erro da Microsoft traz o id do tenant, do
+   * aplicativo, o de rastreio e às vezes o endereço da caixa (revisão de
+   * segurança do #178).
+   */
+  override get mensagemPublica(): string {
+    // GUID ANTES: o mascaramento de números come o fim dele, e o resto não
+    // seria mais reconhecido como identificador.
+    return `Não foi possível ler a caixa de e-mail: ${resumoDeTransporte(this.causa.replace(GUID, '[id]'))}`
+  }
 }
+
+/** Identificador no formato da Microsoft (tenant, aplicativo, rastreio, correlação). */
+const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
 
 /**
  * Quantas mensagens NOVAS uma sincronização lê, no máximo.

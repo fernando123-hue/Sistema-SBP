@@ -7,6 +7,7 @@ import { criarIngestaoPort } from './fabrica'
 import {
   clienteDoGraph,
   IngestaoGraph,
+  IngestaoIndisponivelError,
   limparTokenDoGraph,
   type AnexoDoGraph,
   type ClienteDoGraph,
@@ -687,5 +688,21 @@ describe('o limite de anexos age antes de baixar', () => {
     ).buscarNovos()
 
     expect(email!.anexos[0]!.recusa).toBe('anexos somam mais de 100 MB — abra no Outlook')
+  })
+})
+
+describe('a frase da recusa da Microsoft que a tela mostra (revisão de segurança do #178)', () => {
+  it('mascara identificadores, e-mail e números; mantém o código AADSTS e o status', () => {
+    const corpoDaMicrosoft =
+      '{"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. ' +
+      "Ensure the secret being sent is the one configured for app '0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b'. " +
+      'Trace ID: 9a8b7c6d-5e4f-3a2b-1c0d-ef0123456789 caixa: secretaria@associacao.example 12345678901"}'
+    const erro = new IngestaoIndisponivelError(`a Microsoft recusou a credencial (401): ${corpoDaMicrosoft}`)
+
+    expect(erro.mensagemPublica).toContain('AADSTS7000215')
+    expect(erro.mensagemPublica).toContain('(401)')
+    expect(erro.mensagemPublica).not.toMatch(/0f1e2d3c|9a8b7c6d|secretaria@|12345678901/)
+    // O log continua com a causa inteira: é ela que o TI precisa ver.
+    expect(erro.message).toContain('0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b')
   })
 })
