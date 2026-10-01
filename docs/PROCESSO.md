@@ -60,10 +60,10 @@ Respostas conferidas no repositório, no CI e no histórico de PRs em 16/09/2026
 
 | Nível | O que muda | Exemplos |
 |---|---|---|
-| **0 — documentação** | texto | `docs/`, `*.md` (menos `CLAUDE.md`) |
-| **1 — tela** | páginas e componentes | `src/app/` (menos `api/`), `src/components/` |
-| **2 — regra de negócio** | núcleo e serviços | `src/core/`, `src/servicos/` |
-| **3 — sensível** | autenticação, autorização, banco, arquivos, e-mail, IA, integrações, CI, dependências, configuração, as regras dos agentes, o próprio portão | `src/app/api/`, `src/servidor/`, `src/adapters/`, `src/ports/`, `src/core/seguranca/`, `src/core/assistente/`, `src/core/esquemas.ts`, `src/middleware.ts`, `prisma/`, `scripts/`, `.github/`, `.claude/`, `package*.json`, `*.config.*`, `tsconfig.json`, `.env.example`, `.gitignore`, `CLAUDE.md` |
+| **0 — documentação** | texto | `docs/`, `*.md` (menos `CLAUDE.md` e `AGENTS.md` em qualquer pasta, e este `PROCESSO.md`) |
+| **1 — tela** | páginas e componentes | `src/app/` (menos `api/`), `src/componentes/` |
+| **2 — regra de negócio** | núcleo e serviços | `src/core/`, `src/servicos/` (menos os de acesso, expurgo, trilha, leitura de e-mail e assistente), `src/testes/` (menos `preparar-banco.ts`) |
+| **3 — sensível** | autenticação, autorização, banco, arquivos, e-mail, IA, integrações, CI, dependências, configuração, as regras dos agentes, o próprio portão | `src/app/api/`, `src/servidor/`, `src/adapters/`, `src/ports/`, `src/core/seguranca/`, `src/core/assistente/`, `src/core/esquemas.ts`, `src/core/autenticacao.ts`, os serviços de acesso, cadastro, expurgo, retenção, rotinas, trilha, revisão, memória e assistente, `src/testes/preparar-banco.ts`, `src/middleware.ts` (ou `proxy.ts`), `src/instrumentation*.ts`, `prisma/`, `scripts/`, `.github/`, `.claude/`, `package*.json`, `*.config.*`, `tsconfig.json`, `.env.example`, `.gitignore`, `CLAUDE.md`, `AGENTS.md`, `docs/PROCESSO.md` |
 
 ### Evidência exigida no PR, por nível
 
