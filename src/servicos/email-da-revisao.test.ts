@@ -6,7 +6,7 @@ import type { IngestaoPort } from '../ports/ingestao'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
 import { sincronizar } from './ingestao'
-import { lerEmailDaRevisao, listarPendentes, resolver } from './revisao'
+import { LEITURAS_DE_EMAIL_POR_HORA, lerEmailDaRevisao, listarPendentes, resolver } from './revisao'
 
 /**
  * O e-mail ao lado do que a IA leu, na Revisão (`A69`, 2A).
@@ -208,5 +208,62 @@ describe('lerEmailDaRevisao', () => {
     await banco.item.update({ where: { id: pendente.itemId }, data: { emailId: null } })
 
     expect(await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).toEqual({ situacao: 'sem_email' })
+  })
+})
+
+describe('teto de leituras por hora (A72)', () => {
+  /** Leituras já feitas, gravadas como a leitura grava, com a idade pedida. */
+  async function leiturasFeitas(usuario: string, quantas: number, minutosAtras: number) {
+    const quando = new Date(Date.now() - minutosAtras * 60_000)
+    await banco.logAuditoria.createMany({
+      data: Array.from({ length: quantas }, (_, i) => ({
+        entidade: 'Email',
+        entidadeId: `email-anterior-${i}`,
+        acao: 'email_lido_na_revisao',
+        usuario,
+        timestamp: quando,
+      })),
+    })
+  }
+
+  it('no teto, recusa sem dizer o número, sem ler e sem gravar leitura', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA, 30)
+
+    const leitura = lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)
+
+    await expect(leitura).rejects.toThrow(/indisponível nesta conta/)
+    await expect(leitura).rejects.not.toThrow(new RegExp(String(LEITURAS_DE_EMAIL_POR_HORA)))
+    expect(await banco.logAuditoria.count({ where: { acao: 'email_lido_na_revisao' } })).toBe(
+      LEITURAS_DE_EMAIL_POR_HORA,
+    )
+  })
+
+  it('no teto, nem revisão inexistente é revelada', async () => {
+    const { base } = await umaRevisaoPendente()
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA, 30)
+
+    await expect(lerEmailDaRevisao(banco, 'nao-existe', base.operador)).rejects.toThrow(/indisponível nesta conta/)
+  })
+
+  it('um a menos que o teto ainda lê', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA - 1, 30)
+
+    expect((await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).situacao).toBe('disponivel')
+  })
+
+  it('leitura de mais de uma hora atrás não conta', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA, 61)
+
+    expect((await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).situacao).toBe('disponivel')
+  })
+
+  it('o teto é de cada pessoa: as leituras de outra não contam', async () => {
+    const { base, pendente } = await umaRevisaoPendente()
+    await leiturasFeitas('outra-pessoa', LEITURAS_DE_EMAIL_POR_HORA, 30)
+
+    expect((await lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).situacao).toBe('disponivel')
   })
 })
