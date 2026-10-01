@@ -1,5 +1,5 @@
 /**
- * Confere se a trava da trilha está de pé no banco.
+ * Confere se a trava da trilha está como a migração a deixa.
  *
  *   npm run db:conferir-trilha
  *
@@ -11,11 +11,15 @@
  * Existe porque a trava some sem nenhum erro na aplicação: uma migração que
  * parou no meio e foi dada como aplicada à mão, ou uma restauração
  * interrompida, deixam o sistema subindo normal com o passado reescrevível
- * (`AT-66`, revisões do #184). Sai com código 1 se faltar alguma coisa.
+ * (`AT-66`, revisões do #184). Sai com código 1 se algo não estiver certo.
  */
 
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
-import { problemasDaTravaDaTrilha, type TriggerNoBanco } from '../src/servidor/privilegios'
+import { conferirTravaDaTrilha, type TriggerNoBanco } from '../src/servidor/privilegios'
+
+function escrever(texto: string): void {
+  process.stdout.write(`${texto}\n`)
+}
 
 async function principal(): Promise<void> {
   const triggers = await obterPrisma().$queryRaw<TriggerNoBanco[]>`
@@ -24,15 +28,27 @@ async function principal(): Promise<void> {
     FROM information_schema.TRIGGERS
     WHERE TRIGGER_SCHEMA = DATABASE()`
 
-  const problemas = problemasDaTravaDaTrilha(triggers)
-  if (problemas.length === 0) {
-    process.stdout.write('OK: LogAuditoria e EventoProcessamento recusam UPDATE, e as triggers voltam de um backup.\n')
+  const { semTrava, foraDaForma, nenhumaVisivel } = conferirTravaDaTrilha(triggers)
+
+  if (nenhumaVisivel) {
+    escrever('Nenhuma trigger visível nesta base. Ou a trilha está sem trava, ou esta credencial não tem TRIGGER')
+    escrever('(a da aplicação não tem, de propósito). Rode com a conta administradora do MySQL.')
+    escrever('Se já é ela, a trilha está sem trava: veja as duas saídas abaixo.')
+  } else if (semTrava.length === 0 && foraDaForma.length === 0) {
+    escrever('OK: as triggers de LogAuditoria e EventoProcessamento estão presentes, com o corpo exato da migração (AT-66).')
     return
   }
-  process.stdout.write('A trava da trilha NÃO está de pé:\n')
-  for (const problema of problemas) process.stdout.write(`  - ${problema}\n`)
-  if (triggers.length > 0) {
-    process.stdout.write('Para recriá-la: npx prisma migrate deploy, com a conta administradora do MySQL.\n')
+
+  for (const tabela of nenhumaVisivel ? [] : semTrava) {
+    escrever(`- ${tabela}: sem a trigger BEFORE UPDATE com o corpo exato da migração (AT-66).`)
+  }
+  for (const frase of foraDaForma) escrever(`- ${frase}`)
+
+  if (semTrava.length > 0) {
+    escrever('')
+    escrever('Se a migração ainda não rodou: npx prisma migrate deploy, com a conta administradora.')
+    escrever('Se esta base veio de uma restauração, ela pode estar incompleta: restaure de novo, de um backup')
+    escrever('bom, e confira outra vez antes de apontar o sistema para ela.')
   }
   process.exitCode = 1
 }

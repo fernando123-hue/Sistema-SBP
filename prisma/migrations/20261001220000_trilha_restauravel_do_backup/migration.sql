@@ -21,7 +21,10 @@
 -- (`ERROR 1419`), e quem rodasse este arquivo pelo cliente `mysql`, sem
 -- `DELIMITER`, também quebraria no primeiro `BEGIN`. O MySQL 8 aceita mais de
 -- uma trigger no mesmo evento, então as novas nascem ao lado das antigas, e
--- só depois as antigas saem. Qualquer falha no meio deixa ao menos uma trava.
+-- só depois as antigas saem. Uma falha no `prisma migrate deploy`, ou no
+-- cliente `mysql` sem `--force`, deixa ao menos uma trava. Com `--force`, o
+-- cliente pula os `CREATE` quebrados e roda os `DROP` do fim: a trilha fica
+-- sem trava (medido). Nunca aplique este arquivo com `--force`.
 --
 -- Os `DROP … IF EXISTS` do começo tiram só as NOVAS, de uma tentativa anterior
 -- que parou no meio: assim o arquivo pode rodar de novo depois de um
@@ -29,6 +32,7 @@
 --
 -- Aplique só por `prisma migrate deploy`, com a conta administradora do MySQL.
 -- Depois, `npm run db:conferir-trilha`, com a mesma conta, confirma as duas.
+-- O corpo é conferido letra a letra: mudou aqui, muda `corpoDaTrava`.
 -- A regra para o futuro, que `trilha-append-only.test.ts` confere em toda
 -- trigger da base: corpo de trigger sempre entre `BEGIN` e `END`.
 

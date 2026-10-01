@@ -192,50 +192,70 @@ export interface TriggerNoBanco {
 }
 
 /**
- * O que falta para a trava da trilha estar de pé, numa frase por problema.
+ * O corpo exato da trava de cada tabela da trilha, como a migração
+ * `20261001220000_trilha_restauravel_do_backup` o cria.
  *
- * Lista vazia: cada tabela da trilha tem uma trigger `BEFORE UPDATE` que
- * recusa com `SIGNAL`, e toda trigger da base tem o corpo entre `BEGIN` e
- * `END`. Corpo fora dessa forma não volta de um `mysqldump` (`AT-66`).
+ * Exato, e não "contém `SIGNAL`": um `SIGNAL` dentro de comentário ou de um
+ * `IF` que nunca vale passaria por trava sem recusar nada (segunda revisão de
+ * segurança do #184, medido). Mudou a migração, muda aqui; o teste de banco
+ * compara os dois.
+ */
+export function corpoDaTrava(tabela: (typeof TABELAS_DA_TRILHA)[number]): string {
+  return (
+    "BEGIN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = " +
+    `'${tabela} e append-only: grave um registro novo em vez de alterar o passado'; END`
+  )
+}
+
+/** Espaços, quebras de linha e `\r` do Windows viram um espaço só. */
+function normalizar(corpo: string): string {
+  return corpo.replace(/\s+/g, ' ').trim()
+}
+
+export interface ConferenciaDaTrava {
+  /** Tabelas da trilha sem a trava exata. Vazio: as duas estão de pé. */
+  semTrava: string[]
+  /** Frases sobre triggers fora de `BEGIN … END` (regra do `AT-66`). */
+  foraDaForma: string[]
+  /** Nenhuma trigger visível: sem trava, ou credencial sem `TRIGGER`. */
+  nenhumaVisivel: boolean
+}
+
+/**
+ * O que falta para a trava da trilha estar como a migração a deixa.
  *
  * POR QUE uma conferência e não só a migração: a trava some sem nenhum erro na
  * aplicação. Uma migração que parou no meio e foi dada como aplicada à mão, ou
  * uma restauração interrompida, deixam o sistema subindo normal com o passado
  * reescrevível (revisão de segurança do #184).
  *
+ * O nome da tabela é comparado sem caixa: no Windows o MySQL roda com
+ * `lower_case_table_names=1` e devolve `logauditoria` (`AT-32`). Comparar com
+ * caixa dava alarme falso com a trava de pé (segunda rodada das revisões do
+ * #184, medido).
+ *
  * LIMITE: o MySQL só mostra as triggers a quem tem `TRIGGER` na tabela, e o
- * usuário da aplicação não tem, de propósito (`AT-64`). Nenhuma trigger
- * visível é tratado como problema, com a frase dizendo as duas causas
- * possíveis: errar para o lado de acusar é o lado certo.
+ * usuário da aplicação não tem, de propósito (`AT-64`).
  */
-export function problemasDaTravaDaTrilha(triggers: readonly TriggerNoBanco[]): string[] {
-  if (triggers.length === 0) {
-    return [
-      'Nenhuma trigger visível nesta base. Ou a trilha está sem trava, ou esta credencial não tem TRIGGER ' +
-        '(a da aplicação não tem, de propósito). Rode com a conta administradora do MySQL.',
-    ]
-  }
-
-  const problemas: string[] = []
-  for (const tabela of TABELAS_DA_TRILHA) {
-    const trava = triggers.some(
+export function conferirTravaDaTrilha(triggers: readonly TriggerNoBanco[]): ConferenciaDaTrava {
+  const semTrava = TABELAS_DA_TRILHA.filter(
+    (tabela) =>
+      !triggers.some(
+        (t) =>
+          t.tabela.toLowerCase() === tabela.toLowerCase() &&
+          t.evento.toUpperCase() === 'UPDATE' &&
+          t.momento.toUpperCase() === 'BEFORE' &&
+          normalizar(t.corpo) === corpoDaTrava(tabela),
+      ),
+  )
+  const foraDaForma = triggers
+    .filter((t) => {
+      const corpo = normalizar(t.corpo).toUpperCase()
+      return !(corpo.startsWith('BEGIN') && corpo.endsWith('END'))
+    })
+    .map(
       (t) =>
-        t.tabela === tabela &&
-        t.evento.toUpperCase() === 'UPDATE' &&
-        t.momento.toUpperCase() === 'BEFORE' &&
-        /\bSIGNAL\s+SQLSTATE\s+'45000'/i.test(t.corpo),
+        `A trigger ${t.nome} tem o corpo fora de BEGIN … END (regra do AT-66: com o ";" do fim, o mysqldump não a restaura).`,
     )
-    if (!trava) problemas.push(`${tabela} sem a trigger BEFORE UPDATE que recusa reescrever o passado.`)
-  }
-  for (const t of triggers) {
-    if (!corpoRestauravel(t.corpo)) {
-      problemas.push(`A trigger ${t.nome} não tem o corpo entre BEGIN e END, a forma que o backup (mysqldump) restaura.`)
-    }
-  }
-  return problemas
-}
-
-function corpoRestauravel(corpo: string): boolean {
-  const limpo = corpo.trim().toUpperCase()
-  return limpo.startsWith('BEGIN') && limpo.endsWith('END')
+  return { semTrava, foraDaForma, nenhumaVisivel: triggers.length === 0 }
 }

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { obterPrisma } from '../servidor/prisma'
-import { problemasDaTravaDaTrilha, type TriggerNoBanco } from '../servidor/privilegios'
+import { conferirTravaDaTrilha, type TriggerNoBanco } from '../servidor/privilegios'
 import { limparTudo } from '../testes/apoio'
 
 /**
@@ -184,7 +184,7 @@ describe('a trilha é append-only', () => {
       FROM information_schema.TRIGGERS
       WHERE TRIGGER_SCHEMA = DATABASE()`
 
-    expect(problemasDaTravaDaTrilha(triggers)).toEqual([])
+    expect(conferirTravaDaTrilha(triggers)).toEqual({ semTrava: [], foraDaForma: [], nenhumaVisivel: false })
     // A migração do AT-66 apaga as antigas no fim: sobrar uma delas é a troca
     // pela metade.
     expect(triggers.map((t) => t.nome).sort()).toEqual([

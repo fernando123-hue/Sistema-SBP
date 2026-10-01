@@ -1453,12 +1453,12 @@ A V1 do `A74`, com `IA_ADAPTER=local` e `NODE_ENV=production`, sobe.
 
 **Por que criar antes de apagar (revisões técnica e de segurança do #184):** DDL no MySQL não é transacional. A primeira versão apagava primeiro, e um `CREATE` que falhasse deixava a trilha sem trava, com a aplicação subindo normal. Isso acontecia com credencial sem `SUPER` e binlog ligado (`ERROR 1419`), e também com o arquivo rodado pelo cliente `mysql` sem `DELIMITER`. O MySQL 8 aceita duas triggers no mesmo evento, então as novas nascem ao lado das antigas.
 
-**Conferência nova, `npm run db:conferir-trilha`:** a trava sumia sem nenhum erro na aplicação, por exemplo com uma migração que parou e foi dada como aplicada à mão, ou com uma restauração interrompida. O comando lê `information_schema.TRIGGERS` e sai com código 1 em três casos: falta a trigger `BEFORE UPDATE` com `SIGNAL` numa tabela da trilha; alguma trigger da base tem o corpo fora de `BEGIN … END`; ou nenhuma trigger aparece. **Roda com a conta administradora**, depois de migrar e depois de restaurar: o MySQL só mostra as triggers a quem tem `TRIGGER`, e o usuário da aplicação não tem, de propósito (`AT-64`). Por isso a conferência não está no `db:privilegios`, que roda com a credencial da aplicação. **Regra para o futuro:** corpo de trigger sempre entre `BEGIN` e `END`.
+**Conferência nova, `npm run db:conferir-trilha`:** a trava sumia sem nenhum erro na aplicação, por exemplo com uma migração que parou e foi dada como aplicada à mão, ou com uma restauração interrompida. O comando lê `information_schema.TRIGGERS` e sai com código 1 em três casos: falta numa tabela da trilha a trigger `BEFORE UPDATE` com o **corpo exato** da migração (`corpoDaTrava`, com os espaços normalizados); alguma trigger da base tem o corpo fora de `BEGIN … END`; ou nenhuma trigger aparece. **Corpo exato, e não "contém `SIGNAL`":** a segunda rodada de segurança mediu que um `SIGNAL` em comentário, ou sob um `IF` que nunca vale, deixava o `UPDATE` passar com a conferência dizendo OK. **Nome da tabela sem caixa:** no Windows o MySQL roda com `lower_case_table_names=1` e devolve `logauditoria` (`AT-32`). A segunda rodada técnica mediu alarme falso com a trava de pé, na máquina da V1. Conferido num MySQL com essa opção: conferência OK e teste de banco verde. **Roda com a conta administradora**, depois de migrar e depois de restaurar: o MySQL só mostra as triggers a quem tem `TRIGGER`, e o usuário da aplicação não tem, de propósito (`AT-64`). Por isso a conferência não está no `db:privilegios`, que roda com a credencial da aplicação. **Regra para o futuro:** corpo de trigger sempre entre `BEGIN` e `END`.
 
 **Prova (MySQL 8.4.11, binlog ligado), numa base com as triggers antigas e linhas na trilha:**
 - a conferência acusa a forma antiga (código 1);
 - `prisma migrate deploy` com credencial sem `SUPER` falha com `ERROR 1419`, as triggers antigas ficam, e `UPDATE` nas duas tabelas segue recusado com `ERROR 1644`;
-- `mysql < migration.sql` falha no primeiro `BEGIN`, com o mesmo resultado;
+- `mysql < migration.sql` falha no primeiro `BEGIN`, com o mesmo resultado. **Exceção medida:** com `mysql --force`, o cliente pula os `CREATE` quebrados e roda os `DROP` do fim, e a trilha fica sem trava; o comentário da migração proíbe o `--force`, e a conferência acusa ("nenhuma trigger visível");
 - `prisma migrate resolve --rolled-back` e `deploy` com a conta administradora: as duas novas no lugar, `UPDATE` recusado, conferência OK;
 - backup da base antiga restaurado: 19 tabelas, `LogAuditoria` sem trigger, conferência com código 1;
 - backup da base nova restaurado: exit 0, 29 tabelas, as duas triggers, conferência OK e `UPDATE` recusado.
@@ -1469,7 +1469,11 @@ Mutações, todas vermelhas:
 - a forma do corpo sempre aceita;
 - sem exigir `SIGNAL`;
 - aceitar `AFTER`;
-- lista vazia sem frase própria.
+- lista vazia sem frase própria;
+- nome da tabela comparado com caixa;
+- "contém `SIGNAL`" no lugar do corpo exato;
+- normalização que não trata o `\r` do Windows;
+- corpo da migração diferente do esperado.
 
 **O `DEFINER`:** a trigger roda como quem migrou. Num servidor onde esse usuário não existe, o `UPDATE` é recusado com `ERROR 1449`. Onde ele existe sem `TRIGGER` na base, com `ERROR 1142`. Nos dois casos a falha é fechada: a trava não abre, só a mensagem muda. Por isso a instalação migra e restaura com a conta administradora do MySQL. O roteiro de instalação vem no PR seguinte.
 
