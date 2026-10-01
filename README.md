@@ -52,7 +52,7 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 > npm run db:preparar -- --nome "Nome Completo" --email pessoa@dominio-da-associacao
 > ```
 >
-> Isso cria as categorias e **uma** pessoa gestora, real, com senha provisória impressa uma vez. O resto da equipe é cadastrado por ela na tela *Acesso e cadastro*. Rodar de novo não cria ninguém: o comando recusa quando a base já tem gestor (`AT-61`).
+> Isso cria as categorias e **uma** pessoa gestora, real, com senha provisória impressa uma vez. Rode num terminal, não como serviço: um log persistente guardaria a senha. O resto da equipe é cadastrado por ela na tela *Acesso e cadastro*. Rodar de novo não cria ninguém: o comando recusa quando a base já tem gestor (`AT-61`).
 
 ## Telas
 

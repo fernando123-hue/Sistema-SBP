@@ -1359,9 +1359,12 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 - **Recusa e-mail que já existe**, mesmo de colaborador comum: promover é decisão de quem administra, pela tela.
 - **Recusa o domínio `@exemplo.test`**: uma "primeira gestora" sintética deixaria a base com cara de desenvolvimento, e o seed e a demo voltariam a passar nela.
 - **A trilha grava `primeiro_gestor_criado` com autor `sistema`**, como os expurgos: não há sessão, e inventar um autor seria pior.
-- **Limite conhecido:** conferir e criar não é atômico. Duas execuções no mesmo instante poderiam criar duas gestoras, as duas na trilha. É um comando de instalação, rodado uma vez.
+- **Tudo numa transação** (revisão técnica do #176): categorias, conferências e gestora. Antes, as categorias eram gravadas antes das recusas, e uma recusa deixava rótulo e ordem reescritos.
+- **Rodar num terminal, não como serviço ou job** (revisão de segurança do #176): a senha provisória sai na tela, e um log persistente (journald, contêiner) a guardaria.
+- **Limite conhecido:** entre dois processos, conferir e criar não é atômico. Duas execuções no mesmo instante poderiam criar duas gestoras, as duas na trilha. É um comando de instalação, rodado uma vez.
+- **Junto, de uma linha:** `CadastroDeColaboradorSchema.nome` passou de 255 para 200, o tamanho da coluna. Com 255, um nome de 201 a 255 caracteres passava pela validação e virava 500 na tela de cadastro.
 
-**Prova:** `servicos/preparacao-do-servidor.test.ts`, com as recusas exigindo `ErroDeNegocio`. A mensagem do Prisma traz o trecho do código vizinho à linha que falhou, e só o texto deixava um erro de constraint passar por recusa: uma mutação sobreviveu assim antes da correção. Rodado de ponta a ponta numa base descartável: sem argumentos recusa; a primeira vez cria 8 categorias e a gestora; a segunda recusa; o seed depois recusa a base.
+**Prova:** `servicos/preparacao-do-servidor.test.ts`: a gestora entra com a senha provisória, é obrigada a trocá-la e fica liberada depois; recusas sem gravar nem as categorias; o peso e o limiar ajustados sobrevivem. As recusas exigem `ErroDeNegocio`, e a entrada inválida exige `ZodError`. A mensagem do Prisma traz o trecho do código vizinho à linha que falhou, e só o texto deixava um erro de constraint passar por recusa: uma mutação sobreviveu assim antes da correção. Rodado de ponta a ponta numa base descartável: sem argumentos recusa; a primeira vez cria 8 categorias e a gestora; a segunda recusa; o seed depois recusa a base.
 
 **Status:** 🟢 em vigor. Falta o roteiro de instalação completo para o TI (Node, systemd, proxy com HTTPS, backup), que é outro trabalho.
 

@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
 import { CATEGORIAS_CADASTRO } from '../core/config'
 import { ErroDeNegocio } from '../core/erros'
 import { conferirSenha } from '../servidor/credenciais'
+import { atorDeTeste } from '../testes/apoio'
+import { autenticar, trocarSenha } from './autenticacao'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo } from '../testes/apoio'
 import { exigirBaseSintetica } from './base-sintetica'
-import { criarPrimeiroGestor, garantirCategorias } from './preparacao-do-servidor'
+import { garantirCategorias, prepararServidor } from './preparacao-do-servidor'
 
 /**
  * O servidor novo precisa de categorias e de UMA gestora real para alguém
@@ -44,18 +47,21 @@ describe('as categorias da configuração', () => {
     expect(await banco.categoria.count()).toBe(CATEGORIAS_CADASTRO.length)
   })
 
-  it('repetir não desfaz o peso que o operador ajustou', async () => {
+  it('repetir não desfaz o peso nem o limiar que o operador ajustou, e volta o rótulo da configuração', async () => {
     await garantirCategorias(banco)
-    const codigo = CATEGORIAS_CADASTRO[0]!.codigo
-    await banco.categoria.update({ where: { codigo }, data: { peso: 9 } })
+    const { codigo, rotulo } = CATEGORIAS_CADASTRO[0]!
+    await banco.categoria.update({ where: { codigo }, data: { peso: 9, limiarConfianca: 0.5, rotulo: 'Editado à mão' } })
     await garantirCategorias(banco)
-    expect((await banco.categoria.findUniqueOrThrow({ where: { codigo } })).peso.toString()).toBe('9')
+    const depois = await banco.categoria.findUniqueOrThrow({ where: { codigo } })
+    expect(depois.peso.toString()).toBe('9')
+    expect(Number(depois.limiarConfianca)).toBe(0.5)
+    expect(depois.rotulo).toBe(rotulo)
   })
 })
 
 describe('a primeira gestora', () => {
   it('nasce gestora, obrigada a trocar a senha, com a provisória conferindo e na trilha sem ela', async () => {
-    const criada = await criarPrimeiroGestor(banco, GESTORA)
+    const criada = await prepararServidor(banco, GESTORA)
 
     const gravada = await banco.colaborador.findUniqueOrThrow({ where: { id: criada.colaboradorId } })
     expect(gravada.papel).toBe('gestor')
@@ -69,31 +75,50 @@ describe('a primeira gestora', () => {
     expect(JSON.stringify(trilha)).not.toContain(criada.senhaProvisoria)
   })
 
+  it('entra com a senha provisória, é obrigada a trocá-la, e depois da troca está liberada', async () => {
+    const criada = await prepararServidor(banco, GESTORA)
+
+    const entrada = await autenticar(banco, { email: GESTORA.email, senha: criada.senhaProvisoria })
+    expect(entrada.papel).toBe('gestor')
+    expect(entrada.precisaTrocarSenha).toBe(true)
+
+    await trocarSenha(
+      banco,
+      { senhaAtual: criada.senhaProvisoria, senhaNova: 'frase-longa-escolhida-pela-gestora' },
+      atorDeTeste(criada.colaboradorId, 'gestor'),
+    )
+    const depois = await autenticar(banco, { email: GESTORA.email, senha: 'frase-longa-escolhida-pela-gestora' })
+    expect(depois.precisaTrocarSenha).toBe(false)
+  })
+
   it('o e-mail é guardado como o cadastro da tela guarda: sem espaço e em minúsculas', async () => {
-    const criada = await criarPrimeiroGestor(banco, { nome: GESTORA.nome, email: '  Gestora@Outro.Example ' })
+    const criada = await prepararServidor(banco, { nome: GESTORA.nome, email: '  Gestora@Outro.Example ' })
     expect(criada.email).toBe('gestora@outro.example')
   })
 
   it('depois dela, a demo e o seed recusam a base', async () => {
-    await criarPrimeiroGestor(banco, GESTORA)
+    await prepararServidor(banco, GESTORA)
     await expect(exigirBaseSintetica(banco, 'o seed')).rejects.toThrow(/domínio sintético/)
   })
 
   it.each([true, false])('base que já tem gestor (ativo: %s) recusa, e nada é criado', async (ativo) => {
     await banco.colaborador.create({ data: { nome: 'Outra', email: 'outra@outro.example', papel: 'gestor', ativo } })
-    expect(await recusa(criarPrimeiroGestor(banco, GESTORA))).toMatch(/já tem gestor/)
+    expect(await recusa(prepararServidor(banco, GESTORA))).toMatch(/já tem gestor/)
     expect(await banco.colaborador.count()).toBe(1)
     expect(await banco.logAuditoria.count()).toBe(0)
+    // Tudo ou nada: a recusa não deixa as categorias gravadas pela metade.
+    expect(await banco.categoria.count()).toBe(0)
   })
 
   it('o mesmo e-mail como colaborador comum recusa: promover é pela tela', async () => {
     await banco.colaborador.create({ data: { nome: 'Gestora', email: GESTORA.email, papel: 'colaborador' } })
-    expect(await recusa(criarPrimeiroGestor(banco, GESTORA))).toMatch(/Já existe uma pessoa com este e-mail/)
+    expect(await recusa(prepararServidor(banco, GESTORA))).toMatch(/Já existe uma pessoa com este e-mail/)
     expect((await banco.colaborador.findUniqueOrThrow({ where: { email: GESTORA.email } })).papel).toBe('colaborador')
+    expect(await banco.categoria.count()).toBe(0)
   })
 
   it('o domínio de teste recusa', async () => {
-    expect(await recusa(criarPrimeiroGestor(banco, { nome: 'Teste', email: 'gestora@exemplo.test' }))).toMatch(/domínio de teste/)
+    expect(await recusa(prepararServidor(banco, { nome: 'Teste', email: 'gestora@exemplo.test' }))).toMatch(/domínio de teste/)
     expect(await banco.colaborador.count()).toBe(0)
   })
 
@@ -101,8 +126,17 @@ describe('a primeira gestora', () => {
     [{ nome: '', email: 'gestora@outro.example' }],
     [{ nome: 'Gestora', email: 'nao-e-email' }],
     [{ email: 'gestora@outro.example' }],
+    [{ nome: 'N'.repeat(201), email: 'gestora@outro.example' }],
   ])('entrada inválida recusa antes de tocar o banco: %j', async (entrada) => {
-    await expect(criarPrimeiroGestor(banco, entrada)).rejects.toThrow()
+    // A validação, não o banco: um nome longo demais também é recusado pela
+    // coluna, e um teste que aceitasse qualquer erro passaria com ele.
+    await expect(prepararServidor(banco, entrada)).rejects.toBeInstanceOf(ZodError)
     expect(await banco.colaborador.count()).toBe(0)
+    expect(await banco.categoria.count()).toBe(0)
+  })
+
+  it('nome com exatamente 200 caracteres cabe na coluna', async () => {
+    const criada = await prepararServidor(banco, { nome: 'N'.repeat(200), email: GESTORA.email })
+    expect((await banco.colaborador.findUniqueOrThrow({ where: { id: criada.colaboradorId } })).nome).toHaveLength(200)
   })
 })

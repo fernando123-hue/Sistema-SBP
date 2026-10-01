@@ -5,16 +5,20 @@
  *   npm run db:preparar -- --nome "Nome Completo" --email pessoa@dominio
  *
  * Nunca rode o seed no servidor: ele cria a equipe fictícia (`AT-60`, `AT-61`).
+ * Rode num terminal, não como serviço ou job: a senha provisória sai na tela,
+ * e um log persistente (journald, contêiner) a guardaria.
  * Este comando recusa quando a base já tem gestor, então rodar de novo não
  * cria ninguém.
  */
 
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
-import { criarPrimeiroGestor, garantirCategorias } from '../src/servicos/preparacao-do-servidor'
+import { prepararServidor } from '../src/servicos/preparacao-do-servidor'
 
+/** O valor depois de `--nome`. Outra opção no lugar do valor conta como ausente. */
 function argumento(nome: string): string | undefined {
   const posicao = process.argv.indexOf(`--${nome}`)
-  return posicao === -1 ? undefined : process.argv[posicao + 1]
+  const valor = posicao === -1 ? undefined : process.argv[posicao + 1]
+  return valor === undefined || valor.startsWith('--') ? undefined : valor
 }
 
 async function principal(): Promise<void> {
@@ -24,16 +28,13 @@ async function principal(): Promise<void> {
     throw new Error('Uso: npm run db:preparar -- --nome "Nome Completo" --email pessoa@dominio')
   }
 
-  const banco = obterPrisma()
-  const categorias = await garantirCategorias(banco)
-  process.stdout.write(`Categorias conferidas: ${categorias}.\n`)
-
-  const gestor = await criarPrimeiroGestor(banco, { nome, email })
+  const preparado = await prepararServidor(obterPrisma(), { nome, email })
   process.stdout.write(
-    `\nPrimeira gestora criada: ${gestor.email}\n` +
+    `Categorias conferidas: ${preparado.categorias}.\n` +
+      `\nPrimeira gestora criada: ${preparado.email}\n` +
       'Senha provisória — aparece UMA vez, não fica gravada em lugar nenhum.\n' +
       'O sistema exige a troca no primeiro acesso:\n\n' +
-      `  ${gestor.senhaProvisoria}\n\n`,
+      `  ${preparado.senhaProvisoria}\n\n`,
   )
 }
 

@@ -3,7 +3,8 @@ import { ErroDeNegocio } from '../core/erros'
 import { CadastroDeColaboradorSchema } from '../core/esquemas'
 import { gerarHash, sortearSenhaProvisoria } from '../servidor/credenciais'
 import { novaCorrelacao } from '../servidor/observabilidade'
-import type { Banco } from '../servidor/prisma'
+import { ATOR_SISTEMA } from '../servidor/ator'
+import type { Banco, Transacao } from '../servidor/prisma'
 import { auditar } from './auditoria'
 import { DOMINIO_SINTETICO } from './base-sintetica'
 
@@ -25,7 +26,7 @@ import { DOMINIO_SINTETICO } from './base-sintetica'
  * As categorias de `CATEGORIAS_CADASTRO`, criadas ou com rótulo e ordem
  * atualizados. Repetir não duplica nada.
  */
-export async function garantirCategorias(banco: Banco): Promise<number> {
+export async function garantirCategorias(banco: Banco | Transacao): Promise<number> {
   for (const [posicao, categoria] of CATEGORIAS_CADASTRO.entries()) {
     await banco.categoria.upsert({
       where: { codigo: categoria.codigo },
@@ -56,7 +57,8 @@ export async function garantirCategorias(banco: Banco): Promise<number> {
   return CATEGORIAS_CADASTRO.length
 }
 
-export interface PrimeiroGestorCriado {
+export interface ServidorPreparado {
+  categorias: number
   colaboradorId: string
   email: string
   /** Em texto, UMA vez, para quem preparou o servidor entregar. Só o hash é gravado. */
@@ -64,7 +66,12 @@ export interface PrimeiroGestorCriado {
 }
 
 /**
- * A primeira pessoa gestora da base, se ainda não há nenhuma.
+ * As categorias e a primeira pessoa gestora, **numa transação só**.
+ *
+ * Tudo ou nada de propósito (revisão técnica do #176): com as categorias
+ * gravadas antes das conferências, um e-mail recusado ou uma base que já tem
+ * gestor deixavam rótulo e ordem reescritos, e "rodar de novo não faz nada"
+ * não era verdade.
  *
  * Recusa se já existe gestor, ativo ou não: daí em diante quem cadastra é a
  * tela, com sessão, papel conferido e trilha com nome. Uma porta de terminal
@@ -75,12 +82,12 @@ export interface PrimeiroGestorCriado {
  * deixaria a base parecendo de desenvolvimento, e a trava da demo e do seed
  * (`exigirBaseSintetica`) a deixaria passar.
  *
- * LIMITE CONHECIDO: a conferência e a criação não são atômicas. Duas
- * execuções no mesmo instante poderiam criar duas gestoras, com e-mails
- * diferentes. É um comando de instalação, rodado uma vez, por uma pessoa; as
- * duas ficariam na trilha.
+ * LIMITE CONHECIDO: a conferência e a criação não são atômicas entre
+ * processos. Duas execuções no mesmo instante poderiam criar duas gestoras,
+ * com e-mails diferentes. É um comando de instalação, rodado uma vez, por uma
+ * pessoa; as duas ficariam na trilha.
  */
-export async function criarPrimeiroGestor(banco: Banco, entrada: unknown): Promise<PrimeiroGestorCriado> {
+export async function prepararServidor(banco: Banco, entrada: unknown): Promise<ServidorPreparado> {
   const dados = CadastroDeColaboradorSchema.pick({ nome: true, email: true }).parse(entrada)
 
   if (dados.email.endsWith(DOMINIO_SINTETICO)) {
@@ -111,6 +118,8 @@ export async function criarPrimeiroGestor(banco: Banco, entrada: unknown): Promi
       throw new ErroDeNegocio('Já existe uma pessoa com este e-mail na base. Nada foi criado.')
     }
 
+    const categorias = await garantirCategorias(tx)
+
     const gestor = await tx.colaborador.create({
       data: {
         nome: dados.nome,
@@ -130,10 +139,10 @@ export async function criarPrimeiroGestor(banco: Banco, entrada: unknown): Promi
       depois: { nome: dados.nome, email: gestor.email, papel: 'gestor' },
       // Não há sessão: quem rodou foi o terminal do servidor. A trilha diz
       // isso em vez de inventar um autor.
-      usuario: 'sistema',
+      usuario: ATOR_SISTEMA.colaboradorId,
       correlacaoId,
     })
 
-    return { colaboradorId: gestor.id, email: gestor.email, senhaProvisoria }
+    return { categorias, colaboradorId: gestor.id, email: gestor.email, senhaProvisoria }
   })
 }
