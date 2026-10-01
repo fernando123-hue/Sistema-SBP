@@ -44,7 +44,7 @@ const REGRAS: readonly Regra[] = [
   // `proxy.ts` é o nome que o Next 16 deu ao middleware: a troca de nome não
   // pode baixar o nível da CSP e da conferência de origem.
   { nivel: 3, padrao: /^src\/(middleware|proxy)\.ts$/, motivo: 'cabeçalhos e sessão' },
-  { nivel: 3, padrao: /^src\/instrumentation(-node)?\.ts$/, motivo: 'rotinas que o servidor roda sozinho (expurgo)' },
+  { nivel: 3, padrao: /^src\/instrumentation(-node)?(\.test)?\.ts$/, motivo: 'rotinas que o servidor roda sozinho (expurgo)' },
   { nivel: 3, padrao: /^src\/servidor\//, motivo: 'sessão, ambiente, limites e acesso' },
   { nivel: 3, padrao: /^src\/app\/api\//, motivo: 'rota que recebe requisição de fora' },
   { nivel: 3, padrao: /^src\/adapters\//, motivo: 'IA, e-mail, arquivos e banco' },
@@ -66,8 +66,12 @@ const REGRAS: readonly Regra[] = [
   // a rota que só a chama exigia (auditoria de testes e CI de 01/10/2026).
   {
     nivel: 3,
-    padrao: /^src\/servicos\/(autenticacao|colaboradores|auditoria|retencao|rotinas|preparacao-do-servidor|base-sintetica|expurgo-[^/.]+)(\.test)?\.ts$/,
-    motivo: 'acesso, expurgo ou trilha de auditoria',
+    padrao:
+      /^src\/servicos\/(autenticacao|colaboradores|auditoria|retencao|rotinas|preparacao-do-servidor|base-sintetica|assistente|revisao|memoria|expurgo-[^/.]+)(\.test)?\.ts$/,
+    // `assistente` confere o papel sobre a saída do modelo; `revisao` abre o
+    // corpo do e-mail com o teto do `A72`; `memoria` lê o histórico de entradas
+    // (revisão técnica do #180).
+    motivo: 'acesso, expurgo, trilha, leitura de e-mail ou o que o assistente diz',
   },
   { nivel: 3, padrao: /^src\/core\/autenticacao\.ts$/, motivo: 'regra de acesso' },
   { nivel: 2, padrao: /^src\/core\//, motivo: 'regra de negócio' },
@@ -76,6 +80,9 @@ const REGRAS: readonly Regra[] = [
   // Era `src/components/`, pasta que não existe: todo PR de tela caía em
   // "caminho desconhecido", nível 3, e pedia revisão de segurança por engano.
   { nivel: 1, padrao: /^src\/componentes\//, motivo: 'componente de tela' },
+  // O `globalSetup` do vitest apaga e recria a base e roda comando no CI, e
+  // guarda a única trava contra apagar a base errada (revisão de segurança do #180).
+  { nivel: 3, padrao: /^src\/testes\/preparar-banco(\.test)?\.ts$/, motivo: 'apaga e recria a base de teste, roda comando no CI' },
   { nivel: 2, padrao: /^src\/testes\//, motivo: 'apoio dos testes de integração' },
   { nivel: 1, padrao: /^public\//, motivo: 'arquivo estático' },
   { nivel: 0, padrao: /^docs\//, motivo: 'documentação' },
