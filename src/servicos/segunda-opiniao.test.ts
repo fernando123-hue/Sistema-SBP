@@ -310,16 +310,23 @@ describe('varredura: só este módulo pergunta ao classificador', () => {
     for (const trecho of ignoradas) expect(usosDeClassificar(trecho), trecho).toBe(0)
   })
 
-  it('em `src/` inteiro e em `scripts/`, só `servicos/segunda-opiniao.ts` usa `classificar`, uma vez', () => {
+  // A avaliação no gabarito (`A70`, P2) é o segundo lugar, e o último: ela
+  // pergunta sobre e-mail SINTÉTICO, com perguntas constantes dela.
+  it('em `src/` inteiro e em `scripts/`, só a ingestão e a avaliação usam `classificar`, uma vez cada', () => {
     const usos = [...arquivos(SRC), ...arquivos(join(PROJETO, 'scripts'))]
       .map((arquivo) => [relative(PROJETO, arquivo).replaceAll('\\', '/'), usosDeClassificar(readFileSync(arquivo, 'utf8'))] as const)
       .filter(([, quantos]) => quantos > 0)
-    expect(Object.fromEntries(usos)).toEqual({ 'src/servicos/segunda-opiniao.ts': 1 })
+    expect(Object.fromEntries(usos)).toEqual({
+      'src/servicos/segunda-opiniao.ts': 1,
+      'src/servicos/avaliacao-do-classificador.ts': 1,
+    })
   })
 
   it('e a chamada leva só o texto e as perguntas constantes — nada colado a elas', () => {
     const fonte = semComentarios(readFileSync(join(SRC, 'servicos/segunda-opiniao.ts'), 'utf8'))
     expect(fonte).toMatch(/\.classificar\(\{\s*texto,\s*perguntas:\s*PERGUNTAS_DA_INGESTAO\s*\}\)/)
+    const avaliacao = semComentarios(readFileSync(join(SRC, 'servicos/avaliacao-do-classificador.ts'), 'utf8'))
+    expect(avaliacao).toMatch(/\.classificar\(\{\s*texto,\s*perguntas:\s*PERGUNTAS_DA_AVALIACAO\s*\}\)/)
   })
 
   it('as perguntas e as descrições estão congeladas, não só `readonly` no tipo', () => {

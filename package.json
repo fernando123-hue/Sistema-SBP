@@ -19,6 +19,7 @@
     "demo": "tsx scripts/demo.ts",
     "ia:experimentar": "tsx scripts/experimentar-ia.ts",
     "ia:avaliar": "tsx scripts/avaliar-ia.ts",
+    "classificador:avaliar": "tsx scripts/avaliar-classificador.ts",
     "verificar": "npm run typecheck && npm run test",
     "dev": "next dev",
     "dev:local": "tsx scripts/dev-local.ts",

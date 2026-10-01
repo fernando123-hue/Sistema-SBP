@@ -4,6 +4,13 @@
 
 > ## ▶ Próxima sessão: comece aqui
 >
+> ### 01/10/2026 — JEV PRÓPRIO, P2: CLASSIFICADOR LOCAL CONSTRUÍDO (`AT-54`) (este bloco vence os de baixo)
+>
+> - **O que entrou:** `adapters/classificador-local.ts` (IA local respondendo perguntas fechadas pelos *logprobs*, atrás da mesma política do Jev), `CLASSIFICADOR_ADAPTER="local"` e `npm run classificador:avaliar` (gabarito sintético: quantidade, categoria, suspeita e tempo por e-mail).
+> - **Não medido:** nenhum servidor real respondeu ainda. A rede desta nuvem bloqueia Ollama e Hugging Face; a medição real fica com a sessão na máquina do dono ("Projeto SBP local"). Com o Ollama no ar: `CLASSIFICADOR_ADAPTER=local IA_LOCAL_URL=http://127.0.0.1:11434/v1 CLASSIFICADOR_MODELO=qwen2.5:1.5b npm run classificador:avaliar`.
+> - **Linha de base do dublê:** quantidade 0,00 · categoria 0,35 · suspeita 0,82.
+> - **Próximo:** medir (P1, com a rede ou na máquina do dono); depois P3, a segunda opinião com mais de um classificador e o orçamento de tempo revisto; depois as telas do `A69`.
+>
 > ### 30/09/2026, fim da noite — JEV PRÓPRIO DECIDIDO (`A70`); NEXT CORRIGIDO (este bloco vence os de baixo)
 >
 > - **#155 mesclado:** Next 16.3.5 → 16.3.6. O `npm audit` passou a acusar falha crítica (GHSA-vcvr-r3jv-pc5j, RCE em `next/og`) e deixava a auditoria vermelha em todo PR. O código não usa `next/og`. Revisões técnica e de segurança aprovaram; ficou a pendência 46.
