@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { pedidoDeConfirmacao } from './pedido-de-confirmacao'
+import { pedidoDeConfirmacao, pedidoDeConfirmacaoDoGrupo } from './pedido-de-confirmacao'
 
 describe('pedidoDeConfirmacao (pendência 5)', () => {
   it('diz qual item pela posição, no formato do leitor de tela', () => {
@@ -31,5 +31,29 @@ describe('pedidoDeConfirmacao (pendência 5)', () => {
   // título. Se alguém acrescentar, este teste precisa mudar — e a decisão também.
   it('não recebe texto que venha do e-mail', () => {
     expect(pedidoDeConfirmacao.length).toBe(3)
+  })
+})
+
+describe('pedidoDeConfirmacaoDoGrupo (`A69`, 3A)', () => {
+  it('diz quantos itens o segundo toque conclui, e qual grupo', () => {
+    expect(pedidoDeConfirmacaoDoGrupo(1, 4, 34)).toBe(
+      'Para concluir os 34 itens do e-mail 2 de 4, aperte o mesmo botão de novo. Concluir não tem volta.',
+    )
+  })
+
+  // Dois e-mails de 34 ligantes dariam a mesma frase sem a posição, e o
+  // leitor de tela não repetiria o aviso ao armar o segundo.
+  it('grupos do mesmo tamanho geram frases diferentes', () => {
+    expect(pedidoDeConfirmacaoDoGrupo(0, 2, 34)).not.toBe(pedidoDeConfirmacaoDoGrupo(1, 2, 34))
+  })
+
+  it('grupo fora da lista não inventa posição', () => {
+    expect(pedidoDeConfirmacaoDoGrupo(-1, 2, 3)).toBe(
+      'Para concluir os 3 itens deste e-mail, aperte o mesmo botão de novo. Concluir não tem volta.',
+    )
+  })
+
+  it('não recebe texto que venha do e-mail', () => {
+    expect(pedidoDeConfirmacaoDoGrupo.length).toBe(3)
   })
 })

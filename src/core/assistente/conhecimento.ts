@@ -177,7 +177,10 @@ export const MANUAL: readonly VerbeteDoManual[] = [
     texto:
       'Minha fila mostra os itens sob sua responsabilidade, do mais antigo para o mais novo. A idade é a do ITEM, não a da atribuição: ' +
       'item que passou de mão continua com a idade original, para que trabalho parado não rejuvenesça ao mudar de dono. ' +
-      'Ao terminar um item, use Concluir. Ninguém declara quantidade no fim do dia — o número do painel é consequência dos itens concluídos, um a um.',
+      'Ao terminar um item, use Concluir. Ninguém declara quantidade no fim do dia — o número do painel é consequência dos itens concluídos, um a um. ' +
+      'Os itens do mesmo e-mail, como uma lista de ligantes, aparecem juntos num cartão: "Concluir os N" conclui todos de uma vez, com o mesmo segundo toque de confirmação, ' +
+      'e cada um continua contando no painel; "Ver um por um" abre os cartões de cada item, para concluir, devolver ou transferir só alguns. ' +
+      'Em item que veio de e-mail, "Ver dados" mostra o que a IA leu (CPF, matrícula, e-mail) com um botão de copiar, sem precisar voltar ao Outlook.',
   },
   {
     id: 'devolver-e-transferir',
