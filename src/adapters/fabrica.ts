@@ -178,15 +178,25 @@ export function criarClassificadorPort(): ClassificadorPort | null {
       // O classificador próprio (`A70`): o mesmo servidor e, sem modelo
       // próprio, o mesmo modelo da interpretação. Com o disjuntor, um servidor
       // fora do ar para de ser perguntado em vez de custar o prazo a cada texto.
+      //
+      // CHAVE DE CONSUMO PRÓPRIA, de propósito. Com `local`, a mesma da
+      // interpretação, o teto diário e o disjuntor seriam um só: a opinião em
+      // SOMBRA gastaria metade do teto do caminho real, e cinco prazos
+      // estourados dela abririam o disjuntor também para ler os e-mails
+      // (revisões técnica e de segurança do #159). `Classificacao.fornecedor`
+      // continua `local`; só a conta é separada.
       return new ClassificadorExterno(
         PERFIL_CLASSIFICADOR_LOCAL,
-        controlarClassificacao(clienteClassificadorLocal(), PERFIL_CLASSIFICADOR_LOCAL.nome),
+        controlarClassificacao(clienteClassificadorLocal(), CHAVE_DE_CONSUMO_DO_CLASSIFICADOR_LOCAL),
         modelo || ambiente().IA_MODELO,
       )
     default:
       throw new AdapterIndisponivelError('classificador', nome)
   }
 }
+
+/** A conta de consumo do classificador local, separada da da interpretação (`local`). */
+export const CHAVE_DE_CONSUMO_DO_CLASSIFICADOR_LOCAL = 'local-classificador'
 
 /** O mesmo teto diário e o mesmo disjuntor da IA (`A54`), por fornecedor. */
 function controlarClassificacao(cliente: ClienteDeClassificacao, fornecedor: string): ClienteDeClassificacao {

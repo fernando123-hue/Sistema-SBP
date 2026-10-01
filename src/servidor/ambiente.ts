@@ -423,10 +423,19 @@ export function ambiente(): Ambiente {
           '(por exemplo http://127.0.0.1:11434/v1).',
       )
     }
-    if (!resultado.data.CLASSIFICADOR_MODELO && !resultado.data.IA_MODELO) {
+    const modeloDoClassificador = resultado.data.CLASSIFICADOR_MODELO || resultado.data.IA_MODELO
+    if (!modeloDoClassificador) {
       throw new Error(
         'CLASSIFICADOR_ADAPTER="local" exige CLASSIFICADOR_MODELO ou IA_MODELO: cada servidor local serve o modelo ' +
           'que baixaram nele, e não há padrão que valha para todos.',
+      )
+    }
+    // `IA_MODELO` não tem a forma conferida no esquema, e aqui ele vira o nome
+    // que a trilha e o `UsoDaIa` guardam (revisão de segurança do #159).
+    if (!ehNomeDeModelo(modeloDoClassificador)) {
+      throw new Error(
+        'o modelo do classificador local (CLASSIFICADOR_MODELO, ou IA_MODELO quando ele está vazio) precisa ser ' +
+          'um nome de modelo: letras, números e . : / - _, até 100.',
       )
     }
     const recusa = motivoDeEnderecoLocalInvalido(resultado.data.IA_LOCAL_URL)
@@ -637,10 +646,16 @@ function motivoDeEnderecoLocalInvalido(valor: string): string | null {
 
   // `[::1]` chega com os colchetes em `hostname`.
   const hospedeiro = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
-  if (hospedeiro === 'localhost' || hospedeiro === '::1' || /^127\./.test(hospedeiro)) return null
-  if (/^10\./.test(hospedeiro)) return null
-  if (/^192\.168\./.test(hospedeiro)) return null
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(hospedeiro)) return null
+  if (hospedeiro === 'localhost' || hospedeiro === '::1') return null
+  // Os prefixos da rede interna valem só para um IPv4 ESCRITO EM NÚMEROS.
+  // Sem isto, `10.evil.com` ou `127.algo.com` passavam como internos — um nome
+  // que resolve para onde o dono do domínio quiser (revisão de segurança do
+  // #159). O `URL` já normaliza `2130706433` e `0x7f.1` para a forma decimal.
+  const ehIpv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hospedeiro)
+  if (ehIpv4 && /^127\./.test(hospedeiro)) return null
+  if (ehIpv4 && /^10\./.test(hospedeiro)) return null
+  if (ehIpv4 && /^192\.168\./.test(hospedeiro)) return null
+  if (ehIpv4 && /^172\.(1[6-9]|2\d|3[01])\./.test(hospedeiro)) return null
   // `fc00::/7` — endereço local único do IPv6.
   //
   // OS QUATRO DÍGITOS SÃO A REGRA, não zero à esquerda esquecido. A faixa é
