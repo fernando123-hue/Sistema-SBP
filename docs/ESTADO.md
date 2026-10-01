@@ -14,6 +14,7 @@
 > - **#163:** "Ver o e-mail" na Revisão, lido sob demanda, com o trecho do campo apontado marcado; selo de confiança só na baixa confiança; tema sempre claro (`A67 (d)`). Decisões em `AT-55`. Nível 3.
 > - `verificar` com a main de 01/10 (#160, #161, #162): 147 arquivos, 1831 testes.
 > - **Próximo do `A69`:** 3A+3B, a Minha fila em lista e detalhe. O Jev próprio (P2) segue em outra frente.
+> - **`A71` (01/10, decisão do dono):** nenhum relatório de quantos e-mails cada pessoa leu, nem para o encarregado nem para a gestão; se o número existir, só a própria pessoa o vê. O teto de leituras por hora (`§ H.4` 50) segue aberto.
 >
 > ### 01/10/2026 — JEV PRÓPRIO, P2: CLASSIFICADOR LOCAL CONSTRUÍDO (`AT-54`) (vence os de baixo, menos o de cima)
 >
