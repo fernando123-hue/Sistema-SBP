@@ -1,11 +1,10 @@
+import { DOMINIO_SINTETICO } from '../servidor/acesso-local'
 import { ambiente } from '../servidor/ambiente'
 import type { Banco } from '../servidor/prisma'
 
-/**
- * O domínio de todo e-mail do seed, da demo e do dublê de ingestão. É reservado
- * (RFC 2606): nenhuma caixa de verdade termina assim.
- */
-export const DOMINIO_SINTETICO = '@exemplo.test'
+// Um domínio só para "conta de teste": o acesso local de desenvolvimento, esta
+// trava e a preparação do servidor perguntam a mesma coisa.
+export { DOMINIO_SINTETICO }
 
 /**
  * Recusa gravar dado sintético numa base que já tem dado da operação.

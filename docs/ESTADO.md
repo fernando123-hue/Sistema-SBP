@@ -28,7 +28,7 @@
 >
 >    Em `http://localhost` o login funciona: o navegador aceita o cookie `Secure` em localhost e ignora o HSTS em HTTP. **Acesso de outros computadores da rede já exige HTTPS.**
 > 3. ~~**A trava de dado real cobrir o assistente**~~ **Feita (`AT-63`):** em produção, o servidor recusa subir com IA que tire o texto da casa sem autorização para dado real.
-> 4. Os PRs do Dependabot #173 e #174 **juntos** (`init` e `analyze` do CodeQL na mesma versão); `nivel-de-risco.ts` com `src/componentes/` e autenticação, expurgo e auditoria no nível 3.
+> 4. ~~Dependabot #173 e #174 juntos; `nivel-de-risco.ts`~~ **Feito no PR de arrumação:** CodeQL `init` e `analyze` na v4.38.2 no mesmo PR, com as ações agrupadas no Dependabot; o nível de risco corrigido (`src/componentes/`; acesso, expurgo e trilha no nível 3; `CLAUDE.md`/`AGENTS.md` em qualquer pasta; `PROCESSO.md`); `DOMINIO_SINTETICO` num lugar só.
 > 5. **V2:** o dono traz os modelos; a anonimização acontece na máquina dele, antes do commit.
 > 6. **V3:** roteiro de instalação para o TI:
 >    - Node 22, MySQL com a colação certa e `npm run db:privilegios`;

@@ -18,3 +18,9 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    groups:
+      # `init` e `analyze` do CodeQL compartilham estado e precisam estar na
+      # mesma versão; em PRs separados, mesclar um só deixava a main com as
+      # duas misturadas (#173 e #174).
+      acoes:
+        patterns: ['*']
