@@ -46,6 +46,14 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 
 `npm run demo` roda o mesmo fluxo pelo terminal, sem tela: ingestão, classificação por IA, fila de revisão, distribuição, execução, painel e conferência de conservação.
 
+> **No servidor da operação, nunca rode o seed nem a demo.** Eles criam a equipe fictícia. Depois das migrações, o servidor é preparado com:
+>
+> ```bash
+> npm run db:preparar -- --nome "Nome Completo" --email pessoa@dominio-da-associacao
+> ```
+>
+> Isso cria as categorias e **uma** pessoa gestora, real, com senha provisória impressa uma vez. O resto da equipe é cadastrado por ela na tela *Acesso e cadastro*. Rodar de novo não cria ninguém: o comando recusa quando a base já tem gestor (`AT-61`).
+
 ## Telas
 
 | Rota | O que faz |
@@ -70,6 +78,7 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 | `npm run demo` | Fluxo completo ponta a ponta. Recusa base com dado da operação (e-mail que não veio do dublê, pessoa fora de `@exemplo.test`) e `NODE_ENV=production`: ela aprova em massa as revisões pendentes |
 | `npm run ia:experimentar` | Compara mock e modelo real em 4 casos. Único caminho que gasta crédito |
 | `npm run db:seed` | Cadastro base sintético. Mesma trava da demo |
+| `npm run db:preparar -- --nome … --email …` | Servidor novo: categorias e a primeira pessoa gestora, real. Recusa se já houver gestor |
 | `PERMITIR_LIMPEZA=sim npm run db:limpar` | Apaga dados transacionais, preserva o cadastro. Exige o opt-in explícito: sem ele, recusa — a trava anterior deduzia segurança da ausência de `NODE_ENV` |
 | `npm run db:expurgar` | Roda agora a limpeza diária que o servidor já roda sozinho: apaga o motivo das ausências cujo prazo venceu (`A17`). **Irreversível**; uma execução por dia — se o servidor já rodou hoje, não faz nada. O prazo é o da tela de acesso, não de variável de ambiente |
 | `npm run anexos:conferir` | Diz quantos anexos ainda estão em texto puro no disco |

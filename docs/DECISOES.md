@@ -1346,7 +1346,24 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 **Prova:** `servicos/base-sintetica.test.ts`: as três recusas, cada origem do schema, o domínio pelo fim do endereço, nada vazado na mensagem, e uma varredura que exige a chamada na demo e no seed. Rodado de ponta a ponta numa base descartável: seed e demo passam com a base vazia e recusam depois de um e-mail `graph`.
 
-**Status:** 🟢 em vigor; o primeiro gestor real é pendência de código.
+**Status:** 🟢 em vigor. O primeiro gestor real ganhou caminho próprio no `AT-61`.
+
+### AT-61 — O servidor novo nasce com `db:preparar`, não com o seed *(01/10/2026)*
+
+**O que entrou:** `npm run db:preparar -- --nome … --email …` (`scripts/preparar-servidor.ts`, `servicos/preparacao-do-servidor.ts`). Cria as categorias de `CATEGORIAS_CADASTRO` e **uma** pessoa gestora, real, com senha provisória impressa uma vez e troca obrigatória no primeiro acesso. O seed passou a usar a mesma `garantirCategorias`, para a taxonomia morar num lugar só.
+
+**Por quê:** até aqui, só o seed criava categoria e colaborador sem sessão de gestor, e ele cria a equipe fictícia. O roteiro natural de instalação seria rodá-lo no servidor, e a trava do `AT-60` não pega base vazia (revisões técnica e de segurança do #175).
+
+**Decisões do agente, que o dono pode rever:**
+- **Recusa se já existe gestor, ativo ou não.** Daí em diante quem cadastra é a tela, com sessão, papel conferido e trilha com nome. Uma porta de terminal aberta para sempre seria um jeito de criar gestor sem o setor saber. Gestor desligado é reativado por outro gestor.
+- **Recusa e-mail que já existe**, mesmo de colaborador comum: promover é decisão de quem administra, pela tela.
+- **Recusa o domínio `@exemplo.test`**: uma "primeira gestora" sintética deixaria a base com cara de desenvolvimento, e o seed e a demo voltariam a passar nela.
+- **A trilha grava `primeiro_gestor_criado` com autor `sistema`**, como os expurgos: não há sessão, e inventar um autor seria pior.
+- **Limite conhecido:** conferir e criar não é atômico. Duas execuções no mesmo instante poderiam criar duas gestoras, as duas na trilha. É um comando de instalação, rodado uma vez.
+
+**Prova:** `servicos/preparacao-do-servidor.test.ts`, com as recusas exigindo `ErroDeNegocio`. A mensagem do Prisma traz o trecho do código vizinho à linha que falhou, e só o texto deixava um erro de constraint passar por recusa: uma mutação sobreviveu assim antes da correção. Rodado de ponta a ponta numa base descartável: sem argumentos recusa; a primeira vez cria 8 categorias e a gestora; a segunda recusa; o seed depois recusa a base.
+
+**Status:** 🟢 em vigor. Falta o roteiro de instalação completo para o TI (Node, systemd, proxy com HTTPS, backup), que é outro trabalho.
 
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 

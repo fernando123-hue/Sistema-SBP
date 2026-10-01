@@ -108,6 +108,8 @@ export const AcaoAuditavelSchema = z.enum([
   'escala_definida',
   // Pessoas e acesso
   'colaborador_criado',
+  /** `AT-61`: a primeira gestora de um servidor novo, pelo terminal. Autor `sistema`, sem sessão. */
+  'primeiro_gestor_criado',
   'habilitacao_definida',
   'acesso_reativado',
   'acesso_desativado',

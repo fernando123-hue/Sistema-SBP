@@ -1,8 +1,8 @@
-import { CATEGORIAS_CADASTRO, limiarConfiancaSemente } from '../src/core/config'
 import { deslocarDias, hojeIso, sequenciaDeDatas } from '../src/core/util/datas'
 import { gerarHash, sortearSenhaProvisoria } from '../src/servidor/credenciais'
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
 import { exigirBaseSintetica } from '../src/servicos/base-sintetica'
+import { garantirCategorias } from '../src/servicos/preparacao-do-servidor'
 
 /**
  * Seed.
@@ -83,33 +83,9 @@ async function principal(): Promise<void> {
   await exigirBaseSintetica(banco, 'o seed')
   const provisorias: { email: string; senha: string }[] = []
 
-  for (const [posicao, categoria] of CATEGORIAS_CADASTRO.entries()) {
-    await banco.categoria.upsert({
-      where: { codigo: categoria.codigo },
-      create: {
-        codigo: categoria.codigo,
-        rotulo: categoria.rotulo,
-        frente: categoria.frente,
-        grupo: categoria.grupo,
-        ordem: posicao,
-        divisivel: categoria.divisivel,
-        peso: categoria.peso,
-        limiarIndivisivel: categoria.limiarIndivisivel,
-        limiarConfianca: limiarConfiancaSemente(categoria.codigo),
-        entraNoRateio: categoria.entraNoRateio,
-        agrupaPorLiga: categoria.agrupaPorLiga,
-      },
-      // `peso` e `limiarConfianca` ficam DE FORA do update de propósito.
-      //
-      // Os dois são ajustáveis pelo operador sem deploy. Se o seed os
-      // reescrevesse, um ajuste deliberado ("1,75 ficou pesado demais, põe
-      // 1,5") voltaria ao padrão sozinho na próxima execução do seed, sem
-      // aviso — sobrescrever decisão humana em silêncio é exatamente a doença
-      // que este sistema existe para curar. Mudança de valor por decisão do
-      // dono entra por MIGRAÇÃO, que é explícita, versionada e roda uma vez.
-      update: { rotulo: categoria.rotulo, ordem: posicao },
-    })
-  }
+  // As mesmas categorias da preparação do servidor: são a taxonomia da
+  // operação, não dado de teste, e moram num lugar só.
+  await garantirCategorias(banco)
 
   const datas = sequenciaDeDatas(DATA_INICIAL, TOTAL_DE_DIAS)
 
