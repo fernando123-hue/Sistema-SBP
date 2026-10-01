@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -77,8 +77,10 @@ describe('demo e seed só rodam em base sintética', () => {
 
   it('NODE_ENV=production recusa mesmo com a base vazia', async () => {
     vi.stubEnv('NODE_ENV', 'production')
-    vi.stubEnv('SESSAO_SECRET', 'q8Zr2vN6pW1xT4kL9mB3cF7hJ0sD5gYa')
-    vi.stubEnv('BUSCA_SECRET', 'q8Zr2vN6pW1xT4kL9mB3cF7hJ0sD5gYa-busca')
+    // Gerados na hora: um literal com cara de chave é confundido com segredo
+    // pelo gitleaks, e foi (CI do #175).
+    vi.stubEnv('SESSAO_SECRET', randomBytes(24).toString('base64url'))
+    vi.stubEnv('BUSCA_SECRET', randomBytes(24).toString('base64url'))
     vi.stubEnv('ANEXOS_SECRET', randomUUID())
     vi.stubEnv('SESSAO_SECRET_ANTERIOR', '')
     vi.stubEnv('INGESTAO_ADAPTER', 'mock')
