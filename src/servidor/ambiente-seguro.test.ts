@@ -77,7 +77,10 @@ describe('verificação de TLS desligada só em desenvolvimento (pendência 37)'
     expect(() => ambiente()).not.toThrow()
   })
 
-  it.each(['1', ''])('NODE_TLS_REJECT_UNAUTHORIZED=%j em produção sobe: a verificação está ligada', (valor) => {
+  // `'false'` e `'00'` também NÃO desligam a verificação no Node (conferido
+  // contra um servidor TLS autoassinado nas revisões do #157): fixá-los aqui
+  // impede que alguém alargue a comparação exata achando que fecha uma brecha.
+  it.each(['1', '', 'false', '00'])('NODE_TLS_REJECT_UNAUTHORIZED=%j em produção sobe: a verificação está ligada', (valor) => {
     vi.stubEnv('NODE_ENV', 'production')
     vi.stubEnv('NODE_TLS_REJECT_UNAUTHORIZED', valor)
     expect(() => ambiente()).not.toThrow()

@@ -328,7 +328,8 @@ export function ambiente(): Ambiente {
   }
 
   // `NODE_TLS_REJECT_UNAUTHORIZED=0` desliga a verificação de certificado do
-  // PROCESSO INTEIRO: o texto do e-mail indo para a IA, o banco, o Graph.
+  // PROCESSO INTEIRO: o texto do e-mail indo para a IA e o Graph, e o banco
+  // quando a `DATABASE_URL` liga TLS sem opções próprias (`?ssl=true`).
   // Qualquer proxy no caminho abre o TLS e lê tudo, sem erro nenhum — é a
   // degradação calada que o invariante 7 proíbe (pendência 37, revisão de
   // segurança do #144). Proxy corporativo que inspeciona TLS é legítimo, e o
@@ -337,7 +338,9 @@ export function ambiente(): Ambiente {
   // Mesmo sinal positivo do C-12, acima: só desenvolvimento libera, porque um
   // servidor publicado com `NODE_ENV` herdado como `test` também é produção.
   // Compara com '0' exato porque é só esse valor que o Node trata como
-  // "desligado".
+  // "desligado". É conferido na partida, não depois: código que escreva em
+  // `process.env` em tempo de execução já está dentro do processo, e essa
+  // barreira não é esta (revisão de segurança do #157).
   if (process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0' && resultado.data.NODE_ENV !== 'development') {
     throw new Error(
       `NODE_TLS_REJECT_UNAUTHORIZED=0 com NODE_ENV=${resultado.data.NODE_ENV} desliga a verificação de TLS de ` +
