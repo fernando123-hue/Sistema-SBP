@@ -11,8 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const avisarTrocaDaChaveDeSessao = vi.fn(async () => {})
 const agendarLimpezaDiaria = vi.fn(async () => {})
+const conferirAmbienteNaSubida = vi.fn(async () => {})
 
-vi.mock('./instrumentation-node', () => ({ avisarTrocaDaChaveDeSessao, agendarLimpezaDiaria }))
+vi.mock('./instrumentation-node', () => ({ avisarTrocaDaChaveDeSessao, agendarLimpezaDiaria, conferirAmbienteNaSubida }))
 
 const { register } = await import('./instrumentation')
 
@@ -21,6 +22,7 @@ const ANTES = { runtime: process.env.NEXT_RUNTIME, fase: process.env.NEXT_PHASE 
 beforeEach(() => {
   avisarTrocaDaChaveDeSessao.mockClear()
   agendarLimpezaDiaria.mockClear()
+  conferirAmbienteNaSubida.mockClear()
 })
 
 afterEach(() => {
@@ -33,6 +35,7 @@ describe('register', () => {
     process.env.NEXT_RUNTIME = 'nodejs'
     process.env.NEXT_PHASE = ''
     await register()
+    expect(conferirAmbienteNaSubida).toHaveBeenCalledTimes(1)
     expect(avisarTrocaDaChaveDeSessao).toHaveBeenCalledTimes(1)
     expect(agendarLimpezaDiaria).toHaveBeenCalledTimes(1)
   })

@@ -15,13 +15,49 @@
  *
  * ═══ O QUE NÃO ACONTECE AQUI ═══
  *
- * Nenhum erro derruba o servidor. A limpeza que falha fica em
+ * Nenhum erro DA LIMPEZA derruba o servidor. (A configuração errada derruba,
+ * de propósito e só em produção: ver `conferirAmbienteNaSubida`.) A limpeza que falha fica em
  * `ExecucaoDeRotina` e `EventoProcessamento` e é tentada de novo; parar a
  * equipe inteira de trabalhar porque a limpeza falhou trocaria um problema
  * visível por um maior.
  */
 
 import type { ArmazenamentoPort } from './ports/armazenamento'
+
+/**
+ * Confere o ambiente na subida e, em produção, ENCERRA o processo se ele
+ * estiver errado (pendência 49).
+ *
+ * Antes, um `ambiente()` inválido virava "Failed to prepare server" no log e o
+ * processo seguia de pé respondendo 500 a toda requisição: o supervisor
+ * (systemd) via um serviço rodando, e o TI só descobria quando alguém
+ * reclamasse. Falhar alto é sair com código diferente de zero, que o
+ * supervisor acusa e registra na hora.
+ *
+ * Só em produção, pelo literal que o Next fixa no build (`AT-63`): em
+ * desenvolvimento, derrubar o `next dev` a cada `.env` meio escrito atrapalha,
+ * e a tela de erro já mostra o motivo. A mensagem é a de `ambiente()`, que
+ * nunca leva valor de segredo.
+ *
+ * `sair` e `escrever` são injetados só para o teste não encerrar a suíte.
+ */
+export async function conferirAmbienteNaSubida(
+  sair: (codigo: number) => void = (codigo) => process.exit(codigo),
+  escrever: (texto: string) => void = (texto) => process.stderr.write(texto),
+): Promise<void> {
+  try {
+    const { ambiente } = await import('./servidor/ambiente')
+    ambiente()
+  } catch (erro) {
+    const motivo = erro instanceof Error ? erro.message : String(erro)
+    if (process.env['NODE_ENV'] === 'production') {
+      escrever(`O servidor NÃO subiu: a configuração está errada. ${motivo}\n`)
+      sair(1)
+      return
+    }
+    escrever(`Configuração inválida (em produção, isto encerraria o servidor): ${motivo}\n`)
+  }
+}
 
 const MINUTOS_ENTRE_TENTATIVAS = 15
 

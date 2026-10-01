@@ -1433,6 +1433,18 @@ A V1 do `A74`, com `IA_ADAPTER=local` e `NODE_ENV=production`, sobe.
 
 **Status:** 🟢 em vigor.
 
+### AT-65 — Configuração errada encerra o servidor de produção *(01/10/2026)*
+
+**O que entrou:** `conferirAmbienteNaSubida` (`instrumentation-node.ts`) roda primeiro no `register` do Next. Se `ambiente()` recusar e o build for de produção, escreve "O servidor NÃO subiu: a configuração está errada. <motivo>" no stderr e encerra com código 1. Em desenvolvimento, só avisa. Fecha a pendência 49.
+
+**Por quê:** antes, o Next registrava "Failed to prepare server" e o processo seguia de pé respondendo 500. O supervisor (systemd) via um serviço rodando, e o TI só descobria quando alguém da equipe reclamasse. Falhar alto (invariante 7), para quem opera o servidor, é o serviço cair com o motivo no log.
+
+**Decisões do agente:** o sinal de produção é o literal que o Next fixa no build, como no `AT-63`. A mensagem é a de `ambiente()`, que nunca leva valor de segredo; o teste confere que o segredo curto não aparece.
+
+**Prova:** `instrumentation-node.test.ts` (produção encerra com 1 e o motivo; desenvolvimento só avisa; configuração certa não faz nada) e `instrumentation.test.ts` (o `register` chama a conferência). Visto rodando com `next build` e `next start`: sem `ANEXOS_SECRET`, o processo imprime o motivo e sai com código 1; com a configuração certa, sobe e responde 200.
+
+**Status:** 🟢 em vigor.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
