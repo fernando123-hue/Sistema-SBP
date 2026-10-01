@@ -21,6 +21,18 @@ export const DOMINIO_SINTETICO = '@exemplo.test'
  * terminal herda o ambiente do terminal, não o do serviço, e pode não ter
  * `NODE_ENV` nenhum. Por isso a trava olha também a própria base: e-mail
  * que não veio do dublê, ou pessoa fora do domínio sintético, é operação.
+ * Item de registro manual (sem e-mail) não é olhado: ele só existe se uma
+ * pessoa real o criou, e essa pessoa já recusa pela segunda consulta.
+ *
+ * LIMITE CONHECIDO (revisões do #175): **base vazia passa.** Uma base da
+ * operação recém-migrada, ainda sem ninguém, é indistinguível de uma base de
+ * desenvolvimento nova, e um seed rodado nela sem `NODE_ENV=production` cria
+ * a equipe fictícia com senhas no terminal. O que fecha isso não é esta
+ * trava: é o servidor ter um caminho próprio para o primeiro gestor real, e o
+ * roteiro de instalação nunca mandar rodar o seed (`DECISOES.md § AT-60`).
+ *
+ * Mora em `servicos/` e não em `scripts/`, ao lado da limpeza, porque o
+ * seed vive em `prisma/` e importaria de `scripts/` só por isto.
  */
 export async function exigirBaseSintetica(banco: Banco, rotina: string): Promise<void> {
   if (ambiente().NODE_ENV === 'production') {

@@ -1336,6 +1336,18 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 **Status:** 🟡 em PR.
 
+### AT-60 — A demo e o seed recusam base com dado da operação *(01/10/2026)*
+
+**O que entrou:** `exigirBaseSintetica` (`servicos/base-sintetica.ts`), chamada como primeira coisa do `npm run demo` e do `npm run db:seed`. Recusa `NODE_ENV=production`; recusa base com e-mail de origem diferente do dublê (`mock`); recusa base com colaborador fora de `@exemplo.test`. A mensagem não leva valor da linha achada.
+
+**Por quê:** a auditoria de testes e CI de 01/10 achou que a demo chama `aprovarTodosPendentes`, que aprova toda revisão rotineira pendente da base apontada, as reais junto, e depois distribui. A trilha é append-only, então nada disso se desfaz. O seed põe a equipe fictícia na base com senhas no terminal. Só a limpeza tinha trava. `NODE_ENV` sozinho não basta, porque no servidor o terminal de quem roda o script pode não ter `NODE_ENV` nenhum.
+
+**Limite conhecido (revisões técnica e de segurança do #175): base vazia passa.** Uma base da operação recém-migrada, sem ninguém, é igual a uma base de desenvolvimento nova. Hoje o seed é o **único** caminho que cria colaborador sem sessão de gestor, então o roteiro de instalação tenderia a mandar rodá-lo no servidor. O que fecha isso é um caminho próprio para o primeiro gestor real, que recuse quando já houver gestor, e o roteiro de instalação dizer que o seed nunca vai ao servidor. Fica como próximo trabalho do agente, não como pergunta ao dono.
+
+**Prova:** `servicos/base-sintetica.test.ts`: as três recusas, cada origem do schema, o domínio pelo fim do endereço, nada vazado na mensagem, e uma varredura que exige a chamada na demo e no seed. Rodado de ponta a ponta numa base descartável: seed e demo passam com a base vazia e recusam depois de um e-mail `graph`.
+
+**Status:** 🟢 em vigor; o primeiro gestor real é pendência de código.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
