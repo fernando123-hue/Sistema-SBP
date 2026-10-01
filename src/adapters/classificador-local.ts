@@ -74,6 +74,9 @@ const CODIGOS = '123456789'
  */
 export const MASSA_MINIMA = 0.5
 
+/** Quanto a soma do topo pode passar de 1 por arredondamento do servidor. */
+const FOLGA_DA_SOMA = 0.05
+
 /** Teto do corpo, o mesmo da TypeSafe: a resposta boa tem poucos kB. */
 export const MAIOR_RESPOSTA_BYTES = 256 * 1024
 
@@ -211,18 +214,30 @@ export function probabilidadesDasOpcoes(
   // cada opção. Normalizar isso daria certeza a quem não teve (revisões do #159).
   if (comProbabilidade.length < 2) throw defeitoDeForma('opcao', 'custom')
 
-  // A alternativa mais provável de TODAS precisa ser uma opção. Sem isto,
-  // "1" 0,26 + "2" 0,25 passava a massa mínima com "Olá" a 0,49 no topo: o
-  // modelo queria escrever outra coisa (revisões do #159).
-  const [maisProvavel] = comProbabilidade.reduce((maior, atual) => (atual[1] > maior[1] ? atual : maior))
-  if (opcaoDoToken(maisProvavel, quantas) === null) throw defeitoDeForma('opcao', 'custom')
+  // Probabilidades que somam bem mais que 1 não são uma distribuição: é o
+  // servidor respondendo outra coisa (vários `logprob: 0`, por exemplo), e
+  // normalizar daria número a uma resposta incoerente (revisão de segurança
+  // do #169). A folga cobre o arredondamento do servidor.
+  const soma = comProbabilidade.reduce((total, [, probabilidade]) => total + probabilidade, 0)
+  if (soma > 1 + FOLGA_DA_SOMA) throw defeitoDeForma('opcao', 'custom')
 
   const massa = new Array<number>(quantas).fill(0)
+  let melhorFora = 0
   for (const [token, probabilidade] of comProbabilidade) {
     const indice = opcaoDoToken(token, quantas)
     if (indice !== null) massa[indice]! += probabilidade
+    else melhorFora = Math.max(melhorFora, probabilidade)
   }
-  const total = massa.reduce((soma, valor) => soma + valor, 0)
+
+  // A opção mais provável precisa vencer o que o modelo preferia escrever
+  // FORA das opções. Sem isto, "1" 0,26 + "2" 0,25 passava a massa mínima com
+  // "Olá" a 0,49 no topo: ele queria escrever outra coisa (revisões do #159).
+  // A comparação é com a MASSA da opção, somadas as variantes ("2", "␣2"):
+  // token a token, "2" 0,30 + "␣2" 0,30 perdia para "Olá" 0,35, e uma
+  // resposta boa virava falha (revisão técnica do #169).
+  if (Math.max(...massa) < melhorFora) throw defeitoDeForma('opcao', 'custom')
+
+  const total = massa.reduce((acumulado, valor) => acumulado + valor, 0)
   if (!(total >= MASSA_MINIMA)) throw defeitoDeForma('opcao', 'custom')
   return massa.map((valor) => valor / total)
 }

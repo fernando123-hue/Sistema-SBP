@@ -216,7 +216,7 @@ describe('as probabilidades saem dos logprobs', () => {
     ).toThrow()
   })
 
-  it('a alternativa mais provável de todas precisa ser uma opção, mesmo com as opções acima da massa mínima', () => {
+  it('a opção mais provável precisa vencer o que o modelo preferia escrever fora delas, mesmo acima da massa mínima', () => {
     expect(() =>
       probabilidadesDasOpcoes(
         [
@@ -227,6 +227,53 @@ describe('as probabilidades saem dos logprobs', () => {
         2,
       ),
     ).toThrow()
+  })
+
+  it('a comparação é pela massa da opção, somadas as variantes: "2" + "␣2" vencem "Olá", mesmo cada um perdendo sozinho', () => {
+    const p = probabilidadesDasOpcoes(
+      [
+        { token: 'Olá', logprob: ln(0.35) },
+        { token: '2', logprob: ln(0.3) },
+        { token: ' 2', logprob: ln(0.3) },
+      ],
+      2,
+    )
+    expect(p[0]).toBe(0)
+    expect(p[1]).toBeCloseTo(1, 10)
+  })
+
+  it('opções espalhadas, nenhuma acima do que viria fora delas: recusa, ainda que a soma passe — é a decisão, não um acaso', () => {
+    expect(() =>
+      probabilidadesDasOpcoes(
+        [
+          { token: 'Olá', logprob: ln(0.3) },
+          { token: '1', logprob: ln(0.22) },
+          { token: '2', logprob: ln(0.21) },
+          { token: '3', logprob: ln(0.2) },
+        ],
+        3,
+      ),
+    ).toThrow()
+  })
+
+  it('topo que soma bem mais que 1 não é distribuição: recusa; o arredondamento do servidor passa', () => {
+    expect(() =>
+      probabilidadesDasOpcoes(
+        [
+          { token: '1', logprob: 0 },
+          { token: '2', logprob: 0 },
+        ],
+        2,
+      ),
+    ).toThrow()
+    const p = probabilidadesDasOpcoes(
+      [
+        { token: '1', logprob: ln(0.7) },
+        { token: '2', logprob: ln(0.34) },
+      ],
+      2,
+    )
+    expect(p[0]).toBeCloseTo(0.7 / 1.04, 10)
   })
 })
 
