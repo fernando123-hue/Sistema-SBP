@@ -24,8 +24,9 @@ import { O_TEXTO_E_DADO, PERGUNTAS_DA_INGESTAO, textoParaClassificar, VERSAO_DAS
  * — e só o segundo — lugar do sistema que chama `classificar`, e a varredura
  * de `segunda-opiniao.test.ts` confere que a chamada leva só estas.
  *
- * Os casos são sintéticos (invariante 8): nada aqui lê e-mail real, grava no
- * banco ou escreve arquivo.
+ * Os casos são sintéticos (invariante 8): nada aqui lê e-mail real nem
+ * escreve arquivo. A porta, quando é de verdade, conta as chamadas em
+ * `UsoDaIa` e gasta o teto diário do fornecedor, como na ingestão.
  */
 
 /**
@@ -93,13 +94,16 @@ export async function avaliarClassificador(
       const classificacao = await porta.classificar({ texto, perguntas: PERGUNTAS_DA_AVALIACAO })
       modelos.add(classificacao.modeloUsado)
       const suspeita = classificacao.respostas['suspeita']
+      // A política garante uma resposta por pergunta, do tipo pedido. Se não
+      // veio, é contrato quebrado: falha alta, não um 0 que pareceria opinião.
+      if (suspeita?.tipo !== 'sim_ou_nao') throw new Error('a classificação voltou sem a resposta de suspeita')
       notas.push(
         pontuarClassificacao(
           caso,
           {
             quantidade: probabilidadesDe(classificacao.respostas['quantidade']),
             categoria: probabilidadesDe(classificacao.respostas['categoria']),
-            probabilidadeDeSuspeita: suspeita?.tipo === 'sim_ou_nao' ? suspeita.probabilidadeDeSim : 0,
+            probabilidadeDeSuspeita: suspeita.probabilidadeDeSim,
           },
           ORDEM_DAS_CATEGORIAS,
           relogio() - inicio,

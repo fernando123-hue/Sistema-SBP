@@ -13,7 +13,7 @@ import type { ClienteDeClassificacao, PerfilDoClassificador } from './classifica
  * O contrato do Jev já é nosso (`ports/classificador.ts`); só o modelo é da
  * TypeSafe. Aqui o modelo é o da máquina da associação (`A59`), pelo mesmo
  * servidor compatível com OpenAI de `ia-local.ts`. Cada pergunta vira uma
- * lista de opções com letras, o modelo responde UMA letra, e a probabilidade
+ * lista de opções numeradas, o modelo responde UM algarismo, e a probabilidade
  * de cada opção sai dos *logprobs* do primeiro token — não de um número que o
  * modelo escreve. Número escrito por modelo pequeno é palpite; logprob é a
  * conta que ele de fato fez.
@@ -50,14 +50,22 @@ export const TEMPO_LIMITE_MS = 60_000
 const TOP_LOGPROBS = 20
 
 /**
- * Letras das opções. Uma letra por opção cabe num token em todo tokenizador
- * comum; o rótulo nosso (`FICHA_CADASTRO`) não caberia, e o primeiro token
- * de dois rótulos parecidos seria o mesmo.
+ * Os códigos das opções: algarismos de 1 a 9.
+ *
+ * Um algarismo cabe num token em todo tokenizador comum; o rótulo nosso
+ * (`FICHA_CADASTRO`) não caberia, e o primeiro token de dois rótulos
+ * parecidos seria o mesmo. ALGARISMO, e não letra: "A", "E" e "O" são
+ * artigo e conjunção em português, e com um token só, "A opção certa é C"
+ * viraria a opção A com certeza alta, sem aviso (revisão técnica do #160).
+ *
+ * E no máximo nove: o topo de logprobs tem 20 tokens, repartidos entre as
+ * variantes de cada código ("1", "␣1", "1)"). Com opções demais, uma
+ * plausível ficaria fora do topo e valeria 0 sem falhar.
  */
-const LETRAS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+const CODIGOS = '123456789'
 
 /**
- * Quanto da probabilidade do primeiro token precisa cair nas letras pedidas.
+ * Quanto da probabilidade do primeiro token precisa cair nos códigos pedidos.
  *
  * Abaixo disso o modelo não respondeu à pergunta — começou uma frase, pôs
  * uma cerca, repetiu o texto —, e normalizar o resto inventaria certeza a
@@ -97,16 +105,16 @@ function defeitoDeForma(caminho: string, codigo: 'invalid_type' | 'custom'): z.Z
   return new z.ZodError([{ code: codigo, path: [caminho], message: '' } as z.core.$ZodIssue])
 }
 
-// ─── A pergunta como lista de letras ──────────────────────────────────────────
+// ─── A pergunta como lista numerada ───────────────────────────────────────────
 
 interface Opcao {
-  /** O rótulo NOSSO que a letra representa. */
+  /** O rótulo NOSSO que o código representa. */
   readonly rotulo: string
   readonly descricao: string | null
 }
 
 /**
- * As opções de cada tipo de pergunta, na ordem em que viram letras.
+ * As opções de cada tipo de pergunta, na ordem em que viram códigos (1, 2…).
  *
  * `nota` vira opção por nível ("0", "1"…), que é a chave das probabilidades
  * em `ports/classificador.ts`. `sim_ou_nao` vira duas opções; a probabilidade
@@ -128,14 +136,14 @@ export function opcoesDaPergunta(pergunta: Pergunta): Opcao[] {
       opcoes = pergunta.niveis.map((descricao, nivel) => ({ rotulo: String(nivel), descricao }))
       break
   }
-  // Pergunta com mais opções que letras é defeito de quem a escreveu, no
+  // Pergunta com mais opções que códigos é defeito de quem a escreveu, no
   // código — sobe como `Error` comum, para a suíte pegar.
-  if (opcoes.length > LETRAS.length) throw new Error(`pergunta com mais de ${LETRAS.length} opções`)
+  if (opcoes.length > CODIGOS.length) throw new Error(`pergunta com mais de ${CODIGOS.length} opções`)
   return opcoes
 }
 
 /**
- * As instruções da pergunta, com as opções e as letras.
+ * As instruções da pergunta, com as opções numeradas.
  *
  * Tudo aqui é texto NOSSO: `instrucoes`, rótulos e descrições são constantes
  * do código (`ports/classificador.ts`). O texto de fora vai na outra
@@ -143,11 +151,20 @@ export function opcoesDaPergunta(pergunta: Pergunta): Opcao[] {
  */
 export function instrucoesDaPergunta(pergunta: Pergunta): string {
   const linhas = opcoesDaPergunta(pergunta).map((opcao, indice) => {
-    const nome = pergunta.tipo === 'sim_ou_nao' ? (opcao.rotulo === 'sim' ? 'Sim' : 'Não') : opcao.rotulo
-    return `${LETRAS[indice]}) ${nome}${opcao.descricao ? `: ${opcao.descricao}` : ''}`
+    // Na nota, o nível vai por extenso: "1) nível 0" e não "1) 0", que
+    // confundiria o código com o nível.
+    const nome =
+      pergunta.tipo === 'sim_ou_nao'
+        ? opcao.rotulo === 'sim'
+          ? 'Sim'
+          : 'Não'
+        : pergunta.tipo === 'nota'
+          ? `nível ${opcao.rotulo}`
+          : opcao.rotulo
+    return `${CODIGOS[indice]}) ${nome}${opcao.descricao ? `: ${opcao.descricao}` : ''}`
   })
   return (
-    'Você responde a uma pergunta fechada sobre um texto. Responda com UMA letra, a da opção certa, ' +
+    'Você responde a uma pergunta fechada sobre um texto. Responda com UM algarismo, o da opção certa, ' +
     'e nada mais.\n\n' +
     `Pergunta: ${pergunta.instrucoes}\n\n` +
     `Opções:\n${linhas.join('\n')}`
@@ -155,37 +172,37 @@ export function instrucoesDaPergunta(pergunta: Pergunta): string {
 }
 
 /**
- * A letra que um token representa — ou `null`.
+ * A opção que um token representa — ou `null`.
  *
- * Espaço antes ("␣A") e uma pontuação depois ("A)", "A.") são o mesmo A em
- * tokenizadores diferentes; minúscula também. Qualquer outra coisa ("An",
- * "Sim") não é letra de opção e não soma em nada.
+ * Espaço antes ("␣1") e uma pontuação depois ("1)", "1.") são o mesmo 1 em
+ * tokenizadores diferentes. Qualquer outra coisa ("12", "Sim") não é código
+ * de opção e não soma em nada.
  */
-function letraDoToken(token: string, quantas: number): number | null {
-  const limpo = token.trim().replace(/[).:]$/, '').toUpperCase()
+function opcaoDoToken(token: string, quantas: number): number | null {
+  const limpo = token.trim().replace(/[).:]$/, '')
   if (limpo.length !== 1) return null
-  const indice = LETRAS.indexOf(limpo)
+  const indice = CODIGOS.indexOf(limpo)
   return indice >= 0 && indice < quantas ? indice : null
 }
 
 /**
  * As probabilidades das opções, a partir do topo de logprobs do 1º token.
  *
- * Soma o que cai em cada letra (o mesmo A pode vir em mais de um token),
+ * Soma o que cai em cada código (o mesmo 1 pode vir em mais de um token),
  * confere a massa mínima e normaliza. Exportada para o teste conferir a
  * conta sem servidor.
  */
-export function probabilidadesDasLetras(
+export function probabilidadesDasOpcoes(
   topo: readonly { readonly token: string; readonly logprob: number }[],
   quantas: number,
 ): number[] {
   const massa = new Array<number>(quantas).fill(0)
   for (const { token, logprob } of topo) {
-    const indice = letraDoToken(token, quantas)
+    const indice = opcaoDoToken(token, quantas)
     if (indice !== null) massa[indice]! += Math.exp(logprob)
   }
   const total = massa.reduce((soma, valor) => soma + valor, 0)
-  if (!(total >= MASSA_MINIMA)) throw defeitoDeForma('letra', 'custom')
+  if (!(total >= MASSA_MINIMA)) throw defeitoDeForma('opcao', 'custom')
   return massa.map((valor) => valor / total)
 }
 
@@ -218,7 +235,7 @@ const RespostaNoFioSchema = z.object({
     .array(
       z.object({
         logprobs: z
-          .object({ content: z.array(z.object({ top_logprobs: TopoSchema })).min(1) })
+          .object({ content: z.array(z.object({ top_logprobs: TopoSchema })).nullable() })
           .nullable()
           .optional(),
       }),
@@ -236,9 +253,11 @@ const RespostaNoFioSchema = z.object({
 function topoDoPrimeiroToken(corpo: unknown): { topo: z.infer<typeof TopoSchema>; modelo: string | undefined } {
   const lido = RespostaNoFioSchema.safeParse(corpo)
   if (!lido.success) throw defeitoDeForma('choices', 'invalid_type')
-  const logprobs = lido.data.choices[0]!.logprobs
-  if (!logprobs) throw defeitoDeForma('logprobs', 'invalid_type')
-  return { topo: logprobs.content[0]!.top_logprobs, modelo: lido.data.model }
+  // Ausente, nulo ou vazio é o mesmo diagnóstico: não veio logprob
+  // (revisão técnica do #160 — vazio saía como `choices`).
+  const primeiro = lido.data.choices[0]!.logprobs?.content?.[0]
+  if (!primeiro) throw defeitoDeForma('logprobs', 'invalid_type')
+  return { topo: primeiro.top_logprobs, modelo: lido.data.model }
 }
 
 async function descartarCorpo(resposta: Response): Promise<void> {
@@ -294,7 +313,7 @@ export function clienteClassificadorLocal(
           { role: 'user', content: estado },
         ],
         temperature: 0,
-        // Um token: a letra. O tempo fica quase todo na leitura do texto.
+        // Um token: o algarismo. O tempo fica quase todo na leitura do texto.
         max_tokens: 1,
         logprobs: true,
         top_logprobs: TOP_LOGPROBS,
@@ -312,7 +331,7 @@ export function clienteClassificadorLocal(
     }
     if (!resposta.ok) {
       await descartarCorpo(resposta)
-      throw Object.assign(new FalhaDoServidorLocal(resposta.status), { status: resposta.status })
+      throw new FalhaDoServidorLocal(resposta.status)
     }
 
     // Fora do `try` do JSON: prazo e teto estourados na leitura sobem como são,
@@ -327,7 +346,7 @@ export function clienteClassificadorLocal(
     }
 
     const { topo, modelo: modeloUsado } = topoDoPrimeiroToken(corpo)
-    const probabilidades = probabilidadesDasLetras(topo, opcoesDaPergunta(pergunta).length)
+    const probabilidades = probabilidadesDasOpcoes(topo, opcoesDaPergunta(pergunta).length)
     return { resposta: respostaDasProbabilidades(pergunta, probabilidades), modeloUsado }
   }
 
@@ -335,14 +354,38 @@ export function clienteClassificadorLocal(
     async perguntar({ estado, perguntas, modelo }) {
       const respostas: Record<string, Resposta> = {}
       let modeloUsado: string | undefined
-      // Uma pergunta por chamada, em série: cada uma precisa da sua letra, e o
-      // servidor de 8 GB atende uma chamada por vez (`A56`).
+      // Uma pergunta por chamada, em série: cada uma precisa do seu
+      // algarismo, e o servidor de 8 GB atende uma chamada por vez (`A56`).
       for (const [nome, pergunta] of Object.entries(perguntas)) {
         const uma = await perguntarUma(estado, pergunta, modelo)
         respostas[nome] = uma.resposta
         modeloUsado ??= uma.modeloUsado
       }
       // A forma do nome é conferida na política (`ClassificadorExterno`).
+      return { respostas, modeloUsado: modeloUsado || modelo }
+    },
+  }
+}
+
+/**
+ * O cliente visto como uma pergunta por `perguntar`.
+ *
+ * O teto diário e o disjuntor (`fabrica.ts`) contam por `perguntar`, e este
+ * cliente faz um pedido HTTP por pergunta. Sem isto, o teto que protege a
+ * máquina contaria duas ou três vezes menos do que ela recebe, e uma chamada
+ * controlada poderia durar N × o prazo (revisões técnica e de segurança do
+ * #160). Por fora do controle, as respostas se juntam de volta.
+ */
+export function umaPerguntaPorChamada(cliente: ClienteDeClassificacao): ClienteDeClassificacao {
+  return {
+    async perguntar({ estado, perguntas, modelo }) {
+      const respostas: Record<string, Resposta> = {}
+      let modeloUsado: string | undefined
+      for (const [nome, pergunta] of Object.entries(perguntas)) {
+        const uma = await cliente.perguntar({ estado, perguntas: { [nome]: pergunta }, modelo })
+        respostas[nome] = uma.respostas[nome]!
+        modeloUsado ??= uma.modeloUsado
+      }
       return { respostas, modeloUsado: modeloUsado || modelo }
     },
   }

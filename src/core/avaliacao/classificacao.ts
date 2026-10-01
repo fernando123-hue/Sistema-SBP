@@ -58,7 +58,7 @@ export interface NotaDaClassificacao {
   readonly falhou: boolean
   readonly motivo: string | null
   readonly quantidade: NotaDaPergunta | null
-  /** `null` quando o caso espera categorias diferentes: não há resposta única. */
+  /** `null` quando não há categoria única esperada: categorias diferentes, ou nenhum item. */
   readonly categoria: NotaDaPergunta | null
   readonly suspeita: NotaDaPergunta | null
   /** Tempo da resposta, em milissegundos — o outro número que o `A70` pede. */

@@ -13,7 +13,7 @@ import { ambiente } from '../servidor/ambiente'
 import { obterPrisma } from '../servidor/prisma'
 import { ArmazenamentoEmDisco } from './armazenamento-disco'
 import { ClassificadorExterno, type ClienteDeClassificacao } from './classificador-externo'
-import { clienteClassificadorLocal, PERFIL_CLASSIFICADOR_LOCAL } from './classificador-local'
+import { clienteClassificadorLocal, PERFIL_CLASSIFICADOR_LOCAL, umaPerguntaPorChamada } from './classificador-local'
 import { clienteMock as clienteClassificadorMock, PERFIL_MOCK as PERFIL_CLASSIFICADOR_MOCK } from './classificador-mock'
 import { clienteTypeSafe, PERFIL_TYPESAFE } from './classificador-typesafe'
 import { chamarComControle, comControleDeConsumo, type OpcoesDeConsumo } from './cliente-com-consumo'
@@ -177,9 +177,10 @@ export function criarClassificadorPort(): ClassificadorPort | null {
     case 'local':
       // O mesmo teto e o mesmo disjuntor da IA local, e na MESMA conta
       // (`fornecedor: 'local'`): é a mesma máquina, e o teto protege a máquina.
+      // Contados POR PERGUNTA, que é um pedido HTTP cada (`umaPerguntaPorChamada`).
       return new ClassificadorExterno(
         PERFIL_CLASSIFICADOR_LOCAL,
-        controlarClassificacao(clienteClassificadorLocal(), PERFIL_CLASSIFICADOR_LOCAL.nome),
+        umaPerguntaPorChamada(controlarClassificacao(clienteClassificadorLocal(), PERFIL_CLASSIFICADOR_LOCAL.nome)),
         modelo,
       )
     default:

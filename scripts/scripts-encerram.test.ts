@@ -130,8 +130,8 @@ describe('scripts que usam o banco encerram sozinhos', () => {
               choices: [
                 {
                   finish_reason: 'length',
-                  message: { content: 'B' },
-                  logprobs: { content: [{ token: 'B', logprob: -0.1, top_logprobs: [{ token: 'B', logprob: -0.1 }] }] },
+                  message: { content: '2' },
+                  logprobs: { content: [{ token: '2', logprob: -0.1, top_logprobs: [{ token: '2', logprob: -0.1 }] }] },
                 },
               ],
             }),
@@ -160,7 +160,7 @@ describe('scripts que usam o banco encerram sozinhos', () => {
       const linhas = resultado.saida.trim().split('\n')
       expect(linhas).toHaveLength(1)
       const relatorio = JSON.parse(linhas[0]!)
-      // "B" é "um" na quantidade: o servidor falso acerta todo caso de um item.
+      // "2" é "um" na quantidade: o servidor falso acerta todo caso de um item.
       expect(relatorio).toMatchObject({ fornecedor: 'local', modelos: ['modelo-falso'], falhas: 0 })
       expect(relatorio.porPergunta.quantidade.acerto).toBeGreaterThan(0)
     })

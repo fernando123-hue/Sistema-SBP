@@ -621,7 +621,9 @@ export function motivoDeEnderecoLocalInvalido(valor: string): string | null {
   try {
     url = new URL(valor)
   } catch {
-    return `não é um endereço válido: "${valor}".`
+    // Sem repetir o valor: um endereço malformado ainda pode trazer usuário e
+    // senha embutidos (revisão de segurança do #160).
+    return 'não é um endereço válido.'
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return `precisa ser http ou https (recebido "${url.protocol}").`
@@ -634,10 +636,18 @@ export function motivoDeEnderecoLocalInvalido(valor: string): string | null {
 
   // `[::1]` chega com os colchetes em `hostname`.
   const hospedeiro = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
-  if (hospedeiro === 'localhost' || hospedeiro === '::1' || /^127\./.test(hospedeiro)) return null
-  if (/^10\./.test(hospedeiro)) return null
-  if (/^192\.168\./.test(hospedeiro)) return null
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(hospedeiro)) return null
+  if (hospedeiro === 'localhost' || hospedeiro === '::1') return null
+  // As faixas IPv4 valem só para ENDEREÇO NUMÉRICO. Testar o começo do nome
+  // deixava passar `127.evil.example` e `10.0.0.1.nip.io`, nomes que resolvem
+  // para onde o dono deles quiser (revisão de segurança do #160). O `URL` já
+  // normaliza o IPv4 (`0x7f.1` vira `127.0.0.1`), então quatro números aqui
+  // são um endereço, não um nome.
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hospedeiro)) {
+    if (/^127\./.test(hospedeiro)) return null
+    if (/^10\./.test(hospedeiro)) return null
+    if (/^192\.168\./.test(hospedeiro)) return null
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(hospedeiro)) return null
+  }
   // `fc00::/7` — endereço local único do IPv6.
   //
   // OS QUATRO DÍGITOS SÃO A REGRA, não zero à esquerda esquecido. A faixa é

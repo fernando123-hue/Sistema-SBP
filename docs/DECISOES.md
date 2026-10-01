@@ -1193,16 +1193,18 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 **Efeito que a equipe vai notar:** quem usa o computador no tema claro passa a ver o sistema claro. Não é mudança de escolha, é o tema funcionando como foi escrito; se o dono preferir outra coisa, `§ H.4` item 49. **Status:** ✅ corrigido; conferido por captura nos dois temas.
 
-### AT-53 — O classificador local responde por letra, e a probabilidade sai dos logprobs (`A70`, P2) *(01/10/2026)*
+### AT-53 — O classificador local responde por algarismo, e a probabilidade sai dos logprobs (`A70`, P2) *(01/10/2026)*
 
 **O que foi construído:** `adapters/classificador-local.ts`, a IA local atrás da mesma `ClassificadorPort` e da mesma política do Jev (`ClassificadorExterno`: camada de defesa do dado, três camadas contra injeção, conferência da resposta). `CLASSIFICADOR_ADAPTER="local"` usa o servidor de `IA_LOCAL_URL` e exige `CLASSIFICADOR_MODELO`. E `npm run classificador:avaliar` mede qualquer classificador no gabarito sintético, com a pergunta nova do `A70` ("nenhum, um ou vários pedidos?") ao lado das duas da ingestão, e o tempo por e-mail.
 
 **Hipóteses (do agente; nenhuma é decisão do dono):**
-- **Uma letra por opção** (A, B, C…), uma pergunta por chamada, `max_tokens: 1`. O rótulo nosso (`FICHA_CADASTRO`) não cabe num token, e dois rótulos parecidos teriam o mesmo primeiro token. Sim/não vira A = Sim, B = Não; nota vira uma letra por nível. *Risco:* viés de posição do modelo pequeno (preferir A). O gabarito mostra se existe.
-- **Massa mínima de 0,5** nas letras pedidas, entre os 20 tokens mais prováveis. Abaixo disso o modelo não respondeu (começou uma frase), e normalizar a sobra inventaria certeza: vira falha de forma, alta.
+- **Um algarismo por opção** (1 a 9, no máximo nove opções), uma pergunta por chamada, `max_tokens: 1`. O rótulo nosso (`FICHA_CADASTRO`) não cabe num token, e dois rótulos parecidos teriam o mesmo primeiro token. Algarismo e não letra porque "A", "E" e "O" são palavras em português: com letras, "A opção certa é C" virava a opção A (revisão técnica do #160). Sim/não vira 1 = Sim, 2 = Não; nota vira um algarismo por nível, escrito "nível 0". *Risco:* viés de posição do modelo pequeno (preferir 1). O gabarito mostra se existe.
+- **Massa mínima de 0,5** nos algarismos pedidos, entre os 20 tokens mais prováveis. Abaixo disso o modelo não respondeu (começou uma frase), e normalizar a sobra inventaria certeza: vira falha de forma, alta.
 - **Sem logprobs, falha** com `logprobs: invalid_type` no log. Não há plano B por sorteio (IV.4 do documento de 29/09: multiplicaria o tempo em CPU).
-- **O mesmo teto diário da IA local** (`fornecedor: 'local'`): é a mesma máquina, e o teto protege a máquina. Se a classificação começar a disputar o teto com a interpretação, separar é uma linha na fábrica.
-- **Prazo de 60 s por pergunta.** A resposta é um token; o tempo é ler o texto.
+- **O mesmo teto diário da IA local** (`fornecedor: 'local'`), contado **por pergunta**, que é um pedido HTTP (`umaPerguntaPorChamada`, revisões do #160): é a mesma máquina, e o teto protege a máquina. Se a classificação começar a disputar o teto com a interpretação, separar é uma linha na fábrica.
+- **Prazo de 60 s por pergunta**, em série: uma classificação pode levar N × 60 s. A resposta é um token; o tempo é ler o texto.
+
+**O que o P1 precisa conferir, além de existir logprob:** que as probabilidades não saem todas 0 ou 1. Um servidor que devolva o logprob *depois* da amostragem com `temperature: 0` daria confiança 1 em tudo, e a calibração sumiria sem alarme (revisão técnica do #160). E o gabarito não tem caso de "nenhum pedido": essa opção da pergunta nova ainda não é medida (pedir casos novos é o `§ H.4` 31).
 
 **O que NÃO mudou:** `CLASSIFICADOR_PARA_DADO_REAL.local = false` (só sintético até o dono decidir, com a nota na mão); o modo sombra da ingestão continua com uma opinião só (P3 é outro PR); o orçamento de 60 s por sincronização da segunda opinião (`segunda-opiniao.ts`) não foi mexido, e com três perguntas em CPU fraca ele deve parar a opinião depois de poucos e-mails. Isso é medido no P1 e resolvido no P3.
 
