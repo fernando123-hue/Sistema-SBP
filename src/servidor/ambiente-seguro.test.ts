@@ -416,3 +416,30 @@ function emPasta(arquivos: Record<string, string>, corpo: () => void): void {
     rmSync(pasta, { recursive: true, force: true })
   }
 }
+
+describe('em produção, o assistente não manda o que a equipe digita a fornecedor sem autorização (AT-63)', () => {
+  it('IA_ADAPTER=gemini com a caixa SIMULADA é recusado: a pergunta pode trazer e-mail de associado colado', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('IA_ADAPTER', 'gemini')
+    vi.stubEnv('GOOGLE_AI_KEY', 'chave-sintetica')
+    expect(() => ambiente()).toThrow(/IA_ADAPTER="gemini" com NODE_ENV=production/)
+  })
+
+  it('fora de produção, o Gemini segue: é a rotina do A50, por script, sem NODE_ENV de produção', () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    vi.stubEnv('IA_ADAPTER', 'gemini')
+    vi.stubEnv('GOOGLE_AI_KEY', 'chave-sintetica')
+    expect(() => ambiente()).not.toThrow()
+  })
+
+  it.each([
+    ['mock', {}],
+    ['local', { IA_LOCAL_URL: 'http://127.0.0.1:11434/v1', IA_MODELO: 'qwen2.5:1.5b-instruct-q4_K_M' }],
+    ['anthropic', { ANTHROPIC_API_KEY: 'chave-sintetica' }],
+  ] as const)('IA_ADAPTER=%s em produção sobe: o texto não sai da casa, ou o fornecedor é o autorizado', (ia, extras) => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('IA_ADAPTER', ia)
+    for (const [nome, valor] of Object.entries(extras)) vi.stubEnv(nome, valor)
+    expect(() => ambiente()).not.toThrow()
+  })
+})

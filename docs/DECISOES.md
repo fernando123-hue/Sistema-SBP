@@ -1392,6 +1392,24 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 **Status:** 🟢 em vigor.
 
+### AT-63 — Em produção, o assistente não fala com fornecedor sem autorização para dado real *(01/10/2026)*
+
+**O que entrou:** com `NODE_ENV=production`, o servidor recusa subir com uma IA que tira o texto da casa sem estar em `IA_PARA_DADO_REAL`. Hoje isso é só `IA_ADAPTER=gemini`. A lista nova `IA_TIRA_O_TEXTO_DA_CASA` (`servidor/ambiente.ts`) está amarrada ao enum, então um fornecedor novo não compila sem dizer para onde o texto vai.
+
+**Por quê:** achado MÉDIO da auditoria de segurança de 01/10. A trava de dado real (`N-17`) só valia com a caixa real ligada. Um servidor da empresa com a caixa simulada e `IA_ADAPTER=gemini` mandava ao Gemini gratuito o que a equipe digita no assistente, e a pergunta real da operação é "o que quer dizer este e-mail?", com o e-mail colado (invariante 13). Os termos do Gemini gratuito não excluem treino (`A38`).
+
+**O que continua permitido:**
+- a rotina do Gemini (`A50`), que roda por script fora de produção;
+- em produção, `mock` (o assistente vira busca no manual), `local` (o texto fica na máquina da associação) e `anthropic` (a IA contratada).
+
+A V1 do `A74`, com `IA_ADAPTER=local` e `NODE_ENV=production`, sobe.
+
+**Dois sinais de produção** (revisão de segurança do #179): o `NODE_ENV` do processo, **ou** o literal `process.env['NODE_ENV']`. O Next troca esse literal pelo modo do build dentro do servidor. Assim um `NODE_ENV=test` herdado da máquina não desliga a trava num `next start`, e os scripts por `tsx` (a rotina do `A50`) seguem como antes. **Limite conhecido:** `next dev` rodando no servidor passa, porque é desenvolvimento para os dois sinais. O roteiro de instalação manda `next start`. "Recusa subir" quer dizer, como nas outras travas, que toda requisição que lê o ambiente falha. **Se um dia** o assistente usar o classificador (`A62`), esta trava precisa ser repetida para `CLASSIFICADOR_ADAPTER`.
+
+**Prova:** `servidor/ambiente-seguro.test.ts`: o Gemini é recusado em produção com a caixa simulada; fora de produção, segue; `mock`, `local` e `anthropic` sobem. Mutações: sem a trava, a trava fora de produção, `local` marcado como "tira da casa" e a autorização ignorada. As quatro derrubam 1 teste cada.
+
+**Status:** 🟢 em vigor.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
