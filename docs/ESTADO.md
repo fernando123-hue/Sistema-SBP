@@ -1,8 +1,55 @@
 # Estado do projeto — retomada
 
-Última atualização: **30/09/2026, fim da noite — Jev próprio decidido (`A70`); Next 16.3.6 (#155).** `main` em `7c65a84` (#157, pendência 37, mesclado; antes dele, #154, #155 e #153). *(Conferido contra o GitHub em 01/10/2026: a linha dizia `b570308`.)* **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **01/10/2026, tarde — validar na máquina do dono antes do servidor (`A74`); segredos pela prática do TI (`A73`).** `main` depois do #176. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### 01/10/2026, tarde — PLANO ATUAL: VALIDAR NA MÁQUINA DO DONO, DEPOIS ENTREGAR AO TI (este bloco vence todos os de baixo)
+>
+> **Decisões do dono hoje** (`DECISOES.md`):
+> - **`A74`:** o sistema vai para o servidor físico da empresa, mas primeiro é **validado na máquina do dono** (Windows, Ollama na GTX 1050 Ti). Ordem: **V1** com e-mails fictícios, rodando como produção; **V2** com modelos de e-mails reais da empresa, **anonimizados antes de qualquer commit**, como casos do gabarito; **V3** roteiro de instalação para o TI.
+> - **`A73`:** os segredos ficam na pasta do servidor com o backup criptografado que o TI já faz, no lugar do Infisical (`A68` substituída). As quatro conferências do `A73` entram no roteiro.
+> - Interpretação e segunda opinião seguem no mesmo teto diário da IA local; a validação mede.
+>
+> **Quem faz o quê.** A sessão da nuvem coordena e escreve o código. A rede dela bloqueia o Ollama, então **o que roda na máquina do dono é das sessões locais** ("Projeto SBP local setup" e "Fix TLS scan…"). Elas não recebem mensagem da nuvem: as ordens vão por arquivo, que o dono cola. **Duas suítes de teste nunca ao mesmo tempo na mesma máquina** (mesma `sbp_teste`).
+>
+> **Mesclados hoje, depois da auditoria por cinco agentes em paralelo** (arquitetura, segurança, documentação, testes/CI, prontidão para servidor; nenhum CRÍTICO):
+> - **#166:** medição real no Ollama (bloco logo abaixo).
+> - **#175 (`AT-60`):** `demo` e `seed` recusam base com dado da operação. A demo aprovava em massa as revisões pendentes da base apontada.
+> - **#176 (`AT-61`):** `npm run db:preparar -- --nome … --email …` cria as categorias e a primeira gestora real. **O servidor nunca roda o seed.**
+>
+> **Próximo, na ordem:**
+> 1. **Busca de e-mails sem prender a tela.** `POST /api/ingestao` processa tudo dentro da requisição. A 11 s por e-mail, 200 e-mails dão ~38 min, e um proxy corta em 60 s. Vira processamento no próprio servidor (sem fila nem infraestrutura nova), uma busca por vez, com o andamento na tela.
+> 2. **V1 na máquina do dono**, pelas sessões locais:
+>    - `next build` + `next start` com `NODE_ENV=production`;
+>    - base nova preparada com `db:preparar`, IA local, segunda opinião local e e-mails fictícios;
+>    - o P1 do classificador (`classificador:avaliar`);
+>    - `npm run verificar` no Windows.
+>
+>    Em `http://localhost` o login funciona: o navegador aceita o cookie `Secure` em localhost e ignora o HSTS em HTTP. **Acesso de outros computadores da rede já exige HTTPS.**
+> 3. **A trava de dado real cobrir o assistente** (auditoria de segurança, MÉDIO): hoje `IA_PARA_DADO_REAL` só vale com a caixa real ligada.
+> 4. Os PRs do Dependabot #173 e #174 **juntos** (`init` e `analyze` do CodeQL na mesma versão); `nivel-de-risco.ts` com `src/componentes/` e autenticação, expurgo e auditoria no nível 3.
+> 5. **V2:** o dono traz os modelos; a anonimização acontece na máquina dele, antes do commit.
+> 6. **V3:** roteiro de instalação para o TI:
+>    - Node 22, MySQL com a colação certa e `npm run db:privilegios`;
+>    - `next start -H 127.0.0.1` atrás de proxy com HTTPS, repassando `Host` e `X-Forwarded-For`;
+>    - serviço que reinicia;
+>    - backup do banco **sem** a pasta de segredos;
+>    - `db:preparar` rodado num terminal.
+>
+> **Achados da auditoria ainda abertos** (não bloqueiam a V1):
+> - pendências 41 e 49 (permissões da SPEC no MySQL; erro de `ambiente()` não encerra o processo);
+> - login do Graph por certificado não implementado: só segredo;
+> - `.gitattributes` com `eol=lf`;
+> - trava entre suítes no `globalSetup`;
+> - `dominio` com valor padrão no schema;
+> - o código ainda usa `middleware.ts`, que o Next 16 trocou por `proxy.ts`;
+> - testes que conferem só o texto de uma recusa: a mensagem do Prisma traz o trecho do código vizinho, e um erro de constraint pode passar por recusa (visto no #176).
+>
+> **Perguntas ao dono que bloqueiam o e-mail real:**
+> - liberar e-mail real na IA local (`A56 (e)`);
+> - a data de `GRAPH_LER_DESDE`;
+> - o registro do aplicativo no Microsoft 365 pelo TI.
 >
 > ### 01/10/2026, madrugada — MEDIÇÃO NO OLLAMA FEITA (item 4 da lista "o que falta"; frente da IA local — as telas do `A69` seguem nos blocos logo abaixo)
 >
