@@ -26,6 +26,40 @@ describe('dado de trabalho num e-mail sem item', () => {
     expect(dadoDeTrabalhoSemItem(texto('crm: 98765'), 0)).toBe('crm')
   })
 
+  // Revisões do #191: formas comuns no Brasil que escapavam. A regra existe
+  // para quando o modelo falha, então erra para o lado largo.
+  it('CPF escrito de outros jeitos também conta', () => {
+    for (const forma of [
+      '111-444-777-35',
+      '111/444/777-35',
+      '111.444.777 - 35',
+      '111.444.777–35',
+      '111  444  777  35',
+      '111.444.777\n-35',
+      '111_444_777_35',
+      '111​.444.777-35',
+      '１１１.４４４.７７７-３５',
+    ]) {
+      expect(dadoDeTrabalhoSemItem(texto(`meu CPF: ${forma}`), 0), forma).toBe('cpf')
+    }
+  })
+
+  it('CRM escrito de outros jeitos também conta', () => {
+    for (const forma of ['CRM nº 12345', 'CRM n.º 12345', 'CRM/SP nº 123456', 'CRM-SP: 12345', 'CRM-SP 12.345', 'CRM 123.456', 'CRMSP 123456']) {
+      expect(dadoDeTrabalhoSemItem(texto(`Atualizem meu ${forma}.`), 0), forma).toBe('crm')
+    }
+  })
+
+  it('CEP, valor em reais, CNPJ e protocolo de 12 dígitos não contam como CPF', () => {
+    for (const texto_ of ['CEP 01310-100', 'R$ 1.234.567,89', 'CNPJ 12.345.678/0001-90', 'protocolo 123456789012']) {
+      expect(dadoDeTrabalhoSemItem(texto(texto_), 0), texto_).toBeNull()
+    }
+  })
+
+  it('"CRM de 2024" não conta: UF é maiúscula', () => {
+    expect(dadoDeTrabalhoSemItem(texto('O relatório do CRM de 2024 chegou.'), 0)).toBeNull()
+  })
+
   it('a palavra CRM sozinha, data ou telefone não contam', () => {
     expect(dadoDeTrabalhoSemItem(texto('Falei com o setor de CRM ontem.'), 0)).toBeNull()
     expect(dadoDeTrabalhoSemItem(texto('Retorno em 20/01/2026, ramal 4321.'), 0)).toBeNull()

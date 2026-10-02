@@ -74,6 +74,7 @@ export async function expurgarConteudoDosEmails(
       id: true,
       recebidoEm: true,
       conteudoSuspeito: true,
+      dadoSemItem: true,
       itens: {
         select: {
           status: true,
@@ -93,6 +94,7 @@ export async function expurgarConteudoDosEmails(
       {
         recebidoNoDia: paraDataIso(email.recebidoEm),
         conteudoSuspeito: email.conteudoSuspeito,
+        guardadoPorDado: email.dadoSemItem !== null,
         itens: email.itens.map(situacaoNoRelogio),
       },
       hoje,

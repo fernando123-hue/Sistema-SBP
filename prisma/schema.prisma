@@ -258,6 +258,14 @@ model Email {
   /// de uma pessoa olhar. Antes ficava só no log e no evento.
   conteudoSuspeito    Boolean  @default(false)
 
+  /// Sem item, sem marca das defesas, mas com dado de trabalho: `cpf`, `crm` ou
+  /// `anexo` (`AT-73`). Pode ser o pedido escondido numa resposta automática;
+  /// fica guardado 30 dias da chegada e conta no aviso da Distribuição (`A76`).
+  /// Coluna própria, e não `conteudoSuspeito`: manipulação e dado são motivos
+  /// diferentes, com prazos diferentes, e a trilha append-only não permitiria
+  /// separá-los depois (revisões do #191). Só o rótulo — nunca o dado.
+  dadoSemItem         String?  @db.VarChar(10)
+
   conteudo EmailConteudo?
   anexos   Anexo[]
   itens    Item[]

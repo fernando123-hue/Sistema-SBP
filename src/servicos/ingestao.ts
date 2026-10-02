@@ -326,6 +326,7 @@ export async function sincronizar(
     duplicados: 0,
     itensCriados: 0,
     emailsSemItem: 0,
+    emailsGuardadosPorDado: 0,
     itensAprovados: 0,
     itensParaRevisao: 0,
     falhas: 0,
@@ -425,6 +426,9 @@ export async function sincronizar(
       resumo.itensAprovados += resultado.aprovados
       resumo.itensParaRevisao += resultado.paraRevisao
       resumo.anexosRejeitados += resultado.anexosRejeitados
+      // `A76`: o aviso da Distribuição conta os guardados por dado, nos dois
+      // desfechos sem item (desistência e "nenhum pedido").
+      if (resultado.dadoSemItem) resumo.emailsGuardadosPorDado += 1
 
       // Desistiu depois de `TENTATIVAS_MAXIMAS_DE_INTERPRETACAO` falhas — a IA
       // nem foi chamada nesta execução (achado C-11/N-13). O e-mail já está
@@ -446,8 +450,9 @@ export async function sincronizar(
           referencia: email.messageId,
           mensagem:
             `depois de ${TENTATIVAS_MAXIMAS_DE_INTERPRETACAO} tentativas a IA não conseguiu estruturar este ` +
-            `e-mail — marcado como tratado, sem cobrar de novo; abra-o direto no Outlook`,
-          detalhe: { conteudoSuspeito: resultado.conteudoSuspeito },
+            `e-mail — marcado como tratado, sem cobrar de novo; abra-o direto no Outlook` +
+            (resultado.dadoSemItem ? ` (tem ${ROTULO_DO_DADO[resultado.dadoSemItem]}: guardado 30 dias)` : ''),
+          detalhe: { conteudoSuspeito: resultado.conteudoSuspeito, dadoSemItem: resultado.dadoSemItem },
         })
         continue
       }
@@ -496,7 +501,7 @@ export async function sincronizar(
           situacao: 'falha',
           referencia: email.messageId,
           mensagem: dadoSemItem
-            ? `e-mail interpretado sem nenhum item, mas com ${ROTULO_DO_DADO[dadoSemItem]} — guardado; confira se havia um pedido ali`
+            ? `e-mail interpretado sem nenhum item, mas com ${ROTULO_DO_DADO[dadoSemItem]} — guardado 30 dias; confira no Outlook se havia um pedido ali`
             : suspeito
               ? 'e-mail SUSPEITO interpretado sem nenhum item — pode ser tentativa de fazer o trabalho desaparecer'
               : 'e-mail interpretado sem nenhum item — confira se havia trabalho ali',
@@ -631,9 +636,9 @@ interface ResultadoDeUm {
    */
   naoInterpretado: boolean
   /**
-   * Zero itens sem suspeita, mas com CPF, CRM ou anexo (`AT-73`). Quando não é
-   * nulo, `conteudoSuspeito` também vem verdadeiro — é o que guarda o e-mail —,
-   * e este campo diz que o motivo é dado, não manipulação.
+   * Zero itens, sem marca das defesas, mas com CPF, CRM ou anexo (`AT-73`).
+   * Independente de `conteudoSuspeito`: quando este vale, aquele é nulo.
+   * Guarda o e-mail 30 dias (`A76`) e conta no aviso da Distribuição.
    */
   dadoSemItem: DadoDeTrabalho | null
 }
@@ -642,7 +647,7 @@ interface ResultadoDeUm {
 const ROTULO_DO_DADO: Readonly<Record<DadoDeTrabalho, string>> = {
   cpf: 'um CPF',
   crm: 'um CRM',
-  anexo: 'anexo',
+  anexo: 'um anexo',
 }
 
 /** `P2002` é o código do Prisma para violação de constraint única. */
@@ -791,6 +796,16 @@ async function processarUm(
       // interpretação, o sinal duplo de sempre (regex OU modelo).
       const conteudoSuspeito = interpretacao ? interpretacao.conteudoSuspeito : suspeitoLocal
 
+      // `AT-73`, `A76`: sem item e sem marca das defesas, mas com CPF, CRM ou
+      // anexo — pode ser o pedido escondido numa resposta automática, que a
+      // lista da fase 4 não cobre. Também na desistência: o modelo travar é a
+      // porta mais fácil (revisão de segurança do #191). Vai numa coluna
+      // própria, gravada com o e-mail: manipulação e dado são motivos e prazos
+      // diferentes. `criarItens` cria um item por item interpretado ou aborta,
+      // então "sem item" já se sabe aqui.
+      const semItem = interpretacao ? interpretacao.itens.length === 0 : true
+      const dadoSemItem = semItem && !conteudoSuspeito ? dadoDeTrabalhoSemItem(email, email.anexos.length) : null
+
       // Metadado e conteúdo nascem juntos, mas em linhas separadas: é o que
       // permite, depois, expurgar o conteúdo pela retenção sem levar junto o
       // histórico operacional que sustenta métrica, auditoria e conservação.
@@ -804,6 +819,7 @@ async function processarUm(
           versaoPrompt: interpretacao?.versaoPrompt ?? null,
           processadoEm: new Date(),
           conteudoSuspeito,
+          dadoSemItem,
           conteudo: {
             create: {
               remetente: email.remetente,
@@ -824,7 +840,7 @@ async function processarUm(
             })),
           },
         },
-        update: { processadoEm: new Date(), conteudoSuspeito },
+        update: { processadoEm: new Date(), conteudoSuspeito, dadoSemItem },
       })
 
       // Na MESMA transação do e-mail (invariante 14): se ela abortar — e é em
@@ -850,20 +866,6 @@ async function processarUm(
           })
         : { criados: 0, aprovados: 0, paraRevisao: 0 }
 
-      // `AT-73`: a IA leu e não achou trabalho, as defesas não viram nada, mas
-      // o e-mail traz CPF, CRM ou anexo. Pode ser o pedido escondido numa
-      // resposta automática — que a lista da fase 4 não cobre, porque não é
-      // suspeito. Fica guardado como o suspeito (fora da limpeza, `AT-24`), na
-      // mesma transação; o motivo vai ao evento e à trilha, separado da
-      // manipulação. Só com interpretação: a desistência tem caminho próprio.
-      const dadoSemItem =
-        interpretacao && resultado.criados === 0 && !conteudoSuspeito
-          ? dadoDeTrabalhoSemItem(email, email.anexos.length)
-          : null
-      if (dadoSemItem) {
-        await tx.email.update({ where: { id: registro.id }, data: { conteudoSuspeito: true } })
-      }
-
       await auditar(tx, {
         entidade: 'Email',
         entidadeId: registro.id,
@@ -871,7 +873,7 @@ async function processarUm(
         depois: {
           messageId: email.messageId,
           itens: resultado.criados,
-          conteudoSuspeito: conteudoSuspeito || dadoSemItem !== null,
+          conteudoSuspeito,
           naoInterpretado: desistir,
           dadoSemItem,
         },
@@ -879,13 +881,7 @@ async function processarUm(
         correlacaoId,
       })
 
-      return {
-        ...resultado,
-        anexosRejeitados,
-        conteudoSuspeito: conteudoSuspeito || dadoSemItem !== null,
-        naoInterpretado: desistir,
-        dadoSemItem,
-      }
+      return { ...resultado, anexosRejeitados, conteudoSuspeito, naoInterpretado: desistir, dadoSemItem }
     })
   } catch (erro) {
     await desfazerArquivos()

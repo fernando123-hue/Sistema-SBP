@@ -27,7 +27,7 @@
 >
 > **Gabarito 1.1.0 (`AT-71`):** sete casos novos (2 "nenhum", 1 agradecimento, 4 "vários"); 24 no total; pergunta de quantidade da medição corrigida para o `A75`. Medido: quantidade 0,50 contra 0,67 do "um" constante. Os modelos da V2, quando chegarem, entram como casos e têm prioridade.
 >
-> **`AT-73`:** e-mail com zero itens **e** CPF, CRM ou anexo fica guardado como suspeito, com o motivo no evento — fecha a porta do pedido escondido em resposta automática, que a fase 4 não cobre.
+> **`AT-73` e `A76` (dono escolheu 30 dias com aviso):** e-mail sem item (inclusive o que a IA desistiu de ler) que traz CPF, CRM ou anexo fica **guardado 30 dias** e aparece na Distribuição como "sem item, mas com CPF, CRM ou anexo — confira no Outlook". Reduz o risco do pedido escondido em resposta automática; não o fecha (pedido só com nome ainda escapa).
 >
 > **Próximo do agente, sem depender do dono:** (1) o Dependabot #181 (SDK da Anthropic, nível 3); (2) os achados abertos do bloco de 01/10.
 >

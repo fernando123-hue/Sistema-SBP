@@ -111,7 +111,7 @@ describe('quando o conteúdo de um e-mail vence (A20)', () => {
   it('último item concluído em 12/09, prazo de 7 dias: sai em 19/09 — na véspera, não', () => {
     const email = {
       recebidoNoDia: '2026-09-01',
-      conteudoSuspeito: false,
+      conteudoSuspeito: false, guardadoPorDado: false,
       itens: [concluido('2026-09-05'), concluido('2026-09-12')],
     }
 
@@ -121,32 +121,54 @@ describe('quando o conteúdo de um e-mail vence (A20)', () => {
   })
 
   it('um item aberto segura o relógio, mesmo com o irmão concluído há meses', () => {
-    const email = { recebidoNoDia: '2026-06-01', conteudoSuspeito: false, itens: [concluido('2026-06-02'), aberto] }
+    const email = { recebidoNoDia: '2026-06-01', conteudoSuspeito: false, guardadoPorDado: false, itens: [concluido('2026-06-02'), aberto] }
 
     expect(diaEmQueOConteudoVence(email, 7)).toBeNull()
     expect(conteudoVenceu(email, '2030-01-01', 7)).toBe(false)
   })
 
   it('e-mail que não virou item conta da chegada', () => {
-    const email = { recebidoNoDia: '2026-09-10', conteudoSuspeito: false, itens: [] }
+    const email = { recebidoNoDia: '2026-09-10', conteudoSuspeito: false, guardadoPorDado: false, itens: [] }
 
     expect(diaEmQueOConteudoVence(email, 7)).toBe('2026-09-17')
   })
 
   it('e-mail SUSPEITO que não virou item não vence: espera uma pessoa decidir (A34)', () => {
-    const email = { recebidoNoDia: '2026-01-01', conteudoSuspeito: true, itens: [] }
+    const email = { recebidoNoDia: '2026-01-01', conteudoSuspeito: true, guardadoPorDado: false, itens: [] }
+
+    expect(diaEmQueOConteudoVence(email, 7)).toBeNull()
+  })
+
+  // `A76` (dono, 02/10/2026): sem item, mas com CPF, CRM ou anexo — pode ser um
+  // pedido escondido. Guardado 30 dias da chegada, não 7 e não para sempre.
+  it('e-mail sem item guardado por dado: 30 dias da chegada (A76)', () => {
+    const email = { recebidoNoDia: '2026-09-10', conteudoSuspeito: false, guardadoPorDado: true, itens: [] }
+
+    expect(diaEmQueOConteudoVence(email, 7)).toBe('2026-10-10')
+    expect(conteudoVenceu(email, '2026-10-09', 7)).toBe(false)
+    expect(conteudoVenceu(email, '2026-10-10', 7)).toBe(true)
+  })
+
+  it('se o prazo geral for maior que 30 dias, o guardado por dado não sai antes dele', () => {
+    const email = { recebidoNoDia: '2026-09-10', conteudoSuspeito: false, guardadoPorDado: true, itens: [] }
+
+    expect(diaEmQueOConteudoVence(email, 60)).toBe('2026-11-09')
+  })
+
+  it('suspeito pelas defesas continua sem prazo, mesmo guardado por dado', () => {
+    const email = { recebidoNoDia: '2026-09-10', conteudoSuspeito: true, guardadoPorDado: true, itens: [] }
 
     expect(diaEmQueOConteudoVence(email, 7)).toBeNull()
   })
 
   it('e-mail suspeito que virou item segue o relógio dos itens', () => {
-    const email = { recebidoNoDia: '2026-09-01', conteudoSuspeito: true, itens: [concluido('2026-09-10')] }
+    const email = { recebidoNoDia: '2026-09-01', conteudoSuspeito: true, guardadoPorDado: false, itens: [concluido('2026-09-10')] }
 
     expect(diaEmQueOConteudoVence(email, 7)).toBe('2026-09-17')
   })
 
   it('recusa prazo inválido', () => {
-    expect(() => diaEmQueOConteudoVence({ recebidoNoDia: '2026-09-01', conteudoSuspeito: false, itens: [] }, 0)).toThrow(
+    expect(() => diaEmQueOConteudoVence({ recebidoNoDia: '2026-09-01', conteudoSuspeito: false, guardadoPorDado: false, itens: [] }, 0)).toThrow(
       /Prazo de retenção inválido/,
     )
   })

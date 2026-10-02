@@ -412,6 +412,7 @@ export default function Distribuicao() {
           tom={
             ingestao.falhas > 0 ||
             ingestao.emailsSemItem > 0 ||
+            ingestao.emailsGuardadosPorDado > 0 ||
             ingestao.naoLidas > 0 ||
             ingestao.repetidas > 0 ||
             ingestao.naoInterpretados > 0
@@ -427,6 +428,20 @@ export default function Distribuicao() {
               {' · '}
               <strong>
                 {ingestao.emailsSemItem} sem item nenhum
+              </strong>
+            </>
+          ) : null}
+          {/*
+            `A76`: sem item, mas com CPF, CRM ou anexo — pode ser um pedido
+            escondido numa resposta automática. O conteúdo fica 30 dias; a
+            pessoa confere no Outlook (`AT-73`).
+          */}
+          {ingestao.emailsGuardadosPorDado > 0 ? (
+            <>
+              {' · '}
+              <strong>
+                {ingestao.emailsGuardadosPorDado} sem item, mas com CPF, CRM ou anexo — guardados 30 dias,
+                confira no Outlook
               </strong>
             </>
           ) : null}

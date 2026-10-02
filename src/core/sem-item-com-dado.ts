@@ -13,26 +13,49 @@
  * alguém), um CRM com número, ou QUALQUER anexo. Não dá para poupar imagem:
  * o tipo declarado é do remetente e nunca decide nada (`AnexoSchema`), então
  * um PDF declarado "image/png" escaparia. O preço: a resposta automática com
- * logotipo anexado também fica guardada até alguém olhar.
+ * logotipo anexado também fica guardada — por 30 dias, não para sempre (`A76`).
  *
- * Falso positivo custa pouco (o e-mail fica guardado até alguém olhar); falso
- * negativo é o trabalho sumindo. Por isso a forma é larga: um telefone de 11
- * dígitos sem pontuação também conta como CPF.
+ * É uma heurística de FORMA: reduz o risco, não o fecha. O pedido escrito só
+ * com nome, sem documento e sem anexo, ainda escapa (revisões do #191).
+ *
+ * Falso positivo custa pouco (o e-mail fica guardado 30 dias); falso negativo
+ * é o trabalho sumindo. Por isso a forma é larga: um telefone de 11 dígitos sem
+ * pontuação também conta como CPF.
  */
 
 export type DadoDeTrabalho = 'cpf' | 'crm' | 'anexo'
 
-/** Três, três, três e dois dígitos, com ou sem ponto, espaço ou traço. */
-const FORMA_DE_CPF = /(?<!\d)\d{3}[.\s]?\d{3}[.\s]?\d{3}[-.\s]?\d{2}(?!\d)/
+/**
+ * Entre os grupos do CPF: nada, ou qualquer mistura de espaço, quebra de
+ * linha, ponto, barra, sublinhado, vírgula ou traço (revisões do #191:
+ * `111-444-777-35`, `111/444/777-35` e `111.444.777 - 35` escapavam).
+ */
+const SEPARADOR_DE_CPF = String.raw`[\s._/,–—-]*`
 
-/** "CRM", talvez a UF, e um número de pelo menos quatro dígitos. */
-const CRM_COM_NUMERO = /\bCRM\b[\s:/-]*(?:[A-Z]{2}[\s/-]*)?\d{4,}/i
+/** Três, três, três e dois dígitos, sem dígito colado antes nem depois. */
+const FORMA_DE_CPF = new RegExp(
+  String.raw`(?<!\d)\d{3}` + SEPARADOR_DE_CPF + String.raw`\d{3}` + SEPARADOR_DE_CPF + String.raw`\d{3}` +
+    SEPARADOR_DE_CPF + String.raw`\d{2}(?!\d)`,
+)
+
+/**
+ * "CRM" (qualquer caixa), talvez a UF — só MAIÚSCULA, para "CRM de 2024" não
+ * contar —, talvez "nº", e o número: com ponto de milhar (`12.345`) ou com
+ * pelo menos quatro dígitos seguidos.
+ */
+const CRM_COM_NUMERO =
+  /(?<![A-Za-z])[Cc][Rr][Mm](?:[\s:./-]*[A-Z]{2}(?![a-z]))?[\s:./-]*(?:[Nn][º°oO]?\.?[º°oO]?\.?\s*)?(?:\d{1,3}(?:\.\d{3})+|\d{4,})/
+
+/** Dígito de largura total vira dígito comum (NFKC), e caractere invisível sai. */
+function normalizar(texto: string): string {
+  return texto.normalize('NFKC').replace(/[​-‍﻿]/g, '')
+}
 
 export function dadoDeTrabalhoSemItem(
   email: { assunto: string; corpo: string },
   quantosAnexos: number,
 ): DadoDeTrabalho | null {
-  const texto = `${email.assunto}\n${email.corpo}`
+  const texto = normalizar(`${email.assunto}\n${email.corpo}`)
   if (FORMA_DE_CPF.test(texto)) return 'cpf'
   if (CRM_COM_NUMERO.test(texto)) return 'crm'
   if (quantosAnexos > 0) return 'anexo'

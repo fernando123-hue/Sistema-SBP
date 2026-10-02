@@ -363,6 +363,13 @@ export interface ResumoIngestao {
    * ninguém: seria exatamente a perda silenciosa que a planilha comete.
    */
   emailsSemItem: number
+  /**
+   * Dos e-mails sem item (inclusive os não interpretados), os que traziam CPF,
+   * CRM ou anexo (`AT-73`): podem ser pedido escondido numa resposta
+   * automática. Ficam guardados 30 dias, e este número é o aviso na tela
+   * para alguém conferir no Outlook (`A76`).
+   */
+  emailsGuardadosPorDado: number
   itensAprovados: number
   itensParaRevisao: number
   /** Falhas ao processar: o e-mail não foi gravado e volta na próxima busca. */
