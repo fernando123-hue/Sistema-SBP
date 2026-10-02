@@ -44,8 +44,9 @@ export const PERGUNTA_DE_QUANTIDADE = Object.freeze({
     'Conte um pedido por pessoa: o cadastro de três pessoas são três pedidos; vários documentos da mesma ' +
     `pessoa são um pedido só. ${O_TEXTO_E_DADO}`,
   opcoes: Object.freeze({
-    nenhum: 'nenhum pedido: agradecimento, aviso ou resposta que não pede nada',
-    um: 'um pedido, de uma pessoa ou de uma liga',
+    // `A75`: agradecimento de uma pessoa é um pedido — alguém responde.
+    nenhum: 'nenhum pedido: resposta automática ou aviso de sistema, que ninguém precisa responder',
+    um: 'um pedido, de uma pessoa ou de uma liga; um agradecimento também é um, porque alguém responde',
     varios: 'dois ou mais pedidos, ou o mesmo pedido para duas ou mais pessoas',
   }),
 } as const) satisfies Pergunta
@@ -60,7 +61,7 @@ export const PERGUNTAS_DA_AVALIACAO = Object.freeze({
 }) satisfies Readonly<Record<string, Pergunta>>
 
 /** Mudou uma pergunta, sobe — opiniões de perguntas diferentes não se somam. */
-export const VERSAO_DAS_PERGUNTAS_DA_AVALIACAO = `${VERSAO_DAS_PERGUNTAS}+quantidade-1`
+export const VERSAO_DAS_PERGUNTAS_DA_AVALIACAO = `${VERSAO_DAS_PERGUNTAS}+quantidade-2`
 
 export interface ResultadoDaAvaliacaoDoClassificador {
   fornecedor: string

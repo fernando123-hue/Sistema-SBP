@@ -23,7 +23,11 @@
 > 3. Avisar a sessão, para a 2ª rodada do backup com os dados do teste; depois, **autorizar apagar** `sbp_restaurada` e `C:\sbp-validacao\backup.sql`.
 > 4. Decidir se vale medir um modelo maior que caiba nos 4 GB da placa (`AT-69`; trocar o modelo do `A59` é decisão dele).
 >
-> **Próximo do agente, sem depender do dono:** casos sintéticos de "nenhum pedido" e de "vários" no gabarito (`AT-69`, passo 2) — com 15 de 17 casos "um", nenhuma medição da quantidade diz muito, com qualquer modelo. As respostas que o agente escrever entram na mesma conferência pela equipe do `§ H.4` 31; os modelos da V2 trazem casos melhores e, quando chegarem, têm prioridade. A ordem das opções já foi medida (`AT-69`).
+> **Decisão do dono (`A75`):** o "obrigado" de um associado vira um item de e-mail com a observação "Agradecimento — responder com cordialidade", e conta na carga. Já está no gabarito; **falta no sistema** — próximo do agente, PR de nível 3. Achado ao preparar: a `observacao` que a IA escreve é gravada no `payload` do item, mas **nenhuma tela a mostra**, e mostrar texto livre do modelo seria abrir a tela da equipe a um e-mail manipulado (invariante 6). Desenho: a IA marca um **sinal fechado** (agradecimento sim/não) no item; o **sistema** escreve o texto fixo "Agradecimento — responder com cordialidade" na Minha fila; o texto da IA ganha a regra (agradecimento = um item de e-mail; resposta automática = nenhum) e a versão do prompt sobe.
+>
+> **Gabarito 1.1.0 (`AT-71`):** sete casos novos (2 "nenhum", 1 agradecimento, 4 "vários"); 24 no total; pergunta de quantidade da medição corrigida para o `A75`. Medido: quantidade 0,50 contra 0,67 do "um" constante. Os modelos da V2, quando chegarem, entram como casos e têm prioridade.
+>
+> **Próximo do agente, sem depender do dono:** o `A75` no texto da IA de interpretação; depois o Dependabot #181 (SDK da Anthropic, nível 3) e os achados abertos do bloco de 01/10.
 >
 > ### 02/10/2026 — PASSAGEM (este bloco vence todos os de baixo; o de 01/10, logo abaixo, explica o plano)
 >

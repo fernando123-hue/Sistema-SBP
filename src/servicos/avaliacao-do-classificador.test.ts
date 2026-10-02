@@ -34,6 +34,16 @@ describe('as perguntas da avaliação', () => {
     expect(VERSAO_DAS_PERGUNTAS_DA_AVALIACAO.startsWith(`${VERSAO_DAS_PERGUNTAS}+`)).toBe(true)
   })
 
+  // `A75`: o agradecimento de uma pessoa é um pedido (alguém responde). A
+  // versão 1 da pergunta dizia o contrário, e o modelo seria medido contra a
+  // decisão. Só a resposta automática fica em "nenhum" (`A34`).
+  it('o agradecimento conta como um pedido, e a resposta automática como nenhum', () => {
+    expect(PERGUNTA_DE_QUANTIDADE.opcoes.nenhum).not.toMatch(/agradec/i)
+    expect(PERGUNTA_DE_QUANTIDADE.opcoes.nenhum).toMatch(/resposta automática/i)
+    expect(PERGUNTA_DE_QUANTIDADE.opcoes.um).toMatch(/agradec/i)
+    expect(VERSAO_DAS_PERGUNTAS_DA_AVALIACAO.endsWith('+quantidade-2')).toBe(true)
+  })
+
   // Uma opção a mais na pergunta, sem a nota saber dela, viraria erro calado.
   it('as opções da pergunta de quantidade são, na ordem, as que a nota conhece', () => {
     expect(Object.keys(PERGUNTA_DE_QUANTIDADE.opcoes)).toEqual([...QUANTIDADES])
@@ -60,8 +70,12 @@ describe('avaliarClassificador', () => {
     expect(pedidos[0]!.texto).toContain('Assunto:')
 
     expect(resultado).toMatchObject({ fornecedor: 'mock', modelos: ['mock-1'], versaoDasPerguntas: VERSAO_DAS_PERGUNTAS_DA_AVALIACAO })
-    // O dublê responde sempre o primeiro rótulo: "nenhum" nunca está certo no gabarito.
-    expect(resultado.resumo.porPergunta.quantidade).toMatchObject({ acerto: 0, probabilidadeDaCerta: 0 })
+    // O dublê responde sempre o primeiro rótulo, "nenhum": acerta só os casos
+    // sem item do gabarito (2 de 23 na 1.1.0, `AT-71`).
+    const semItem = CASOS_DO_GABARITO.filter((caso) => caso.esperado.itens.length === 0).length
+    expect(semItem).toBeGreaterThan(0)
+    const fracao = Number((semItem / CASOS_DO_GABARITO.length).toFixed(6))
+    expect(resultado.resumo.porPergunta.quantidade).toMatchObject({ acerto: fracao, probabilidadeDaCerta: fracao })
     expect(resultado.resumo).toMatchObject({ falhas: 0, tempoMedioMs: 5 })
   })
 
