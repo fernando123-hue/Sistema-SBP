@@ -2,6 +2,8 @@
 
 Este arquivo é mantido pela sessão da nuvem que coordena o projeto. Ela não alcança as sessões que rodam na máquina do dono, então **o dono cola cada bloco na sessão indicada e devolve a resposta à sessão da nuvem**. Esta revisão substitui todas as anteriores. Se uma sessão local já tinha recebido um bloco antigo e terminou a medição do classificador, ela segue direto para a parte nova.
 
+> **02/10/2026, tarde — executado pela própria sessão local**, a pedido do dono ("você é uma sessão local"): Parte 1, Parte 2 até o passo 7, a primeira rodada do passo 10, e a suíte da segunda sessão. Resultados em `DECISOES.md § AT-69` (classificador) e `§ AT-70` (V1). Fica com o dono: passos 8 e 9 (entrar, trocar a senha, teste de tela) e a autorização para apagar `sbp_restaurada` e o `backup.sql`.
+
 Os resultados alimentam o `docs/ESTADO.md` e viram PRs, um por defeito. Antes de mandar um bloco de novo, confira no `ESTADO.md` se ele já foi feito.
 
 Contexto para as duas (decisão do dono, `A74`): o sistema é validado **na máquina do dono** antes de ir para o servidor da empresa. A V1 usa só e-mails **fictícios**.
@@ -29,7 +31,7 @@ Rode também sem `--json`. Me devolva:
 
 **Parte 2 — V1: o sistema rodando como produção, numa pasta separada.**
 Não use a pasta de desenvolvimento: produção lê outro `.env`, e misturar os dois é como um erro passa despercebido.
-1. `git clone https://github.com/fernando123-hue/Sistema-SBP C:\sbp-validacao`, depois `cd C:\sbp-validacao` e `npm ci`.
+1. `git clone https://github.com/fernando123-hue/Sistema-SBP C:\sbp-validacao`, depois `cd C:\sbp-validacao`, `npm ci` e `npx prisma generate`. Sem o `generate`, o cliente do banco não existe (`INSTALACAO.md`, passo 2); o npm 11 avisa que bloqueou os scripts de instalação do `prisma` e do `protobufjs`, e o `generate` cobre isso.
 2. No MySQL da máquina: `CREATE DATABASE sbp_validacao CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs;`
 3. Gere **três segredos diferentes**, um por linha. Não copie nenhum do `.env` de desenvolvimento:
    `node -e "console.log(crypto.randomUUID())"`
@@ -59,8 +61,8 @@ Não use a pasta de desenvolvimento: produção lê outro `.env`, e misturar os 
    Se parar com `P3018`, a trava antiga continua de pé. Rode `npx prisma migrate resolve --rolled-back 20261001220000_trilha_restauravel_do_backup` e repita com a root.
 5b. Com a mesma variável: `npm run db:conferir-trilha`. Tem de dizer `OK: as triggers de LogAuditoria e EventoProcessamento estão presentes…`. Depois, `Remove-Item Env:DATABASE_URL` para voltar à URL do `.env`. Me devolva também a saída de `SELECT @@lower_case_table_names;` no MySQL: no Windows deve ser 1, e a conferência foi feita para isso.
 6. `npm run db:preparar -- --nome "Fernando" --email <o e-mail do Fernando>`. Guarde a senha provisória para entregar a ele. **Não rode o seed nem a demo nesta pasta.** Se rodar, eles devem recusar; se não recusarem, é defeito, e eu quero saber.
-7. `npm run build`. Depois `npm start`, que é o `next start`, na porta 3000.
-8. Abra `http://localhost:3000`. Entre com o e-mail do Fernando e a senha provisória. O sistema tem de pedir a troca de senha antes de qualquer tela.
+7. `npm run build`. Depois `npx next start -H 127.0.0.1 -p 3000`. **Não use `npm start` puro:** ele escuta em todas as interfaces, e em 02/10 expôs o sistema em HTTP no endereço de uma rede virtual da máquina (`AT-70`). O roteiro do servidor também usa `-H 127.0.0.1`.
+8. Abra `http://127.0.0.1:3000`. Entre com o e-mail do Fernando e a senha provisória. O sistema tem de pedir a troca de senha antes de qualquer tela.
 9. Me devolva:
    - cada passo que deu erro, com a mensagem exata;
    - o tempo do `npm run build`;
@@ -68,7 +70,7 @@ Não use a pasta de desenvolvimento: produção lê outro `.env`, e misturar os 
 
    O teste de tela é do Fernando: cadastrar 2 ou 3 colaboradores fictícios em "Acesso e cadastro", marcar o plantão, "Buscar e-mails", Revisão, Distribuição, Minha fila e Painel. A busca roda no servidor e a tela mostra "lendo N de M" (`AT-62`). Anote quanto tempo ela leva, quantos e-mails trouxe e se o "lendo N de M" avançou na tela.
 10. **Ensaio de backup (`AT-66`), depois do teste de tela.** Com a root:
-    - `mysqldump -u root -p --single-transaction sbp_validacao > C:\sbp-validacao\backup.sql`
+    - `mysqldump -u root -p --single-transaction --no-tablespaces sbp_validacao > C:\sbp-validacao\backup.sql` (o `--no-tablespaces` é o comando do roteiro do servidor: lá, a conta administradora sem `PROCESS` faria o `mysqldump` falhar e sair com código 0, `AT-67`; com a `root` sem senha desta máquina, tire o `-p`)
     - `mysql -u root -p -e "CREATE DATABASE sbp_restaurada CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs"`
     - `mysql -u root -p sbp_restaurada < C:\sbp-validacao\backup.sql`
     - `npm run db:conferir-trilha`, com a `DATABASE_URL` da root apontando para `sbp_restaurada`.
