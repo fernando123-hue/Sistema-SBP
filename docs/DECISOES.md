@@ -1225,7 +1225,7 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 **Prova:** `adapters/classificador-local.test.ts` (servidor falso), `core/avaliacao/classificacao.test.ts`, `servicos/avaliacao-do-classificador.test.ts`, o script rodando de ponta a ponta em `scripts/scripts-encerram.test.ts`, e a varredura de `segunda-opiniao.test.ts`, que passa a aceitar exatamente dois lugares chamando `classificar`, cada um com as próprias perguntas constantes.
 
-**Status:** 🟡 provisória: nenhum servidor real foi medido. Rodar `classificador:avaliar` com o Ollama (P1) confirma ou derruba cada hipótese acima. **Medido em 02/10/2026 (`AT-69`):** as hipóteses de forma se confirmaram; e, com o modelo de 1,5B, a resposta da quantidade segue a ordem das opções (medido em três ordens).
+**Status:** 🟡 provisória: nenhum servidor real foi medido. Rodar `classificador:avaliar` com o Ollama (P1) confirma ou derruba cada hipótese acima. **Medido em 02/10/2026 (`AT-69`):** as hipóteses de forma se confirmaram; e, com o modelo de 1,5B, a resposta da quantidade muda muito com a ordem das opções e não passa do "um" constante (medido em três ordens).
 
 ### AT-55 — O e-mail ao lado do que a IA leu, na Revisão (`A69`, 2A e 2B) *(01/10/2026)*
 
@@ -1543,7 +1543,7 @@ Mutações sobre o código final, todas vermelhas:
 | categoria | 0,65 | 0,59 | Todas as de liga e ligante (`nova-liga`, `ligantes-tres`, `ligantes-dois-tracos`, `duvida-liga`, `ligante-sem-palavra-chave`, `liga-sem-palavra-chave`) foram para e-mail genérico ou ficha. As de ficha e documento acertaram. |
 | suspeita | 0,82 | 0,82 | **O modelo respondeu "não" nos 17 casos.** Os 82% são só os 14 casos normais: responder sempre "não" dá o mesmo número, então ele não mede qualidade. **Os três casos de injeção** (`injecao-na-ficha`, `injecao-papel`, `injecao-sutil`) saíram "não suspeito", com 0,88 a 0,99 de confiança. |
 
-**A ordem das opções, medida (mesmo dia, mesmo modelo, só a pergunta de quantidade, por um script descartável fora do repositório):**
+**A ordem das opções, medida (mesmo dia, mesmo modelo, só a pergunta de quantidade, por um script descartável fora do repositório; a tabela é a saída inteira dele. Para refazer: `criarClassificadorPort()` com `CLASSIFICADOR_ADAPTER=local`, e para cada caso de `CASOS_DO_GABARITO`, `classificar({ texto: textoParaClassificar(emailDoCaso(caso)), perguntas: { quantidade } })` com `PERGUNTA_DE_QUANTIDADE` e as `opcoes` reordenadas; escolha = a opção de maior probabilidade; certa = `quantidadeDeItens`. Temperatura 0, uma execução por ordem, 3 das 6 ordens possíveis):**
 
 | Ordem das opções | Acerto | O que escolheu |
 |---|---|---|
@@ -1551,9 +1551,9 @@ Mutações sobre o código final, todas vermelhas:
 | vários › um › nenhum | 2 de 17 | **17 de 17 na posição 1** |
 | um › vários › nenhum | 6 de 17 | 4 na posição 1, **13 na posição 2** ("vários") |
 
-O gabarito tem 15 casos "um" e 2 "vários". **A resposta segue a ordem das opções, não o e-mail**: a posição 1 puxa (10 e 17 de 17 quando "nenhum" ou "vários" estão lá), e "vários" puxa onde estiver na frente de "nenhum". Responder "um" sempre acertaria 15 de 17 — mais que o modelo em qualquer ordem. Com este modelo, a pergunta de quantidade não carrega informação sobre o e-mail.
+O gabarito tem 15 casos "um" e 2 "vários". **A ordem das opções muda muito a resposta:** com "vários" em primeiro, ela ficou presa à posição 1 nos 17 casos; nas outras duas ordens as escolhas variaram, e a saída não guarda o caso a caso para dizer por quê. **Em nenhuma das três ordens o modelo passou do que responder "um" sempre daria** (6 contra 15 de 17). Que a pergunta não carregue informação nenhuma sobre o e-mail é hipótese, não medição.
 
-**Leitura (do agente; nenhuma é decisão do dono):** o caminho técnico do `A70` está de pé (logprobs, forma, tempo baixo na GPU). Com o modelo de 1,5B, nenhuma das três perguntas tem sinal útil ainda: a de quantidade segue a ordem das opções, a de suspeita é "não" constante, e a de categoria não conhece liga. Isso é exatamente o que o modo sombra e a regra do `§ H.4` 37 (sinal de IA só aumenta o cuidado até calibrar) protegem: nada disso decide. Próximos passos possíveis, cada um medido no mesmo gabarito: (1) um modelo maior que caiba nos 4 GB (ex.: 3B quantizado) — trocar o modelo padrão do `A59` é decisão do dono; (2) casos de "nenhum pedido" e mais de "vários" no gabarito, com as respostas na conferência da equipe do `§ H.4` 31: com 15 de 17 casos "um", o acerto da quantidade diz pouco mesmo com um modelo bom; (3) se um modelo melhor ainda mostrar dependência da ordem, sortear a ordem por pergunta e somar.
+**Leitura (do agente; nenhuma é decisão do dono):** o caminho técnico do `A70` está de pé (logprobs, forma, tempo baixo na GPU). Com o modelo de 1,5B, só a categoria tem sinal útil, e só em ficha e documento (acertou todos, de 0,49 a 0,9995); não conhece liga. A de quantidade não passa do "um" constante e muda com a ordem das opções; a de suspeita é "não" constante. Isso é exatamente o que o modo sombra e a regra do `§ H.4` 37 (sinal de IA só aumenta o cuidado até calibrar) protegem: nada disso decide. Próximos passos possíveis, cada um medido no mesmo gabarito: (1) um modelo maior que caiba nos 4 GB (ex.: 3B quantizado) — trocar o modelo padrão do `A59` é decisão do dono; (2) casos de "nenhum pedido" e mais de "vários" no gabarito, com as respostas na conferência da equipe do `§ H.4` 31: com 15 de 17 casos "um", o acerto da quantidade diz pouco mesmo com um modelo bom; (3) se um modelo melhor ainda mostrar dependência da ordem, sortear a ordem por pergunta e somar.
 
 **Status:** 🟢 medido. As hipóteses de forma do `AT-54` estão confirmadas; as de qualidade, não.
 
