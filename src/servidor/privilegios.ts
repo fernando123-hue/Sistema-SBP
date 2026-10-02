@@ -117,7 +117,7 @@ export function privilegiosQueAmeacamATrilha(
 }
 
 export interface AlvoDaConcessao {
-  /** A base da operação (`SELECT DATABASE()` com a credencial de manutenção). */
+  /** A base da operação (`SELECT DATABASE()` com a conta administradora, `AT-67`). */
   base: string
   usuario: string
   host: string

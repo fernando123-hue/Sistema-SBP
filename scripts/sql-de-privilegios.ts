@@ -4,7 +4,8 @@
  *
  *   npm run db:sql-privilegios -- --usuario sbp_app --host localhost
  *
- * Rode com a credencial de MANUTENÇÃO (a que migra), depois das migrações:
+ * Rode com a conta ADMINISTRADORA do MySQL (a que migra, `AT-67`), depois das
+ * migrações:
  * ele lê as tabelas que existem na base e não escreve nada. O usuário da
  * aplicação é criado antes, pelo TI, com a senha que só o servidor conhece;
  * a senha não passa por aqui.

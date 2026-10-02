@@ -27,7 +27,7 @@
 >    - login, troca de senha e o teste de tela do dono, com o tempo da busca e o "lendo N de M";
 >    - o ensaio de backup e restauração;
 >    - `npm run verificar` no Windows, com atenção aos testes novos da trilha (`trilha-append-only`, `privilegios-trava`): eles só foram vistos passar num MySQL Linux configurado como o do Windows.
-> 2. **PR pequeno:** os comentários "credencial de MANUTENÇÃO" em `scripts/sql-de-privilegios.ts:7` e `src/servidor/privilegios.ts:120` passam a falar da conta administradora (`AT-67`), no nível de risco que o script der.
+> 2. ~~**PR pequeno:** os comentários "credencial de MANUTENÇÃO" em `scripts/sql-de-privilegios.ts:7` e `src/servidor/privilegios.ts:120` passam a falar da conta administradora (`AT-67`), no nível de risco que o script der.~~ **Feito em 02/10, PR `fix/comentarios-conta-administradora` (nível 3, só comentário).**
 > 3. **V2:** quando o dono trouxer os modelos, a anonimização acontece **antes** de qualquer commit; os textos entram como casos do gabarito (`A74`).
 > 4. **Achados de auditoria ainda abertos:** a lista no bloco de 01/10, abaixo.
 >
@@ -70,7 +70,7 @@
 >
 > **Achados da auditoria ainda abertos** (não bloqueiam a V1):
 > - ~~pendência 41~~ resolvida no `AT-64` (concessões tabela a tabela por `npm run db:sql-privilegios`; `allowPublicKeyRetrieval=true` na `DATABASE_URL` com usuário de senha); ~~pendência 49~~ resolvida no `AT-65` (configuração errada encerra o servidor de produção com código 1);
-> - comentários em `scripts/sql-de-privilegios.ts:7` e `src/servidor/privilegios.ts:120` ainda dizem "credencial de MANUTENÇÃO"; o certo agora é a conta administradora (`AT-67`). Vai no próximo PR que tocar esses arquivos;
+> - ~~comentários em `scripts/sql-de-privilegios.ts:7` e `src/servidor/privilegios.ts:120` ainda dizem "credencial de MANUTENÇÃO"~~ corrigidos em 02/10 (item 2 do bloco de cima);
 > - login do Graph por certificado não implementado: só segredo;
 > - `.gitattributes` com `eol=lf`;
 > - trava entre suítes no `globalSetup`;
