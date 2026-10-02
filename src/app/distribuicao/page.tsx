@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { DIAS_DE_GUARDA_POR_DADO } from '../../core/retencao'
 import { hojeIso, horaLocal, paraDataIso } from '../../core/util/datas'
 import { decimal } from '../../core/util/numero'
 import { api, mensagemDoErro } from '../../componentes/api'
@@ -142,10 +143,27 @@ export default function Distribuicao() {
   const montada = useRef(true)
   /** Um laço de acompanhamento só: o da abertura e o do clique não correm juntos. */
   const acompanhando = useRef(false)
+  /**
+   * E-mails guardados agora por "sem item, mas com CPF, CRM ou anexo" (`A76`).
+   * Do banco, e não do resumo da busca: o aviso dura o mesmo que a guarda.
+   */
+  const [guardadosPorDado, setGuardadosPorDado] = useState<number | null>(null)
+
+  const carregarGuardados = useCallback(() => {
+    api
+      .buscar<{ guardados: number }>('/ingestao/guardados')
+      .then((resposta) => {
+        if (montada.current) setGuardadosPorDado(resposta.guardados)
+      })
+      .catch((causa: unknown) => {
+        if (montada.current) setErro(mensagemDoErro(causa))
+      })
+  }, [])
 
   /** O desfecho de uma busca, na tela. `deAntes`: achada ao abrir, e não acompanhada. */
   const mostrarDesfecho = useCallback((estado: NaRede<EstadoDaBusca>, vinhaRodando: boolean) => {
     if (estado.situacao === 'concluida') {
+      carregarGuardados()
       setIngestao(estado.resumo)
       setBuscaTerminadaAs(horaLocal(new Date(estado.terminadaEm)))
       setPrevia(null)
@@ -160,7 +178,7 @@ export default function Distribuicao() {
       // silêncio — a pessoa precisa saber que tem de buscar de novo.
       setErro('A busca foi interrompida antes do fim (o servidor reiniciou). Busque de novo: o que já foi lido não se perde.')
     }
-  }, [])
+  }, [carregarGuardados])
 
   /**
    * Acompanha a busca que roda no servidor até ela terminar.
@@ -219,6 +237,9 @@ export default function Distribuicao() {
   // da tela antes do fim não pode perdê-los (revisões do #178).
   useEffect(() => {
     montada.current = true
+    // O aviso dos guardados por dado aparece ao abrir, com ou sem busca hoje:
+    // ele vale enquanto o e-mail estiver guardado (`A76`).
+    carregarGuardados()
     api
       .buscar<NaRede<EstadoDaBusca>>('/ingestao')
       .then((estado) => {
@@ -235,7 +256,7 @@ export default function Distribuicao() {
     return () => {
       montada.current = false
     }
-  }, [acompanharBusca, mostrarDesfecho])
+  }, [acompanharBusca, carregarGuardados, mostrarDesfecho])
 
   /** O clique em "Buscar e-mails": pede ao servidor e acompanha. */
   async function buscarEmails() {
@@ -407,12 +428,28 @@ export default function Distribuicao() {
 
       {erro ? <Aviso>{erro}</Aviso> : null}
 
+      {/*
+        `A76`: sem item, mas com CPF, CRM ou anexo — pode ser um pedido
+        escondido numa resposta automática (`AT-73`). Conta do banco: o aviso
+        dura enquanto o e-mail estiver guardado, não só até a próxima busca.
+      */}
+      {guardadosPorDado !== null && guardadosPorDado > 0 ? (
+        <Aviso tom="atencao">
+          <strong>
+            {guardadosPorDado === 1
+              ? '1 e-mail sem item, mas com CPF, CRM ou anexo'
+              : `${guardadosPorDado} e-mails sem item, mas com CPF, CRM ou anexo`}
+          </strong>{' '}
+          — {guardadosPorDado === 1 ? 'guardado' : 'guardados'} por {DIAS_DE_GUARDA_POR_DADO} dias desde a
+          chegada. Confira no Outlook se havia um pedido ali.
+        </Aviso>
+      ) : null}
+
       {ingestao ? (
         <Aviso
           tom={
             ingestao.falhas > 0 ||
             ingestao.emailsSemItem > 0 ||
-            ingestao.emailsGuardadosPorDado > 0 ||
             ingestao.naoLidas > 0 ||
             ingestao.repetidas > 0 ||
             ingestao.naoInterpretados > 0
@@ -428,20 +465,6 @@ export default function Distribuicao() {
               {' · '}
               <strong>
                 {ingestao.emailsSemItem} sem item nenhum
-              </strong>
-            </>
-          ) : null}
-          {/*
-            `A76`: sem item, mas com CPF, CRM ou anexo — pode ser um pedido
-            escondido numa resposta automática. O conteúdo fica 30 dias; a
-            pessoa confere no Outlook (`AT-73`).
-          */}
-          {ingestao.emailsGuardadosPorDado > 0 ? (
-            <>
-              {' · '}
-              <strong>
-                {ingestao.emailsGuardadosPorDado} sem item, mas com CPF, CRM ou anexo — guardados 30 dias,
-                confira no Outlook
               </strong>
             </>
           ) : null}

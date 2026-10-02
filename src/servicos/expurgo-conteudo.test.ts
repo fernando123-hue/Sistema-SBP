@@ -65,6 +65,7 @@ async function emailDeTeste(opcoes: {
   itens?: ItemDeTeste[]
   anexos?: number
   suspeito?: boolean
+  dadoSemItem?: 'cpf' | 'crm' | 'anexo'
 }) {
   contador += 1
   const categoria = await banco.categoria.findFirstOrThrow()
@@ -78,6 +79,7 @@ async function emailDeTeste(opcoes: {
       messageId: `<conteudo-${contador}@exemplo.test>`,
       recebidoEm: meioDia(-opcoes.recebidoHa),
       conteudoSuspeito: opcoes.suspeito ?? false,
+      dadoSemItem: opcoes.dadoSemItem ?? null,
       conteudo: {
         create: {
           remetente: 'remetente.sintetico@exemplo.test',
@@ -211,6 +213,19 @@ describe('o que a limpeza apaga', () => {
 
     expect(resultado.vencidos).toBe(0)
     expect((await estado(suspeito.id)).conteudo).not.toBeNull()
+  })
+
+  // `A76`: sem item, mas com CPF, CRM ou anexo — 30 dias da chegada, e não 7.
+  // Sem a fiação da coluna até o relógio, ele voltaria a sair em 7 dias e
+  // nenhum teste puro perceberia (revisão técnica do #191).
+  it('e-mail sem item guardado por dado fica 30 dias, não 7 (A76)', async () => {
+    const aos10 = await emailDeTeste({ recebidoHa: 10, dadoSemItem: 'cpf' })
+    const aos30 = await emailDeTeste({ recebidoHa: 30, dadoSemItem: 'anexo', anexos: 1 })
+
+    await expurgar()
+
+    expect((await estado(aos10.id)).conteudo).not.toBeNull()
+    expect((await estado(aos30.id)).conteudo).toBeNull()
   })
 
   it('item cancelado conta do cancelamento', async () => {

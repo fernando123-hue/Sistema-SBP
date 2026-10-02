@@ -442,6 +442,7 @@ export async function sincronizar(
           correlacaoId,
           messageId: email.messageId,
           tentativas: tentativasDoEmail,
+          dadoSemItem: resultado.dadoSemItem,
         })
         await registrarEvento(deps.banco, {
           correlacaoId,

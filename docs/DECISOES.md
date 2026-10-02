@@ -1648,7 +1648,7 @@ Um teste novo exige caso de cada opção e que nenhuma passe de dois terços do 
 
 então a coluna `Email.dadoSemItem` recebe o motivo (`cpf`, `crm` ou `anexo` — só o rótulo, nunca o dado), na mesma gravação do e-mail. Efeitos:
 - **Guardado 30 dias da chegada** (`A76`, decisão do dono), e não 7: `DIAS_DE_GUARDA_POR_DADO` em `core/retencao.ts` (o prazo geral, se for maior). Depois, sai como os demais.
-- **Aviso na Distribuição:** "N sem item, mas com CPF, CRM ou anexo — guardados 30 dias, confira no Outlook" (`emailsGuardadosPorDado` no resumo da busca).
+- **Aviso na Distribuição, contado do banco:** "N e-mails sem item, mas com CPF, CRM ou anexo — guardados por 30 dias desde a chegada. Confira no Outlook se havia um pedido ali." Vem de `GET /api/ingestao/guardados` (só operador e gestor, só o número), que conta os e-mails com `dadoSemItem` cujo conteúdo ainda não saiu: aparece ao abrir a tela, com ou sem busca no dia, e dura o mesmo que a guarda. A primeira versão o tirava do resumo da última busca, que vive em memória e some na busca seguinte (2ª rodada das revisões do #191). O resumo da busca continua contando (`emailsGuardadosPorDado`) para o evento.
 - **Evento e trilha com o motivo**, separados da manipulação: "sem nenhum item, mas com um CPF — guardado 30 dias; confira no Outlook se havia um pedido ali"; na desistência, a mensagem de sempre ganha "(tem um CPF: guardado 30 dias)".
 - **`conteudoSuspeito` continua sendo só das defesas:** e-mail suspeito com CPF segue como manipulação, sem prazo até a fase 4; o log e o evento de "dado" não sobem como erro de manipulação.
 
@@ -1657,8 +1657,10 @@ então a coluna `Email.dadoSemItem` recebe o motivo (`cpf`, `crm` ou `anexo` —
 **Hipóteses (do agente):**
 - **Qualquer anexo, de qualquer tipo.** Poupar imagem (logotipo de assinatura) exigiria decidir pelo tipo **declarado**, que é do remetente e nunca decide nada (`AnexoSchema`): um PDF declarado "image/png" escaparia. O preço: a resposta automática com logotipo anexado também fica 30 dias e entra no aviso.
 - **A forma do CPF é larga:** telefone de 11 dígitos sem pontuação também conta, e "CRM 2026" conta como CRM. Falso positivo custa 30 dias de guarda e uma linha no aviso; falso negativo é o trabalho sumindo. CEP, valor em reais, CNPJ e protocolo de 12 dígitos não contam (teste).
-- **É uma heurística de forma: reduz o risco, não o fecha.** O pedido escrito só com nome, sem documento e sem anexo, ainda escapa.
+- **É uma heurística de forma: reduz o risco, não o fecha.** Não cobre, medido na 2ª rodada: o pedido escrito só com nome, sem documento e sem anexo; dígitos de outros alfabetos (árabe-índicos); CPF dígito a dígito, por extenso ou com 10 dígitos; separadores raros (`:`, `*`, `•`); `CRM (SP)`, `CRM nº:`, `C.R.M.`, `CRM 123 456`, CRM de 3 dígitos e homóglifos. Cobre, além das formas acima: qualquer caractere invisível de formatação (`\p{Cf}`) e UF minúscula quando é uma das 27 siglas. A vírgula saiu dos separadores: "pedidos 123, 456, 789, 12" é lista, não CPF. Endurecer mais é incremental; não é validação de documento.
 - **Guardar não é olhar.** Quem confere é quem vê o aviso na Distribuição e abre o e-mail no Outlook, até a lista da fase 4.
+- **Sem teto de volume na janela de 30 dias** (revisão de segurança, BAIXO): um remetente que mande muitos e-mails com anexo ocupa disco por 30 dias. Aceito hoje (teto por mensagem e por busca, filtro de spam da caixa); considerar um alerta se o número de guardados passar de um limiar.
+- **Pré-existente, fora deste PR:** o e-mail que as defesas marcam e que fica sem item continua sem prazo até a fase 4 (`AT-24`), e quem escreve o e-mail consegue provocar isso. Vale o mesmo teto de segurança quando a fase 4 for desenhada.
 
 **Status:** 🟢 em vigor.
 

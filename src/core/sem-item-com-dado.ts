@@ -27,10 +27,11 @@ export type DadoDeTrabalho = 'cpf' | 'crm' | 'anexo'
 
 /**
  * Entre os grupos do CPF: nada, ou qualquer mistura de espaço, quebra de
- * linha, ponto, barra, sublinhado, vírgula ou traço (revisões do #191:
- * `111-444-777-35`, `111/444/777-35` e `111.444.777 - 35` escapavam).
+ * linha, ponto, barra, sublinhado ou traço (revisões do #191:
+ * `111-444-777-35`, `111/444/777-35` e `111.444.777 - 35` escapavam). Sem
+ * vírgula: "pedidos 123, 456, 789, 12" é uma lista, não um CPF.
  */
-const SEPARADOR_DE_CPF = String.raw`[\s._/,–—-]*`
+const SEPARADOR_DE_CPF = String.raw`[\s._/–—-]*`
 
 /** Três, três, três e dois dígitos, sem dígito colado antes nem depois. */
 const FORMA_DE_CPF = new RegExp(
@@ -39,16 +40,25 @@ const FORMA_DE_CPF = new RegExp(
 )
 
 /**
- * "CRM" (qualquer caixa), talvez a UF — só MAIÚSCULA, para "CRM de 2024" não
- * contar —, talvez "nº", e o número: com ponto de milhar (`12.345`) ou com
- * pelo menos quatro dígitos seguidos.
+ * "CRM" (qualquer caixa), talvez a UF — em maiúscula qualquer par de letras;
+ * em minúscula, só uma das 27 siglas, para "CRM de 2024" não contar —, talvez
+ * "nº", e o número: com ponto de milhar (`12.345`) ou com pelo menos quatro
+ * dígitos seguidos.
  */
-const CRM_COM_NUMERO =
-  /(?<![A-Za-z])[Cc][Rr][Mm](?:[\s:./-]*[A-Z]{2}(?![a-z]))?[\s:./-]*(?:[Nn][º°oO]?\.?[º°oO]?\.?\s*)?(?:\d{1,3}(?:\.\d{3})+|\d{4,})/
+const UF_MINUSCULA = 'ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to'
+const CRM_COM_NUMERO = new RegExp(
+  String.raw`(?<![A-Za-z])[Cc][Rr][Mm](?:[\s:./-]*(?:[A-Z]{2}|` +
+    UF_MINUSCULA +
+    String.raw`)(?![a-z]))?[\s:./-]*(?:[Nn][º°oO]?\.?[º°oO]?\.?\s*)?(?:\d{1,3}(?:\.\d{3})+|\d{4,})`,
+)
 
-/** Dígito de largura total vira dígito comum (NFKC), e caractere invisível sai. */
+/**
+ * Dígito de largura total vira dígito comum (NFKC), e todo caractere de
+ * formatação invisível sai — largura zero, junção de palavra, hífen suave,
+ * marca de direção (`\p{Cf}`, 2ª rodada das revisões do #191).
+ */
 function normalizar(texto: string): string {
-  return texto.normalize('NFKC').replace(/[​-‍﻿]/g, '')
+  return texto.normalize('NFKC').replace(/\p{Cf}/gu, '')
 }
 
 export function dadoDeTrabalhoSemItem(

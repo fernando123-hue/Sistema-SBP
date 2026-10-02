@@ -56,6 +56,23 @@ describe('dado de trabalho num e-mail sem item', () => {
     }
   })
 
+  // 2ª rodada das revisões do #191.
+  it('qualquer caractere invisível no meio do CPF é ignorado', () => {
+    for (const invisivel of ['⁠', '­', '‎', '‏']) {
+      expect(dadoDeTrabalhoSemItem(texto(`CPF 111${invisivel}444${invisivel}777${invisivel}35`), 0), invisivel).toBe('cpf')
+    }
+  })
+
+  it('UF minúscula conta quando é uma das 27 siglas', () => {
+    for (const forma of ['crm sp 123456', 'crm-sp 12345', 'crm/rj: 123456']) {
+      expect(dadoDeTrabalhoSemItem(texto(`atualizem meu ${forma}`), 0), forma).toBe('crm')
+    }
+  })
+
+  it('números separados por vírgula numa lista não contam como CPF', () => {
+    expect(dadoDeTrabalhoSemItem(texto('Pedidos 123, 456, 789, 12 já atendidos.'), 0)).toBeNull()
+  })
+
   it('"CRM de 2024" não conta: UF é maiúscula', () => {
     expect(dadoDeTrabalhoSemItem(texto('O relatório do CRM de 2024 chegou.'), 0)).toBeNull()
   })
