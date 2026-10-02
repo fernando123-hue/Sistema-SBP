@@ -476,7 +476,7 @@ CREATE USER 'sbp_app'@'localhost' IDENTIFIED BY 'a-senha-que-so-o-servidor-sabe'
 ```bash
 # 2. Depois das migrações, com a conta ADMINISTRADORA do MySQL (a que migra),
 #    gere as concessões a partir das tabelas que existem na base e aplique:
-npm run db:sql-privilegios -- --usuario sbp_app --host localhost > concessoes.sql
+npm run -s db:sql-privilegios -- --usuario sbp_app --host localhost > concessoes.sql
 mysql -u root -p sbp < concessoes.sql
 ```
 
