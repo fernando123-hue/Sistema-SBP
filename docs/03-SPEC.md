@@ -477,7 +477,7 @@ CREATE USER 'sbp_app'@'localhost' IDENTIFIED BY 'a-senha-que-so-o-servidor-sabe'
 # 2. Depois das migrações, com a conta ADMINISTRADORA do MySQL (a que migra),
 #    gere as concessões a partir das tabelas que existem na base e aplique:
 npm run -s db:sql-privilegios -- --usuario sbp_app --host localhost > concessoes.sql
-mysql -u root -p sbp < concessoes.sql
+mysql -u sbp_admin -p < concessoes.sql; echo "código: $?"   # em lote: para no primeiro erro
 ```
 
 O que sai: `SELECT, INSERT, UPDATE, DELETE` em cada tabela da aplicação, e
@@ -520,11 +520,13 @@ ligado, que é o padrão:
 - criar a trigger da trilha exige `SUPER` (`ERROR 1419`);
 - aplicar as concessões exige `GRANT OPTION` (`ERROR 1142`).
 
-Um usuário com essas duas permissões já é administrador na prática. A
-administradora tem ainda uma vantagem: a trigger roda como quem migrou
-(`DEFINER`), e `root@localhost` existe em todo servidor, então a trava continua
-valendo depois de restaurar um backup em outra máquina (`AT-66`). Depois de
-migrar, `npm run db:conferir-trilha`, com a mesma conta, confirma a trava.
+Um usuário com essas duas permissões já é administrador na prática. O
+roteiro (`docs/INSTALACAO.md`) cria uma conta administradora própria,
+`sbp_admin`. A trigger roda como quem migrou (`DEFINER`), então essa conta tem
+de ser recriada **antes** de restaurar um backup em outra máquina. Sem ela, a
+trava continua recusando, mas com `ERROR 1449` no lugar da mensagem
+(`AT-66`). Depois de migrar, `npm run db:conferir-trilha`, com a mesma conta,
+confirma a trava.
 
 ### Conferir
 

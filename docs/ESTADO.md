@@ -36,6 +36,7 @@
 >
 > **Achados da auditoria ainda abertos** (não bloqueiam a V1):
 > - ~~pendência 41~~ resolvida no `AT-64` (concessões tabela a tabela por `npm run db:sql-privilegios`; `allowPublicKeyRetrieval=true` na `DATABASE_URL` com usuário de senha); ~~pendência 49~~ resolvida no `AT-65` (configuração errada encerra o servidor de produção com código 1);
+> - comentários em `scripts/sql-de-privilegios.ts:7` e `src/servidor/privilegios.ts:120` ainda dizem "credencial de MANUTENÇÃO"; o certo agora é a conta administradora (`AT-67`). Vai no próximo PR que tocar esses arquivos;
 > - login do Graph por certificado não implementado: só segredo;
 > - `.gitattributes` com `eol=lf`;
 > - trava entre suítes no `globalSetup`;

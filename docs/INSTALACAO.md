@@ -189,13 +189,21 @@ Um usuário com as duas já é administrador na prática (`AT-67`).
 4. **As permissões mínimas do `sbp_app`**, geradas a partir das tabelas que
    existem, no mesmo bloco de administrador **(ensaiado)**:
    ```bash
-   set -o pipefail
-   npm run -s db:sql-privilegios -- --usuario sbp_app --host localhost > /root/concessoes.sql
-   test -s /root/concessoes.sql && echo "gerado" || echo "VAZIO: pare aqui"
+   umask 077
+   npm run -s db:sql-privilegios -- --usuario sbp_app --host localhost > /root/concessoes.sql && test -s /root/concessoes.sql && echo "gerado" || echo "VAZIO: pare aqui"
    ```
-   Depois, no cliente `mysql`: `SOURCE /root/concessoes.sql;`. Se o arquivo
-   sair vazio, nada é concedido, e o passo 4.7 responderia OK sem que a
-   aplicação funcione. Por isso o `test -s`.
+   Essas linhas vão dentro dos parênteses do bloco, no lugar dos dois
+   comandos de exemplo. Depois, aplique **em lote**, fora do bloco:
+   ```bash
+   mysql -u sbp_admin -p < /root/concessoes.sql; echo "código: $?"
+   ```
+   O código tem de ser 0. Se o arquivo sair vazio, nada é concedido, e o
+   passo 4.7 responderia OK sem que a aplicação funcione: por isso o
+   `test -s`.
+
+   **Nunca aplique com `SOURCE` no cliente interativo.** Ele mostra o erro e
+   **continua** com as linhas seguintes, como o `--force`. Em lote, o `mysql`
+   para no primeiro erro com código diferente de zero (ensaiado).
 
    A trilha de auditoria recebe só `SELECT, INSERT`. Com isso, o próprio
    MySQL recusa apagar, alterar ou derrubar a trigger ou a tabela da trilha
@@ -231,6 +239,9 @@ Um usuário com as duas já é administrador na prática (`AT-67`).
 ```bash
 sudo -u sbp bash -c 'cd /opt/sbp && set -a && . /etc/sbp/sbp.env && set +a && npm run db:preparar -- --nome "Nome Completo" --email pessoa@dominio-da-associacao'
 ```
+
+Um nome com apóstrofo (`D'Ávila`) quebra as aspas simples do `bash -c`.
+Escreva-o como `D'\''Ávila`.
 
 O comando cria as categorias e **uma** gestora real. A senha provisória
 aparece uma única vez, e a troca é obrigatória no primeiro acesso.
@@ -288,13 +299,23 @@ que cada pessoa tem o seu limite.
 ## 8. Backup e restauração
 
 **O que entra no backup:**
-- o banco, como administrador:
-  `mysqldump --single-transaction --no-tablespaces -u sbp_admin -p sbp > backup.sql`.
+- o banco, como administrador, gravado **fora de `/opt/sbp`**:
+  ```bash
+  umask 077; mkdir -p /var/backups/sbp
+  mysqldump --single-transaction --no-tablespaces -u sbp_admin -p sbp > /var/backups/sbp/backup.sql; echo "código: $?"
+  ```
+  O arquivo tem o texto dos e-mails (nomes e CPFs que vieram no corpo) e os
+  hashes de senha. Ele recebe o mesmo cuidado do arquivo de segredos:
+  legível só pelo `root` (o `umask 077` garante isso) e cópia num destino
+  criptografado.
   **O `--no-tablespaces` é obrigatório.** Sem ele, a conta administradora
   (que não tem `PROCESS`) recebe "Access denied … PROCESS privilege …
   tablespaces". O `mysqldump` mesmo assim **sai com código 0**, e um backup
   agendado esconderia esse erro. O SBP não usa tablespaces, e o arquivo
-  leva as tabelas e as triggers (ensaiado);
+  leva as tabelas e as triggers (ensaiado). Num backup agendado, a senha
+  não pode ser digitada (`-p` pede no terminal). O jeito de entregar a
+  credencial ao agendamento é do TI **(a conferir pelo TI)**: ela nunca vai
+  na linha de comando;
 - a pasta `ARMAZENAMENTO_DIR`, com os anexos já cifrados.
 
 **O que não entra no mesmo backup:** o arquivo de segredos (passo 3).
@@ -305,13 +326,18 @@ passos 1 a 3 e crie as duas contas (4.1) **antes**: a trigger precisa do
 `DEFINER`. Sem ele, ela continua recusando, mas com outra mensagem
 (`ERROR 1449`; `AT-66`).
 
-1. Criar a base e restaurar, no cliente `mysql`, como `root` do MySQL:
+1. Criar a base, no cliente `mysql`, como `root` do MySQL:
    ```sql
    CREATE DATABASE sbp_restaurada CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs;
    GRANT ALL PRIVILEGES ON sbp_restaurada.* TO 'sbp_admin'@'localhost' WITH GRANT OPTION;
-   USE sbp_restaurada;
-   SOURCE /caminho/do/backup.sql;
    ```
+   E restaurar **em lote**, no terminal:
+   ```bash
+   mysql -u root -p sbp_restaurada < /var/backups/sbp/backup.sql; echo "código: $?"
+   ```
+   O código tem de ser 0. Nunca use `SOURCE` no cliente interativo: ele
+   continua depois de um erro e deixa a base pela metade sem avisar (passo
+   4.4).
 2. Conferir a trava, no bloco de administrador com a URL apontando para
    `sbp_restaurada`: `npm run db:conferir-trilha`. Uma restauração
    interrompida pode devolver a trilha sem trava, e é aqui que isso aparece.
@@ -328,9 +354,17 @@ só listava a base original.
 **Restaure uma vez para provar**, numa máquina de teste: suba o sistema com o
 backup e os segredos, entre, abra um item com anexo.
 
-## 9. Atualizar para uma versão nova **(ensaiado)**
+## 9. Atualizar para uma versão nova
+
+**Ensaiado sem migração nova pendente.** Com migração nova, o passo é o
+mesmo, mas aquela execução não foi vista aqui.
+
+Primeiro, **pare o serviço**: `npm ci` apaga as dependências e `npm run
+build` reescreve o sistema compilado, e um serviço no ar, ou reiniciado
+sozinho no meio, rodaria uma mistura das duas versões.
 
 ```bash
+systemctl stop <serviço do SBP>
 cd /opt/sbp
 sudo -u sbp git pull
 sudo -u sbp npm ci
@@ -342,10 +376,8 @@ Depois:
    `npm run db:conferir-trilha`;
 2. gerar e aplicar as permissões (4.4), porque migração nova pode ter criado
    tabela;
-3. `npm run build` e reiniciar o serviço.
-
-Parar o serviço antes de migrar evita a aplicação velha falando com o banco
-novo.
+3. `npm run build`, como a aplicação;
+4. `systemctl start <serviço do SBP>`.
 
 ## 10. O que o servidor faz sozinho
 

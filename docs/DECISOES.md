@@ -1487,7 +1487,7 @@ Mutações sobre o código final, todas vermelhas:
   - com binlog ligado (o padrão), criar a trigger da trilha exige `SUPER` (`ERROR 1419`);
   - aplicar as concessões exige `GRANT OPTION` (`ERROR 1142`).
   
-  Um usuário com as duas permissões já é administrador na prática. A administradora também é o `DEFINER` que existe em qualquer servidor, então a trava vale depois de uma restauração em outra máquina (`AT-66`). Ela nunca entra no arquivo de segredos da aplicação. A SPEC § 14 foi corrigida.
+  Um usuário com as duas permissões já é administrador na prática. A trigger roda como quem migrou (`DEFINER`), então a conta administradora é recriada **antes** de restaurar em outra máquina (`AT-66`). *(Corrigido na revisão do #185: a versão anterior desta frase dizia que `root@localhost` existe em qualquer servidor; o `DEFINER` visto foi `root@%` e, no roteiro, é `sbp_admin`.)* Ela nunca entra no arquivo de segredos da aplicação. A SPEC § 14 foi corrigida.
 - **Os comandos de terminal carregam o arquivo de segredos** (`set -a; . arquivo; set +a`): os scripts leem as variáveis do processo, ou um `.env` na pasta, se houver. O roteiro manda não deixar `.env` na pasta do sistema, porque um arquivo de desenvolvimento esquecido completaria as variáveis que faltam.
 - **A restauração é sempre numa base nova**, com a conta administradora, e conferida com `db:conferir-trilha` antes de apontar o sistema para ela (`AT-66`).
 
@@ -1500,6 +1500,8 @@ Mutações sobre o código final, todas vermelhas:
 - **Sem `--no-tablespaces`, o `mysqldump` da conta administradora reclama de `PROCESS` e sai com código 0.** Um backup agendado esconderia o erro.
 - **`allowPublicKeyRetrieval=true` só faz falta depois que o MySQL reinicia.** O `caching_sha2_password` guarda a senha em cache depois do primeiro login bem-sucedido. Sem a opção, a instalação funciona até o primeiro reboot e para depois dele. Medido reiniciando o MySQL.
 - **As permissões da aplicação são por base:** depois de restaurar, é preciso regenerá-las para a base restaurada. Visto em `SHOW GRANTS`.
+- **Restauração e permissões só em lote** (`mysql … < arquivo`). A segunda rodada da revisão mediu que o `SOURCE` no cliente interativo mostra o erro e continua, como o `--force`. Em lote, o `mysql` para no primeiro erro com código 1. Visto com um arquivo com erro de sintaxe no meio: a tabela seguinte não foi criada.
+- **O arquivo de backup é dado pessoal** (texto dos e-mails, hashes de senha): é gravado com `umask 077`, fora da pasta do sistema, e recebe o mesmo cuidado do arquivo de segredos.
 
 **Visto no ensaio, com o usuário mínimo da aplicação:**
 - `db:privilegios` deu OK;
