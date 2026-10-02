@@ -137,7 +137,7 @@ export async function expurgarDadosDosItens(
 
     if (item.emailId !== null) return true
     return conteudoVenceu(
-      { recebidoNoDia: paraDataIso(item.criadoEm), conteudoSuspeito: false, itens: [situacao] },
+      { recebidoNoDia: paraDataIso(item.criadoEm), conteudoSuspeito: false, guardadoPorDado: false, itens: [situacao] },
       hoje,
       dias,
     )

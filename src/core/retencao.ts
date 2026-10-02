@@ -119,8 +119,19 @@ export type ItemNoRelogio =
 export interface EmailNoRelogio {
   recebidoNoDia: string
   conteudoSuspeito: boolean
+  /** Sem item, mas com CPF, CRM ou anexo (`AT-73`): guardado por `DIAS_DE_GUARDA_POR_DADO`. */
+  guardadoPorDado: boolean
   itens: readonly ItemNoRelogio[]
 }
+
+/**
+ * Quanto fica o e-mail sem item que traz CPF, CRM ou anexo (`A76`, decisão do
+ * dono): 30 dias da chegada, com aviso na Distribuição para alguém conferir.
+ * Nem os 7 da resposta automática, que apagariam um pedido escondido antes de
+ * alguém olhar, nem "para sempre", que guardaria spam e dado de terceiro sem
+ * prazo (invariante 11).
+ */
+export const DIAS_DE_GUARDA_POR_DADO = 30
 
 /**
  * O dia em que o conteúdo do e-mail deixa de poder ficar guardado, ou `null`
@@ -137,12 +148,17 @@ export interface EmailNoRelogio {
  * - **Nenhum item E conteúdo suspeito:** não corre. `A34` manda uma pessoa
  *   decidir antes, e essa lista ainda não existe (fase 4); apagar agora seria
  *   deixar a manipulação bem-sucedida sumir sozinha. Hipótese em `DECISOES.md § C`.
+ * - **Nenhum item, com CPF, CRM ou anexo** (`AT-73`): pode ser um pedido
+ *   escondido numa resposta automática. Conta da chegada, por
+ *   `DIAS_DE_GUARDA_POR_DADO` (`A76`) — ou pelo prazo geral, se for maior.
  */
 export function diaEmQueOConteudoVence(email: EmailNoRelogio, dias: number): string | null {
   exigirPrazoValido(dias)
 
   if (email.itens.length === 0) {
-    return email.conteudoSuspeito ? null : deslocarDias(email.recebidoNoDia, dias)
+    if (email.conteudoSuspeito) return null
+    const prazo = email.guardadoPorDado ? Math.max(dias, DIAS_DE_GUARDA_POR_DADO) : dias
+    return deslocarDias(email.recebidoNoDia, prazo)
   }
 
   let ultimoDia: string | null = null

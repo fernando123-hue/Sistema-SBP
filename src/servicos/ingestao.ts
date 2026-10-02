@@ -9,6 +9,7 @@ import {
 } from '../core/esquemas'
 import { aceitaAgradecimento } from '../core/config'
 import { CategoriaDesconhecidaError, ErroOperacional } from '../core/erros'
+import { dadoDeTrabalhoSemItem, type DadoDeTrabalho } from '../core/sem-item-com-dado'
 import { chaveDaLiga } from '../core/ligas'
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { prepararConteudoExterno, validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
@@ -325,6 +326,7 @@ export async function sincronizar(
     duplicados: 0,
     itensCriados: 0,
     emailsSemItem: 0,
+    emailsGuardadosPorDado: 0,
     itensAprovados: 0,
     itensParaRevisao: 0,
     falhas: 0,
@@ -424,6 +426,9 @@ export async function sincronizar(
       resumo.itensAprovados += resultado.aprovados
       resumo.itensParaRevisao += resultado.paraRevisao
       resumo.anexosRejeitados += resultado.anexosRejeitados
+      // `A76`: o aviso da Distribuição conta os guardados por dado, nos dois
+      // desfechos sem item (desistência e "nenhum pedido").
+      if (resultado.dadoSemItem) resumo.emailsGuardadosPorDado += 1
 
       // Desistiu depois de `TENTATIVAS_MAXIMAS_DE_INTERPRETACAO` falhas — a IA
       // nem foi chamada nesta execução (achado C-11/N-13). O e-mail já está
@@ -437,6 +442,7 @@ export async function sincronizar(
           correlacaoId,
           messageId: email.messageId,
           tentativas: tentativasDoEmail,
+          dadoSemItem: resultado.dadoSemItem,
         })
         await registrarEvento(deps.banco, {
           correlacaoId,
@@ -445,8 +451,9 @@ export async function sincronizar(
           referencia: email.messageId,
           mensagem:
             `depois de ${TENTATIVAS_MAXIMAS_DE_INTERPRETACAO} tentativas a IA não conseguiu estruturar este ` +
-            `e-mail — marcado como tratado, sem cobrar de novo; abra-o direto no Outlook`,
-          detalhe: { conteudoSuspeito: resultado.conteudoSuspeito },
+            `e-mail — marcado como tratado, sem cobrar de novo; abra-o direto no Outlook` +
+            (resultado.dadoSemItem ? ` (tem ${ROTULO_DO_DADO[resultado.dadoSemItem]}: guardado 30 dias)` : ''),
+          detalhe: { conteudoSuspeito: resultado.conteudoSuspeito, dadoSemItem: resultado.dadoSemItem },
         })
         continue
       }
@@ -482,20 +489,24 @@ export async function sincronizar(
         // existe. Até lá, o e-mail suspeito sem item fica fora da limpeza
         // (`§ AT-24`), para a manipulação não sumir sozinha (achado C-27).
         const suspeito = resultado.conteudoSuspeito
+        const { dadoSemItem } = resultado
         registrarLog(suspeito ? 'erro' : 'aviso', 'e-mail interpretado sem nenhum item', {
           correlacaoId,
           messageId: email.messageId,
           conteudoSuspeito: suspeito,
+          dadoSemItem,
         })
         await registrarEvento(deps.banco, {
           correlacaoId,
           etapa: 'ingestao',
           situacao: 'falha',
           referencia: email.messageId,
-          mensagem: suspeito
-            ? 'e-mail SUSPEITO interpretado sem nenhum item — pode ser tentativa de fazer o trabalho desaparecer'
-            : 'e-mail interpretado sem nenhum item — confira se havia trabalho ali',
-          detalhe: { conteudoSuspeito: suspeito },
+          mensagem: dadoSemItem
+            ? `e-mail interpretado sem nenhum item, mas com ${ROTULO_DO_DADO[dadoSemItem]} — guardado 30 dias; confira no Outlook se havia um pedido ali`
+            : suspeito
+              ? 'e-mail SUSPEITO interpretado sem nenhum item — pode ser tentativa de fazer o trabalho desaparecer'
+              : 'e-mail interpretado sem nenhum item — confira se havia trabalho ali',
+          detalhe: { conteudoSuspeito: suspeito, dadoSemItem },
         })
       }
     } catch (erro) {
@@ -625,6 +636,19 @@ interface ResultadoDeUm {
    * `TENTATIVAS_MAXIMAS_DE_INTERPRETACAO` falhas, paramos de tentar".
    */
   naoInterpretado: boolean
+  /**
+   * Zero itens, sem marca das defesas, mas com CPF, CRM ou anexo (`AT-73`).
+   * Independente de `conteudoSuspeito`: quando este vale, aquele é nulo.
+   * Guarda o e-mail 30 dias (`A76`) e conta no aviso da Distribuição.
+   */
+  dadoSemItem: DadoDeTrabalho | null
+}
+
+/** Como o evento nomeia o dado que guardou o e-mail sem item (`AT-73`). */
+const ROTULO_DO_DADO: Readonly<Record<DadoDeTrabalho, string>> = {
+  cpf: 'um CPF',
+  crm: 'um CRM',
+  anexo: 'um anexo',
 }
 
 /** `P2002` é o código do Prisma para violação de constraint única. */
@@ -773,6 +797,16 @@ async function processarUm(
       // interpretação, o sinal duplo de sempre (regex OU modelo).
       const conteudoSuspeito = interpretacao ? interpretacao.conteudoSuspeito : suspeitoLocal
 
+      // `AT-73`, `A76`: sem item e sem marca das defesas, mas com CPF, CRM ou
+      // anexo — pode ser o pedido escondido numa resposta automática, que a
+      // lista da fase 4 não cobre. Também na desistência: o modelo travar é a
+      // porta mais fácil (revisão de segurança do #191). Vai numa coluna
+      // própria, gravada com o e-mail: manipulação e dado são motivos e prazos
+      // diferentes. `criarItens` cria um item por item interpretado ou aborta,
+      // então "sem item" já se sabe aqui.
+      const semItem = interpretacao ? interpretacao.itens.length === 0 : true
+      const dadoSemItem = semItem && !conteudoSuspeito ? dadoDeTrabalhoSemItem(email, email.anexos.length) : null
+
       // Metadado e conteúdo nascem juntos, mas em linhas separadas: é o que
       // permite, depois, expurgar o conteúdo pela retenção sem levar junto o
       // histórico operacional que sustenta métrica, auditoria e conservação.
@@ -786,6 +820,7 @@ async function processarUm(
           versaoPrompt: interpretacao?.versaoPrompt ?? null,
           processadoEm: new Date(),
           conteudoSuspeito,
+          dadoSemItem,
           conteudo: {
             create: {
               remetente: email.remetente,
@@ -806,7 +841,7 @@ async function processarUm(
             })),
           },
         },
-        update: { processadoEm: new Date(), conteudoSuspeito },
+        update: { processadoEm: new Date(), conteudoSuspeito, dadoSemItem },
       })
 
       // Na MESMA transação do e-mail (invariante 14): se ela abortar — e é em
@@ -841,12 +876,13 @@ async function processarUm(
           itens: resultado.criados,
           conteudoSuspeito,
           naoInterpretado: desistir,
+          dadoSemItem,
         },
         usuario,
         correlacaoId,
       })
 
-      return { ...resultado, anexosRejeitados, conteudoSuspeito, naoInterpretado: desistir }
+      return { ...resultado, anexosRejeitados, conteudoSuspeito, naoInterpretado: desistir, dadoSemItem }
     })
   } catch (erro) {
     await desfazerArquivos()
@@ -866,7 +902,7 @@ async function criarItens(
     correlacaoId: string
     usuario: string
   },
-): Promise<Omit<ResultadoDeUm, 'anexosRejeitados' | 'conteudoSuspeito' | 'naoInterpretado'>> {
+): Promise<Omit<ResultadoDeUm, 'anexosRejeitados' | 'conteudoSuspeito' | 'naoInterpretado' | 'dadoSemItem'>> {
   const { interpretacao } = contexto
   // Um resultado por item, na mesma ordem. Se um dia a lista for filtrada
   // entre a conferência e a gravação, um item ficaria sem conferência em

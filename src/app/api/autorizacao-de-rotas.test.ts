@@ -293,6 +293,36 @@ describe('rotas que guardam o papel sozinhas', () => {
     expect(((await andamento.json()) as { dados: { situacao: string } }).dados.situacao).toBe('nenhuma')
   })
 
+  // `A76`, revisões do #191: o aviso dos e-mails guardados por dado vem do
+  // banco, não da última busca — dura enquanto o e-mail estiver guardado.
+  it('GET /api/ingestao/guardados: colaborador não vê; operador vê só o número dos ainda guardados, sem cache', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const email = (messageId: string, dadoSemItem: string | null, expurgado: boolean) =>
+      banco.email.create({
+        data: {
+          messageId,
+          recebidoEm: new Date(),
+          processadoEm: new Date(),
+          dadoSemItem,
+          conteudoExpurgadoEm: expurgado ? new Date() : null,
+        },
+      })
+    await email('guardado-cpf@teste.local', 'cpf', false)
+    await email('guardado-anexo@teste.local', 'anexo', false)
+    await email('ja-expurgado@teste.local', 'cpf', true)
+    await email('comum@teste.local', null, false)
+    const { GET } = await import('./ingestao/guardados/route')
+
+    await entrarComo(base.colaboradores[0]!.id, 'colaborador')
+    expect((await GET()).status).toBe(403)
+
+    await entrarComo(base.operador.colaboradorId, 'operador')
+    const resposta = await GET()
+    expect(resposta.status).toBe(200)
+    expect(resposta.headers.get('Cache-Control')).toBe('no-store')
+    expect(((await resposta.json()) as { dados: unknown }).dados).toEqual({ guardados: 2 })
+  })
+
   it('sem cookie nenhum, as quatro respondem 401 — e 401 não é 403', async () => {
     await semearBase(banco, { totalDeDias: 1 })
     cookieDaVez.valor = ''
