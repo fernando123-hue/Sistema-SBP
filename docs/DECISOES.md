@@ -1511,6 +1511,14 @@ Mutações sobre o código final, todas vermelhas:
 
 **Status:** 🟢 em vigor.
 
+### AT-68 — No MySQL do Windows, `db:sql-privilegios` recusava a base migrada *(02/10/2026)*
+
+**Achado:** `npm run verificar` nesta máquina (Windows, MySQL 8.4, `lower_case_table_names=1`) falhou em `scripts/scripts-encerram.test.ts`. Rodado direto, o script saiu com código 1: "A base não tem LogAuditoria nem EventoProcessamento". No Windows o `SHOW TABLES` devolve `logauditoria`, e o gerador comparava com caixa. O ensaio do `AT-67` foi num MySQL Linux, onde a caixa conta, e não pegou. A V1 roda na máquina do dono, que é Windows: o passo das permissões pararia ali.
+
+**Correção:** `sqlDeConcessaoMinima` recebe `caixaDosNomes` (obrigatório), lido pelo script em `@@lower_case_table_names`, e compara sem caixa **só** onde o servidor ignora a caixa — a mesma regra de `conferirTravaDaTrilha`. No Linux, `logauditoria` continua sendo outra tabela, e a base sem a trilha de verdade continua recusada (teste próprio). O SQL sai com o nome como a base o devolve.
+
+**Status:** 🟢 em vigor.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.

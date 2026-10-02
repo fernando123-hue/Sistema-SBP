@@ -8,7 +8,7 @@ import { privilegiosQueAmeacamATrilha, sqlDeConcessaoMinima } from './privilegio
  * `ERROR 1147`: o roteiro era impossível de seguir.
  */
 
-const ALVO = { base: 'sbp', usuario: 'sbp_app', host: 'localhost' }
+const ALVO = { base: 'sbp', usuario: 'sbp_app', host: 'localhost', caixaDosNomes: 0 }
 const TABELAS = ['Item', 'LogAuditoria', 'EventoProcessamento', '_prisma_migrations', 'Colaborador']
 
 describe('a concessão mínima, tabela a tabela', () => {
@@ -52,6 +52,26 @@ describe('a concessão mínima, tabela a tabela', () => {
 
   it('base sem a trilha (sem migração) recusa: o usuário nem gravaria a trilha', () => {
     expect(() => sqlDeConcessaoMinima(['Item'], ALVO)).toThrow(/rode as migrações/)
+  })
+
+  // No Windows o MySQL roda com `lower_case_table_names=1` e o `SHOW TABLES`
+  // devolve tudo em minúsculas. Comparar com caixa recusava a base migrada com
+  // "A base não tem LogAuditoria" (medido em 02/10/2026 no MySQL 8.4 desta máquina).
+  it('no MySQL do Windows (lower_case_table_names=1) a trilha em minúsculas é a trilha', () => {
+    const doWindows = ['item', 'logauditoria', 'eventoprocessamento', '_prisma_migrations']
+    const sql = sqlDeConcessaoMinima(doWindows, { ...ALVO, caixaDosNomes: 1 }).split('\n')
+    expect(sql).toEqual([
+      "GRANT SELECT, INSERT ON `sbp`.`eventoprocessamento` TO 'sbp_app'@'localhost';",
+      "GRANT SELECT, INSERT, UPDATE, DELETE ON `sbp`.`item` TO 'sbp_app'@'localhost';",
+      "GRANT SELECT, INSERT ON `sbp`.`logauditoria` TO 'sbp_app'@'localhost';",
+    ])
+    expect(privilegiosQueAmeacamATrilha(sql.map((linha) => linha.replace(/;$/, '')))).toEqual([])
+  })
+
+  // No Linux a caixa conta: `logauditoria` é OUTRA tabela, e tratá-la como a
+  // trilha daria uma base sem a trilha de verdade por migrada.
+  it('no Linux (lower_case_table_names=0) a trilha em minúsculas não é a trilha', () => {
+    expect(() => sqlDeConcessaoMinima(['Item', 'logauditoria', 'eventoprocessamento'], ALVO)).toThrow(/rode as migrações/)
   })
 })
 

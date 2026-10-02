@@ -34,9 +34,12 @@ async function principal(): Promise<void> {
   if (!base) throw new Error('A DATABASE_URL não aponta para uma base.')
   const linhas = await banco.$queryRawUnsafe<Record<string, string>[]>('SHOW TABLES')
   const tabelas = linhas.map((linha) => Object.values(linha)[0] ?? '')
+  const [{ caixa }] = await banco.$queryRaw<[{ caixa: number | bigint }]>`
+    SELECT @@lower_case_table_names AS caixa`
 
   const aceitaQualquerHost = process.argv.includes('--aceito-qualquer-host')
-  process.stdout.write(`${sqlDeConcessaoMinima(tabelas, { base, usuario, host, aceitaQualquerHost })}\n`)
+  const alvo = { base, usuario, host, aceitaQualquerHost, caixaDosNomes: Number(caixa) }
+  process.stdout.write(`${sqlDeConcessaoMinima(tabelas, alvo)}\n`)
 }
 
 principal()

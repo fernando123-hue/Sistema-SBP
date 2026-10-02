@@ -123,6 +123,12 @@ export interface AlvoDaConcessao {
   host: string
   /** `%` no host só com este pedido explícito. */
   aceitaQualquerHost?: boolean
+  /**
+   * `@@lower_case_table_names` do servidor: 0 no Linux, 1 no Windows, 2 no
+   * macOS. Obrigatório: sem ele, o gerador não sabe se `logauditoria` é a
+   * trilha (Windows) ou outra tabela (Linux).
+   */
+  caixaDosNomes: number
 }
 
 /** Nome de base, usuário ou tabela: só o que o MySQL aceita sem escapar. */
@@ -162,9 +168,14 @@ export function sqlDeConcessaoMinima(tabelas: readonly string[], alvo: AlvoDaCon
     }
   }
 
-  const daTrilha = new Set<string>(TABELAS_DA_TRILHA)
+  // No Windows o `SHOW TABLES` devolve `logauditoria`: comparar com caixa
+  // recusava a base migrada (medido em 02/10/2026). Sem caixa SÓ onde o
+  // servidor ignora a caixa, como em `conferirTravaDaTrilha`.
+  const chave = (tabela: string): string => (alvo.caixaDosNomes === 0 ? tabela : tabela.toLowerCase())
+  const daTrilha = new Set<string>(TABELAS_DA_TRILHA.map(chave))
   const daAplicacao = tabelas.filter((tabela) => tabela !== '_prisma_migrations')
-  const faltando = TABELAS_DA_TRILHA.filter((tabela) => !daAplicacao.includes(tabela))
+  const presentes = new Set(daAplicacao.map(chave))
+  const faltando = TABELAS_DA_TRILHA.filter((tabela) => !presentes.has(chave(tabela)))
   if (faltando.length > 0) {
     // Gerar sem elas daria à aplicação um usuário que nem grava a trilha, e o
     // erro só apareceria na primeira ação auditada. Base sem migração não é base.
@@ -173,7 +184,7 @@ export function sqlDeConcessaoMinima(tabelas: readonly string[], alvo: AlvoDaCon
 
   const quem = `'${alvo.usuario}'@'${alvo.host}'`
   const linhas = [...daAplicacao].sort().map((tabela) =>
-    daTrilha.has(tabela)
+    daTrilha.has(chave(tabela))
       ? `GRANT SELECT, INSERT ON \`${alvo.base}\`.\`${tabela}\` TO ${quem};`
       : `GRANT SELECT, INSERT, UPDATE, DELETE ON \`${alvo.base}\`.\`${tabela}\` TO ${quem};`,
   )

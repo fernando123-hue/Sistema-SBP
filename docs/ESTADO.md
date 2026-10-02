@@ -27,7 +27,7 @@
 >    - login, troca de senha e o teste de tela do dono, com o tempo da busca e o "lendo N de M";
 >    - o ensaio de backup e restauração;
 >    - `npm run verificar` no Windows, com atenção aos testes novos da trilha (`trilha-append-only`, `privilegios-trava`): eles só foram vistos passar num MySQL Linux configurado como o do Windows.
-> 2. ~~**PR pequeno:** os comentários "credencial de MANUTENÇÃO" em `scripts/sql-de-privilegios.ts:7` e `src/servidor/privilegios.ts:120` passam a falar da conta administradora (`AT-67`), no nível de risco que o script der.~~ **Feito em 02/10, PR `fix/comentarios-conta-administradora` (nível 3, só comentário).**
+> 2. ~~**PR pequeno:** os comentários "credencial de MANUTENÇÃO" em `scripts/sql-de-privilegios.ts:7` e `src/servidor/privilegios.ts:120` passam a falar da conta administradora (`AT-67`), no nível de risco que o script der.~~ **Feito em 02/10, PR `fix/comentarios-conta-administradora`.** O `npm run verificar` neste Windows achou mais um defeito, corrigido no mesmo PR (`AT-68`): `db:sql-privilegios` recusava a base migrada no MySQL do Windows (nomes de tabela em minúsculas). Era o passo das permissões da V1.
 > 3. **V2:** quando o dono trouxer os modelos, a anonimização acontece **antes** de qualquer commit; os textos entram como casos do gabarito (`A74`).
 > 4. **Achados de auditoria ainda abertos:** a lista no bloco de 01/10, abaixo.
 >
