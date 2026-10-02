@@ -1,8 +1,41 @@
 # Estado do projeto — retomada
 
-Última atualização: **02/10/2026, tarde — V1 executada pela sessão local até onde o agente pode ir; falta a parte do dono.** `main` depois do #187. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **02/10/2026, noite — passagem para a próxima sessão.** `main` depois do #191. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### 02/10/2026, noite — PASSAGEM (este bloco vence os de baixo; o de "tarde", logo abaixo, tem o detalhe da V1)
+>
+> **Esta máquina é a sessão local** (o dono disse: "você é uma sessão local, resolva todas as questões pendentes"). Ela roda o Ollama, o MySQL e a V1.
+>
+> **Mesclado nesta sessão:**
+> - **#187** (`AT-67`, `AT-68`): `db:sql-privilegios` aceita a base migrada no MySQL do Windows.
+> - **#188** (`AT-69`, `AT-70`): P1 do classificador medido; V1 rodada até o passo 7 em `C:\sbp-validacao`.
+> - **#189** (`AT-71`): gabarito 1.1.0 (nenhum, vários, agradecimento).
+> - **#190** (`AT-72`, decisão `A75`): o "obrigado" vira item com o selo fixo "Agradecimento — responder com cordialidade" na Minha fila; coluna `Item.agradecimento`; prompt `anthropic-1.2.0`, `gemini-1.2.0`, `local-1.1.0`; gabarito 1.2.0 (26 casos).
+> - **#191** (`AT-73`, decisão `A76`): e-mail sem item com CPF, CRM ou anexo fica **guardado 30 dias**, coluna `Email.dadoSemItem`, aviso na Distribuição lido do banco (`GET /api/ingestao/guardados`).
+>
+> **No ar nesta máquina (processos soltos, não serviços; param se a máquina reiniciar):** MySQL em `127.0.0.1:3307`, ligado no PowerShell com `Start-Process -FilePath "C:\Program Files\MySQL\MySQL Server 8.4\bin\mysqld.exe" -ArgumentList '--datadir=C:\Users\Irineu\mysql-sbp\dados','--port=3307','--bind-address=127.0.0.1','--mysqlx=OFF' -WindowStyle Hidden` (**sempre com `--mysqlx=OFF`**, senão a porta 33060 abre em todas as interfaces — achado M-01; outro `Start-Process` mais abaixo neste arquivo não tem a opção); a V1 de produção em `http://127.0.0.1:3000` (`npx next start -H 127.0.0.1 -p 3000` em `C:\sbp-validacao`, registro em `servidor.log`). A V1 está na `main` **até o #187** (`54fb211`), antes do #188: não tem o agradecimento (#190) nem o aviso dos guardados (#191).
+>
+> **Próximo passo do agente, na ordem:**
+> 1. **Dependabot #181** (SDK da Anthropic 0.128 → 0.129, nível 3): ler o changelog, conferir `zodOutputFormat` (o teste `agradecimento-na-interpretacao.test.ts` olha a forma pelo SDK) e `forma-na-saida-estruturada.test.ts`; rodar a suíte; revisão técnica e de segurança; mesclar ou fechar com motivo.
+> 2. **Pendências pequenas com destino escrito:** incluir `GET /api/ingestao/guardados` no teste de 401 sem cookie e corrigir o cabeçalho "Nestas quatro" em `src/app/api/autorizacao-de-rotas.test.ts`; ler a caixa com `lerCaixaDosNomes` em `scripts/scripts-encerram.test.ts`, que ainda usa `Number(caixa) === 1` (`§ AT-68`; o `trilha-append-only.test.ts` já usa).
+> 3. **Atualizar a V1** quando o dono quiser ver as novidades: em `C:\sbp-validacao`, parar o servidor, `git pull`, `npm ci`, `npx prisma generate`, `migrate deploy` com a `root`, `db:sql-privilegios` de novo (há coluna nova, mas as concessões são por tabela — conferir com `db:privilegios`), `npm run build`, subir com `-H 127.0.0.1`.
+> 4. Os achados abertos do bloco de 01/10 (mais abaixo).
+>
+> **Com o dono:** (a) entrar na V1 (`fernando@validacao.sbp`; senha em `C:\sbp-validacao\SENHA-PROVISORIA.txt`, que ele apaga depois de trocar), fazer o teste de tela e avisar; (b) depois disso, a 2ª rodada do backup e o **ok para apagar** `sbp_restaurada` e `C:\sbp-validacao\backup.sql`; (c) decidir se mede um modelo maior que caiba nos 4 GB — o atual cria o item do "obrigado" mas nunca marca o sinal, e nunca marca suspeita; (d) a V2 (modelos de e-mail reais anonimizados) e as três decisões do e-mail real, do bloco de 02/10 (manhã).
+>
+> **Armadilhas vistas nesta sessão:**
+> - **Duas suítes ao mesmo tempo quebram** (`P1014`): revisor em paralelo nunca roda vitest.
+> - **Teste de tempo falha com a máquina carregada** (`conferencia-da-extracao.test.ts`, logo depois de rodar a IA local): rodar sozinho, depois a suíte de novo; não contar como verde.
+> - **`npx prisma migrate dev` pede para apagar a base `sbp`** (acusa migração antiga "modificada" — fim de linha CRLF do Windows). Não apagar: escrever a migração à mão e conferir com `migrate diff` contra `sbp_sombra` (o ruído de chaves estrangeiras em minúsculas é do Windows e já existe sem a mudança), `migrate deploy` na base de desenvolvimento.
+> - **`npm start` puro escuta em todas as interfaces**; sempre `-H 127.0.0.1`.
+> - **O painel de terminal do app não abre** (integração quebrada): saída com senha vai para arquivo excluído do git (`.git/info/exclude`).
+> - **O navegador do app desenha só com o painel visível**: tirar uma captura antes de clicar; `find`/`get_page_text` funcionam escondido.
+> - **Substituição por `node -e` falha em arquivo com CRLF**: usar a ferramenta de edição.
+> - **No nível 3, contar com 2 ou 3 rodadas de revisão**: em todas desta sessão a rodada seguinte achou coisa real.
+>
+> **Skills úteis na próxima sessão:** `passagem-de-sessao` (retomar), `processo-qualidade` (cada PR), `superpowers:systematic-debugging` (falha de teste), `revisao-ui` se mexer em tela.
 >
 > ### 02/10/2026, tarde — V1 RODADA PELA SESSÃO LOCAL (vence o bloco de baixo onde conflitar)
 >
