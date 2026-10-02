@@ -14,8 +14,9 @@ import { limparTudo, semearBase } from '../../testes/apoio'
  * serviço a cobre — `pipeline.test.ts` prova que ninguém conclui item alheio,
  * `memoria.test.ts` prova que colaborador não lê a trilha, e assim por diante.
  *
- * Nas rotas deste arquivo, não: a checagem existe **só no arquivo da rota**.
- * `listarPendentes`, `detalharRodada` e a consulta de colaboradores não têm
+ * Em parte das rotas deste arquivo, não: a checagem existe **só no arquivo da
+ * rota**. `listarPendentes`, `detalharRodada`, `contarGuardadosPorDado` e a
+ * consulta de colaboradores (e o diagnóstico de origem, que nem tem serviço) não têm
  * guarda de papel nenhuma do lado do serviço. Apagar uma linha `exigirPapel`
  * num refactor deixava a suíte inteira verde e reabria exatamente o buraco que
  * o comentário de cada uma delas diz ter fechado — em `colaboradores`, "ERA
@@ -321,6 +322,31 @@ describe('rotas que guardam o papel sozinhas', () => {
     expect(resposta.status).toBe(200)
     expect(resposta.headers.get('Cache-Control')).toBe('no-store')
     expect(((await resposta.json()) as { dados: unknown }).dados).toEqual({ guardados: 2 })
+  })
+
+  // Revisão de segurança do PR das pendências de 02/10: a guarda desta rota
+  // mora só aqui, e ela devolve cabeçalhos de encaminhamento (infraestrutura).
+  // Sem este teste, apagar o `exigirPapel` deixava a suíte verde.
+  it('GET /api/diagnostico/origem: só gestor; sem cookie, 401', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const gestor = await banco.colaborador.create({
+      data: { nome: 'Gestora', email: 'gestora-diagnostico@teste.local', papel: 'gestor' },
+    })
+    const { GET } = await import('./diagnostico/origem/route')
+    const pedir = () => GET(new Request('http://localhost/api/diagnostico/origem'))
+
+    expect((await pedir()).status).toBe(401)
+
+    await entrarComo(base.colaboradores[0]!.id, 'colaborador')
+    expect((await pedir()).status).toBe(403)
+
+    await entrarComo(base.operador.colaboradorId, 'operador')
+    expect((await pedir()).status).toBe(403)
+
+    await entrarComo(gestor.id, 'gestor')
+    const resposta = await pedir()
+    expect(resposta.status).toBe(200)
+    expect((await corpoDe(resposta)).sucesso).toBe(true)
   })
 
   it('sem cookie nenhum, as quatro de leitura sem parâmetro respondem 401 — e 401 não é 403', async () => {

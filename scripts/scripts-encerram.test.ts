@@ -67,7 +67,7 @@ describe('scripts que usam o banco encerram sozinhos', () => {
     // trilha sai só com SELECT, INSERT, e uma tabela comum com as quatro. No
     // MySQL do Windows (`lower_case_table_names=1`) os nomes vêm em minúsculas.
     // `lerCaixaDosNomes`, e não `Number(...)`: valor fora de 0, 1 e 2 recusa
-    // em vez de cair calado no ramo "com caixa" (`AT-68`).
+    // em vez de cair calado no ramo que mantém o nome como está (`AT-68`).
     const [{ valor }] = await obterPrisma().$queryRaw<[{ valor: number | bigint }]>`
       SELECT @@lower_case_table_names AS valor`
     const caixa = lerCaixaDosNomes(valor)
