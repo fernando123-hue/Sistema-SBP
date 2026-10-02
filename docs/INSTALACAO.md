@@ -1,241 +1,337 @@
 # Instalação no servidor da empresa
 
 Roteiro para o TI instalar o SBP num servidor Linux da associação. É o passo
-V3 do `A74`: antes, o sistema é validado na máquina do dono (V1 e V2) e só
-depois entregue.
+V3 do `A74`: o sistema é validado antes na máquina do dono (V1 e V2) e
+entregue já validado.
 
-**Como ler.** Cada passo diz o que fazer e o que conferir. Há duas marcas:
+**Como ler.** Cada passo diz o que fazer e o que conferir.
 
-- **(ensaiado)**: o passo foi executado de verdade em 01/10/2026, numa base
-  nova num MySQL 8.4.11 com binlog ligado (o padrão), e com `next start` em
-  produção. Ver `DECISOES.md § AT-66` e `§ AT-67`.
-- **(a conferir pelo TI)**: o passo depende do servidor e não foi executado
-  aqui. O roteiro diz isso em vez de prometer.
+- **(ensaiado)**: o passo foi executado ao pé da letra em 02/10/2026, nas
+  seguintes condições:
+  - a partir de `git clone` numa pasta vazia;
+  - com um usuário `sbp` de sistema;
+  - com o arquivo de segredos fora do repositório;
+  - sem nenhum `.env`;
+  - num MySQL 8.4.11 com binlog ligado, que é o padrão.
 
-**Nunca rode no servidor** `npm run db:seed` nem `npm run demo`. Eles criam a
-equipe fictícia e aprovam revisões em massa. Recusam uma base que já tenha
-dado da operação (`AT-60`), mas não distinguem uma base nova e vazia de uma
-de desenvolvimento. Por isso a regra está escrita aqui.
+  Uma diferença do ensaio: o MySQL rodava num container. Por isso as contas
+  foram criadas com `@'%'`, e não com `@'localhost'` (ver passo 4).
+- **(a conferir pelo TI)**: depende do servidor e não foi executado aqui.
+- **(a reensaiar)**: o primeiro ensaio deste passo rodou numa pasta de
+  desenvolvimento, que já tinha o cliente do banco gerado e um `.env`. Isso
+  escondeu defeitos do roteiro, apontados pela revisão do PR #185. O passo
+  será executado de novo nas condições acima antes de o roteiro ser
+  entregue ao TI.
+
+**O que nunca roda no servidor:** `npm run db:seed` e `npm run demo`. Eles
+criam a equipe fictícia e aprovam revisões em massa. Recusam uma base que já
+tenha dado da operação (`AT-60`), mas uma base nova e vazia eles não sabem
+distinguir de desenvolvimento. Por isso a regra está escrita aqui.
 
 ---
 
 ## 1. O que o servidor precisa
 
-- **Node 22**, a versão do CI, e `npm`.
+- **Node 22**, a versão do CI, com `npm`. O `node` precisa estar num
+  caminho do sistema, como `/usr/bin`, para o `sudo -u sbp` encontrar.
 - **MySQL 8.4**, de preferência **na mesma máquina** que o SBP.
 - **Proxy reverso com HTTPS** (nginx, Caddy ou o que o TI já usa) e um
-  certificado para o nome que a equipe vai digitar.
+  certificado para o nome que a equipe vai digitar. **Obrigatório.** Fora do
+  `localhost`, o cookie de sessão só é aceito em HTTPS. O sistema também
+  manda o navegador exigir HTTPS por um ano, **incluindo subdomínios**
+  (HSTS com `includeSubDomains`). Publique o SBP num nome próprio, como
+  `sbp.<domínio>`, nunca no domínio raiz da associação: no raiz, todos os
+  subdomínios passariam a exigir HTTPS.
+- **A IA local** (Ollama) alcançável pelo servidor, **por endereço IP**: na
+  mesma máquina (`127.0.0.1`) ou na rede interna (`10.x`, `172.16–31.x`,
+  `192.168.x`). Nome de máquina (`http://ollama.interno`) e endereço público
+  são recusados na subida (`A56`).
 
-  Isso é **obrigatório**. Fora do `localhost`, o cookie de sessão só é aceito
-  em HTTPS, e o sistema pede ao navegador que exija HTTPS por um ano (HSTS).
-  Por HTTP, o login não se mantém.
-- **A IA local (Ollama)** alcançável pelo servidor: na mesma máquina, ou na
-  rede interna atrás de firewall. Um endereço público é recusado na subida
-  (`A56`).
+## 2. Usuário, código e dependências **(ensaiado)**
 
-## 2. Código e dependências
+O sistema roda como um usuário próprio, sem shell de login. Os comandos
+abaixo rodam como `root`:
 
 ```bash
-git clone <repositório> /opt/sbp && cd /opt/sbp
-npm ci
+useradd --system --create-home --home-dir /var/lib/sbp --shell /usr/sbin/nologin sbp
+mkdir /opt/sbp && chown sbp:sbp /opt/sbp
+sudo -u sbp git clone <repositório> /opt/sbp
+cd /opt/sbp
+sudo -u sbp npm ci
+sudo -u sbp npx prisma generate
 ```
 
-Rode o sistema com um usuário próprio, por exemplo `sbp`, sem shell de login.
-A pasta dos anexos (`ARMAZENAMENTO_DIR`) e o arquivo de segredos pertencem a
-ele.
+- **`prisma generate` é obrigatório.** O cliente do banco é gerado, não
+  versionado. Sem ele, nenhum comando e nenhum build funcionam ("Cannot find
+  module").
+- **Não deixe `NODE_ENV=production` exportado durante o `npm ci`.** Com ele,
+  o npm pula as dependências de desenvolvimento, e somem `tsx`, `prisma` e
+  `typescript`, de que os comandos e o build dependem.
 
-## 3. Banco de dados
+## 3. Segredos **(a reensaiar)**
 
-**Duas credenciais, e só duas:**
+Os segredos ficam num arquivo próprio, fora do repositório:
+`/etc/sbp/sbp.env`. O TI faz o backup dele num local criptografado, como já
+faz hoje (`A73`). Quatro cuidados fazem diferença:
 
-- **A conta administradora do MySQL** (a `root` local). Cria a base e os
-  usuários, roda as migrações e aplica as permissões. Só é usada nesses
-  momentos e **nunca** entra no arquivo de segredos da aplicação.
-- **O usuário da aplicação** (`sbp_app`), com o mínimo de permissões.
-
-**Por que a administradora, e não um usuário "de manutenção" mais estreito
-(ensaiado):**
-
-- com binlog ligado, criar a trigger da trilha exige `SUPER` (`ERROR 1419`);
-- aplicar as permissões exige `GRANT OPTION`;
-- a trigger roda como quem migrou (`DEFINER`), e a `root@localhost` existe em
-  qualquer servidor, então uma restauração em outra máquina continua com a
-  trava funcionando (`AT-66`).
-
-Um usuário com tudo isso já é, na prática, administrador.
-
-1. **A base, com a colação certa.** Sem ela, duas grafias da mesma liga viram
-   uma só, sem erro (`AT-10`, `AT-34`):
-   ```sql
-   CREATE DATABASE sbp CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs;
-   CREATE USER 'sbp_app'@'localhost' IDENTIFIED BY '<senha gerada no servidor>';
-   ```
-2. **As migrações**, com a conta administradora **(ensaiado)**:
-   ```bash
-   DATABASE_URL="mysql://root:<senha>@127.0.0.1:3306/sbp?allowPublicKeyRetrieval=true" npx prisma migrate deploy
-   ```
-   Aplique só assim, nunca com `mysql < migration.sql`. Com `--force`, esse
-   comando deixa a trilha sem trava (`AT-66`).
-3. **Conferir a trava da trilha**, com a mesma conta **(ensaiado)**:
-   ```bash
-   DATABASE_URL="<a mesma>" npm run db:conferir-trilha
-   ```
-   A resposta tem de ser "OK: as triggers de LogAuditoria e
-   EventoProcessamento estão presentes…". Qualquer outra resposta sai com
-   código 1 e diz o que fazer.
-4. **As permissões mínimas do usuário da aplicação**, geradas da base que
-   existe **(ensaiado)**:
-   ```bash
-   DATABASE_URL="<a mesma>" npm run -s db:sql-privilegios -- --usuario sbp_app --host localhost > concessoes.sql
-   mysql -u root -p sbp < concessoes.sql
-   ```
-   A trilha de auditoria recebe só `SELECT, INSERT`. Com isso, o próprio
-   MySQL recusa apagar, alterar ou derrubar a trigger ou a tabela da trilha
-   (`ERROR 1142`). Toda migração nova que cria tabela pede gerar e aplicar de
-   novo. Detalhes em `03-SPEC.md § 14` e no `AT-64`.
-5. **A `DATABASE_URL` da aplicação** leva `?allowPublicKeyRetrieval=true`
-   quando o banco está na mesma máquina e sem TLS **(ensaiado: sem isso, o
-   sistema não conecta)**:
-   ```
-   mysql://sbp_app:<senha>@127.0.0.1:3306/sbp?allowPublicKeyRetrieval=true
-   ```
-   No `mysqld`, use `bind-address=127.0.0.1`. Um banco em outra máquina usa
-   TLS e `REQUIRE SSL`, não esta opção.
-6. **Conferir as permissões**, já com a credencial da aplicação **(ensaiado)**:
-   ```bash
-   EXIGIR_PRIVILEGIO_MINIMO=sim npm run db:privilegios
-   ```
-   A resposta tem de ser "OK: nada nas concessões deste usuário alcança
-   LogAuditoria nem EventoProcessamento".
-
-Se o MySQL roda com `skip_name_resolve`, `'localhost'` não casa com uma
-conexão por `127.0.0.1`. Nesse caso, crie o usuário com `@'127.0.0.1'` e gere
-as permissões com `--host 127.0.0.1`.
-
-## 4. Segredos
-
-Os segredos seguem a prática que o TI já usa (`A73`): ficam num arquivo
-próprio, por exemplo `/etc/sbp/sbp.env`, com backup num local criptografado.
-Quatro cuidados fazem diferença:
-
-1. **Gerados no servidor**, um por variável, nunca copiados de outra máquina:
+1. **Gerados no servidor**, um por variável, nunca copiados de outra
+   máquina:
    ```bash
    node -e "console.log(crypto.randomUUID())"
    ```
-2. **Legíveis só pelo usuário `sbp`** (`chown sbp`, `chmod 600`).
-3. **O backup do banco nunca leva este arquivo junto.** O `BUSCA_SECRET`
-   impede descobrir CPF pela busca, e banco e chave juntos devolvem os CPFs.
+   O resultado tem só letras, números e hífen. Assim o valor vale igual
+   lido pelo shell, pelo systemd e dentro de uma URL. **Gere também as
+   senhas do banco assim**, porque `$`, aspas e `@` quebram um dos três
+   jeitos de ler.
+2. **Legível só pelo `sbp`:** `chown sbp:sbp /etc/sbp/sbp.env` e
+   `chmod 600 /etc/sbp/sbp.env`.
+3. **O backup do banco nunca leva este arquivo junto.** O `BUSCA_SECRET` é o
+   que impede descobrir CPF pela busca; banco e chave juntos devolvem os
+   CPFs.
 4. **O `ANEXOS_SECRET` está nele.** Sem ele, um backup restaurado não lê os
    anexos cifrados.
 
-O `.env.example` explica cada variável. As de produção:
+O conteúdo, uma variável por linha, no formato `NOME="valor"`. Cada
+variável está explicada no `.env.example`.
 
 | Variável | Observação |
 |---|---|
-| `NODE_ENV=production` | |
-| `DATABASE_URL` | a da aplicação (passo 3.5) |
-| `SESSAO_SECRET`, `BUSCA_SECRET`, `ANEXOS_SECRET` | três valores diferentes, gerados no servidor |
-| `IA_ADAPTER=local`, `IA_LOCAL_URL`, `IA_MODELO` | as três juntas; sem `IA_MODELO` o servidor não sobe. O Gemini gratuito é recusado em produção (`AT-63`) |
-| `CLASSIFICADOR_ADAPTER=local`, `CLASSIFICADOR_MODELO` | opcional: a segunda opinião em modo sombra, no mesmo servidor de modelo (`A70`); com o adapter ligado, o modelo é obrigatório |
-| `INGESTAO_ADAPTER`, `GRAPH_*`, `GRAPH_LER_DESDE` | a caixa real; depende do registro no Microsoft 365, feito pelo TI, e das decisões do dono |
-| `ARMAZENAMENTO_DIR` | caminho absoluto, fora do repositório |
-| `PROXIES_CONFIAVEIS=1` | quando o SBP está atrás do proxy do passo 6 |
+| `NODE_ENV="production"` | |
+| `DATABASE_URL` | a da aplicação (passo 4.6) |
+| `SESSAO_SECRET`, `BUSCA_SECRET`, `ANEXOS_SECRET` | três diferentes, gerados no servidor |
+| `IA_ADAPTER="local"`, `IA_LOCAL_URL`, `IA_MODELO` | as três juntas; sem `IA_MODELO` o servidor não sobe. O Gemini gratuito é recusado em produção (`AT-63`) |
+| `CLASSIFICADOR_ADAPTER="local"`, `CLASSIFICADOR_MODELO` | opcional: a segunda opinião em modo sombra, no mesmo servidor de modelo (`A70`); com o adapter ligado, o modelo é obrigatório |
+| `INGESTAO_ADAPTER`, `GRAPH_*`, `GRAPH_LER_DESDE` | a caixa real; depende do registro no Microsoft 365, feito pelo TI, e das decisões do dono (passo 10) |
+| `ARMAZENAMENTO_DIR` | caminho absoluto, fora do repositório, do `sbp` |
+| `PROXIES_CONFIAVEIS="1"` | atrás do proxy do passo 7 |
 
-**Não deixe um `.env` em `/opt/sbp`.** O sistema lê esse arquivo se ele
-existir, e um `.env` de desenvolvimento esquecido completaria as variáveis
-que faltam. As variáveis vêm só do arquivo de segredos.
+**Nenhum arquivo `.env*` na pasta `/opt/sbp`**: nem `.env`, nem
+`.env.local`, nem `.env.production`. O sistema lê esses arquivos se
+existirem. Um `.env` de desenvolvimento esquecido completaria as variáveis
+que faltam, em silêncio.
 
-**Comandos de terminal** (`db:preparar`, `db:privilegios`, `db:expurgar`)
-precisam das mesmas variáveis que o serviço. Rode-os como o usuário `sbp`,
-assim **(ensaiado)**:
+### Como rodar um comando do sistema
+
+Todo comando que usa o banco precisa das variáveis do arquivo. Há dois
+jeitos, e o roteiro usa sempre os mesmos dois.
+
+**Como a aplicação** (usuário `sbp`, credencial mínima):
 ```bash
-set -a; . /etc/sbp/sbp.env; set +a
-npm run db:privilegios
+sudo -u sbp bash -c 'cd /opt/sbp && set -a && . /etc/sbp/sbp.env && set +a && npm run db:privilegios'
 ```
 
-**Uma configuração errada impede a subida (ensaiado).** O processo escreve "O
-servidor NÃO subiu: a configuração está errada. <motivo>" e sai com código 1
-(`AT-65`). O motivo nunca traz o valor de um segredo.
+**Como administrador do banco** (passos 4, 8 e 9). Rode como `root`, num
+subshell que não guarda a senha no histórico:
+```bash
+cd /opt/sbp
+( read -rsp 'Senha da conta administradora do MySQL: ' SENHA; echo
+  set -a; . /etc/sbp/sbp.env; set +a
+  export DATABASE_URL="mysql://sbp_admin:${SENHA}@127.0.0.1:3306/sbp?allowPublicKeyRetrieval=true"
+  npx prisma migrate deploy
+  npm run db:conferir-trilha )
+```
+O `DATABASE_URL` exportado depois do arquivo vence o do arquivo. Os
+comandos dentro dos parênteses mudam conforme o passo.
 
-## 5. A primeira pessoa gestora
+## 4. Banco de dados
+
+**Duas contas, e só duas:**
+
+- **A conta administradora** (`sbp_admin`). Cria a base, migra e aplica as
+  permissões. Só é usada nesses momentos e **nunca** entra no arquivo de
+  segredos.
+- **O usuário da aplicação** (`sbp_app`), com o mínimo de permissões.
+
+**Por que uma administradora, e não um usuário "de manutenção" estreito
+(a reensaiar):**
+- com binlog ligado, criar a trigger da trilha exige `SUPER` (`ERROR 1419`);
+- aplicar as permissões exige `GRANT OPTION`.
+
+Um usuário com as duas já é administrador na prática (`AT-67`).
+
+1. **A base e as contas**, no cliente `mysql`, como `root` do MySQL
+   **(a reensaiar)**. A colação é a certa: sem ela, duas grafias da mesma liga
+   viram uma só, sem erro (`AT-10`, `AT-34`).
+   ```sql
+   CREATE DATABASE sbp CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs;
+   CREATE USER 'sbp_admin'@'localhost' IDENTIFIED BY '<gerada no servidor>';
+   GRANT ALL PRIVILEGES ON sbp.* TO 'sbp_admin'@'localhost' WITH GRANT OPTION;
+   GRANT SUPER ON *.* TO 'sbp_admin'@'localhost';
+   CREATE USER 'sbp_app'@'localhost' IDENTIFIED BY '<gerada no servidor>';
+   ```
+   O MySQL avisa que `SUPER` está obsoleto. Com binlog ligado, ele ainda é o
+   que libera criar trigger.
+
+   **Sobre `'localhost'` (a conferir pelo TI):** a conexão é por
+   `127.0.0.1`. Se o MySQL roda com `skip_name_resolve`, `'localhost'` não
+   casa com ela. Nesse caso, use `@'127.0.0.1'` nas duas contas e
+   `--host 127.0.0.1` no passo 4.4. Para conferir: depois de conectar,
+   `SELECT CURRENT_USER();` tem de mostrar a conta que você criou.
+2. **As migrações**, como administrador (o bloco do passo 3, com
+   `npx prisma migrate deploy`) **(a reensaiar)**. Aplique só assim, nunca com
+   `mysql < migration.sql`: com `--force`, esse caminho deixa a trilha sem
+   trava (`AT-66`).
+3. **Conferir a trava da trilha**, no mesmo bloco:
+   `npm run db:conferir-trilha` **(a reensaiar)**. A resposta tem de ser "OK: as
+   triggers de LogAuditoria e EventoProcessamento estão presentes, com o
+   corpo exato da migração (AT-66)." Qualquer outra resposta sai com código 1
+   e diz o que fazer.
+
+   A trigger roda como quem migrou (o `DEFINER`, que `SHOW TRIGGERS FROM sbp`
+   mostra). Por isso o passo 8 manda recriar `sbp_admin` antes de restaurar
+   em outra máquina.
+4. **As permissões mínimas do `sbp_app`**, geradas a partir das tabelas que
+   existem, no mesmo bloco de administrador **(a reensaiar)**:
+   ```bash
+   set -o pipefail
+   npm run -s db:sql-privilegios -- --usuario sbp_app --host localhost > /root/concessoes.sql
+   test -s /root/concessoes.sql && echo "gerado" || echo "VAZIO: pare aqui"
+   ```
+   Depois, no cliente `mysql`: `SOURCE /root/concessoes.sql;`. Se o arquivo
+   sair vazio, nada é concedido, e o passo 4.7 responderia OK sem que a
+   aplicação funcione. Por isso o `test -s`.
+
+   A trilha de auditoria recebe só `SELECT, INSERT`. Com isso, o próprio
+   MySQL recusa apagar, alterar ou derrubar a trigger ou a tabela da trilha
+   (`ERROR 1142`; `AT-64`, `03-SPEC.md § 14`). Toda migração nova que cria
+   tabela pede gerar e aplicar de novo (passo 9).
+5. Apague `/root/concessoes.sql` depois de aplicar.
+6. **A `DATABASE_URL` da aplicação**, no arquivo de segredos
+   **(a reensaiar)**:
+   ```
+   DATABASE_URL="mysql://sbp_app:<senha>@127.0.0.1:3306/sbp?allowPublicKeyRetrieval=true"
+   ```
+   No `mysqld`, use `bind-address=127.0.0.1`. Um banco em outra máquina usa
+   TLS e `REQUIRE SSL`, não esta opção.
+7. **Conferir as permissões**, agora como a aplicação **(a reensaiar)**:
+   ```bash
+   sudo -u sbp bash -c 'cd /opt/sbp && set -a && . /etc/sbp/sbp.env && set +a && EXIGIR_PRIVILEGIO_MINIMO=sim npm run db:privilegios'
+   ```
+   A resposta tem de ser "OK: nada nas concessões deste usuário alcança
+   LogAuditoria nem EventoProcessamento."
+
+## 5. A primeira pessoa gestora **(a reensaiar)**
 
 ```bash
-npm run db:preparar -- --nome "Nome Completo" --email pessoa@dominio-da-associacao
+sudo -u sbp bash -c 'cd /opt/sbp && set -a && . /etc/sbp/sbp.env && set +a && npm run db:preparar -- --nome "Nome Completo" --email pessoa@dominio-da-associacao'
 ```
 
-O comando cria as categorias e **uma** gestora real **(ensaiado)**. A senha
-provisória aparece uma única vez, e a troca é obrigatória no primeiro acesso.
-Rode num **terminal**, não como serviço: a senha sai na tela, e um log
-persistente a guardaria. Rodar de novo não cria ninguém. O resto da equipe é
-cadastrado pela gestora, na tela *Acesso e cadastro* (`AT-61`).
+O comando cria as categorias e **uma** gestora real. A senha provisória
+aparece uma única vez, e a troca é obrigatória no primeiro acesso.
 
-## 6. Rodar o serviço
+- Rode num **terminal**, não como serviço: a senha sai na tela, e um log
+  persistente a guardaria.
+- Rodar de novo não cria ninguém.
+- O resto da equipe é cadastrado pela gestora na tela *Acesso e cadastro*
+  (`AT-61`).
+
+## 6. Construir e subir **(a reensaiar)**
 
 ```bash
-npm run build
-npx next start -H 127.0.0.1 -p 3000
+sudo -u sbp bash -c 'cd /opt/sbp && set -a && . /etc/sbp/sbp.env && set +a && npm run build'
+sudo -u sbp bash -c 'cd /opt/sbp && set -a && . /etc/sbp/sbp.env && set +a && npx next start -H 127.0.0.1 -p 3000'
 ```
 
-O `-H 127.0.0.1` faz com que só o proxy fale com o SBP. Sem ele, o SBP escuta
-em todas as interfaces. Uma máquina da rede poderia falar direto com a porta
-3000, forjar a origem e escapar do limite de tentativas de login.
+`-H 127.0.0.1` faz o SBP escutar só no próprio servidor, e só o proxy fala
+com ele. Sem isso, outra máquina da rede falaria direto com a porta 3000,
+forjaria a origem e escaparia do limite de tentativas de login.
 
-**Ensaiado com o usuário mínimo do banco:**
-- `next start` em produção;
-- entrada da gestora, troca da senha provisória;
-- busca de e-mails fictícios em segundo plano, gravando na trilha.
+**Configuração errada não sobe.** O processo escreve "O servidor NÃO subiu: a
+configuração está errada. <motivo>" e sai com código 1 (`AT-65`). O motivo
+nunca traz o valor de um segredo.
 
-**Serviço (systemd) (a conferir pelo TI):**
-- `WorkingDirectory=/opt/sbp` e `User=sbp`;
-- o arquivo de segredos como `EnvironmentFile`;
+**Não clique em "Buscar e-mails" antes do dia da caixa real.** Com
+`INGESTAO_ADAPTER` no padrão (`mock`), a busca grava e-mails **fictícios** na
+base da operação, e a trilha não permite apagá-los. É o mesmo motivo de
+nunca rodar o seed. A busca em segundo plano foi ensaiada numa base
+descartável.
+
+## 7. Serviço e proxy **(a conferir pelo TI)**
+
+**Serviço (systemd):**
+- `User=sbp`;
+- `WorkingDirectory=/opt/sbp`;
+- `EnvironmentFile=/etc/sbp/sbp.env`;
+- `ExecStart=` com o `npx next start -H 127.0.0.1 -p 3000` do passo 6 (o
+  caminho do `npx` sai de `which npx`);
 - `Restart=on-failure`;
-- o log no journald, com retenção definida.
+- log no journald, com retenção definida. O log sai em JSON, uma linha por
+  evento.
 
-O log sai em JSON, uma linha por evento.
-
-**Proxy (a conferir pelo TI):**
+**Proxy:**
 - HTTPS com o certificado;
-- repassar o `Host` original e o `X-Forwarded-For`;
-- prazo de leitura padrão.
+- repassar o `Host` original (o sistema confere que ele bate com a origem do
+  navegador) e o `X-Forwarded-For`;
+- prazo de leitura padrão: a busca de e-mails roda no servidor e não segura
+  a requisição (`AT-62`).
 
-A busca de e-mails roda no servidor e não segura a requisição (`AT-62`).
 Depois de publicar, entre como gestora em **dois** computadores e compare o
-campo `chave` de `GET /api/diagnostico/origem`. Valores diferentes mostram que
-cada pessoa tem o seu próprio limite.
+campo `chave` de `GET /api/diagnostico/origem`. Valores diferentes mostram
+que cada pessoa tem o seu limite.
 
-## 7. Backup e restauração
+## 8. Backup e restauração
 
-**O que entra:**
-- o banco: `mysqldump --single-transaction sbp`, com a conta administradora;
+**O que entra no backup:**
+- o banco: `mysqldump --single-transaction sbp`, como administrador;
 - a pasta `ARMAZENAMENTO_DIR`, com os anexos já cifrados.
 
-**O que não entra no mesmo backup:** o arquivo de segredos (passo 4).
+**O que não entra no mesmo backup:** o arquivo de segredos (passo 3).
 
-**Restaurar (ensaiado no banco; os anexos ficam a conferir pelo TI).** Sempre
-numa base **nova**, com a conta administradora, e conferir antes de apontar o
-sistema para ela:
-```bash
-mysql -u root -p -e "CREATE DATABASE sbp_restaurada CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs"
-mysql -u root -p sbp_restaurada < backup.sql
-DATABASE_URL="<conta administradora>/sbp_restaurada…" npm run db:conferir-trilha
-```
-Uma restauração com credencial sem `SUPER` para no meio, com erro na tela.
-Uma restauração que não chega ao fim pode devolver a trilha sem trava, e a
-conferência acusa isso (`AT-66`).
+**Restaurar (a reensaiar no banco; os anexos ficam a conferir pelo TI).**
+Sempre numa base **nova** e como administrador. Em outra máquina, faça os
+passos 1 a 3 e crie as duas contas (4.1) **antes**: a trigger precisa do
+`DEFINER`. Sem ele, ela continua recusando, mas com outra mensagem
+(`ERROR 1449`; `AT-66`).
+
+1. Criar a base e restaurar, no cliente `mysql`:
+   ```sql
+   CREATE DATABASE sbp_restaurada CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs;
+   GRANT ALL PRIVILEGES ON sbp_restaurada.* TO 'sbp_admin'@'localhost' WITH GRANT OPTION;
+   USE sbp_restaurada;
+   SOURCE /caminho/do/backup.sql;
+   ```
+2. Conferir a trava, no bloco de administrador com a URL apontando para
+   `sbp_restaurada`: `npm run db:conferir-trilha`. Uma restauração
+   interrompida pode devolver a trilha sem trava, e é aqui que isso aparece.
+3. **As permissões do `sbp_app` são por base**, e o backup não as leva. No
+   mesmo bloco, gere e aplique de novo (4.4) para `sbp_restaurada`.
+4. Troque a `DATABASE_URL` da aplicação para `sbp_restaurada`, rode o 4.7 e
+   só então suba o sistema.
 
 **Restaure uma vez para provar**, numa máquina de teste: suba o sistema com o
-backup e os segredos, entre e abra um item com anexo.
+backup e os segredos, entre, abra um item com anexo.
 
-## 8. O que o servidor faz sozinho
+## 9. Atualizar para uma versão nova
 
-A limpeza diária roda dentro do próprio servidor, uma vez por dia. Ela apaga o
-conteúdo que tem prazo de retenção, nos prazos que a gestão define na tela. Se
-o servidor fica desligado à noite, agende `npm run db:expurgar`, que faz a
-mesma limpeza e não a repete no mesmo dia.
+```bash
+cd /opt/sbp
+sudo -u sbp git pull
+sudo -u sbp npm ci
+sudo -u sbp npx prisma generate
+```
 
-## 9. No dia de ligar a caixa real
+Depois:
+1. no bloco de administrador: `npx prisma migrate deploy` e
+   `npm run db:conferir-trilha`;
+2. gerar e aplicar as permissões (4.4), porque migração nova pode ter criado
+   tabela;
+3. `npm run build` e reiniciar o serviço.
 
-Siga a lista do `DECISOES.md § AT-47`. Antes dela vêm as decisões do dono que
+Parar o serviço antes de migrar evita a aplicação velha falando com o banco
+novo.
+
+## 10. O que o servidor faz sozinho
+
+A limpeza diária roda dentro do próprio servidor. Ela tenta na subida e
+depois em intervalos, e faz uma limpeza por dia: apaga o conteúdo com prazo
+de retenção vencido, nos prazos que a gestão define na tela. Só se o servidor
+ficar **um dia inteiro** desligado vale agendar `npm run db:expurgar` pelo
+mesmo jeito do passo 3 (como a aplicação). O agendamento carrega o arquivo de
+segredos, e o comando não repete a limpeza no mesmo dia.
+
+## 11. No dia de ligar a caixa real
+
+A lista do `DECISOES.md § AT-47`. Antes dela, as decisões do dono que
 bloqueiam o e-mail real:
 - liberar e-mail real na IA local (`A56 (e)`);
 - a data de `GRAPH_LER_DESDE`;
