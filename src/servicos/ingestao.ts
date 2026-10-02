@@ -9,6 +9,7 @@ import {
 } from '../core/esquemas'
 import { aceitaAgradecimento } from '../core/config'
 import { CategoriaDesconhecidaError, ErroOperacional } from '../core/erros'
+import { dadoDeTrabalhoSemItem, type DadoDeTrabalho } from '../core/sem-item-com-dado'
 import { chaveDaLiga } from '../core/ligas'
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { prepararConteudoExterno, validarAnexo } from '../core/seguranca/conteudo-nao-confiavel'
@@ -482,20 +483,24 @@ export async function sincronizar(
         // existe. Até lá, o e-mail suspeito sem item fica fora da limpeza
         // (`§ AT-24`), para a manipulação não sumir sozinha (achado C-27).
         const suspeito = resultado.conteudoSuspeito
+        const { dadoSemItem } = resultado
         registrarLog(suspeito ? 'erro' : 'aviso', 'e-mail interpretado sem nenhum item', {
           correlacaoId,
           messageId: email.messageId,
           conteudoSuspeito: suspeito,
+          dadoSemItem,
         })
         await registrarEvento(deps.banco, {
           correlacaoId,
           etapa: 'ingestao',
           situacao: 'falha',
           referencia: email.messageId,
-          mensagem: suspeito
-            ? 'e-mail SUSPEITO interpretado sem nenhum item — pode ser tentativa de fazer o trabalho desaparecer'
-            : 'e-mail interpretado sem nenhum item — confira se havia trabalho ali',
-          detalhe: { conteudoSuspeito: suspeito },
+          mensagem: dadoSemItem
+            ? `e-mail interpretado sem nenhum item, mas com ${ROTULO_DO_DADO[dadoSemItem]} — guardado; confira se havia um pedido ali`
+            : suspeito
+              ? 'e-mail SUSPEITO interpretado sem nenhum item — pode ser tentativa de fazer o trabalho desaparecer'
+              : 'e-mail interpretado sem nenhum item — confira se havia trabalho ali',
+          detalhe: { conteudoSuspeito: suspeito, dadoSemItem },
         })
       }
     } catch (erro) {
@@ -625,6 +630,19 @@ interface ResultadoDeUm {
    * `TENTATIVAS_MAXIMAS_DE_INTERPRETACAO` falhas, paramos de tentar".
    */
   naoInterpretado: boolean
+  /**
+   * Zero itens sem suspeita, mas com CPF, CRM ou anexo (`AT-73`). Quando não é
+   * nulo, `conteudoSuspeito` também vem verdadeiro — é o que guarda o e-mail —,
+   * e este campo diz que o motivo é dado, não manipulação.
+   */
+  dadoSemItem: DadoDeTrabalho | null
+}
+
+/** Como o evento nomeia o dado que guardou o e-mail sem item (`AT-73`). */
+const ROTULO_DO_DADO: Readonly<Record<DadoDeTrabalho, string>> = {
+  cpf: 'um CPF',
+  crm: 'um CRM',
+  anexo: 'anexo',
 }
 
 /** `P2002` é o código do Prisma para violação de constraint única. */
@@ -832,6 +850,20 @@ async function processarUm(
           })
         : { criados: 0, aprovados: 0, paraRevisao: 0 }
 
+      // `AT-73`: a IA leu e não achou trabalho, as defesas não viram nada, mas
+      // o e-mail traz CPF, CRM ou anexo. Pode ser o pedido escondido numa
+      // resposta automática — que a lista da fase 4 não cobre, porque não é
+      // suspeito. Fica guardado como o suspeito (fora da limpeza, `AT-24`), na
+      // mesma transação; o motivo vai ao evento e à trilha, separado da
+      // manipulação. Só com interpretação: a desistência tem caminho próprio.
+      const dadoSemItem =
+        interpretacao && resultado.criados === 0 && !conteudoSuspeito
+          ? dadoDeTrabalhoSemItem(email, email.anexos.length)
+          : null
+      if (dadoSemItem) {
+        await tx.email.update({ where: { id: registro.id }, data: { conteudoSuspeito: true } })
+      }
+
       await auditar(tx, {
         entidade: 'Email',
         entidadeId: registro.id,
@@ -839,14 +871,21 @@ async function processarUm(
         depois: {
           messageId: email.messageId,
           itens: resultado.criados,
-          conteudoSuspeito,
+          conteudoSuspeito: conteudoSuspeito || dadoSemItem !== null,
           naoInterpretado: desistir,
+          dadoSemItem,
         },
         usuario,
         correlacaoId,
       })
 
-      return { ...resultado, anexosRejeitados, conteudoSuspeito, naoInterpretado: desistir }
+      return {
+        ...resultado,
+        anexosRejeitados,
+        conteudoSuspeito: conteudoSuspeito || dadoSemItem !== null,
+        naoInterpretado: desistir,
+        dadoSemItem,
+      }
     })
   } catch (erro) {
     await desfazerArquivos()
@@ -866,7 +905,7 @@ async function criarItens(
     correlacaoId: string
     usuario: string
   },
-): Promise<Omit<ResultadoDeUm, 'anexosRejeitados' | 'conteudoSuspeito' | 'naoInterpretado'>> {
+): Promise<Omit<ResultadoDeUm, 'anexosRejeitados' | 'conteudoSuspeito' | 'naoInterpretado' | 'dadoSemItem'>> {
   const { interpretacao } = contexto
   // Um resultado por item, na mesma ordem. Se um dia a lista for filtrada
   // entre a conferência e a gravação, um item ficaria sem conferência em

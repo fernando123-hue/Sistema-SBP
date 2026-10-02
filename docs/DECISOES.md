@@ -1636,6 +1636,25 @@ Um teste novo exige caso de cada opção e que nenhuma passe de dois terços do 
 
 **Status:** 🟢 em vigor.
 
+### AT-73 — E-mail sem item, mas com CPF, CRM ou anexo, fica guardado *(02/10/2026)*
+
+**Por quê:** o próximo passo registrado no `AT-72`. Um e-mail que começa como resposta automática e esconde um pedido mais abaixo não tem nada de suspeito para a detecção por padrão nem para o modelo. Se o modelo devolver zero itens, o trabalho some: sem item não há `Revisao`, a idempotência por `messageId` não relê o e-mail, e o conteúdo sai pela limpeza em 7 dias. A lista da fase 4 (`A34`) não cobre o caso, porque ele não é suspeito. Com o modelo local essa defesa não foi demonstrada (`AT-72`).
+
+**O que entrou:** uma regra determinística, que não depende do modelo (`core/sem-item-com-dado.ts`). Se a IA leu o e-mail, devolveu **zero itens**, as defesas **não** o marcaram, e o e-mail traz:
+- **um CPF**, pela forma (três, três, três e dois dígitos, com ou sem pontuação — um número errado continua sendo dado de alguém);
+- **um CRM com número** (a palavra sozinha não conta);
+- ou **qualquer anexo**;
+
+então ele é gravado como suspeito, na mesma transação: fica **fora da limpeza** (`AT-24`), como o e-mail que as defesas marcam. O evento diz o motivo — "sem nenhum item, mas com um CPF — guardado; confira se havia um pedido ali" —, separado da mensagem de manipulação, e a trilha grava `dadoSemItem`.
+
+**Hipóteses (do agente):**
+- **Qualquer anexo, de qualquer tipo.** Poupar imagem (logotipo de assinatura) exigiria decidir pelo tipo **declarado**, que é do remetente e nunca decide nada (`AnexoSchema`): um PDF declarado "image/png" escaparia. O preço: a resposta automática com logotipo anexado também fica guardada até alguém olhar.
+- **A forma do CPF é larga:** um telefone de 11 dígitos sem pontuação também conta. Falso positivo custa pouco (o e-mail fica guardado); falso negativo é o trabalho sumindo.
+- **Reaproveita `Email.conteudoSuspeito`** em vez de uma coluna nova: quem lê essa coluna é a limpeza (que é o efeito querido) e a Revisão, que só a mostra quando há item — e aqui não há. Nenhuma métrica de manipulação conta com ela. O motivo fica no evento e na trilha.
+- **O que ainda falta para o caso fechar:** guardar não é olhar. Até a lista da fase 4, quem confere é quem lê os eventos e o contador "sem item" da Distribuição — que agora tem por onde distinguir "resposta automática" de "tinha CPF".
+
+**Status:** 🟡 provisória — a lista da fase 4 decide como alguém vê estes e-mails.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.

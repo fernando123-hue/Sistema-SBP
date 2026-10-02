@@ -27,7 +27,9 @@
 >
 > **Gabarito 1.1.0 (`AT-71`):** sete casos novos (2 "nenhum", 1 agradecimento, 4 "vários"); 24 no total; pergunta de quantidade da medição corrigida para o `A75`. Medido: quantidade 0,50 contra 0,67 do "um" constante. Os modelos da V2, quando chegarem, entram como casos e têm prioridade.
 >
-> **Próximo do agente, sem depender do dono:** (1) a regra determinística do `AT-72`: e-mail com zero itens **e** CPF ou CRM no texto, ou com anexo, vira suspeito — fecha a porta do pedido escondido em resposta automática, que a fase 4 não cobre; (2) o Dependabot #181 (SDK da Anthropic, nível 3); (3) os achados abertos do bloco de 01/10.
+> **`AT-73`:** e-mail com zero itens **e** CPF, CRM ou anexo fica guardado como suspeito, com o motivo no evento — fecha a porta do pedido escondido em resposta automática, que a fase 4 não cobre.
+>
+> **Próximo do agente, sem depender do dono:** (1) o Dependabot #181 (SDK da Anthropic, nível 3); (2) os achados abertos do bloco de 01/10.
 >
 > ### 02/10/2026 — PASSAGEM (este bloco vence todos os de baixo; o de 01/10, logo abaixo, explica o plano)
 >

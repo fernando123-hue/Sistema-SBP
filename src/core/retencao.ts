@@ -137,6 +137,8 @@ export interface EmailNoRelogio {
  * - **Nenhum item E conteúdo suspeito:** não corre. `A34` manda uma pessoa
  *   decidir antes, e essa lista ainda não existe (fase 4); apagar agora seria
  *   deixar a manipulação bem-sucedida sumir sozinha. Hipótese em `DECISOES.md § C`.
+ *   Desde o `AT-73`, também o e-mail sem item que traz CPF, CRM ou anexo chega
+ *   aqui como suspeito: pode ser o pedido escondido numa resposta automática.
  */
 export function diaEmQueOConteudoVence(email: EmailNoRelogio, dias: number): string | null {
   exigirPrazoValido(dias)
