@@ -43,7 +43,9 @@ import { arredondar, somar } from '../util/numero'
 /**
  * Muda quando um caso ou a regra de nota muda — nota só se compara dentro da
  * mesma versão. Também quando o texto da IA passa a pedir o que um caso já
- * esperava: a 1.2.0 é a 1.1.0 depois do `A75` entrar no prompt (`AT-72`).
+ * esperava: a 1.2.0 é a 1.1.0 depois do `A75` entrar no prompt, com mais dois
+ * casos das revisões do #190 — resposta automática com pedido e agradecimento
+ * que também pede (`AT-72`).
  */
 export const VERSAO_DO_GABARITO = 'gabarito-1.2.0'
 

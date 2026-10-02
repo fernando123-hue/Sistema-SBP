@@ -168,8 +168,13 @@ export const DESCRICAO_DAS_CATEGORIAS_PARA_IA: Readonly<
  * pedido real parecer cortesia (revisão de segurança do #190). A ingestão e a
  * revisão humana usam esta mesma regra.
  */
-const CATEGORIAS_DO_AGRADECIMENTO: ReadonlySet<string> = new Set(['EMAIL_CADASTRO', 'EMAIL_LIGA'])
+// Tipado pelas categorias da IA: renomear uma delas quebra a compilação aqui,
+// em vez de o selo sumir em silêncio (revisão técnica do #190).
+const CATEGORIAS_DO_AGRADECIMENTO: readonly z.infer<typeof CategoriaClassificavelSchema>[] = [
+  'EMAIL_CADASTRO',
+  'EMAIL_LIGA',
+]
 
 export function aceitaAgradecimento(categoriaCodigo: string): boolean {
-  return CATEGORIAS_DO_AGRADECIMENTO.has(categoriaCodigo)
+  return (CATEGORIAS_DO_AGRADECIMENTO as readonly string[]).includes(categoriaCodigo)
 }
