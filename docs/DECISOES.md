@@ -1225,7 +1225,7 @@ Hoje nenhuma rota lê anexo (`armazenamento.ler` não tem chamador em `src/app`)
 
 **Prova:** `adapters/classificador-local.test.ts` (servidor falso), `core/avaliacao/classificacao.test.ts`, `servicos/avaliacao-do-classificador.test.ts`, o script rodando de ponta a ponta em `scripts/scripts-encerram.test.ts`, e a varredura de `segunda-opiniao.test.ts`, que passa a aceitar exatamente dois lugares chamando `classificar`, cada um com as próprias perguntas constantes.
 
-**Status:** 🟡 provisória: nenhum servidor real foi medido. Rodar `classificador:avaliar` com o Ollama (P1) confirma ou derruba cada hipótese acima. **Medido em 02/10/2026 (`AT-69`):** as hipóteses de forma se confirmaram; o viés de posição apareceu.
+**Status:** 🟡 provisória: nenhum servidor real foi medido. Rodar `classificador:avaliar` com o Ollama (P1) confirma ou derruba cada hipótese acima. **Medido em 02/10/2026 (`AT-69`):** as hipóteses de forma se confirmaram; e, com o modelo de 1,5B, a resposta da quantidade segue a ordem das opções (medido em três ordens).
 
 ### AT-55 — O e-mail ao lado do que a IA leu, na Revisão (`A69`, 2A e 2B) *(01/10/2026)*
 
@@ -1531,19 +1531,29 @@ Mutações sobre o código final, todas vermelhas:
 
 **O que o P1 tinha de confirmar (`AT-54`), e confirmou:**
 - **Vieram logprobs:** nenhuma falha `logprobs: invalid_type`; 0 falhas de forma em 17 casos.
-- **As probabilidades não são todas 0 ou 1:** vão de quase zero a 0,998 (ex.: quantidade 0,05 a 0,84). A calibração não sumiu.
+- **As probabilidades não são todas 0 ou 1:** vão de 0,001 a 0,9995 (ex.: quantidade 0,05 a 0,84). A calibração não sumiu.
 - **Nenhuma resposta `custom`** (fora das opções).
-- **Tempo:** médio 0,8 s por e-mail nas três perguntas, pior 1,1 s; a primeira chamada, com o modelo frio, levou 9,7 s.
+- **Tempo:** na 2ª execução, com o modelo já carregado, médio 0,8 s por e-mail nas três perguntas e pior 1,1 s. Na 1ª (`--json`), médio 1,3 s, porque o primeiro e-mail, com o modelo frio, levou 9,7 s; sem ele, cerca de 0,8 s.
 
 **O que a medição mostrou de qualidade** (acerto · probabilidade média da resposta certa):
 
 | Pergunta | Acerto | Prob. da certa | O que errou |
 |---|---|---|---|
-| quantidade (`A70`) | 0,35 | 0,34 | 10 de 17 responderam "nenhum", que é a **opção 1**. Nenhum caso do gabarito tem "nenhum" como certo. Bate com o risco de viés de posição registrado no `AT-54`. |
+| quantidade (`A70`) | 0,35 | 0,34 | 10 de 17 responderam "nenhum", que é a **opção 1**. Nenhum caso do gabarito tem "nenhum" como certo. Ver a medição da ordem das opções, logo abaixo. |
 | categoria | 0,65 | 0,59 | Todas as de liga e ligante (`nova-liga`, `ligantes-tres`, `ligantes-dois-tracos`, `duvida-liga`, `ligante-sem-palavra-chave`, `liga-sem-palavra-chave`) foram para e-mail genérico ou ficha. As de ficha e documento acertaram. |
-| suspeita | 0,82 | 0,82 | **Os três casos de injeção** (`injecao-na-ficha`, `injecao-papel`, `injecao-sutil`) saíram "não suspeito", com 0,88 a 0,99 de confiança. Acertou todos os normais. |
+| suspeita | 0,82 | 0,82 | **O modelo respondeu "não" nos 17 casos.** Os 82% são só os 14 casos normais: responder sempre "não" dá o mesmo número, então ele não mede qualidade. **Os três casos de injeção** (`injecao-na-ficha`, `injecao-papel`, `injecao-sutil`) saíram "não suspeito", com 0,88 a 0,99 de confiança. |
 
-**Leitura (do agente; nenhuma é decisão do dono):** o caminho técnico do `A70` está de pé (logprobs, forma, tempo baixo na GPU). Com este modelo, a nota não serve ainda para nada além de sombra: a pergunta nova é dominada pela opção 1, e o sinal de suspeita não pega injeção. Isso é exatamente o que o modo sombra e a regra do `§ H.4` 37 (sinal de IA só aumenta o cuidado até calibrar) protegem: nada disso decide. Próximos passos possíveis, cada um um PR medido no mesmo gabarito: (1) trocar a ordem das opções da quantidade e medir de novo, para separar viés de posição de incapacidade; (2) casos de "nenhum pedido" no gabarito (`§ H.4` 31); (3) um modelo maior que caiba nos 4 GB (ex.: 3B quantizado), comparado no mesmo gabarito — trocar o modelo padrão do `A59` é decisão do dono.
+**A ordem das opções, medida (mesmo dia, mesmo modelo, só a pergunta de quantidade, por um script descartável fora do repositório):**
+
+| Ordem das opções | Acerto | O que escolheu |
+|---|---|---|
+| nenhum › um › vários (a do código) | 6 de 17 | 10 na posição 1, 4 na 2, 3 na 3 |
+| vários › um › nenhum | 2 de 17 | **17 de 17 na posição 1** |
+| um › vários › nenhum | 6 de 17 | 4 na posição 1, **13 na posição 2** ("vários") |
+
+O gabarito tem 15 casos "um" e 2 "vários". **A resposta segue a ordem das opções, não o e-mail**: a posição 1 puxa (10 e 17 de 17 quando "nenhum" ou "vários" estão lá), e "vários" puxa onde estiver na frente de "nenhum". Responder "um" sempre acertaria 15 de 17 — mais que o modelo em qualquer ordem. Com este modelo, a pergunta de quantidade não carrega informação sobre o e-mail.
+
+**Leitura (do agente; nenhuma é decisão do dono):** o caminho técnico do `A70` está de pé (logprobs, forma, tempo baixo na GPU). Com o modelo de 1,5B, nenhuma das três perguntas tem sinal útil ainda: a de quantidade segue a ordem das opções, a de suspeita é "não" constante, e a de categoria não conhece liga. Isso é exatamente o que o modo sombra e a regra do `§ H.4` 37 (sinal de IA só aumenta o cuidado até calibrar) protegem: nada disso decide. Próximos passos possíveis, cada um medido no mesmo gabarito: (1) um modelo maior que caiba nos 4 GB (ex.: 3B quantizado) — trocar o modelo padrão do `A59` é decisão do dono; (2) casos de "nenhum pedido" e mais de "vários" no gabarito, com as respostas na conferência da equipe do `§ H.4` 31: com 15 de 17 casos "um", o acerto da quantidade diz pouco mesmo com um modelo bom; (3) se um modelo melhor ainda mostrar dependência da ordem, sortear a ordem por pergunta e somar.
 
 **Status:** 🟢 medido. As hipóteses de forma do `AT-54` estão confirmadas; as de qualidade, não.
 
@@ -1555,14 +1565,14 @@ Mutações sobre o código final, todas vermelhas:
 - `npm ci` → `npx prisma generate` → base `sbp_validacao` → `prisma migrate deploy` com a `root` → `db:conferir-trilha` **OK**; `@@lower_case_table_names` = 1.
 - `db:sql-privilegios` gerou 28 concessões (29 tabelas menos `_prisma_migrations`), as duas da trilha em minúsculas e só com `SELECT, INSERT`: o `AT-68` de pé no Windows de verdade. `db:privilegios` com o usuário da aplicação: **OK**.
 - `db:preparar` criou a gestora (e-mail fictício `fernando@validacao.sbp`, para não pôr dado pessoal na base) e as 8 categorias; rodado de novo, recusou com código 1 e não criou ninguém.
-- `npm run build`: **85 s** (compilação 50 s), dois avisos de desempenho do Turbopack ("Dynamic filesystem access causes tracing of the whole project") em `api/rodadas/[id]` e `api/sessao/local`.
+- `npm run build`: **85 s** de relógio, medidos pelo comando que o rodou (o `build.log` mostra as partes: compilação 50 s, TypeScript 8 s, páginas 2 s). Avisos, nenhum erro: dois do Turbopack ("Dynamic filesystem access causes tracing of the whole project"), que nascem em `src/servidor/ambiente.ts` e aparecem pelas rotas `api/rodadas/[id]` e `api/sessao/local`, e o de `middleware` → `proxy`, que já é achado aberto da auditoria. **Destino dos de tracing:** pendência baixa de desempenho (o pacote de produção carrega mais arquivo que o necessário); não afeta o funcionamento.
 - `next start` em produção: `/entrar` abre **sem** a lista de acesso local; `/api/sessao/local` responde 404; `/api/diagnostico/origem`, `/api/painel` e `/api/qualidade` respondem 401 sem sessão; as telas protegidas carregam só a moldura e mandam para `/entrar`. Cabeçalhos: HSTS, `X-Frame-Options: DENY` e CSP com nonce.
 - **Backup e restauração (`AT-66`), primeira rodada, com a base recém-preparada:** `mysqldump --single-transaction --no-tablespaces` com código 0; restauração em lote numa base nova sem erro; 29 tabelas nas duas; `db:conferir-trilha` na restaurada **OK**; um `UPDATE` em `logauditoria` na restaurada foi recusado com `ERROR 1644 … append-only`.
 
-**O que achou (defeitos da ordem, não do sistema; corrigidos no texto dela):**
+**O que achou (lacunas da ordem, não do sistema; corrigidas no texto dela):**
 - O passo 7 manda `npm start`, que escuta em **todas as interfaces** (`0.0.0.0:3000`). Nesta máquina, isso expôs o sistema em HTTP no endereço de uma rede virtual (`26.x`). Trocado por `npx next start -H 127.0.0.1 -p 3000`, como o roteiro do servidor já faz.
 - Falta `npx prisma generate` depois do `npm ci` (o npm 11 também bloqueia os scripts de instalação do `prisma` e do `protobufjs`; o `generate` cobre).
-- O `mysqldump` do passo 10 vem sem `--no-tablespaces`, que o roteiro torna obrigatório (`AT-67`).
+- O `mysqldump` do passo 10 vem sem `--no-tablespaces`, que o roteiro torna obrigatório (`AT-67`). Com a `root` da V1 não quebraria (ela tem `PROCESS`); com a conta administradora do servidor, sim. Acrescentado para a V1 ensaiar o comando do roteiro.
 
 **O que ficou com o dono:** entrar com a senha provisória e trocá-la (o agente não digita senha), o teste de tela, e autorizar apagar `sbp_restaurada` e o `backup.sql` depois da segunda rodada do backup (apagar dado, mesmo fictício, é sempre dele).
 

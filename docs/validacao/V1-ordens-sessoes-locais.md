@@ -62,7 +62,7 @@ Não use a pasta de desenvolvimento: produção lê outro `.env`, e misturar os 
 5b. Com a mesma variável: `npm run db:conferir-trilha`. Tem de dizer `OK: as triggers de LogAuditoria e EventoProcessamento estão presentes…`. Depois, `Remove-Item Env:DATABASE_URL` para voltar à URL do `.env`. Me devolva também a saída de `SELECT @@lower_case_table_names;` no MySQL: no Windows deve ser 1, e a conferência foi feita para isso.
 6. `npm run db:preparar -- --nome "Fernando" --email <o e-mail do Fernando>`. Guarde a senha provisória para entregar a ele. **Não rode o seed nem a demo nesta pasta.** Se rodar, eles devem recusar; se não recusarem, é defeito, e eu quero saber.
 7. `npm run build`. Depois `npx next start -H 127.0.0.1 -p 3000`. **Não use `npm start` puro:** ele escuta em todas as interfaces, e em 02/10 expôs o sistema em HTTP no endereço de uma rede virtual da máquina (`AT-70`). O roteiro do servidor também usa `-H 127.0.0.1`.
-8. Abra `http://localhost:3000`. Entre com o e-mail do Fernando e a senha provisória. O sistema tem de pedir a troca de senha antes de qualquer tela.
+8. Abra `http://127.0.0.1:3000`. Entre com o e-mail do Fernando e a senha provisória. O sistema tem de pedir a troca de senha antes de qualquer tela.
 9. Me devolva:
    - cada passo que deu erro, com a mensagem exata;
    - o tempo do `npm run build`;
@@ -70,7 +70,7 @@ Não use a pasta de desenvolvimento: produção lê outro `.env`, e misturar os 
 
    O teste de tela é do Fernando: cadastrar 2 ou 3 colaboradores fictícios em "Acesso e cadastro", marcar o plantão, "Buscar e-mails", Revisão, Distribuição, Minha fila e Painel. A busca roda no servidor e a tela mostra "lendo N de M" (`AT-62`). Anote quanto tempo ela leva, quantos e-mails trouxe e se o "lendo N de M" avançou na tela.
 10. **Ensaio de backup (`AT-66`), depois do teste de tela.** Com a root:
-    - `mysqldump -u root -p --single-transaction --no-tablespaces sbp_validacao > C:\sbp-validacao\backup.sql` (sem `--no-tablespaces`, o `mysqldump` pode falhar e sair com código 0, `AT-67`; com a `root` sem senha desta máquina, tire o `-p`)
+    - `mysqldump -u root -p --single-transaction --no-tablespaces sbp_validacao > C:\sbp-validacao\backup.sql` (o `--no-tablespaces` é o comando do roteiro do servidor: lá, a conta administradora sem `PROCESS` faria o `mysqldump` falhar e sair com código 0, `AT-67`; com a `root` sem senha desta máquina, tire o `-p`)
     - `mysql -u root -p -e "CREATE DATABASE sbp_restaurada CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs"`
     - `mysql -u root -p sbp_restaurada < C:\sbp-validacao\backup.sql`
     - `npm run db:conferir-trilha`, com a `DATABASE_URL` da root apontando para `sbp_restaurada`.

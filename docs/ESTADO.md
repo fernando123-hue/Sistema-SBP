@@ -11,7 +11,7 @@
 > **Feito:**
 > - **#187 (`AT-67`, `AT-68`):** comentários da conta administradora; e `db:sql-privilegios`, que recusava a base migrada no MySQL do Windows. Achado pela suíte no Windows.
 > - **Suíte no Windows** (a ordem da sessão "Fix TLS"): 163 arquivos, 2068 testes, todos verdes, em conteúdo idêntico ao da `main` `54fb211`.
-> - **P1 do classificador (`AT-69`):** há logprobs, as probabilidades não são só 0 e 1, 0 falhas de forma, 0,8 s por e-mail na GPU. **Qualidade fraca:** quantidade 35% (10 de 17 na opção 1, "nenhum": viés de posição), categoria 65% (erra todas as de liga), suspeita 82% (**não pega nenhum dos três casos de injeção**). Só sombra; nada disso decide.
+> - **P1 do classificador (`AT-69`):** há logprobs, as probabilidades não são só 0 e 1, 0 falhas de forma, 0,8 s por e-mail na GPU. **Sem sinal útil ainda com o modelo de 1,5B:** a quantidade segue a ordem das opções, não o e-mail (medido em três ordens: com "vários" em primeiro, 17 de 17 "vários"); a categoria erra todas as de liga (65%); a suspeita foi "não" nos 17 casos — os 82% são só os casos normais, e **nenhum dos três de injeção foi pego**. Só sombra; nada disso decide.
 > - **V1 até o passo 7 (`AT-70`)** em `C:\sbp-validacao`, com usuário mínimo do banco (`sbp_app`) em vez da `root`: migrações, trava, permissões, gestora, build (85 s), `next start` em produção em `127.0.0.1:3000`, travas de produção conferidas. **Backup e restauração (`AT-66`), 1ª rodada:** restaurou, trava conferida, `UPDATE` na trilha recusado.
 > - **Ordem da V1 corrigida** em três pontos: `npm start` expunha o sistema na rede (agora `-H 127.0.0.1`), faltava `prisma generate`, faltava `--no-tablespaces`.
 >
@@ -23,7 +23,7 @@
 > 3. Avisar a sessão, para a 2ª rodada do backup com os dados do teste; depois, **autorizar apagar** `sbp_restaurada` e `C:\sbp-validacao\backup.sql`.
 > 4. Decidir se vale medir um modelo maior que caiba nos 4 GB da placa (`AT-69`; trocar o modelo do `A59` é decisão dele).
 >
-> **Próximo do agente, sem depender do dono:** medir a pergunta de quantidade com as opções em outra ordem, para separar viés de posição de incapacidade (`AT-69`, passo 1) — PR de nível 2 ou 3 conforme o script.
+> **Próximo do agente, sem depender do dono:** casos sintéticos de "nenhum pedido" e de "vários" no gabarito (`AT-69`, passo 2) — com 15 de 17 casos "um", nenhuma medição da quantidade diz muito, com qualquer modelo. As respostas que o agente escrever entram na mesma conferência pela equipe do `§ H.4` 31; os modelos da V2 trazem casos melhores e, quando chegarem, têm prioridade. A ordem das opções já foi medida (`AT-69`).
 >
 > ### 02/10/2026 — PASSAGEM (este bloco vence todos os de baixo; o de 01/10, logo abaixo, explica o plano)
 >
