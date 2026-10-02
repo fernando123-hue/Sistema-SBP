@@ -1,8 +1,29 @@
 # Estado do projeto — retomada
 
-Última atualização: **02/10/2026 — passagem para a próxima sessão: V3 pronta, V1 com as sessões locais.** `main` depois do #185. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **02/10/2026, tarde — V1 executada pela sessão local até onde o agente pode ir; falta a parte do dono.** `main` depois do #187. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### 02/10/2026, tarde — V1 RODADA PELA SESSÃO LOCAL (vence o bloco de baixo onde conflitar)
+>
+> O dono disse a esta sessão, na máquina dele: "você é uma sessão local, resolva todas as questões pendentes". Então as ordens que esperavam as sessões locais foram executadas aqui. Detalhe completo: `DECISOES.md § AT-69` (classificador) e `§ AT-70` (V1).
+>
+> **Feito:**
+> - **#187 (`AT-67`, `AT-68`):** comentários da conta administradora; e `db:sql-privilegios`, que recusava a base migrada no MySQL do Windows. Achado pela suíte no Windows.
+> - **Suíte no Windows** (a ordem da sessão "Fix TLS"): 163 arquivos, 2068 testes, todos verdes, em conteúdo idêntico ao da `main` `54fb211`.
+> - **P1 do classificador (`AT-69`):** há logprobs, as probabilidades não são só 0 e 1, 0 falhas de forma, 0,8 s por e-mail na GPU. **Qualidade fraca:** quantidade 35% (10 de 17 na opção 1, "nenhum": viés de posição), categoria 65% (erra todas as de liga), suspeita 82% (**não pega nenhum dos três casos de injeção**). Só sombra; nada disso decide.
+> - **V1 até o passo 7 (`AT-70`)** em `C:\sbp-validacao`, com usuário mínimo do banco (`sbp_app`) em vez da `root`: migrações, trava, permissões, gestora, build (85 s), `next start` em produção em `127.0.0.1:3000`, travas de produção conferidas. **Backup e restauração (`AT-66`), 1ª rodada:** restaurou, trava conferida, `UPDATE` na trilha recusado.
+> - **Ordem da V1 corrigida** em três pontos: `npm start` expunha o sistema na rede (agora `-H 127.0.0.1`), faltava `prisma generate`, faltava `--no-tablespaces`.
+>
+> **Está no ar nesta máquina (processos soltos, não serviços; param se a máquina reiniciar):** MySQL em `127.0.0.1:3307`; o SBP de produção da V1 em `http://127.0.0.1:3000`, registro em `C:\sbp-validacao\servidor.log`.
+>
+> **Com o dono, agora:**
+> 1. Abrir `http://127.0.0.1:3000`, entrar com `fernando@validacao.sbp` e a senha provisória que está em `C:\sbp-validacao\SENHA-PROVISORIA.txt`; trocar a senha; **apagar esse arquivo**.
+> 2. O teste de tela (passo 9 da ordem): 2 ou 3 colaboradores fictícios, plantão, "Buscar e-mails" (anotar o tempo, quantos vieram e se o "lendo N de M" avançou), Revisão, Distribuição, Minha fila, Painel.
+> 3. Avisar a sessão, para a 2ª rodada do backup com os dados do teste; depois, **autorizar apagar** `sbp_restaurada` e `C:\sbp-validacao\backup.sql`.
+> 4. Decidir se vale medir um modelo maior que caiba nos 4 GB da placa (`AT-69`; trocar o modelo do `A59` é decisão dele).
+>
+> **Próximo do agente, sem depender do dono:** medir a pergunta de quantidade com as opções em outra ordem, para separar viés de posição de incapacidade (`AT-69`, passo 1) — PR de nível 2 ou 3 conforme o script.
 >
 > ### 02/10/2026 — PASSAGEM (este bloco vence todos os de baixo; o de 01/10, logo abaixo, explica o plano)
 >
