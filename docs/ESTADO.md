@@ -1,10 +1,44 @@
 # Estado do projeto — retomada
 
-Última atualização: **01/10/2026, tarde — validar na máquina do dono antes do servidor (`A74`); segredos pela prática do TI (`A73`).** `main` depois do #176. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **02/10/2026 — passagem para a próxima sessão: V3 pronta, V1 com as sessões locais.** `main` depois do #185. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 01/10/2026, tarde — PLANO ATUAL: VALIDAR NA MÁQUINA DO DONO, DEPOIS ENTREGAR AO TI (este bloco vence todos os de baixo)
+> ### 02/10/2026 — PASSAGEM (este bloco vence todos os de baixo; o de 01/10, logo abaixo, explica o plano)
+>
+> **Onde o plano do `A74` está:**
+> - **V3** (roteiro do TI): **pronta**, em `docs/INSTALACAO.md`. Os passos marcados "ensaiado" foram executados a partir de um `git clone` num servidor limpo; os que dependem do servidor estão marcados "a conferir pelo TI".
+> - **V1** (o sistema como produção, na máquina do dono, com e-mails fictícios): **com as sessões locais**, à espera dos resultados. As ordens estão em `docs/validacao/V1-ordens-sessoes-locais.md`; o dono cola cada bloco na sessão indicada e traz a resposta.
+> - **V2** (modelos de e-mails reais, anonimizados): **com o dono**.
+>
+> **Mesclados desde o bloco de 01/10:**
+> - **#183 (`AT-65`):** configuração errada encerra o servidor de produção com código 1 e o motivo.
+> - **#184 (`AT-66`):** o backup do banco não restaurava (a trigger da trilha tinha o corpo gravado com `;`). As triggers foram recriadas, e `npm run db:conferir-trilha` confere a trava, inclusive no MySQL do Windows.
+> - **#185 (`AT-67`):** o roteiro de instalação, reprovado na primeira revisão e reensaiado num servidor limpo. O ensaio achou e corrigiu:
+>   - o `mysqldump` sem `--no-tablespaces`, que sai com código 0 mesmo falhando;
+>   - o `allowPublicKeyRetrieval`, que só faz falta depois que o MySQL reinicia;
+>   - as permissões, que precisam ser regeneradas depois de restaurar;
+>   - a restauração, que só pode ser feita em lote.
+>
+> **Próximo, na ordem:**
+> 1. **Processar os resultados da V1** quando o dono os colar. Cada defeito vira um PR. O que se espera receber:
+>    - o P1 do classificador local (`logprobs`, probabilidades, tempo por pergunta);
+>    - a base de validação migrada com a `root`, com `db:conferir-trilha` OK e `@@lower_case_table_names`;
+>    - login, troca de senha e o teste de tela do dono, com o tempo da busca e o "lendo N de M";
+>    - o ensaio de backup e restauração;
+>    - `npm run verificar` no Windows, com atenção aos testes novos da trilha (`trilha-append-only`, `privilegios-trava`): eles só foram vistos passar num MySQL Linux configurado como o do Windows.
+> 2. **PR pequeno:** os comentários "credencial de MANUTENÇÃO" em `scripts/sql-de-privilegios.ts:7` e `src/servidor/privilegios.ts:120` passam a falar da conta administradora (`AT-67`), no nível de risco que o script der.
+> 3. **V2:** quando o dono trouxer os modelos, a anonimização acontece **antes** de qualquer commit; os textos entram como casos do gabarito (`A74`).
+> 4. **Achados de auditoria ainda abertos:** a lista no bloco de 01/10, abaixo.
+>
+> **O que espera o dono:**
+> - colar as ordens da V1 nas duas sessões locais e trazer as respostas;
+> - os modelos de e-mail da V2;
+> - as três decisões que bloqueiam o e-mail real: liberar e-mail real na IA local (`A56 (e)`), a data de `GRAPH_LER_DESDE` e o registro do aplicativo no Microsoft 365 pelo TI.
+>
+> **Regras que valem para toda sessão:** um PR por assunto; o processo de `docs/PROCESSO.md`, com o nível de risco calculado pelo script; nada de dado real no repositório (invariante 8).
+>
+> ### 01/10/2026, tarde — PLANO ATUAL: VALIDAR NA MÁQUINA DO DONO, DEPOIS ENTREGAR AO TI
 >
 > **Decisões do dono hoje** (`DECISOES.md`):
 > - **`A74`:** o sistema vai para o servidor físico da empresa, mas primeiro é **validado na máquina do dono** (Windows, Ollama na GTX 1050 Ti). Ordem: **V1** com e-mails fictícios, rodando como produção; **V2** com modelos de e-mails reais da empresa, **anonimizados antes de qualquer commit**, como casos do gabarito; **V3** roteiro de instalação para o TI.
@@ -20,7 +54,7 @@
 >
 > **Próximo, na ordem:**
 > 1. ~~**Busca de e-mails sem prender a tela.**~~ **Feita no #178 (`AT-62`):** a busca roda no servidor, uma por vez, e a tela mostra "lendo N de M". O "lendo N de M" com a IA de verdade é conferido na V1.
-> 2. **V1 na máquina do dono**, pelas sessões locais:
+> 2. **V1 na máquina do dono**, pelas sessões locais (ordens atualizadas em `docs/validacao/V1-ordens-sessoes-locais.md`):
 >    - `next build` + `next start` com `NODE_ENV=production`;
 >    - base nova preparada com `db:preparar`, IA local, segunda opinião local e e-mails fictícios;
 >    - o P1 do classificador (`classificador:avaliar`);
