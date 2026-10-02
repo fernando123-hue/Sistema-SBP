@@ -301,13 +301,23 @@ que cada pessoa tem o seu limite.
 **O que entra no backup:**
 - o banco, como administrador, gravado **fora de `/opt/sbp`**:
   ```bash
-  umask 077; mkdir -p /var/backups/sbp
-  mysqldump --single-transaction --no-tablespaces -u sbp_admin -p sbp > /var/backups/sbp/backup.sql; echo "código: $?"
+  ( umask 077; mkdir -p /var/backups/sbp
+    ARQ=/var/backups/sbp/sbp-$(date +%F-%H%M%S).sql
+    mysqldump --single-transaction --no-tablespaces -u sbp_admin -p sbp > "$ARQ.parcial" \
+      && mv "$ARQ.parcial" "$ARQ" && echo "pronto: $ARQ" \
+      || { echo "FALHOU: o backup anterior continua intacto"; rm -f "$ARQ.parcial"; } )
   ```
   O arquivo tem o texto dos e-mails (nomes e CPFs que vieram no corpo) e os
-  hashes de senha. Ele recebe o mesmo cuidado do arquivo de segredos:
-  legível só pelo `root` (o `umask 077` garante isso) e cópia num destino
-  criptografado.
+  hashes de senha. Ele recebe o mesmo cuidado do arquivo de segredos: fica
+  legível só pelo `root` e tem cópia num destino criptografado. **(Ensaiado:**
+  - com a senha certa, sai `-rw-------`;
+  - com a senha errada, aparece "FALHOU", não sobra arquivo parcial e o
+    backup anterior fica intacto;
+  - o `umask` do terminal não muda, porque tudo roda entre parênteses.)
+
+  O nome leva data e hora, e o arquivo só ganha o nome final se o
+  `mysqldump` terminar bem: um nome fixo seria esvaziado pela própria
+  execução que falhou.
   **O `--no-tablespaces` é obrigatório.** Sem ele, a conta administradora
   (que não tem `PROCESS`) recebe "Access denied … PROCESS privilege …
   tablespaces". O `mysqldump` mesmo assim **sai com código 0**, e um backup
@@ -333,7 +343,7 @@ passos 1 a 3 e crie as duas contas (4.1) **antes**: a trigger precisa do
    ```
    E restaurar **em lote**, no terminal:
    ```bash
-   mysql -u root -p sbp_restaurada < /var/backups/sbp/backup.sql; echo "código: $?"
+   mysql -u root -p sbp_restaurada < /var/backups/sbp/sbp-<data>.sql; echo "código: $?"
    ```
    O código tem de ser 0. Nunca use `SOURCE` no cliente interativo: ele
    continua depois de um erro e deixa a base pela metade sem avisar (passo
