@@ -40,8 +40,12 @@ import { arredondar, somar } from '../util/numero'
  * e o primeiro passo de um conjunto de treino (invariante 9).
  */
 
-/** Muda quando um caso ou a regra de nota muda — nota só se compara dentro da mesma versão. */
-export const VERSAO_DO_GABARITO = 'gabarito-1.1.0'
+/**
+ * Muda quando um caso ou a regra de nota muda — nota só se compara dentro da
+ * mesma versão. Também quando o texto da IA passa a pedir o que um caso já
+ * esperava: a 1.2.0 é a 1.1.0 depois do `A75` entrar no prompt (`AT-72`).
+ */
+export const VERSAO_DO_GABARITO = 'gabarito-1.2.0'
 
 export interface ItemEsperado {
   categoriaCodigo: ItemExtraido['categoriaCodigo']

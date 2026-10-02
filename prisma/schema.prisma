@@ -342,6 +342,11 @@ model Item {
   /// nunca um efeito colateral do schema.
   payload     String  @db.LongText
   confianca   Float   @default(0)
+  /// O "obrigado" de um associado, sem pedido (`A75`): a fila escreve
+  /// "Agradecimento — responder com cordialidade". Coluna, e não `payload`:
+  /// a fila não lê o payload (dado pessoal, sem teto), e o sinal não é dado
+  /// pessoal — sobrevive ao prazo do `A23(a)`, como a categoria.
+  agradecimento Boolean @default(false)
   /// novo | aguardando_revisao | aprovado | distribuido | em_andamento | concluido | devolvido | cancelado
   status      String  @default("novo")
   ligaId      String?

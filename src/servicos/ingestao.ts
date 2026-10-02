@@ -951,6 +951,8 @@ async function criarItens(
           observacao: extraido.observacao,
         }),
         confianca: extraido.confianca,
+        // `A75`: ausente vale "não" — só o sinal explícito vira observação.
+        agradecimento: extraido.agradecimento === true,
         status: motivo ? 'aguardando_revisao' : 'aprovado',
         // A chave de busca nasce com o campo: é a única parte do que a IA leu
         // que fica depois do prazo do texto do e-mail (`A23(b)`). CPF com erro
