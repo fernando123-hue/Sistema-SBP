@@ -63,9 +63,17 @@ describe('scripts que usam o banco encerram sozinhos', () => {
     expect(resultado.encerrou).toBe(true)
     expect(resultado.codigo).toBe(0)
     // `SHOW TABLES` pelo adaptador de verdade, e não só a função pura: a
-    // trilha sai só com SELECT, INSERT, e uma tabela comum com as quatro.
-    expect(resultado.saida).toMatch(/GRANT SELECT, INSERT ON `[^`]+`\.`LogAuditoria` TO 'sbp_app'@'localhost';/)
-    expect(resultado.saida).toMatch(/GRANT SELECT, INSERT, UPDATE, DELETE ON `[^`]+`\.`Item` TO 'sbp_app'@'localhost';/)
+    // trilha sai só com SELECT, INSERT, e uma tabela comum com as quatro. No
+    // MySQL do Windows (`lower_case_table_names=1`) os nomes vêm em minúsculas.
+    const [{ caixa }] = await obterPrisma().$queryRaw<[{ caixa: number | bigint }]>`
+      SELECT @@lower_case_table_names AS caixa`
+    const nome = (tabela: string): string => (Number(caixa) === 1 ? tabela.toLowerCase() : tabela)
+    expect(resultado.saida).toMatch(
+      new RegExp(`GRANT SELECT, INSERT ON \`[^\`]+\`\\.\`${nome('LogAuditoria')}\` TO 'sbp_app'@'localhost';`),
+    )
+    expect(resultado.saida).toMatch(
+      new RegExp(`GRANT SELECT, INSERT, UPDATE, DELETE ON \`[^\`]+\`\\.\`${nome('Item')}\` TO 'sbp_app'@'localhost';`),
+    )
     expect(resultado.saida).not.toContain('_prisma_migrations')
   })
 

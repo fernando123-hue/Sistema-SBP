@@ -117,12 +117,42 @@ export function privilegiosQueAmeacamATrilha(
 }
 
 export interface AlvoDaConcessao {
-  /** A base da operação (`SELECT DATABASE()` com a credencial de manutenção). */
+  /** A base da operação (`SELECT DATABASE()` com a conta administradora, `AT-67`). */
   base: string
   usuario: string
   host: string
   /** `%` no host só com este pedido explícito. */
   aceitaQualquerHost?: boolean
+  /**
+   * Obrigatório: sem ele, o gerador não sabe se `logauditoria` é a trilha
+   * (Windows) ou outra tabela (Linux).
+   */
+  caixaDosNomes: CaixaDosNomes
+}
+
+/** `@@lower_case_table_names` do servidor: 0 no Linux, 1 no Windows, 2 no macOS. */
+export type CaixaDosNomes = 0 | 1 | 2
+
+/**
+ * O valor lido do banco, conferido. Chega como `number` ou `bigint`, conforme o
+ * driver. Fora de 0, 1 e 2 caía em silêncio no ramo "sem caixa": num Linux com
+ * só uma `logauditoria` qualquer, a base sem a trilha de verdade passava por
+ * migrada (revisão técnica do #187, M1). Recusa, em vez de adivinhar.
+ */
+export function lerCaixaDosNomes(valor: unknown): CaixaDosNomes {
+  const numero = typeof valor === 'bigint' ? Number(valor) : valor
+  if (numero === 0 || numero === 1 || numero === 2) return numero
+  throw new Error(`@@lower_case_table_names fora do esperado (0, 1 ou 2): ${String(valor)}.`)
+}
+
+/**
+ * A chave de comparação de nomes de tabela. Sem caixa SÓ onde o servidor
+ * ignora a caixa: no Windows o `SHOW TABLES` devolve `logauditoria` (`AT-32`,
+ * `AT-68`); no Linux, `logauditoria` é outra tabela, e tratá-la como a trilha
+ * aceitaria uma sombra no lugar da trilha (terceira rodada das revisões do #184).
+ */
+function chaveDaTabela(caixa: CaixaDosNomes): (tabela: string) => string {
+  return caixa === 0 ? (tabela) => tabela : (tabela) => tabela.toLowerCase()
 }
 
 /** Nome de base, usuário ou tabela: só o que o MySQL aceita sem escapar. */
@@ -162,18 +192,31 @@ export function sqlDeConcessaoMinima(tabelas: readonly string[], alvo: AlvoDaCon
     }
   }
 
-  const daTrilha = new Set<string>(TABELAS_DA_TRILHA)
+  // No Windows o `SHOW TABLES` devolve `logauditoria`: comparar com caixa
+  // recusava a base migrada (medido em 02/10/2026, `AT-68`).
+  const chave = chaveDaTabela(lerCaixaDosNomes(alvo.caixaDosNomes))
+  const daTrilha = new Set<string>(TABELAS_DA_TRILHA.map(chave))
   const daAplicacao = tabelas.filter((tabela) => tabela !== '_prisma_migrations')
-  const faltando = TABELAS_DA_TRILHA.filter((tabela) => !daAplicacao.includes(tabela))
+  const presentes = new Set(daAplicacao.map(chave))
+  const faltando = TABELAS_DA_TRILHA.filter((tabela) => !presentes.has(chave(tabela)))
   if (faltando.length > 0) {
     // Gerar sem elas daria à aplicação um usuário que nem grava a trilha, e o
     // erro só apareceria na primeira ação auditada. Base sem migração não é base.
-    throw new Error(`A base não tem ${faltando.join(' nem ')}: rode as migrações antes de gerar as concessões.`)
+    const emOutraCaixa = daAplicacao.filter((tabela) =>
+      faltando.some((falta) => falta.toLowerCase() === tabela.toLowerCase()),
+    )
+    // Base restaurada do Windows num Linux: "rode as migrações" mandaria
+    // procurar no lugar errado (revisão técnica do #187, B3).
+    const dica =
+      emOutraCaixa.length > 0
+        ? ` A base tem ${emOutraCaixa.join(' e ')}, com outra caixa: confira @@lower_case_table_names do servidor.`
+        : ''
+    throw new Error(`A base não tem ${faltando.join(' nem ')}: rode as migrações antes de gerar as concessões.${dica}`)
   }
 
   const quem = `'${alvo.usuario}'@'${alvo.host}'`
   const linhas = [...daAplicacao].sort().map((tabela) =>
-    daTrilha.has(tabela)
+    daTrilha.has(chave(tabela))
       ? `GRANT SELECT, INSERT ON \`${alvo.base}\`.\`${tabela}\` TO ${quem};`
       : `GRANT SELECT, INSERT, UPDATE, DELETE ON \`${alvo.base}\`.\`${tabela}\` TO ${quem};`,
   )
@@ -239,14 +282,12 @@ export interface ConferenciaDaTrava {
  */
 export function conferirTravaDaTrilha(
   triggers: readonly TriggerNoBanco[],
-  /** `@@lower_case_table_names` do servidor: 0 no Linux, 1 no Windows, 2 no macOS. */
-  caixaDosNomes: number,
+  caixaDosNomes: CaixaDosNomes,
 ): ConferenciaDaTrava {
-  // Sem caixa SÓ onde o servidor ignora a caixa. No Linux, `logauditoria` é
-  // outra tabela: uma trigger nela, com o corpo exato, passaria por trava da
-  // trilha (terceira rodada das revisões do #184, medido).
-  const mesmaTabela = (deLa: string, daTrilha: string): boolean =>
-    caixaDosNomes === 0 ? deLa === daTrilha : deLa.toLowerCase() === daTrilha.toLowerCase()
+  // No Linux, `logauditoria` é outra tabela: uma trigger nela, com o corpo
+  // exato, passaria por trava da trilha (terceira rodada das revisões do #184).
+  const chave = chaveDaTabela(lerCaixaDosNomes(caixaDosNomes))
+  const mesmaTabela = (deLa: string, daTrilha: string): boolean => chave(deLa) === chave(daTrilha)
   const semTrava = TABELAS_DA_TRILHA.filter(
     (tabela) =>
       !triggers.some(

@@ -4,14 +4,15 @@
  *
  *   npm run db:sql-privilegios -- --usuario sbp_app --host localhost
  *
- * Rode com a credencial de MANUTENÇÃO (a que migra), depois das migrações:
+ * Rode com a conta ADMINISTRADORA do MySQL (a que migra, `AT-67`), depois das
+ * migrações:
  * ele lê as tabelas que existem na base e não escreve nada. O usuário da
  * aplicação é criado antes, pelo TI, com a senha que só o servidor conhece;
  * a senha não passa por aqui.
  */
 
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
-import { sqlDeConcessaoMinima } from '../src/servidor/privilegios'
+import { lerCaixaDosNomes, sqlDeConcessaoMinima } from '../src/servidor/privilegios'
 
 /** O valor depois de `--nome`. Outra opção no lugar do valor conta como ausente. */
 function argumento(nome: string): string | undefined {
@@ -33,9 +34,12 @@ async function principal(): Promise<void> {
   if (!base) throw new Error('A DATABASE_URL não aponta para uma base.')
   const linhas = await banco.$queryRawUnsafe<Record<string, string>[]>('SHOW TABLES')
   const tabelas = linhas.map((linha) => Object.values(linha)[0] ?? '')
+  const [linhaDaCaixa] = await banco.$queryRaw<{ caixa: unknown }[]>`
+    SELECT @@lower_case_table_names AS caixa`
 
   const aceitaQualquerHost = process.argv.includes('--aceito-qualquer-host')
-  process.stdout.write(`${sqlDeConcessaoMinima(tabelas, { base, usuario, host, aceitaQualquerHost })}\n`)
+  const alvo = { base, usuario, host, aceitaQualquerHost, caixaDosNomes: lerCaixaDosNomes(linhaDaCaixa?.caixa) }
+  process.stdout.write(`${sqlDeConcessaoMinima(tabelas, alvo)}\n`)
 }
 
 principal()

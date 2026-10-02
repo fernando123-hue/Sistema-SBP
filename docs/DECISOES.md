@@ -1511,6 +1511,20 @@ Mutações sobre o código final, todas vermelhas:
 
 **Status:** 🟢 em vigor.
 
+### AT-68 — No MySQL do Windows, `db:sql-privilegios` recusava a base migrada *(02/10/2026)*
+
+**Achado:** `npm run verificar` nesta máquina (Windows, MySQL 8.4, `lower_case_table_names=1`) falhou em `scripts/scripts-encerram.test.ts`. Rodado direto, o script saiu com código 1: "A base não tem LogAuditoria nem EventoProcessamento". No Windows o `SHOW TABLES` devolve `logauditoria`, e o gerador comparava com caixa. O ensaio do `AT-67` foi num MySQL Linux, onde a caixa conta, e não pegou. A V1 roda na máquina do dono, que é Windows: o passo das permissões pararia ali.
+
+**Correção:** `sqlDeConcessaoMinima` recebe `caixaDosNomes` (obrigatório), lido pelo script em `@@lower_case_table_names`, e compara sem caixa **só** onde o servidor ignora a caixa — a mesma regra de `conferirTravaDaTrilha`. No Linux, `logauditoria` continua sendo outra tabela, e a base sem a trilha de verdade continua recusada (teste próprio). O SQL sai com o nome como a base o devolve.
+
+**O que as revisões do #187 acrescentaram:**
+- **A caixa lida do servidor é conferida** (`lerCaixaDosNomes`, tipo `0 | 1 | 2`). Antes, `NaN`, `3` ou `null` caíam em silêncio no ramo "sem caixa": num Linux com só uma `logauditoria` qualquer, a base sem a trilha de verdade passava por migrada (revisão técnica, M1). Agora recusa. Vale também para `db:conferir-trilha`.
+- **A regra de comparação mora num lugar só** (`chaveDaTabela`), usada pelo gerador e pela conferência da trava.
+- **A recusa aponta a caixa** quando a trilha existe com outra caixa (base restaurada do Windows num Linux), em vez de só mandar rodar as migrações.
+- **Falso alarme possível, registrado e não corrigido** (revisão de segurança, BAIXO-2): num Linux com `logauditoria` ao lado de `LogAuditoria`, o gerador dá as quatro permissões à `logauditoria` (certo: é outra tabela), e `db:privilegios`, que compara sem caixa, acusa a concessão. Falha fechado, e criar essa tabela exige a conta administradora.
+
+**Status:** 🟢 em vigor.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
