@@ -32,6 +32,19 @@ interface ItemDaFila {
   recebidoEm: string | null
   atribuidoEm: string
   criadoEm: string
+  agradecimento: boolean
+}
+
+/**
+ * O "obrigado" de um associado (`A75`). Texto FIXO do sistema: a IA só marca
+ * o sinal, e nada que ela escreva chega a esta linha (invariante 6).
+ */
+function ObservacaoDeAgradecimento() {
+  return (
+    <p className="mt-1 text-xs text-tinta-suave">
+      <Selo tom="acento">Agradecimento</Selo> — responder com cordialidade
+    </p>
+  )
 }
 
 function quando(valor: string | null): string {
@@ -362,6 +375,7 @@ export default function Fila() {
                 {item.assunto}
               </p>
             ) : null}
+            {item.agradecimento ? <ObservacaoDeAgradecimento /> : null}
           </div>
           {/*
             Mostra `criadoEm`, que é a chave pela qual o servidor

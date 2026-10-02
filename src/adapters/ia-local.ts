@@ -84,7 +84,7 @@ export const PERFIL_LOCAL: PerfilDoFornecedor = {
   // Prefixo do fornecedor: a mesma redação rende resultados diferentes em
   // modelos diferentes, e sem ele a medida de acerto somaria populações
   // distintas sob um rótulo só.
-  versaoPrompt: 'local-1.0.0',
+  versaoPrompt: 'local-1.1.0',
   /**
    * **Vazio de propósito.** Não existe modelo que todo servidor local tenha;
    * `ambiente.ts` exige `IA_MODELO` quando `IA_ADAPTER="local"`, e é de lá que

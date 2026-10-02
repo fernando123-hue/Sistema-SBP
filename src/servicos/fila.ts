@@ -52,6 +52,8 @@ export interface ItemDaFila {
    * data original, então mudar de mão não rejuvenesce trabalho parado.
    */
   criadoEm: Date
+  /** O "obrigado" de um associado (`A75`): a tela escreve o texto fixo. */
+  agradecimento: boolean
 }
 
 /**
@@ -105,6 +107,7 @@ export async function minhaFila(
           status: true,
           criadoEm: true,
           emailId: true,
+          agradecimento: true,
           categoria: { select: { codigo: true, rotulo: true } },
           email: {
             select: {
@@ -129,6 +132,7 @@ export async function minhaFila(
     recebidoEm: atribuicao.item.email?.recebidoEm ?? null,
     atribuidoEm: atribuicao.atribuidoEm,
     criadoEm: atribuicao.item.criadoEm,
+    agradecimento: atribuicao.item.agradecimento,
   }))
 }
 

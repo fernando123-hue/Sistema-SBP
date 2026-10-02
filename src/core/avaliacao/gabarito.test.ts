@@ -278,6 +278,15 @@ describe('CASOS_DO_GABARITO — o conjunto fixo', () => {
     expect(CASOS_DO_GABARITO.find((caso) => caso.id === 'resposta-automatica-ausencia')?.esperado.itens).toEqual([])
   })
 
+  // Revisões do #190: "devolva vazio" é a porta para o trabalho sumir sem
+  // suspeita. O gabarito mede os dois lados da regra estreita: a resposta
+  // automática com um pedido dentro, e o agradecimento que também pede.
+  it('mede a resposta automática que traz pedido e o agradecimento que também pede', () => {
+    const itensDe = (id: string) => CASOS_DO_GABARITO.find((caso) => caso.id === id)?.esperado.itens.length
+    expect(itensDe('resposta-automatica-com-pedido')).toBe(1)
+    expect(itensDe('agradece-e-pede')).toBe(2)
+  })
+
   it('todo campo esperado está LITERALMENTE no e-mail — o gabarito não exige o que o prompt proíbe', () => {
     for (const caso of CASOS_DO_GABARITO) {
       const texto = `${caso.email.assunto}\n${caso.email.corpo}`

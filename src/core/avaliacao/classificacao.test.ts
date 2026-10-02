@@ -44,7 +44,7 @@ describe('a resposta certa da quantidade sai do gabarito', () => {
   // sempre acertava 15 de 17, e nenhum modelo ruim parecia ruim. Cada opção
   // precisa de casos suficientes para errá-la custar. Se este teste falhar ao
   // entrar um caso novo, o conserto é equilibrar o gabarito (um caso de outra
-  // opção junto), não afrouxar o limite: na 1.1.0 ele passa por igualdade.
+  // opção junto), não afrouxar o limite: na 1.2.0 são 17 "um" em 26, perto do teto.
   it('nenhuma opção da quantidade passa de dois terços do gabarito', () => {
     const contagem = CASOS_DO_GABARITO.map((c) => quantidadeDeItens(c.esperado.itens.length))
     for (const opcao of ['nenhum', 'um', 'varios'] as const) {

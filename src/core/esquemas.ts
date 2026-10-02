@@ -408,6 +408,14 @@ export const ItemExtraidoSchema = z.object({
   camposAusentes: z.array(z.string().max(60)).max(50).default([]),
   ligaMencionada: z.string().max(200).nullable().default(null),
   observacao: z.string().max(1000).nullable().default(null),
+  /**
+   * O "obrigado" de um associado, sem pedido (`A75`): vira item, e a fila
+   * escreve "Agradecimento — responder com cordialidade". Um SINAL fechado,
+   * nunca texto: o que a equipe lê é do sistema, não do modelo (invariante 6).
+   * Opcional aqui, e ausente vale "não"; obrigatório na resposta do modelo
+   * (`ia-estruturada.ts`), que precisa decidir em todo item.
+   */
+  agradecimento: z.boolean().optional(),
 })
 export type ItemExtraido = z.infer<typeof ItemExtraidoSchema>
 

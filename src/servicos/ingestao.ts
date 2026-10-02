@@ -7,6 +7,7 @@ import {
   type Interpretacao,
   type MotivoRevisao,
 } from '../core/esquemas'
+import { aceitaAgradecimento } from '../core/config'
 import { CategoriaDesconhecidaError, ErroOperacional } from '../core/erros'
 import { chaveDaLiga } from '../core/ligas'
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
@@ -951,6 +952,9 @@ async function criarItens(
           observacao: extraido.observacao,
         }),
         confianca: extraido.confianca,
+        // `A75`: ausente vale "não" — só o sinal explícito, e só em categoria
+        // de e-mail, vira observação.
+        agradecimento: extraido.agradecimento === true && aceitaAgradecimento(extraido.categoriaCodigo),
         status: motivo ? 'aguardando_revisao' : 'aprovado',
         // A chave de busca nasce com o campo: é a única parte do que a IA leu
         // que fica depois do prazo do texto do e-mail (`A23(b)`). CPF com erro

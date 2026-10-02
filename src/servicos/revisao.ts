@@ -1,3 +1,4 @@
+import { aceitaAgradecimento } from '../core/config'
 import { ErroDeNegocio } from '../core/erros'
 import { Prisma } from '../generated/prisma/client'
 import {
@@ -444,6 +445,10 @@ async function resolverTravada(
       // A chave vem dos campos FINAIS: a pessoa pode ter corrigido ou trocado
       // o CPF, e a chave antiga não pode sobreviver a isso (`A23(b)`).
       ...chaveDeBusca(payloadFinal.campos),
+      // `A75`: a pessoa não vê o sinal de agradecimento; se ela tirou o item
+      // das categorias de e-mail, o selo não pode sobreviver à correção dela
+      // (revisões do #190). Mantida a categoria de e-mail, o sinal fica.
+      ...(aceitaAgradecimento(dados.categoriaCodigo) ? {} : { agradecimento: false }),
       // Aprovado por humano entra na próxima rodada. Recusado sai da fila
       // sem sumir do banco — cancelado é estado, não exclusão.
       status: dados.aprovar ? 'aprovado' : 'cancelado',
