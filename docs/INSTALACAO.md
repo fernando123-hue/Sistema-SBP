@@ -14,14 +14,20 @@ entregue já validado.
   - sem nenhum `.env`;
   - num MySQL 8.4.11 com binlog ligado, que é o padrão.
 
-  Uma diferença do ensaio: o MySQL rodava num container. Por isso as contas
-  foram criadas com `@'%'`, e não com `@'localhost'` (ver passo 4).
+  **O que mudou no ensaio, e só isto.** O MySQL rodava num container,
+  então:
+  - a porta foi 3307;
+  - as contas foram criadas com `@'%'`, e não com `@'localhost'` (ver o
+    passo 4.1);
+  - os nomes foram `sbp_ens` e `sbp_ens_app`, porque `sbp` já existia ali.
+
+  Além disso, a IA ficou em `mock`, porque não havia Ollama, e o `npm` do
+  usuário `sbp` precisou do proxy daquela rede.
+
+  Um primeiro ensaio, feito numa pasta de desenvolvimento, escondeu
+  defeitos que a revisão do PR #185 achou. Este é o segundo, nas condições
+  acima.
 - **(a conferir pelo TI)**: depende do servidor e não foi executado aqui.
-- **(a reensaiar)**: o primeiro ensaio deste passo rodou numa pasta de
-  desenvolvimento, que já tinha o cliente do banco gerado e um `.env`. Isso
-  escondeu defeitos do roteiro, apontados pela revisão do PR #185. O passo
-  será executado de novo nas condições acima antes de o roteiro ser
-  entregue ao TI.
 
 **O que nunca roda no servidor:** `npm run db:seed` e `npm run demo`. Eles
 criam a equipe fictícia e aprovam revisões em massa. Recusam uma base que já
@@ -68,7 +74,7 @@ sudo -u sbp npx prisma generate
   o npm pula as dependências de desenvolvimento, e somem `tsx`, `prisma` e
   `typescript`, de que os comandos e o build dependem.
 
-## 3. Segredos **(a reensaiar)**
+## 3. Segredos **(ensaiado)**
 
 Os segredos ficam num arquivo próprio, fora do repositório:
 `/etc/sbp/sbp.env`. O TI faz o backup dele num local criptografado, como já
@@ -143,14 +149,14 @@ comandos dentro dos parênteses mudam conforme o passo.
 - **O usuário da aplicação** (`sbp_app`), com o mínimo de permissões.
 
 **Por que uma administradora, e não um usuário "de manutenção" estreito
-(a reensaiar):**
+(ensaiado):**
 - com binlog ligado, criar a trigger da trilha exige `SUPER` (`ERROR 1419`);
 - aplicar as permissões exige `GRANT OPTION`.
 
 Um usuário com as duas já é administrador na prática (`AT-67`).
 
 1. **A base e as contas**, no cliente `mysql`, como `root` do MySQL
-   **(a reensaiar)**. A colação é a certa: sem ela, duas grafias da mesma liga
+   **(ensaiado)**. A colação é a certa: sem ela, duas grafias da mesma liga
    viram uma só, sem erro (`AT-10`, `AT-34`).
    ```sql
    CREATE DATABASE sbp CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs;
@@ -168,11 +174,11 @@ Um usuário com as duas já é administrador na prática (`AT-67`).
    `--host 127.0.0.1` no passo 4.4. Para conferir: depois de conectar,
    `SELECT CURRENT_USER();` tem de mostrar a conta que você criou.
 2. **As migrações**, como administrador (o bloco do passo 3, com
-   `npx prisma migrate deploy`) **(a reensaiar)**. Aplique só assim, nunca com
+   `npx prisma migrate deploy`) **(ensaiado)**. Aplique só assim, nunca com
    `mysql < migration.sql`: com `--force`, esse caminho deixa a trilha sem
    trava (`AT-66`).
 3. **Conferir a trava da trilha**, no mesmo bloco:
-   `npm run db:conferir-trilha` **(a reensaiar)**. A resposta tem de ser "OK: as
+   `npm run db:conferir-trilha` **(ensaiado)**. A resposta tem de ser "OK: as
    triggers de LogAuditoria e EventoProcessamento estão presentes, com o
    corpo exato da migração (AT-66)." Qualquer outra resposta sai com código 1
    e diz o que fazer.
@@ -181,7 +187,7 @@ Um usuário com as duas já é administrador na prática (`AT-67`).
    mostra). Por isso o passo 8 manda recriar `sbp_admin` antes de restaurar
    em outra máquina.
 4. **As permissões mínimas do `sbp_app`**, geradas a partir das tabelas que
-   existem, no mesmo bloco de administrador **(a reensaiar)**:
+   existem, no mesmo bloco de administrador **(ensaiado)**:
    ```bash
    set -o pipefail
    npm run -s db:sql-privilegios -- --usuario sbp_app --host localhost > /root/concessoes.sql
@@ -197,20 +203,30 @@ Um usuário com as duas já é administrador na prática (`AT-67`).
    tabela pede gerar e aplicar de novo (passo 9).
 5. Apague `/root/concessoes.sql` depois de aplicar.
 6. **A `DATABASE_URL` da aplicação**, no arquivo de segredos
-   **(a reensaiar)**:
+   **(ensaiado)**:
    ```
    DATABASE_URL="mysql://sbp_app:<senha>@127.0.0.1:3306/sbp?allowPublicKeyRetrieval=true"
    ```
+   **Não tire o `allowPublicKeyRetrieval=true`, mesmo que funcione sem
+   ele.** Medido no ensaio:
+   - sem a opção, a **primeira** conexão depois de o MySQL reiniciar
+     falha;
+   - depois que alguém conecta com a opção, o MySQL guarda a senha em
+     cache, e a conexão sem ela passa a funcionar.
+
+   Ou seja, uma instalação sem a opção funciona até o primeiro reboot do
+   servidor e para de funcionar depois dele.
+
    No `mysqld`, use `bind-address=127.0.0.1`. Um banco em outra máquina usa
    TLS e `REQUIRE SSL`, não esta opção.
-7. **Conferir as permissões**, agora como a aplicação **(a reensaiar)**:
+7. **Conferir as permissões**, agora como a aplicação **(ensaiado)**:
    ```bash
    sudo -u sbp bash -c 'cd /opt/sbp && set -a && . /etc/sbp/sbp.env && set +a && EXIGIR_PRIVILEGIO_MINIMO=sim npm run db:privilegios'
    ```
    A resposta tem de ser "OK: nada nas concessões deste usuário alcança
    LogAuditoria nem EventoProcessamento."
 
-## 5. A primeira pessoa gestora **(a reensaiar)**
+## 5. A primeira pessoa gestora **(ensaiado)**
 
 ```bash
 sudo -u sbp bash -c 'cd /opt/sbp && set -a && . /etc/sbp/sbp.env && set +a && npm run db:preparar -- --nome "Nome Completo" --email pessoa@dominio-da-associacao'
@@ -225,7 +241,7 @@ aparece uma única vez, e a troca é obrigatória no primeiro acesso.
 - O resto da equipe é cadastrado pela gestora na tela *Acesso e cadastro*
   (`AT-61`).
 
-## 6. Construir e subir **(a reensaiar)**
+## 6. Construir e subir **(ensaiado)**
 
 ```bash
 sudo -u sbp bash -c 'cd /opt/sbp && set -a && . /etc/sbp/sbp.env && set +a && npm run build'
@@ -272,18 +288,24 @@ que cada pessoa tem o seu limite.
 ## 8. Backup e restauração
 
 **O que entra no backup:**
-- o banco: `mysqldump --single-transaction sbp`, como administrador;
+- o banco, como administrador:
+  `mysqldump --single-transaction --no-tablespaces -u sbp_admin -p sbp > backup.sql`.
+  **O `--no-tablespaces` é obrigatório.** Sem ele, a conta administradora
+  (que não tem `PROCESS`) recebe "Access denied … PROCESS privilege …
+  tablespaces". O `mysqldump` mesmo assim **sai com código 0**, e um backup
+  agendado esconderia esse erro. O SBP não usa tablespaces, e o arquivo
+  leva as tabelas e as triggers (ensaiado);
 - a pasta `ARMAZENAMENTO_DIR`, com os anexos já cifrados.
 
 **O que não entra no mesmo backup:** o arquivo de segredos (passo 3).
 
-**Restaurar (a reensaiar no banco; os anexos ficam a conferir pelo TI).**
+**Restaurar (ensaiado no banco; os anexos ficam a conferir pelo TI).**
 Sempre numa base **nova** e como administrador. Em outra máquina, faça os
 passos 1 a 3 e crie as duas contas (4.1) **antes**: a trigger precisa do
 `DEFINER`. Sem ele, ela continua recusando, mas com outra mensagem
 (`ERROR 1449`; `AT-66`).
 
-1. Criar a base e restaurar, no cliente `mysql`:
+1. Criar a base e restaurar, no cliente `mysql`, como `root` do MySQL:
    ```sql
    CREATE DATABASE sbp_restaurada CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_as_cs;
    GRANT ALL PRIVILEGES ON sbp_restaurada.* TO 'sbp_admin'@'localhost' WITH GRANT OPTION;
@@ -298,10 +320,15 @@ passos 1 a 3 e crie as duas contas (4.1) **antes**: a trigger precisa do
 4. Troque a `DATABASE_URL` da aplicação para `sbp_restaurada`, rode o 4.7 e
    só então suba o sistema.
 
+No ensaio, a base restaurada voltou com as 29 tabelas, as mesmas linhas na
+trilha e a trava conferida. Com as permissões regeneradas, a aplicação leu a
+base restaurada. Antes de regenerar, o `SHOW GRANTS` do usuário da aplicação
+só listava a base original.
+
 **Restaure uma vez para provar**, numa máquina de teste: suba o sistema com o
 backup e os segredos, entre, abra um item com anexo.
 
-## 9. Atualizar para uma versão nova
+## 9. Atualizar para uma versão nova **(ensaiado)**
 
 ```bash
 cd /opt/sbp

@@ -1491,6 +1491,16 @@ Mutações sobre o código final, todas vermelhas:
 - **Os comandos de terminal carregam o arquivo de segredos** (`set -a; . arquivo; set +a`): os scripts leem as variáveis do processo, ou um `.env` na pasta, se houver. O roteiro manda não deixar `.env` na pasta do sistema, porque um arquivo de desenvolvimento esquecido completaria as variáveis que faltam.
 - **A restauração é sempre numa base nova**, com a conta administradora, e conferida com `db:conferir-trilha` antes de apontar o sistema para ela (`AT-66`).
 
+**O primeiro ensaio não valia (revisão técnica do PR #185, REPROVADO).** Ele rodou numa pasta de desenvolvimento, que já tinha o cliente do banco gerado e um `.env` com segredos, e marcou como ensaiados passos que quebrariam num servidor limpo:
+- faltava `npx prisma generate`;
+- os comandos do banco vinham antes do arquivo de segredos;
+- afirmava um `DEFINER` `root@localhost` que nunca foi visto (era `root@%`).
+
+**O segundo ensaio, em 02/10/2026, foi feito como o roteiro manda:** `git clone` numa pasta vazia, usuário de sistema `sbp`, arquivo de segredos em `/etc/sbp`, nenhum `.env`, comandos de banco pelo bloco de administrador com a senha lida por `read -rs`, e uma conta administradora própria (`sbp_admin`). Ele achou mais três defeitos, agora corrigidos no roteiro:
+- **Sem `--no-tablespaces`, o `mysqldump` da conta administradora reclama de `PROCESS` e sai com código 0.** Um backup agendado esconderia o erro.
+- **`allowPublicKeyRetrieval=true` só faz falta depois que o MySQL reinicia.** O `caching_sha2_password` guarda a senha em cache depois do primeiro login bem-sucedido. Sem a opção, a instalação funciona até o primeiro reboot e para depois dele. Medido reiniciando o MySQL.
+- **As permissões da aplicação são por base:** depois de restaurar, é preciso regenerá-las para a base restaurada. Visto em `SHOW GRANTS`.
+
 **Visto no ensaio, com o usuário mínimo da aplicação:**
 - `db:privilegios` deu OK;
 - `db:preparar` criou a gestora e, rodado de novo, não criou ninguém;
