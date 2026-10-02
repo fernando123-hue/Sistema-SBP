@@ -254,7 +254,9 @@ export const CASOS_DO_GABARITO: readonly CasoDoGabarito[] = [
     id: 'agradecimento',
     descricao: 'agradecimento sem pedido — um item de e-mail, para alguém responder (A75)',
     email: {
-      assunto: 'Re: Atualização cadastral',
+      // Assunto neutro: "atualização cadastral" é a descrição de FICHA_CADASTRO,
+      // e um modelo correto poderia ir para ficha (revisão técnica do #189).
+      assunto: 'Re: Retorno sobre o meu cadastro',
       corpo: 'Muito obrigada pelo retorno rápido, deu tudo certo com o meu cadastro!\nDécima Nona Pessoa Sintética',
     },
     esperado: { itens: [{ categoriaCodigo: 'EMAIL_CADASTRO' }], suspeito: false },

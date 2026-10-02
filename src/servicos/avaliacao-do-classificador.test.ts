@@ -71,7 +71,7 @@ describe('avaliarClassificador', () => {
 
     expect(resultado).toMatchObject({ fornecedor: 'mock', modelos: ['mock-1'], versaoDasPerguntas: VERSAO_DAS_PERGUNTAS_DA_AVALIACAO })
     // O dublê responde sempre o primeiro rótulo, "nenhum": acerta só os casos
-    // sem item do gabarito (2 de 23 na 1.1.0, `AT-71`).
+    // sem item do gabarito (2 de 24 na 1.1.0, `AT-71`).
     const semItem = CASOS_DO_GABARITO.filter((caso) => caso.esperado.itens.length === 0).length
     expect(semItem).toBeGreaterThan(0)
     const fracao = Number((semItem / CASOS_DO_GABARITO.length).toFixed(6))

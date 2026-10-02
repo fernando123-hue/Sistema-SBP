@@ -20,7 +20,7 @@ import { VERSAO_DO_GABARITO, type CasoDoGabarito } from './gabarito'
  * A segunda importa tanto quanto a primeira: um classificador que acerta com
  * 51% e um que acerta com 99% não valem o mesmo para a regra do `§ H.4` 37,
  * que só deixa sinal de IA aumentar o cuidado até ser calibrado. Calibração
- * de verdade pede amostra muito maior que 17 casos; a média aqui é só o
+ * de verdade pede amostra muito maior que os 24 casos do gabarito 1.1.0; a média aqui é só o
  * primeiro indício.
  *
  * Nenhum texto de e-mail entra aqui nem sai daqui: só ids de caso e números.
