@@ -1478,6 +1478,39 @@ Mutações sobre o código final, todas vermelhas:
 
 **Status:** 🟢 em vigor.
 
+### AT-67 — Roteiro de instalação ensaiado; as migrações rodam com a conta administradora do MySQL *(01/10/2026)*
+
+**O que entrou:** `docs/INSTALACAO.md`, o roteiro do TI (V3 do `A74`). Cada passo diz se foi **ensaiado**, ou seja, executado de verdade numa base nova num MySQL 8.4.11 com binlog ligado e com `next start` em produção, ou se fica **a conferir pelo TI**, quando depende do servidor (systemd, proxy, restauração dos anexos).
+
+**O que o ensaio corrigiu, e por isso é decisão e não só texto:**
+- **A credencial que migra é a administradora do MySQL, não um usuário "de manutenção" estreito.** A SPEC § 14 dizia que bastavam `CREATE`, `ALTER` e `TRIGGER`. Medido:
+  - com binlog ligado (o padrão), criar a trigger da trilha exige `SUPER` (`ERROR 1419`);
+  - aplicar as concessões exige `GRANT OPTION` (`ERROR 1142`).
+  
+  Um usuário com as duas permissões já é administrador na prática. A trigger roda como quem migrou (`DEFINER`), então a conta administradora é recriada **antes** de restaurar em outra máquina (`AT-66`). *(Corrigido na revisão do #185: a versão anterior desta frase dizia que `root@localhost` existe em qualquer servidor; o `DEFINER` visto foi `root@%` e, no roteiro, é `sbp_admin`.)* Ela nunca entra no arquivo de segredos da aplicação. A SPEC § 14 foi corrigida.
+- **Os comandos de terminal carregam o arquivo de segredos** (`set -a; . arquivo; set +a`): os scripts leem as variáveis do processo, ou um `.env` na pasta, se houver. O roteiro manda não deixar `.env` na pasta do sistema, porque um arquivo de desenvolvimento esquecido completaria as variáveis que faltam.
+- **A restauração é sempre numa base nova**, com a conta administradora, e conferida com `db:conferir-trilha` antes de apontar o sistema para ela (`AT-66`).
+
+**O primeiro ensaio não valia (revisão técnica do PR #185, REPROVADO).** Ele rodou numa pasta de desenvolvimento, que já tinha o cliente do banco gerado e um `.env` com segredos, e marcou como ensaiados passos que quebrariam num servidor limpo:
+- faltava `npx prisma generate`;
+- os comandos do banco vinham antes do arquivo de segredos;
+- afirmava um `DEFINER` `root@localhost` que nunca foi visto (era `root@%`).
+
+**O segundo ensaio, em 02/10/2026, foi feito como o roteiro manda:** `git clone` numa pasta vazia, usuário de sistema `sbp`, arquivo de segredos em `/etc/sbp`, nenhum `.env`, comandos de banco pelo bloco de administrador com a senha lida por `read -rs`, e uma conta administradora própria (`sbp_admin`). Ele achou mais três defeitos, agora corrigidos no roteiro:
+- **Sem `--no-tablespaces`, o `mysqldump` da conta administradora reclama de `PROCESS` e sai com código 0.** Um backup agendado esconderia o erro.
+- **`allowPublicKeyRetrieval=true` só faz falta depois que o MySQL reinicia.** O `caching_sha2_password` guarda a senha em cache depois do primeiro login bem-sucedido. Sem a opção, a instalação funciona até o primeiro reboot e para depois dele. Medido reiniciando o MySQL.
+- **As permissões da aplicação são por base:** depois de restaurar, é preciso regenerá-las para a base restaurada. Visto em `SHOW GRANTS`.
+- **Restauração e permissões só em lote** (`mysql … < arquivo`). A segunda rodada da revisão mediu que o `SOURCE` no cliente interativo mostra o erro e continua, como o `--force`. Em lote, o `mysql` para no primeiro erro com código 1. Visto com um arquivo com erro de sintaxe no meio: a tabela seguinte não foi criada.
+- **O arquivo de backup é dado pessoal** (texto dos e-mails, hashes de senha): é gravado com `umask 077`, fora da pasta do sistema, e recebe o mesmo cuidado do arquivo de segredos.
+
+**Visto no ensaio, com o usuário mínimo da aplicação:**
+- `db:privilegios` deu OK;
+- `db:preparar` criou a gestora e, rodado de novo, não criou ninguém;
+- `next start` em produção: a entrada, a troca da senha provisória, `/api/diagnostico/origem` e a busca de e-mails fictícios em segundo plano funcionaram, gravando na trilha só com `INSERT`;
+- `DELETE`, `UPDATE` e `DROP TRIGGER` na trilha foram recusados.
+
+**Status:** 🟢 em vigor.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.

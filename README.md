@@ -46,6 +46,8 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 
 `npm run demo` roda o mesmo fluxo pelo terminal, sem tela: ingestão, classificação por IA, fila de revisão, distribuição, execução, painel e conferência de conservação.
 
+> **Instalar no servidor da empresa:** siga `docs/INSTALACAO.md`, o roteiro do TI, com cada passo marcado como ensaiado ou a conferir.
+>
 > **No servidor da operação, nunca rode o seed nem a demo.** Eles criam a equipe fictícia. Depois das migrações, o servidor é preparado com:
 >
 > ```bash
@@ -81,6 +83,7 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 | `npm run db:preparar -- --nome … --email …` | Servidor novo: categorias e a primeira pessoa gestora, real. Recusa se já houver gestor |
 | `PERMITIR_LIMPEZA=sim npm run db:limpar` | Apaga dados transacionais, preserva o cadastro. Exige o opt-in explícito: sem ele, recusa — a trava anterior deduzia segurança da ausência de `NODE_ENV` |
 | `npm run db:expurgar` | Roda agora a limpeza diária que o servidor já roda sozinho: apaga o motivo das ausências cujo prazo venceu (`A17`). **Irreversível**; uma execução por dia — se o servidor já rodou hoje, não faz nada. O prazo é o da tela de acesso, não de variável de ambiente |
+| `npm run db:conferir-trilha` | Confere a trava da trilha de auditoria (as triggers, com o corpo exato da migração). Rode com a conta administradora do MySQL depois de migrar e depois de restaurar um backup; sai com código 1 se faltar alguma coisa (`AT-66`) |
 | `npm run anexos:conferir` | Diz quantos anexos ainda estão em texto puro no disco |
 | `npm run anexos:recifrar` | Cifra os que faltam, conferindo cada um pela leitura antes de trocar |
 | `npm run db:migrate` | Cria e aplica migração |

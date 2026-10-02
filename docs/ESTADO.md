@@ -30,17 +30,13 @@
 > 3. ~~**A trava de dado real cobrir o assistente**~~ **Feita (`AT-63`):** em produção, o servidor recusa subir com IA que tire o texto da casa sem autorização para dado real.
 > 4. ~~Dependabot #173 e #174 juntos; `nivel-de-risco.ts`~~ **Feito no PR de arrumação:** CodeQL `init` e `analyze` na v4.38.2 no mesmo PR, com as ações agrupadas no Dependabot; o nível de risco corrigido (`src/componentes/`; acesso, expurgo e trilha no nível 3; `CLAUDE.md`/`AGENTS.md` em qualquer pasta; `PROCESSO.md`); `DOMINIO_SINTETICO` num lugar só.
 > 5. **V2:** o dono traz os modelos; a anonimização acontece na máquina dele, antes do commit.
-> 6. **V3:** roteiro de instalação para o TI:
->    - Node 22, MySQL com a colação certa e `npm run db:privilegios`;
->    - `next start -H 127.0.0.1` atrás de proxy com HTTPS, repassando `Host` e `X-Forwarded-For`;
->    - serviço que reinicia;
->    - backup do banco **sem** a pasta de segredos;
->    - `db:preparar` rodado num terminal.
+> 6. ~~**V3:** roteiro de instalação para o TI~~ **Escrito: `docs/INSTALACAO.md` (`AT-67`).** O banco, as permissões, a primeira gestora, `next start` em produção com o usuário mínimo, e backup e restauração foram ensaiados de verdade num MySQL 8.4. Ficam com o TI os passos que dependem do servidor: o systemd, o proxy com HTTPS e a restauração dos anexos.
 >
 > **Achado no ensaio da instalação (`AT-66`), corrigido:** o `mysqldump` da base não restaurava. A trigger de `LogAuditoria` tinha o corpo gravado com um `;` no fim, e a restauração parava nela, deixando de fora as tabelas seguintes. Uma migração nova cria as triggers na forma certa antes de apagar as antigas, e `npm run db:conferir-trilha` confere a trava. **Na máquina do dono, a base da V1 precisa de `npx prisma migrate deploy` com a conta administradora do MySQL (a `root` local), seguido de `npm run db:conferir-trilha` com a mesma conta.** Se o deploy parar com `P3018`, a trava antiga continua de pé: `npx prisma migrate resolve --rolled-back 20261001220000_trilha_restauravel_do_backup` e rodar de novo com a conta administradora.
 >
 > **Achados da auditoria ainda abertos** (não bloqueiam a V1):
 > - ~~pendência 41~~ resolvida no `AT-64` (concessões tabela a tabela por `npm run db:sql-privilegios`; `allowPublicKeyRetrieval=true` na `DATABASE_URL` com usuário de senha); ~~pendência 49~~ resolvida no `AT-65` (configuração errada encerra o servidor de produção com código 1);
+> - comentários em `scripts/sql-de-privilegios.ts:7` e `src/servidor/privilegios.ts:120` ainda dizem "credencial de MANUTENÇÃO"; o certo agora é a conta administradora (`AT-67`). Vai no próximo PR que tocar esses arquivos;
 > - login do Graph por certificado não implementado: só segredo;
 > - `.gitattributes` com `eol=lf`;
 > - trava entre suítes no `globalSetup`;
