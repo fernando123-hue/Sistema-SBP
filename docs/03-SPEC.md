@@ -474,10 +474,10 @@ CREATE USER 'sbp_app'@'localhost' IDENTIFIED BY 'a-senha-que-so-o-servidor-sabe'
 ```
 
 ```bash
-# 2. Depois das migrações, com a credencial de MANUTENÇÃO (a que migra), gere
-#    as concessões a partir das tabelas que existem na base e aplique:
+# 2. Depois das migrações, com a conta ADMINISTRADORA do MySQL (a que migra),
+#    gere as concessões a partir das tabelas que existem na base e aplique:
 npm run db:sql-privilegios -- --usuario sbp_app --host localhost > concessoes.sql
-mysql -u <manutencao> -p < concessoes.sql
+mysql -u root -p sbp < concessoes.sql
 ```
 
 O que sai: `SELECT, INSERT, UPDATE, DELETE` em cada tabela da aplicação, e
@@ -511,9 +511,20 @@ recusados com `ERROR 1142`.
 **Nem `npm run db:limpar`**, que apaga a trilha e só existe para
 desenvolvimento: com o usuário mínimo ele falha, e é o certo.
 
-**As migrações não rodam com este usuário.** `prisma migrate deploy` precisa de
-DDL (`CREATE`, `ALTER`, `TRIGGER`), que a aplicação não deve ter; use uma
-credencial de manutenção, separada, só no momento de migrar.
+**As migrações não rodam com este usuário.** Elas rodam com a **conta
+administradora do MySQL**, só no momento de migrar, e essa conta nunca entra no
+arquivo de segredos da aplicação (`AT-67`). Um usuário "de manutenção" mais
+estreito não basta, como mostrou o ensaio da instalação num MySQL 8.4 com binlog
+ligado, que é o padrão:
+
+- criar a trigger da trilha exige `SUPER` (`ERROR 1419`);
+- aplicar as concessões exige `GRANT OPTION` (`ERROR 1142`).
+
+Um usuário com essas duas permissões já é administrador na prática. A
+administradora tem ainda uma vantagem: a trigger roda como quem migrou
+(`DEFINER`), e `root@localhost` existe em todo servidor, então a trava continua
+valendo depois de restaurar um backup em outra máquina (`AT-66`). Depois de
+migrar, `npm run db:conferir-trilha`, com a mesma conta, confirma a trava.
 
 ### Conferir
 

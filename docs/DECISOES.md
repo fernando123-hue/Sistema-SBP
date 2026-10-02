@@ -1478,6 +1478,27 @@ Mutações sobre o código final, todas vermelhas:
 
 **Status:** 🟢 em vigor.
 
+### AT-67 — Roteiro de instalação ensaiado; as migrações rodam com a conta administradora do MySQL *(01/10/2026)*
+
+**O que entrou:** `docs/INSTALACAO.md`, o roteiro do TI (V3 do `A74`). Cada passo diz se foi **ensaiado**, ou seja, executado de verdade numa base nova num MySQL 8.4.11 com binlog ligado e com `next start` em produção, ou se fica **a conferir pelo TI**, quando depende do servidor (systemd, proxy, restauração dos anexos).
+
+**O que o ensaio corrigiu, e por isso é decisão e não só texto:**
+- **A credencial que migra é a administradora do MySQL, não um usuário "de manutenção" estreito.** A SPEC § 14 dizia que bastavam `CREATE`, `ALTER` e `TRIGGER`. Medido:
+  - com binlog ligado (o padrão), criar a trigger da trilha exige `SUPER` (`ERROR 1419`);
+  - aplicar as concessões exige `GRANT OPTION` (`ERROR 1142`).
+  
+  Um usuário com as duas permissões já é administrador na prática. A administradora também é o `DEFINER` que existe em qualquer servidor, então a trava vale depois de uma restauração em outra máquina (`AT-66`). Ela nunca entra no arquivo de segredos da aplicação. A SPEC § 14 foi corrigida.
+- **Os comandos de terminal carregam o arquivo de segredos** (`set -a; . arquivo; set +a`): os scripts leem as variáveis do processo, ou um `.env` na pasta, se houver. O roteiro manda não deixar `.env` na pasta do sistema, porque um arquivo de desenvolvimento esquecido completaria as variáveis que faltam.
+- **A restauração é sempre numa base nova**, com a conta administradora, e conferida com `db:conferir-trilha` antes de apontar o sistema para ela (`AT-66`).
+
+**Visto no ensaio, com o usuário mínimo da aplicação:**
+- `db:privilegios` deu OK;
+- `db:preparar` criou a gestora e, rodado de novo, não criou ninguém;
+- `next start` em produção: a entrada, a troca da senha provisória, `/api/diagnostico/origem` e a busca de e-mails fictícios em segundo plano funcionaram, gravando na trilha só com `INSERT`;
+- `DELETE`, `UPDATE` e `DROP TRIGGER` na trilha foram recusados.
+
+**Status:** 🟢 em vigor.
+
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*
 
 **O que motivou:** a rodada de auditoria pedida pelo dono, bloco de integridade e autorização (achados N-08, N-09, N-11, N-15, N-19, N-36). O fio comum dos seis: uma garantia declarada em comentário, correta na intenção, sem nada que a segurasse. Nenhum deles aparecia como erro — todos apareciam como sistema funcionando.
