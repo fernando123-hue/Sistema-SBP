@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { obterPrisma } from '../src/servidor/prisma'
+import { lerCaixaDosNomes } from '../src/servidor/privilegios'
 
 /**
  * Script de linha de comando que usa o banco tem de ENCERRAR sozinho.
@@ -65,9 +66,12 @@ describe('scripts que usam o banco encerram sozinhos', () => {
     // `SHOW TABLES` pelo adaptador de verdade, e não só a função pura: a
     // trilha sai só com SELECT, INSERT, e uma tabela comum com as quatro. No
     // MySQL do Windows (`lower_case_table_names=1`) os nomes vêm em minúsculas.
-    const [{ caixa }] = await obterPrisma().$queryRaw<[{ caixa: number | bigint }]>`
-      SELECT @@lower_case_table_names AS caixa`
-    const nome = (tabela: string): string => (Number(caixa) === 1 ? tabela.toLowerCase() : tabela)
+    // `lerCaixaDosNomes`, e não `Number(...)`: valor fora de 0, 1 e 2 recusa
+    // em vez de cair calado no ramo "com caixa" (`AT-68`).
+    const [{ valor }] = await obterPrisma().$queryRaw<[{ valor: number | bigint }]>`
+      SELECT @@lower_case_table_names AS valor`
+    const caixa = lerCaixaDosNomes(valor)
+    const nome = (tabela: string): string => (caixa === 1 ? tabela.toLowerCase() : tabela)
     expect(resultado.saida).toMatch(
       new RegExp(`GRANT SELECT, INSERT ON \`[^\`]+\`\\.\`${nome('LogAuditoria')}\` TO 'sbp_app'@'localhost';`),
     )

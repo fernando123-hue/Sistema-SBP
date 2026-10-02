@@ -14,7 +14,7 @@ import { limparTudo, semearBase } from '../../testes/apoio'
  * serviço a cobre — `pipeline.test.ts` prova que ninguém conclui item alheio,
  * `memoria.test.ts` prova que colaborador não lê a trilha, e assim por diante.
  *
- * Nestas quatro, não: a checagem existe **só no arquivo da rota**.
+ * Nas rotas deste arquivo, não: a checagem existe **só no arquivo da rota**.
  * `listarPendentes`, `detalharRodada` e a consulta de colaboradores não têm
  * guarda de papel nenhuma do lado do serviço. Apagar uma linha `exigirPapel`
  * num refactor deixava a suíte inteira verde e reabria exatamente o buraco que
@@ -323,14 +323,18 @@ describe('rotas que guardam o papel sozinhas', () => {
     expect(((await resposta.json()) as { dados: unknown }).dados).toEqual({ guardados: 2 })
   })
 
-  it('sem cookie nenhum, as quatro respondem 401 — e 401 não é 403', async () => {
+  it('sem cookie nenhum, as quatro de leitura sem parâmetro respondem 401 — e 401 não é 403', async () => {
     await semearBase(banco, { totalDeDias: 1 })
     cookieDaVez.valor = ''
 
     const { GET: colaboradores } = await import('./colaboradores/route')
     const { GET: revisao } = await import('./revisao/route')
+    const { GET: andamento } = await import('./ingestao/route')
+    const { GET: guardados } = await import('./ingestao/guardados/route')
 
     expect((await colaboradores()).status).toBe(401)
     expect((await revisao()).status).toBe(401)
+    expect((await andamento()).status).toBe(401)
+    expect((await guardados()).status).toBe(401)
   })
 })
