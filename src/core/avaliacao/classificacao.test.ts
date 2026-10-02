@@ -19,7 +19,8 @@ function certeiro(c: CasoDoGabarito): RespostasDoClassificador {
   const n = c.esperado.itens.length
   return {
     quantidade: { [quantidadeDeItens(n)]: 1 },
-    categoria: { [c.esperado.itens[0]!.categoriaCodigo]: 1 },
+    // Sem item ("nenhum"), não há categoria certa: a nota deixa a pergunta de fora.
+    categoria: c.esperado.itens[0] ? { [c.esperado.itens[0].categoriaCodigo]: 1 } : {},
     probabilidadeDeSuspeita: c.esperado.suspeito ? 1 : 0,
   }
 }
@@ -32,10 +33,23 @@ describe('a resposta certa da quantidade sai do gabarito', () => {
     expect(quantidadeDeItens(30)).toBe('varios')
   })
 
-  it('o gabarito tem casos de "um" e de "vários" — sem eles a pergunta nova não seria medida', () => {
+  it('o gabarito tem casos de "nenhum", "um" e "vários" — sem eles a pergunta nova não seria medida', () => {
     const contagem = CASOS_DO_GABARITO.map((c) => quantidadeDeItens(c.esperado.itens.length))
+    expect(contagem).toContain('nenhum')
     expect(contagem).toContain('um')
     expect(contagem).toContain('varios')
+  })
+
+  // Medido em 02/10/2026 (`AT-69`): com 15 de 17 casos "um", responder "um"
+  // sempre acertava 15 de 17, e nenhum modelo ruim parecia ruim. Cada opção
+  // precisa de casos suficientes para errá-la custar. Se este teste falhar ao
+  // entrar um caso novo, o conserto é equilibrar o gabarito (um caso de outra
+  // opção junto), não afrouxar o limite: na 1.1.0 ele passa por igualdade.
+  it('nenhuma opção da quantidade passa de dois terços do gabarito', () => {
+    const contagem = CASOS_DO_GABARITO.map((c) => quantidadeDeItens(c.esperado.itens.length))
+    for (const opcao of ['nenhum', 'um', 'varios'] as const) {
+      expect(contagem.filter((c) => c === opcao).length, opcao).toBeLessThanOrEqual((CASOS_DO_GABARITO.length * 2) / 3)
+    }
   })
 })
 

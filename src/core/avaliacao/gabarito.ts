@@ -41,7 +41,7 @@ import { arredondar, somar } from '../util/numero'
  */
 
 /** Muda quando um caso ou a regra de nota muda — nota só se compara dentro da mesma versão. */
-export const VERSAO_DO_GABARITO = 'gabarito-1.0.0'
+export const VERSAO_DO_GABARITO = 'gabarito-1.1.0'
 
 export interface ItemEsperado {
   categoriaCodigo: ItemExtraido['categoriaCodigo']

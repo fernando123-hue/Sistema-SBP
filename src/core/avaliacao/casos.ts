@@ -246,6 +246,113 @@ export const CASOS_DO_GABARITO: readonly CasoDoGabarito[] = [
     },
     esperado: { itens: [{ categoriaCodigo: 'DOC_CADASTRO' }], suspeito: true },
   },
+  // Gabarito 1.1.0 (`AT-71`): com 15 de 17 casos "um", responder "um" sempre
+  // acertava 15 de 17 na pergunta de quantidade (`AT-69`). Os dois de "nenhum"
+  // são respostas automáticas, que não geram item (`A34`). O agradecimento de
+  // uma pessoa gera (`A75`): alguém responde.
+  {
+    id: 'agradecimento',
+    descricao: 'agradecimento sem pedido — um item de e-mail, para alguém responder (A75)',
+    email: {
+      // Assunto neutro: "atualização cadastral" é a descrição de FICHA_CADASTRO,
+      // e um modelo correto poderia ir para ficha (revisão técnica do #189).
+      assunto: 'Re: Retorno sobre o meu cadastro',
+      corpo: 'Muito obrigada pelo retorno rápido, deu tudo certo com o meu cadastro!\nDécima Nona Pessoa Sintética',
+    },
+    esperado: { itens: [{ categoriaCodigo: 'EMAIL_CADASTRO' }], suspeito: false },
+  },
+  {
+    id: 'resposta-automatica-ausencia',
+    descricao: 'resposta automática de ausência — nenhum item',
+    email: {
+      assunto: 'Resposta automática: fora do escritório',
+      corpo:
+        'Esta é uma resposta automática. Estou fora do escritório até 20/01 e responderei ' +
+        'sua mensagem quando retornar.',
+    },
+    esperado: { itens: [], suspeito: false },
+  },
+  {
+    id: 'confirmacao-automatica',
+    descricao: 'confirmação automática de recebimento — nenhum item',
+    email: {
+      assunto: 'Confirmação de recebimento',
+      corpo: 'Mensagem automática: seu e-mail foi recebido pelo nosso sistema. Não responda a esta mensagem.',
+    },
+    esperado: { itens: [], suspeito: false },
+  },
+  {
+    id: 'fichas-duas-pessoas',
+    descricao: 'duas fichas no mesmo e-mail — dois itens',
+    email: {
+      assunto: 'Fichas de atualização cadastral',
+      corpo:
+        'Bom dia. Seguem as fichas de atualização cadastral de duas associadas:\n' +
+        'Nome: Nona Pessoa Sintética\nCPF: 000.000.000-00\n\n' +
+        'Nome: Décima Pessoa Sintética\nCPF: 111.444.777-35',
+    },
+    esperado: {
+      itens: [
+        { categoriaCodigo: 'FICHA_CADASTRO', campos: { nome: 'Nona Pessoa Sintética', cpf: '000.000.000-00' } },
+        { categoriaCodigo: 'FICHA_CADASTRO', campos: { nome: 'Décima Pessoa Sintética', cpf: '111.444.777-35' } },
+      ],
+      suspeito: false,
+    },
+  },
+  {
+    id: 'documentos-duas-pessoas',
+    descricao: 'diplomas de duas pessoas no mesmo e-mail — dois itens',
+    email: {
+      assunto: 'Documentos para cadastro',
+      corpo:
+        'Prezados, encaminho os diplomas de dois residentes do nosso serviço para o cadastro: ' +
+        'Décima Primeira Pessoa Sintética e Décima Segunda Pessoa Sintética. Os arquivos seguem em anexo.',
+    },
+    esperado: {
+      itens: [
+        { categoriaCodigo: 'DOC_CADASTRO', campos: { nome: 'Décima Primeira Pessoa Sintética' } },
+        { categoriaCodigo: 'DOC_CADASTRO', campos: { nome: 'Décima Segunda Pessoa Sintética' } },
+      ],
+      suspeito: false,
+    },
+  },
+  {
+    id: 'ligantes-quatro-em-linha',
+    descricao: 'quatro ligantes numa frase só, sem lista — quatro itens',
+    email: {
+      assunto: 'Ligantes 2026',
+      corpo:
+        'Olá! A Liga de Pediatria Sintética do Norte informa os novos ligantes: Décima Terceira Pessoa ' +
+        'Sintética, Décima Quarta Pessoa Sintética, Décima Quinta Pessoa Sintética e Décima Sexta ' +
+        'Pessoa Sintética.',
+    },
+    esperado: {
+      itens: [
+        { categoriaCodigo: 'LIGANTE', campos: { nome: 'Décima Terceira Pessoa Sintética' } },
+        { categoriaCodigo: 'LIGANTE', campos: { nome: 'Décima Quarta Pessoa Sintética' } },
+        { categoriaCodigo: 'LIGANTE', campos: { nome: 'Décima Quinta Pessoa Sintética' } },
+        { categoriaCodigo: 'LIGANTE', campos: { nome: 'Décima Sexta Pessoa Sintética' } },
+      ],
+      suspeito: false,
+    },
+  },
+  {
+    id: 'segunda-via-duas-pessoas',
+    descricao: 'pedido geral de cadastro para duas pessoas — dois itens',
+    email: {
+      assunto: 'Segunda via do certificado',
+      corpo:
+        'Boa tarde. Solicito a segunda via do certificado de associado para Décima Sétima Pessoa ' +
+        'Sintética e para Décima Oitava Pessoa Sintética.',
+    },
+    esperado: {
+      itens: [
+        { categoriaCodigo: 'EMAIL_CADASTRO', campos: { nome: 'Décima Sétima Pessoa Sintética' } },
+        { categoriaCodigo: 'EMAIL_CADASTRO', campos: { nome: 'Décima Oitava Pessoa Sintética' } },
+      ],
+      suspeito: false,
+    },
+  },
 ]
 
 /** Data fixa: a avaliação não pode depender do relógio. */

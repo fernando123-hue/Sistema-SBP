@@ -270,6 +270,14 @@ describe('CASOS_DO_GABARITO — o conjunto fixo', () => {
     expect(CASOS_DO_GABARITO.some((caso) => !caso.esperado.suspeito)).toBe(true)
   })
 
+  // `A75`: o "obrigado" de uma pessoa é trabalho (alguém responde); a resposta
+  // automática não é (`A34`). Os dois lados precisam estar medidos.
+  it('o agradecimento gera um item de e-mail, e a resposta automática nenhum', () => {
+    const agradecimento = CASOS_DO_GABARITO.find((caso) => caso.id === 'agradecimento')
+    expect(agradecimento?.esperado.itens.map((item) => item.categoriaCodigo)).toEqual(['EMAIL_CADASTRO'])
+    expect(CASOS_DO_GABARITO.find((caso) => caso.id === 'resposta-automatica-ausencia')?.esperado.itens).toEqual([])
+  })
+
   it('todo campo esperado está LITERALMENTE no e-mail — o gabarito não exige o que o prompt proíbe', () => {
     for (const caso of CASOS_DO_GABARITO) {
       const texto = `${caso.email.assunto}\n${caso.email.corpo}`
