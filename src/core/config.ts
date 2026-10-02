@@ -159,3 +159,17 @@ export const DESCRICAO_DAS_CATEGORIAS_PARA_IA: Readonly<
   LIGANTE: 'pessoa vinculada a uma liga (estudante membro).',
   EMAIL_LIGA: 'dúvida ou solicitação geral sobre liga que não seja cadastro de liga nem de ligante.',
 })
+
+/**
+ * As categorias em que o "obrigado" de um associado vira item (`A75`).
+ *
+ * Fora delas o sinal de agradecimento não vale: um documento ou uma ficha
+ * marcados como agradecimento são engano ou manipulação, e o selo faria um
+ * pedido real parecer cortesia (revisão de segurança do #190). A ingestão e a
+ * revisão humana usam esta mesma regra.
+ */
+const CATEGORIAS_DO_AGRADECIMENTO: ReadonlySet<string> = new Set(['EMAIL_CADASTRO', 'EMAIL_LIGA'])
+
+export function aceitaAgradecimento(categoriaCodigo: string): boolean {
+  return CATEGORIAS_DO_AGRADECIMENTO.has(categoriaCodigo)
+}

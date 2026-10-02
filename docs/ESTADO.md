@@ -21,7 +21,7 @@
 > 1. Abrir `http://127.0.0.1:3000`, entrar com `fernando@validacao.sbp` e a senha provisória que está em `C:\sbp-validacao\SENHA-PROVISORIA.txt`; trocar a senha; **apagar esse arquivo**.
 > 2. O teste de tela (passo 9 da ordem): 2 ou 3 colaboradores fictícios, plantão, "Buscar e-mails" (anotar o tempo, quantos vieram e se o "lendo N de M" avançou), Revisão, Distribuição, Minha fila, Painel.
 > 3. Avisar a sessão, para a 2ª rodada do backup com os dados do teste; depois, **autorizar apagar** `sbp_restaurada` e `C:\sbp-validacao\backup.sql`.
-> 4. Decidir se vale medir um modelo maior que caiba nos 4 GB da placa (`AT-69`; trocar o modelo do `A59` é decisão dele).
+> 4. Decidir se vale medir um modelo maior que caiba nos 4 GB da placa (`AT-69`; trocar o modelo do `A59` é decisão dele). **Motivo a mais (`AT-72`):** o modelo atual cria o item do "obrigado", mas **nunca marca o agradecimento** — com ele, o selo da fila não aparece; e responde "não suspeito" sempre.
 >
 > **Decisão do dono (`A75`):** o "obrigado" de um associado vira um item de e-mail com a observação "Agradecimento — responder com cordialidade", e conta na carga. Aplicado no gabarito (#189) e no sistema (`AT-72`): a IA marca um **sinal fechado** (agradecimento sim/não), gravado numa coluna nova do item; a Minha fila escreve o texto fixo "Agradecimento — responder com cordialidade"; o texto da IA ganhou a regra e as versões do prompt subiram. **A V1 em `C:\sbp-validacao` ainda roda a versão anterior** (`54fb211`): para ver o agradecimento lá, `git pull`, `npm ci`, `npx prisma generate`, migração com a `root` e `npm run build`.
 >

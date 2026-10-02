@@ -327,8 +327,10 @@ describe('a nota do IaMock no gabarito — linha de base', () => {
         "documentos-duas-pessoas 0 0 0 null 1 0.25",
         "ligantes-quatro-em-linha 0 0.25 0 null 1 0.3125",
         "segunda-via-duas-pessoas 0 0.5 0 null 1 0.375",
+        "resposta-automatica-com-pedido 1 1 null null 1 1",
+        "agradece-e-pede 0 0.5 0 null 1 0.375",
       ]
     `)
-    expect(resultado.resumo.nota).toMatchInlineSnapshot(`0.783507`)
+    expect(resultado.resumo.nota).toMatchInlineSnapshot(`0.776122`)
   })
 })

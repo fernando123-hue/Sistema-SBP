@@ -353,6 +353,35 @@ export const CASOS_DO_GABARITO: readonly CasoDoGabarito[] = [
       suspeito: false,
     },
   },
+  // Revisões do #190: os dois lados da regra estreita de "nenhum item".
+  {
+    id: 'resposta-automatica-com-pedido',
+    descricao: 'resposta automática com um pedido dentro — o item é o pedido, não some',
+    email: {
+      assunto: 'Resposta automática: fora do escritório',
+      corpo:
+        'Esta é uma resposta automática: estou fora do escritório até 20/01.\n' +
+        'PS: aproveito para pedir a segunda via do meu certificado de associado. Vigésima Pessoa Sintética',
+    },
+    esperado: { itens: [{ categoriaCodigo: 'EMAIL_CADASTRO' }], suspeito: false },
+  },
+  {
+    id: 'agradece-e-pede',
+    descricao: 'agradece e pede para duas pessoas — os pedidos, sem agradecimento',
+    email: {
+      assunto: 'Re: Certificados',
+      corpo:
+        'Obrigada pelo retorno! Aproveitando, solicito a segunda via do certificado de associado para ' +
+        'Vigésima Primeira Pessoa Sintética e para Vigésima Segunda Pessoa Sintética.',
+    },
+    esperado: {
+      itens: [
+        { categoriaCodigo: 'EMAIL_CADASTRO', campos: { nome: 'Vigésima Primeira Pessoa Sintética' } },
+        { categoriaCodigo: 'EMAIL_CADASTRO', campos: { nome: 'Vigésima Segunda Pessoa Sintética' } },
+      ],
+      suspeito: false,
+    },
+  },
 ]
 
 /** Data fixa: a avaliação não pode depender do relógio. */

@@ -126,7 +126,7 @@ DESDOBRAMENTO
 Um e-mail que lista várias pessoas vale um item POR PESSOA — trinta ligantes listados são trinta itens, não um. Um e-mail sobre um assunto só é um item. Nunca invente pessoas que não estão no texto: se a lista está truncada ou ilegível, devolva o que dá para ler e registre isso em "observacao".
 
 E-MAIL SEM PEDIDO
-Resposta automática (ausência, fora do escritório, confirmação de recebimento, aviso de sistema) não é trabalho: devolva "itens" vazio. Um agradecimento escrito por uma pessoa, sem outro pedido, é UM item: EMAIL_CADASTRO, ou EMAIL_LIGA se for sobre liga, com "agradecimento": true, porque alguém da equipe vai responder. Em todo outro item, "agradecimento" é false — inclusive no e-mail que agradece e também pede algo: aí o item é o pedido.
+Devolva "itens" vazio SOMENTE para resposta automática (ausência, fora do escritório, confirmação de recebimento) que não traz pedido, dado a corrigir nem pergunta em nenhuma parte do texto. Se uma resposta automática trouxer um pedido em qualquer parte, o item é o pedido. Na dúvida, devolva um item com confiança baixa: um item a mais vai para revisão; um a menos some. Um agradecimento escrito por uma pessoa, sem outro pedido, é UM item: EMAIL_CADASTRO, ou EMAIL_LIGA se for sobre liga, com "agradecimento": true, porque alguém da equipe vai responder. Em todo outro item, "agradecimento" é false — inclusive no e-mail que agradece e também pede algo: aí o item é o pedido.
 
 CONFIANÇA
 "confianca" é de 0 a 1 e deve refletir sua certeza real sobre a CATEGORIA. Seja honesto: confiança baixa manda o item para revisão humana, que é barata. Confiança alta e errada deixa o item passar direto, que é caro.

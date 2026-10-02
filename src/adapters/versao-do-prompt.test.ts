@@ -25,7 +25,7 @@ import { PERFIL_LOCAL } from './ia-local'
  * O prompt mudou. Suba a `versaoPrompt` de CADA perfil abaixo (todos usam o
  * mesmo `INSTRUCOES`) e troque o hash e as versões aqui, no mesmo commit.
  */
-const HASH_DO_PROMPT = '5671d0efb246d5578bb218285d3f526b344d5fd6e3e845ca81c1856f9081619e'
+const HASH_DO_PROMPT = '30ea914c85f3c67ad3485d6e175bc420e60649e835b83aee46a4812ce8b0ad9c'
 const VERSOES_DESTE_PROMPT = {
   anthropic: 'anthropic-1.2.0',
   gemini: 'gemini-1.2.0',
