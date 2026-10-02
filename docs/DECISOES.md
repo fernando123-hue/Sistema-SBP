@@ -1517,6 +1517,12 @@ Mutações sobre o código final, todas vermelhas:
 
 **Correção:** `sqlDeConcessaoMinima` recebe `caixaDosNomes` (obrigatório), lido pelo script em `@@lower_case_table_names`, e compara sem caixa **só** onde o servidor ignora a caixa — a mesma regra de `conferirTravaDaTrilha`. No Linux, `logauditoria` continua sendo outra tabela, e a base sem a trilha de verdade continua recusada (teste próprio). O SQL sai com o nome como a base o devolve.
 
+**O que as revisões do #187 acrescentaram:**
+- **A caixa lida do servidor é conferida** (`lerCaixaDosNomes`, tipo `0 | 1 | 2`). Antes, `NaN`, `3` ou `null` caíam em silêncio no ramo "sem caixa": num Linux com só uma `logauditoria` qualquer, a base sem a trilha de verdade passava por migrada (revisão técnica, M1). Agora recusa. Vale também para `db:conferir-trilha`.
+- **A regra de comparação mora num lugar só** (`chaveDaTabela`), usada pelo gerador e pela conferência da trava.
+- **A recusa aponta a caixa** quando a trilha existe com outra caixa (base restaurada do Windows num Linux), em vez de só mandar rodar as migrações.
+- **Falso alarme possível, registrado e não corrigido** (revisão de segurança, BAIXO-2): num Linux com `logauditoria` ao lado de `LogAuditoria`, o gerador dá as quatro permissões à `logauditoria` (certo: é outra tabela), e `db:privilegios`, que compara sem caixa, acusa a concessão. Falha fechado, e criar essa tabela exige a conta administradora.
+
 **Status:** 🟢 em vigor.
 
 ### AT-39 — Integridade e autorização: o que passou a ser verificado, e não prometido *(17/09/2026)*

@@ -15,7 +15,7 @@
  */
 
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
-import { conferirTravaDaTrilha, type TriggerNoBanco } from '../src/servidor/privilegios'
+import { conferirTravaDaTrilha, lerCaixaDosNomes, type TriggerNoBanco } from '../src/servidor/privilegios'
 
 function escrever(texto: string): void {
   process.stdout.write(`${texto}\n`)
@@ -27,10 +27,13 @@ async function principal(): Promise<void> {
            ACTION_TIMING AS momento, ACTION_STATEMENT AS corpo
     FROM information_schema.TRIGGERS
     WHERE TRIGGER_SCHEMA = DATABASE()`
-  const [{ caixa }] = await obterPrisma().$queryRaw<[{ caixa: number | bigint }]>`
+  const [linhaDaCaixa] = await obterPrisma().$queryRaw<{ caixa: unknown }[]>`
     SELECT @@lower_case_table_names AS caixa`
 
-  const { semTrava, foraDaForma, nenhumaVisivel } = conferirTravaDaTrilha(triggers, Number(caixa))
+  const { semTrava, foraDaForma, nenhumaVisivel } = conferirTravaDaTrilha(
+    triggers,
+    lerCaixaDosNomes(linhaDaCaixa?.caixa),
+  )
 
   if (nenhumaVisivel) {
     escrever('Nenhuma trigger visível nesta base. Ou a trilha está sem trava, ou esta credencial não tem TRIGGER')

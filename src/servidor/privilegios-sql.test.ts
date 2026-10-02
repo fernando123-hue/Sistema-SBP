@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { privilegiosQueAmeacamATrilha, sqlDeConcessaoMinima } from './privilegios'
+import { type AlvoDaConcessao, lerCaixaDosNomes, privilegiosQueAmeacamATrilha, sqlDeConcessaoMinima } from './privilegios'
 
 /**
  * O SQL da concessão mínima (pendência 41). O roteiro antigo fazia `REVOKE`
@@ -8,7 +8,7 @@ import { privilegiosQueAmeacamATrilha, sqlDeConcessaoMinima } from './privilegio
  * `ERROR 1147`: o roteiro era impossível de seguir.
  */
 
-const ALVO = { base: 'sbp', usuario: 'sbp_app', host: 'localhost', caixaDosNomes: 0 }
+const ALVO: AlvoDaConcessao = { base: 'sbp', usuario: 'sbp_app', host: 'localhost', caixaDosNomes: 0 }
 const TABELAS = ['Item', 'LogAuditoria', 'EventoProcessamento', '_prisma_migrations', 'Colaborador']
 
 describe('a concessão mínima, tabela a tabela', () => {
@@ -72,6 +72,49 @@ describe('a concessão mínima, tabela a tabela', () => {
   // trilha daria uma base sem a trilha de verdade por migrada.
   it('no Linux (lower_case_table_names=0) a trilha em minúsculas não é a trilha', () => {
     expect(() => sqlDeConcessaoMinima(['Item', 'logauditoria', 'eventoprocessamento'], ALVO)).toThrow(/rode as migrações/)
+  })
+
+  // Base restaurada do Windows num Linux: "rode as migrações" mandaria o TI
+  // procurar o defeito no lugar errado (revisão técnica do #187, B3).
+  it('no Linux, a trilha só em outra caixa recusa apontando a caixa, não só as migrações', () => {
+    expect(() => sqlDeConcessaoMinima(['Item', 'logauditoria', 'eventoprocessamento'], ALVO)).toThrow(
+      /lower_case_table_names/,
+    )
+  })
+
+  it('no macOS (lower_case_table_names=2) a caixa de criação é conservada e a trilha é a trilha', () => {
+    const doMac = ['Item', 'LogAuditoria', 'EventoProcessamento']
+    expect(sqlDeConcessaoMinima(doMac, { ...ALVO, caixaDosNomes: 2 }).split('\n')).toEqual([
+      "GRANT SELECT, INSERT ON `sbp`.`EventoProcessamento` TO 'sbp_app'@'localhost';",
+      "GRANT SELECT, INSERT, UPDATE, DELETE ON `sbp`.`Item` TO 'sbp_app'@'localhost';",
+      "GRANT SELECT, INSERT ON `sbp`.`LogAuditoria` TO 'sbp_app'@'localhost';",
+    ])
+  })
+
+  it('no Windows, base sem a trilha continua recusada', () => {
+    expect(() => sqlDeConcessaoMinima(['item'], { ...ALVO, caixaDosNomes: 1 })).toThrow(/rode as migrações/)
+  })
+})
+
+/**
+ * `@@lower_case_table_names` chega do banco como `number`, `bigint` ou o que o
+ * driver quiser. Fora de 0, 1 e 2 caía em silêncio no ramo "sem caixa": num
+ * Linux com só uma `logauditoria` qualquer, a base sem a trilha de verdade
+ * passava por migrada (revisão técnica do #187, M1). Invariante 7: falhar alto.
+ */
+describe('a caixa dos nomes lida do servidor', () => {
+  it.each([
+    [0, 0],
+    [1, 1],
+    [2, 2],
+    [1n, 1],
+    [2n, 2],
+  ])('%s vira %s', (valor, esperado) => {
+    expect(lerCaixaDosNomes(valor)).toBe(esperado)
+  })
+
+  it.each([[Number.NaN], [3], [-1], [0.5], [null], [undefined], ['1'], [3n]])('%s recusa', (valor) => {
+    expect(() => lerCaixaDosNomes(valor)).toThrow(/lower_case_table_names/)
   })
 })
 

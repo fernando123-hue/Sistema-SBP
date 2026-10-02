@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { obterPrisma } from '../servidor/prisma'
-import { conferirTravaDaTrilha, type TriggerNoBanco } from '../servidor/privilegios'
+import { conferirTravaDaTrilha, lerCaixaDosNomes, type TriggerNoBanco } from '../servidor/privilegios'
 import { limparTudo } from '../testes/apoio'
 
 /**
@@ -186,7 +186,7 @@ describe('a trilha é append-only', () => {
     const [{ caixa }] = await obterPrisma().$queryRaw<[{ caixa: number | bigint }]>`
       SELECT @@lower_case_table_names AS caixa`
 
-    expect(conferirTravaDaTrilha(triggers, Number(caixa))).toEqual({ semTrava: [], foraDaForma: [], nenhumaVisivel: false })
+    expect(conferirTravaDaTrilha(triggers, lerCaixaDosNomes(caixa))).toEqual({ semTrava: [], foraDaForma: [], nenhumaVisivel: false })
     // A migração do AT-66 apaga as antigas no fim: sobrar uma delas é a troca
     // pela metade.
     expect(triggers.map((t) => t.nome).sort()).toEqual([

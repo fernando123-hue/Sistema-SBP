@@ -12,7 +12,7 @@
  */
 
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
-import { sqlDeConcessaoMinima } from '../src/servidor/privilegios'
+import { lerCaixaDosNomes, sqlDeConcessaoMinima } from '../src/servidor/privilegios'
 
 /** O valor depois de `--nome`. Outra opção no lugar do valor conta como ausente. */
 function argumento(nome: string): string | undefined {
@@ -34,11 +34,11 @@ async function principal(): Promise<void> {
   if (!base) throw new Error('A DATABASE_URL não aponta para uma base.')
   const linhas = await banco.$queryRawUnsafe<Record<string, string>[]>('SHOW TABLES')
   const tabelas = linhas.map((linha) => Object.values(linha)[0] ?? '')
-  const [{ caixa }] = await banco.$queryRaw<[{ caixa: number | bigint }]>`
+  const [linhaDaCaixa] = await banco.$queryRaw<{ caixa: unknown }[]>`
     SELECT @@lower_case_table_names AS caixa`
 
   const aceitaQualquerHost = process.argv.includes('--aceito-qualquer-host')
-  const alvo = { base, usuario, host, aceitaQualquerHost, caixaDosNomes: Number(caixa) }
+  const alvo = { base, usuario, host, aceitaQualquerHost, caixaDosNomes: lerCaixaDosNomes(linhaDaCaixa?.caixa) }
   process.stdout.write(`${sqlDeConcessaoMinima(tabelas, alvo)}\n`)
 }
 
