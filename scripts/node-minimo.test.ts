@@ -45,8 +45,14 @@ describe('Node mínimo', () => {
    * desligaria a trava com a primeira linha ainda certa.
    */
   it('o .npmrc só tem engine-strict=true, uma vez', () => {
-    const linhas = ler('.npmrc')
-      .split(/\r?\n/)
+    const conteudo = ler('.npmrc')
+    // O npm quebra linha em QUALQUER `\r` ou `\n`. Com `\r?\n`, um `\r` solto
+    // escondia uma chave dentro da linha de comentário — `# c\rregistry=…`: o
+    // npm lia o registro trocado, e o teste descartava a linha inteira como
+    // comentário (2ª rodada da revisão de segurança, conferido no npm 11.16).
+    expect(conteudo).not.toMatch(/\r/)
+    const linhas = conteudo
+      .split(/[\r\n]+/)
       .map((linha) => linha.trim())
       .filter((linha) => linha !== '' && !linha.startsWith('#') && !linha.startsWith(';'))
     expect(linhas).toEqual(['engine-strict=true'])
