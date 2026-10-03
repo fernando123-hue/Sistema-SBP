@@ -293,7 +293,14 @@ descartável.
 - `EnvironmentFile=/etc/sbp/sbp.env`;
 - `ExecStart=` com o `npx next start -H 127.0.0.1 -p 3000` do passo 6 (o
   caminho do `npx` sai de `which npx`);
-- `Restart=on-failure`;
+- `Restart=on-failure`, com `RestartSec=30` e, em `[Unit]`,
+  `StartLimitIntervalSec=300` e `StartLimitBurst=5`. A subida do SBP encerra
+  de propósito com configuração errada ou com o MySQL fora do modo estrito;
+  sem a espera, o padrão do systemd (100 ms) reinicia em laço sem fim, porque
+  cada partida leva mais que o limite. **"O servidor NÃO subiu: …" no journal
+  pede corrigir o que a mensagem diz, não reiniciar.** Se o MySQL subir
+  depois do SBP, não há laço: o SBP sobe, avisa que não conseguiu conferir o
+  modo e confere de novo a cada 30 s;
 - log no journald, com retenção definida. O log sai em JSON, uma linha por
   evento.
 

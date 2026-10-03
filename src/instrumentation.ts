@@ -18,14 +18,24 @@ export async function register(): Promise<void> {
   // pode nem ser o de produção.
   if (process.env.NEXT_PHASE === 'phase-production-build') return
 
-  const { agendarLimpezaDiaria, avisarTrocaDaChaveDeSessao, conferirAmbienteNaSubida, conferirModoSqlNaSubida } =
-    await import('./instrumentation-node')
+  const {
+    agendarLimpezaDiaria,
+    avisarTrocaDaChaveDeSessao,
+    conferirAmbienteNaSubida,
+    conferirModoSqlNaSubida,
+    vigiarModoSql,
+  } = await import('./instrumentation-node')
   // Primeiro: com a configuração errada, em produção o processo encerra aqui
   // (pendência 49), antes de agendar rotina que não teria como rodar.
   await conferirAmbienteNaSubida()
   // Depois do ambiente (que configura o banco) e antes de qualquer rotina que
-  // grave: sem modo estrito, em produção o processo também encerra aqui.
-  await conferirModoSqlNaSubida()
+  // grave. Sem modo estrito, em produção o processo encerra — e o `register`
+  // NÃO segue: o `sair` espera o stderr esvaziar, e nesse meio-tempo a limpeza
+  // diária gravaria no banco (revisão técnica do PR). Sem conseguir ler (banco
+  // subindo depois), o vigia tenta de novo.
+  const modoSql = await conferirModoSqlNaSubida()
+  if (modoSql === 'nao-estrito' && process.env.NODE_ENV === 'production') return
+  vigiarModoSql(modoSql)
   await avisarTrocaDaChaveDeSessao()
   await agendarLimpezaDiaria()
 }

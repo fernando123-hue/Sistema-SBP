@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { limparCacheDeAmbiente } from './servidor/ambiente'
-import { conferirAmbienteNaSubida, conferirModoSqlNaSubida } from './instrumentation-node'
+import { conferirAmbienteNaSubida, conferirModoSqlNaSubida, vigiarModoSql } from './instrumentation-node'
 
 /**
  * Pendência 49: com a configuração errada, o servidor de produção seguia de pé
@@ -108,7 +108,9 @@ describe('a subida confere o modo SQL da sessão', () => {
     const sair = vi.fn()
     const escrito: string[] = []
 
-    await conferirModoSqlNaSubida(async () => NAO_ESTRITO, sair, (texto) => escrito.push(texto))
+    expect(await conferirModoSqlNaSubida(async () => NAO_ESTRITO, sair, (texto) => escrito.push(texto))).toBe(
+      'nao-estrito',
+    )
 
     expect(sair).toHaveBeenCalledWith(1)
     expect(escrito.join('')).toMatch(/^O servidor NÃO subiu: a sessão do MySQL não está em modo estrito/)
@@ -147,16 +149,20 @@ describe('a subida confere o modo SQL da sessão', () => {
     const sair = vi.fn()
     const escrito: string[] = []
 
-    await conferirModoSqlNaSubida(
+    const resultado = await conferirModoSqlNaSubida(
       async () => {
-        throw new Error('connect ECONNREFUSED 127.0.0.1:3306')
+        // Multilinha de propósito: o log sai numa linha só, como o journal lê.
+        throw new Error('connect\n  ECONNREFUSED 127.0.0.1:3306')
       },
       sair,
       (texto) => escrito.push(texto),
     )
 
+    expect(resultado).toBe('ilegivel')
     expect(sair).not.toHaveBeenCalled()
-    expect(escrito.join('')).toMatch(/não deu para conferir o modo SQL na subida[\s\S]*ECONNREFUSED/)
+    expect(escrito.join('')).toBe(
+      'não deu para conferir o modo SQL agora (será tentado de novo): connect ECONNREFUSED 127.0.0.1:3306\n',
+    )
   })
 
   it('a leitura padrão é a da sessão da aplicação, e o MySQL da suíte é estrito', async () => {
@@ -167,5 +173,43 @@ describe('a subida confere o modo SQL da sessão', () => {
 
     expect(sair).not.toHaveBeenCalled()
     expect(escrito).toEqual([])
+  })
+})
+
+/**
+ * O vigia (revisão de segurança do PR): se o MySQL subiu depois do SBP, a
+ * conferência da subida não leu nada; e um modo mudado depois só aparece em
+ * conexão nova. Tenta de novo a cada 30 s até ler; lido, a cada 15 minutos.
+ */
+describe('o vigia do modo SQL', () => {
+  afterEach(() => {
+    delete (globalThis as { vigiaDoModoSqlLigado?: boolean }).vigiaDoModoSqlLigado
+  })
+
+  it('sem conseguir ler, tenta de novo em 30 s; depois de ler, a cada 15 minutos', async () => {
+    const esperas: number[] = []
+    const pendentes: (() => void)[] = []
+    const respostas: ('ilegivel' | 'estrito')[] = ['ilegivel', 'estrito']
+    const conferir = vi.fn(async () => respostas.shift() ?? 'estrito')
+
+    vigiarModoSql('ilegivel', conferir, (acao, ms) => {
+      esperas.push(ms)
+      pendentes.push(acao)
+    })
+    // Roda cada tentativa agendada e deixa a promessa assentar.
+    for (let i = 0; i < 3; i++) {
+      pendentes.shift()?.()
+      await new Promise((resolver) => setTimeout(resolver, 0))
+    }
+
+    expect(conferir).toHaveBeenCalledTimes(3)
+    expect(esperas.slice(0, 4)).toEqual([30_000, 30_000, 15 * 60_000, 15 * 60_000])
+  })
+
+  it('liga uma vez só: a recarga do modo de desenvolvimento não empilha vigias', () => {
+    const agendar = vi.fn()
+    vigiarModoSql('estrito', vi.fn(), agendar)
+    vigiarModoSql('estrito', vi.fn(), agendar)
+    expect(agendar).toHaveBeenCalledTimes(1)
   })
 })

@@ -12,13 +12,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const avisarTrocaDaChaveDeSessao = vi.fn(async () => {})
 const agendarLimpezaDiaria = vi.fn(async () => {})
 const conferirAmbienteNaSubida = vi.fn(async () => {})
-const conferirModoSqlNaSubida = vi.fn(async () => {})
+const conferirModoSqlNaSubida = vi.fn(async (): Promise<string> => 'estrito')
+const vigiarModoSql = vi.fn()
 
 vi.mock('./instrumentation-node', () => ({
   avisarTrocaDaChaveDeSessao,
   agendarLimpezaDiaria,
   conferirAmbienteNaSubida,
   conferirModoSqlNaSubida,
+  vigiarModoSql,
 }))
 
 const { register } = await import('./instrumentation')
@@ -30,6 +32,7 @@ beforeEach(() => {
   agendarLimpezaDiaria.mockClear()
   conferirAmbienteNaSubida.mockClear()
   conferirModoSqlNaSubida.mockClear()
+  vigiarModoSql.mockClear()
 })
 
 afterEach(() => {
@@ -55,6 +58,30 @@ describe('register', () => {
     // e antes de agendar rotina que gravaria no banco sem modo estrito.
     expect(ordem(conferirAmbienteNaSubida)).toBeLessThan(ordem(conferirModoSqlNaSubida))
     expect(ordem(conferirModoSqlNaSubida)).toBeLessThan(ordem(agendarLimpezaDiaria))
+  })
+
+  // Revisão técnica do PR: o `sair` espera o stderr esvaziar, e se o `register`
+  // seguisse, a limpeza diária gravaria no banco sem modo estrito até o exit.
+  it('em produção, modo SQL não estrito: nada mais é ligado', async () => {
+    process.env.NEXT_RUNTIME = 'nodejs'
+    process.env.NEXT_PHASE = ''
+    vi.stubEnv('NODE_ENV', 'production')
+    conferirModoSqlNaSubida.mockResolvedValueOnce('nao-estrito')
+    await register()
+    expect(conferirModoSqlNaSubida).toHaveBeenCalledTimes(1)
+    expect(vigiarModoSql).not.toHaveBeenCalled()
+    expect(avisarTrocaDaChaveDeSessao).not.toHaveBeenCalled()
+    expect(agendarLimpezaDiaria).not.toHaveBeenCalled()
+    vi.unstubAllEnvs()
+  })
+
+  it('banco que não respondeu na subida: liga o vigia, que tenta de novo', async () => {
+    process.env.NEXT_RUNTIME = 'nodejs'
+    process.env.NEXT_PHASE = ''
+    conferirModoSqlNaSubida.mockResolvedValueOnce('ilegivel')
+    await register()
+    expect(vigiarModoSql).toHaveBeenCalledWith('ilegivel')
+    expect(agendarLimpezaDiaria).toHaveBeenCalledTimes(1)
   })
 
   it('durante o build de produção, não liga nada', async () => {
