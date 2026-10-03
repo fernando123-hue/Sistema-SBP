@@ -113,7 +113,7 @@ describe('a subida confere o modo SQL da sessão', () => {
     )
 
     expect(sair).toHaveBeenCalledWith(1)
-    expect(escrito.join('')).toMatch(/^O servidor NÃO subiu: a sessão do MySQL não está em modo estrito/)
+    expect(escrito.join('')).toMatch(/^O servidor NÃO subiu: o MySQL não está em modo estrito/)
     expect(escrito.join('')).toContain(NAO_ESTRITO)
   })
 
@@ -187,6 +187,7 @@ describe('o vigia do modo SQL', () => {
   })
 
   it('sem conseguir ler, tenta de novo em 30 s; depois de ler, a cada 15 minutos', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
     const esperas: number[] = []
     const pendentes: (() => void)[] = []
     const respostas: ('ilegivel' | 'estrito')[] = ['ilegivel', 'estrito']
@@ -211,5 +212,71 @@ describe('o vigia do modo SQL', () => {
     vigiarModoSql('estrito', vi.fn(), agendar)
     vigiarModoSql('estrito', vi.fn(), agendar)
     expect(agendar).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('o modo SQL: prazo, global e falhas do vigia', () => {
+  afterEach(() => {
+    delete (globalThis as { vigiaDoModoSqlLigado?: boolean }).vigiaDoModoSqlLigado
+  })
+
+  // Um MySQL que aceita a conexão e não responde: sem prazo, a subida
+  // pendurava e o vigia parava calado (revisão de segurança do PR).
+  it('leitura que nunca responde cai no prazo e conta como ilegível', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    const sair = vi.fn()
+    const escrito: string[] = []
+
+    const resultado = await conferirModoSqlNaSubida(
+      () => new Promise(() => {}),
+      sair,
+      (texto) => escrito.push(texto),
+      20,
+    )
+
+    expect(resultado).toBe('ilegivel')
+    expect(sair).not.toHaveBeenCalled()
+    expect(escrito.join('')).toMatch(/o MySQL não respondeu em 20 ms/)
+  })
+
+  // As conexões do pool guardam o modo de quando abriram: um `SET GLOBAL`
+  // posterior só aparece no global.
+  it('sessão estrita com o global não estrito: não estrito', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    const sair = vi.fn()
+    const escrito: string[] = []
+
+    const resultado = await conferirModoSqlNaSubida(
+      async () => ['STRICT_TRANS_TABLES', 'NO_ENGINE_SUBSTITUTION'],
+      sair,
+      (texto) => escrito.push(texto),
+    )
+
+    expect(resultado).toBe('nao-estrito')
+    expect(sair).toHaveBeenCalledWith(1)
+    expect(escrito.join('')).toContain('STRICT_TRANS_TABLES | NO_ENGINE_SUBSTITUTION')
+  })
+
+  it('a conferência que falha é registrada, e o vigia tenta de novo', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    const pendentes: (() => void)[] = []
+    const escrito: string[] = []
+    const conferir = vi.fn(async (): Promise<'estrito'> => {
+      throw new Error('o código não carregou')
+    })
+
+    vigiarModoSql('estrito', conferir, (acao) => pendentes.push(acao), (texto) => escrito.push(texto))
+    pendentes.shift()?.()
+    await new Promise((resolver) => setTimeout(resolver, 0))
+
+    expect(escrito.join('')).toMatch(/o vigia do modo SQL falhou e tenta de novo: o código não carregou/)
+    expect(pendentes).toHaveLength(1)
+  })
+
+  it('fora de produção, banco fora do ar é tentado a cada 15 minutos, sem log a cada 30 s', () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    const esperas: number[] = []
+    vigiarModoSql('ilegivel', vi.fn(), (_acao, ms) => esperas.push(ms))
+    expect(esperas).toEqual([15 * 60_000])
   })
 })
