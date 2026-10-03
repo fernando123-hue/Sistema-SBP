@@ -28,11 +28,11 @@ const config: NextConfig = {
             key: 'Strict-Transport-Security',
             value: 'max-age=31536000; includeSubDomains',
           },
-          // A CSP NÃO está aqui: ela mora em `src/middleware.ts`.
+          // A CSP NÃO está aqui: ela mora em `src/proxy.ts`.
           //
           // Cabeçalho estático não tem como carregar nonce, e sem nonce a única
           // forma de o Next funcionar era `script-src 'unsafe-inline'` — que
-          // anula a proteção inteira. O middleware sorteia um nonce por
+          // anula a proteção inteira. O proxy sorteia um nonce por
           // requisição; os cabeçalhos que não dependem da requisição continuam
           // aqui, onde custam menos.
         ],

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { describe, expect, it } from 'vitest'
 
-import { middleware } from '../middleware'
+import { proxy } from '../proxy'
 import { pedidoDeOutraOrigem } from './mesma-origem'
 
 /**
@@ -50,9 +50,9 @@ describe('pedidoDeOutraOrigem', () => {
   })
 })
 
-describe('o middleware recusa antes de chegar à rota', () => {
+describe('o proxy recusa antes de chegar à rota', () => {
   it('POST de outra origem numa rota de API recebe 403', async () => {
-    const resposta = middleware(
+    const resposta = proxy(
       new NextRequest('http://localhost:3000/api/sessao', {
         method: 'POST',
         headers: { host: 'localhost:3000', 'sec-fetch-site': 'same-site', 'content-type': 'text/plain' },
@@ -65,7 +65,7 @@ describe('o middleware recusa antes de chegar à rota', () => {
   })
 
   it('POST da própria tela segue', () => {
-    const resposta = middleware(
+    const resposta = proxy(
       new NextRequest('http://localhost:3000/api/sessao', {
         method: 'POST',
         headers: { host: 'localhost:3000', 'sec-fetch-site': 'same-origin' },
@@ -76,7 +76,7 @@ describe('o middleware recusa antes de chegar à rota', () => {
   })
 
   it('páginas (fora de /api) não são afetadas', () => {
-    const resposta = middleware(
+    const resposta = proxy(
       new NextRequest('http://localhost:3000/entrar', { headers: { host: 'localhost:3000', 'sec-fetch-site': 'cross-site' } }),
     )
     expect(resposta.status).toBe(200)
