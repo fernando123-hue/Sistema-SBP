@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { config, proxy } from '../src/proxy'
-import { problemasDoProxyNoManifesto } from './conferir-proxy'
+import { problemasDoProxyNoManifesto } from './proxy-no-manifesto'
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -52,7 +52,10 @@ describe('o build registrou o proxy (conferido no CI depois do `next build`)', (
  */
 describe('a convenção do proxy no código', () => {
   it('existe exatamente um arquivo de proxy, e é src/proxy.ts', () => {
-    const candidatos = ['src/proxy.ts', 'src/middleware.ts', 'proxy.ts', 'middleware.ts']
+    // As extensões que o Next aceita por padrão (`pageExtensions`).
+    const candidatos = ['', 'src/'].flatMap((pasta) =>
+      ['proxy', 'middleware'].flatMap((nome) => ['ts', 'tsx', 'js', 'jsx'].map((ext) => `${pasta}${nome}.${ext}`)),
+    )
     expect(candidatos.filter((c) => existsSync(join(RAIZ, c)))).toEqual(['src/proxy.ts'])
     expect(typeof proxy).toBe('function')
     expect(config.matcher.length).toBeGreaterThan(0)
@@ -61,9 +64,39 @@ describe('a convenção do proxy no código', () => {
   // No runtime Node.js, o proxy enxerga `fs` e o ambiente inteiro do processo,
   // e roda em TODA requisição. Importar `servidor/ambiente` ou `servidor/sessao`
   // traria arquivo e segredo para esse caminho (revisão de segurança do PR).
-  it('o proxy só importa o Next e a regra de mesma origem', () => {
-    const fonte = readFileSync(join(RAIZ, 'src', 'proxy.ts'), 'utf8')
-    const importados = [...fonte.matchAll(/^import\s[^'"]*['"]([^'"]+)['"]/gm)].map((m) => m[1])
-    expect(importados.sort()).toEqual(['./servidor/mesma-origem', 'next/server'])
+  it('o proxy só importa o Next e a regra de mesma origem — e ela não importa nada', () => {
+    const ler = (...partes: string[]) => readFileSync(join(RAIZ, ...partes), 'utf8')
+    expect(modulosCitados(ler('src', 'proxy.ts'))).toEqual(['./servidor/mesma-origem', 'next/server'])
+    expect(modulosCitados(ler('src', 'servidor', 'mesma-origem.ts'))).toEqual([])
+  })
+
+  it('a varredura de imports pega reexportação, import dinâmico e require', () => {
+    const fonte = [
+      "import type { A } from 'a'",
+      'import {',
+      '  B,',
+      "} from 'b'",
+      "import 'c'",
+      "export * from 'd'",
+      "const e = await import('e')",
+      "const f = require('f')",
+      ' * comentário que cita from "nao-conta" no meio da linha',
+    ].join('\n')
+    expect(modulosCitados(fonte)).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
   })
 })
+
+/**
+ * Todo módulo que o texto cita: `import … from`, `import '…'`,
+ * `export … from`, `import('…')` e `require('…')` (revisões do PR: só o
+ * `import` estático deixava passar a reexportação e o import dinâmico).
+ */
+function modulosCitados(fonte: string): string[] {
+  const padroes = [
+    /^\s*(?:import|export)\s[^'"]*?\bfrom\s*['"]([^'"]+)['"]/gm,
+    /^\s*import\s*['"]([^'"]+)['"]/gm,
+    /\bimport\s*\(\s*['"]([^'"]+)['"]/g,
+    /\brequire\s*\(\s*['"]([^'"]+)['"]/g,
+  ]
+  return [...new Set(padroes.flatMap((padrao) => [...fonte.matchAll(padrao)].map((m) => m[1]!)))].sort()
+}
