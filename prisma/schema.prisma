@@ -730,7 +730,7 @@ model Nota {
 
   /// Invariante 14: toda linha de memória nasce sabendo de que domínio é.
   /// Ver `DominioSchema` e a nota em `LogAuditoria.dominio`.
-  dominio String @default("distribuicao")
+  dominio String
 
   /// `Restrict` NOS TRÊS, e o de `categoria`/`liga` foi corrigido antes de
   /// chegar a produção: nasceram `Cascade`.
@@ -902,7 +902,7 @@ model LogAuditoria {
   /// a escrita na tabela mais escrita do sistema. O índice entra no dia em que
   /// existir um segundo domínio — e aí custa o mesmo que hoje, ao contrário da
   /// coluna.
-  dominio      String   @default("distribuicao")
+  dominio      String
   entidade     String
   entidadeId   String
   acao         String
@@ -927,7 +927,7 @@ model EventoProcessamento {
   /// `etapa` é string livre e não serve de substituto: "ingestao" pode
   /// existir em qualquer sistema futuro, e as duas séries se somariam numa
   /// consulta sem que nada acusasse.
-  dominio      String    @default("distribuicao")
+  dominio      String
   correlacaoId String
   etapa        String
   /// iniciado | sucesso | falha | reprocessavel

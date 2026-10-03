@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { TAMANHO_MAXIMO_DA_NOTA } from '../core/esquemas'
+import { DOMINIO_ATUAL, TAMANHO_MAXIMO_DA_NOTA } from '../core/esquemas'
 import { LIMITE_DE_NOTAS_EXIBIDAS } from '../core/notas'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
@@ -329,6 +329,7 @@ describe('a leitura tem teto, e o teto não troca a nota certa por outra (achado
   async function notasGerais(quantas: number, autorId: string, desde: Date) {
     await banco.nota.createMany({
       data: Array.from({ length: quantas }, (_, indice) => ({
+        dominio: DOMINIO_ATUAL,
         texto: `Nota geral sintética ${indice}`,
         autorId,
         criadoEm: new Date(desde.getTime() + (indice + 1) * 1000),
@@ -345,7 +346,7 @@ describe('a leitura tem teto, e o teto não troca a nota certa por outra (achado
     // A nota da categoria é a MAIS ANTIGA de todas: um `take` único, ordenado
     // por data, é exatamente o que a descartaria em silêncio.
     await banco.nota.create({
-      data: { texto: 'Vale para DOC.', categoriaId: doc.id, autorId: pessoa.id, criadoEm: antes },
+      data: { dominio: DOMINIO_ATUAL, texto: 'Vale para DOC.', categoriaId: doc.id, autorId: pessoa.id, criadoEm: antes },
     })
     await notasGerais(LIMITE_DE_NOTAS_EXIBIDAS + 50, pessoa.id, antes)
 
@@ -390,10 +391,11 @@ describe('a leitura tem teto, e o teto não troca a nota certa por outra (achado
     const antes = new Date('2026-01-01T00:00:00Z')
 
     await banco.nota.create({
-      data: { texto: 'Vale para esta liga.', ligaId: liga.id, autorId: pessoa.id, criadoEm: antes },
+      data: { dominio: DOMINIO_ATUAL, texto: 'Vale para esta liga.', ligaId: liga.id, autorId: pessoa.id, criadoEm: antes },
     })
     await banco.nota.createMany({
       data: Array.from({ length: LIMITE_DE_NOTAS_EXIBIDAS + 5 }, (_, indice) => ({
+        dominio: DOMINIO_ATUAL,
         texto: `Da liga, mas de outra categoria ${indice}`,
         ligaId: liga.id,
         categoriaId: outra.id,

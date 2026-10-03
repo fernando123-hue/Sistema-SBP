@@ -11,7 +11,7 @@ import { INSTRUCOES } from '../adapters/ia-estruturada'
 import { IaMock } from '../adapters/ia-mock'
 import { IngestaoMock } from '../adapters/ingestao-mock'
 import { DESCRICAO_DAS_CATEGORIAS_PARA_IA } from '../core/config'
-import type { EmailBruto } from '../core/esquemas'
+import { DOMINIO_ATUAL, type EmailBruto } from '../core/esquemas'
 import { MARCADOR_FIM, MARCADOR_INICIO } from '../core/seguranca/conteudo-nao-confiavel'
 import { sequenciaDeDatas } from '../core/util/datas'
 import { ClassificadorIndisponivelError, FalhaDeClassificacao, type ClassificadorPort } from '../ports/classificador'
@@ -921,6 +921,7 @@ describe('na ingestão, em modo sombra', () => {
     for (let i = 0; i < TENTATIVAS_MAXIMAS_DE_INTERPRETACAO; i++) {
       await banco.eventoProcessamento.create({
         data: {
+          dominio: DOMINIO_ATUAL,
           correlacaoId: `tentativa-${i}`,
           etapa: 'ingestao',
           situacao: 'reprocessavel',

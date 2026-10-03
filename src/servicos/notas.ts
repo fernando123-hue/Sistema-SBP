@@ -1,5 +1,5 @@
 import { ErroDeNegocio } from '../core/erros'
-import { ArquivamentoDeNotaSchema, NotaEntradaSchema } from '../core/esquemas'
+import { ArquivamentoDeNotaSchema, DOMINIO_ATUAL, NotaEntradaSchema } from '../core/esquemas'
 import {
   LIMITE_DE_NOTAS_EXIBIDAS,
   selecionarNotas,
@@ -165,6 +165,10 @@ export async function registrar(
         categoriaId,
         ligaId: dados.ligaId,
         autorId: ator.colaboradorId,
+        // Explícito, como em `auditar` e na observabilidade (invariante 14).
+        // Até 03/10 vinha do `@default` do schema, que gravaria "distribuicao"
+        // em silêncio na nota de qualquer outro sistema que escrevesse aqui.
+        dominio: DOMINIO_ATUAL,
       },
       select: CAMPOS,
     })
