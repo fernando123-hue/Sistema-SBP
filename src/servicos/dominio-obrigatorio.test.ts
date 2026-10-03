@@ -23,20 +23,26 @@ beforeEach(async () => {
   await limparTudo(banco)
 })
 
-const SEM_DOMINIO = /dominio|1364|default value/i
+// A frase exata do MySQL (erro 1364), e o id das linhas não contém a palavra:
+// o driver repete o SQL na mensagem, e uma regex frouxa casaria com qualquer
+// erro que ecoasse o INSERT (revisão técnica do PR). A recusa depende do modo
+// estrito do MySQL (`STRICT_TRANS_TABLES`, padrão do 8.4); sem ele, o banco
+// gravaria '' com um aviso — se este teste ficar vermelho num servidor com
+// `sql_mode` mexido, a causa é essa.
+const SEM_DOMINIO = /Field 'dominio' doesn't have a default value/
 
 describe('linha sem domínio é recusada pelo banco', () => {
   it('LogAuditoria', async () => {
     await expect(
       banco.$executeRaw`INSERT INTO LogAuditoria (id, entidade, entidadeId, acao, usuario)
-        VALUES ('sem-dominio', 'Item', 'item-sintetico', 'teste', 'ninguem')`,
+        VALUES ('linha-1', 'Item', 'item-sintetico', 'teste', 'ninguem')`,
     ).rejects.toThrow(SEM_DOMINIO)
   })
 
   it('EventoProcessamento', async () => {
     await expect(
       banco.$executeRaw`INSERT INTO EventoProcessamento (id, correlacaoId, etapa, situacao)
-        VALUES ('sem-dominio', 'correlacao-sintetica', 'teste', 'ok')`,
+        VALUES ('linha-1', 'correlacao-sintetica', 'teste', 'ok')`,
     ).rejects.toThrow(SEM_DOMINIO)
   })
 
@@ -45,7 +51,7 @@ describe('linha sem domínio é recusada pelo banco', () => {
       data: { nome: 'Autora Sintética', email: 'autora-dominio@teste.local', papel: 'colaborador' },
     })
     await expect(
-      banco.$executeRaw`INSERT INTO Nota (id, texto, autorId) VALUES ('sem-dominio', 'nota sintética', ${autora.id})`,
+      banco.$executeRaw`INSERT INTO Nota (id, texto, autorId) VALUES ('linha-1', 'nota sintética', ${autora.id})`,
     ).rejects.toThrow(SEM_DOMINIO)
   })
 })
