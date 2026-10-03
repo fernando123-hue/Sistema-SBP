@@ -300,7 +300,11 @@ descartável.
   cada partida leva mais que o limite. **"O servidor NÃO subiu: …" no journal
   pede corrigir o que a mensagem diz, não reiniciar.** Se o MySQL subir
   depois do SBP, não há laço: o SBP sobe, avisa que não conseguiu conferir o
-  modo e confere de novo a cada 30 s;
+  modo e confere de novo a cada 30 s. Ele também reconfere o modo a cada 15
+  minutos, de propósito: **um `SET GLOBAL sql_mode` não estrito para
+  manutenção (importar um dump, por exemplo) tira o SBP do ar** em até 15
+  minutos, e depois de 5 tentativas o systemd para de reiniciar. Volte o modo
+  e rode `systemctl reset-failed <serviço do SBP>` e `systemctl start <serviço do SBP>`;
 - log no journald, com retenção definida. O log sai em JSON, uma linha por
   evento.
 

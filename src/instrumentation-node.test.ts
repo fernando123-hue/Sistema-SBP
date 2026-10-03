@@ -280,3 +280,14 @@ describe('o modo SQL: prazo, global e falhas do vigia', () => {
     expect(esperas).toEqual([15 * 60_000])
   })
 })
+
+describe('o modo SQL: leitura sem valor', () => {
+  // `[].every(...)` é verdadeiro: sem a guarda, uma leitura sem linha
+  // contaria como estrita (3ª rodada da revisão técnica do PR).
+  it('lista vazia conta como não estrito', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    const sair = vi.fn()
+    expect(await conferirModoSqlNaSubida(async () => [], sair, () => {})).toBe('nao-estrito')
+    expect(sair).toHaveBeenCalledWith(1)
+  })
+})

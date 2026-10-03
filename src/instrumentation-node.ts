@@ -117,6 +117,9 @@ export async function conferirModoSqlNaSubida(
     // Prazo próprio (revisão de segurança do PR): o pool só limita a espera
     // por CONEXÃO; um MySQL que aceita e não responde deixaria a consulta
     // pendente para sempre — a subida pendurada e o vigia parado, calado.
+    // A consulta vencida segue segurando a conexão dela; com o banco nesse
+    // estado a aplicação já não funciona, e quando o pool enche a próxima
+    // tentativa cai no `acquireTimeout`, que também conta como ilegível.
     modo = await Promise.race([
       lerModo(),
       new Promise<never>((_, recusar) => {
