@@ -1,10 +1,39 @@
 # Estado do projeto — retomada
 
-Última atualização: **02/10/2026, fim da noite.** `main` depois do #194. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **03/10/2026.** `main` depois do #200. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 02/10/2026, fim da noite — itens 1 e 2 da passagem FEITOS (este bloco vence o de baixo onde conflitar)
+> ### 03/10/2026 — achados da auditoria de 01/10 fechados, um por PR (este bloco vence os de baixo onde conflitar)
+>
+> **Mesclado** (cada PR com revisão técnica e de segurança publicadas, de 1 a 3 rodadas; em todas as rodadas 1 houve achado real):
+> - **#195:** decisão `A77` registrada: a equipe toda vê a qualidade da IA.
+> - **#196:** uma varredura cobre todas as rotas da API. Sem login, toda rota responde 401, menos `sessao` e `sessao/local`. Com senha provisória, toda rota responde 403, menos trocar a senha e sair. Uma rota nova já nasce coberta. Fecha as 8 rotas sem 401 das revisões do #194.
+> - **#197:** `.gitattributes` com `eol=lf`. O clone novo no Windows sai em LF, e a assinatura das migrações deixa de divergir. `scripts/fim-de-linha.test.ts` fica vermelho no Windows se a trava sumir. `.gitattributes` e `.gitleaksignore` passam ao nível 3.
+> - **#198:** trava entre suítes. O `globalSetup` pega `GET_LOCK('sbp_suite:<base>')` antes do `migrate reset`, e a segunda suíte é recusada com o motivo. Se a conexão da trava cair, a suíte para dizendo que o resultado não vale.
+> - **#199:** `dominio` sem valor padrão em `LogAuditoria`, `EventoProcessamento` e `Nota`, com a migração `20261003120000_dominio_sem_valor_padrao`. Defeito real achado: `notas.ts` gravava a nota sem domínio.
+> - **#200:** `middleware.ts` → `proxy.ts`, a convenção do Next 16, que roda em Node.js. O CI ganhou o passo "Proxy registrado no build" (`scripts/conferir-proxy.ts`). Ele foi visto pegando o caso perigoso: com o proxy movido de lugar, `next build` saiu 0 e as defesas sumiam em silêncio.
+>
+> Suíte: 171 arquivos, **2222 testes**.
+>
+> **Próximo do agente, sem depender do dono:**
+> 1. **O último achado aberto do bloco de 01/10:** testes que conferem só o texto de uma recusa. A mensagem do Prisma traz trecho do código vizinho, e um erro de constraint pode passar por recusa (visto no #176). O padrão bom é o do #199: a frase exata do MySQL e um id que não contenha a palavra procurada.
+> 2. **Pendências baixas das revisões de hoje:**
+>    - `db:conferir-trilha` conferir `@@sql_mode` estrito, porque a recusa do `dominio` depende de `STRICT_TRANS_TABLES`;
+>    - `engines` com Node ≥ 20 no `package.json` e Node mínimo em `docs/INSTALACAO.md`, porque o proxy usa o `crypto` global;
+>    - teste de rota para `GET` e `DELETE /api/sessao` sem cookie;
+>    - pendência 46: o nonce chegar aos scripts num teste com `next start`.
+> 3. **Atualizar a V1 quando o dono quiser** (item 3 do bloco de 02/10, noite). Agora há uma migração nova (`dominio`), aplicada com a `root`, como manda `INSTALACAO.md` §9. **Não renormalizar** as migrações antigas lá: elas continuam em CRLF na cópia de trabalho, e trocar o fim de linha muda a assinatura.
+>
+> **Com o dono:** nada novo. É a lista "Com o dono" do bloco de 02/10, noite: o teste de tela da V1, o ok para apagar `sbp_restaurada` e `backup.sql`, o modelo maior e a V2.
+>
+> **Armadilhas vistas hoje:**
+> - **Trocar de branch com schema diferente exige `npx prisma generate`:** o cliente gerado não é versionado, e o `tsc` acusa campos que não existem mais.
+> - **A trava agora recusa a segunda suíte, então nada de rodar vitest durante o `npm run verificar`.** Antes do #198, isso derrubou 61 testes de mentira.
+> - **No Windows, `prisma migrate diff` não serve como prova de sincronia** (ruído de caixa nas chaves estrangeiras). Quem decide é o passo do CI no Linux.
+> - **A base `sbp` desta máquina** ainda tem 3 migrações com assinatura diferente do arquivo (histórico local). `migrate dev` nela continua proibido; migração nova é escrita à mão.
+>
+> ### 02/10/2026, fim da noite — itens 1 e 2 da passagem FEITOS
 >
 > **Mesclado:**
 > - **#193:** SDK da Anthropic 0.128.0 → 0.129.0. Substitui o Dependabot #181, que foi fechado com o motivo.
@@ -161,10 +190,10 @@
 > - ~~pendência 41~~ resolvida no `AT-64` (concessões tabela a tabela por `npm run db:sql-privilegios`; `allowPublicKeyRetrieval=true` na `DATABASE_URL` com usuário de senha); ~~pendência 49~~ resolvida no `AT-65` (configuração errada encerra o servidor de produção com código 1);
 > - ~~comentários em `scripts/sql-de-privilegios.ts:7` e `src/servidor/privilegios.ts:120` ainda dizem "credencial de MANUTENÇÃO"~~ corrigidos em 02/10 (item 2 do bloco de cima);
 > - login do Graph por certificado não implementado: só segredo;
-> - `.gitattributes` com `eol=lf`;
-> - trava entre suítes no `globalSetup`;
-> - `dominio` com valor padrão no schema;
-> - o código ainda usa `middleware.ts`, que o Next 16 trocou por `proxy.ts`;
+> - ~~`.gitattributes` com `eol=lf`~~ feito no #197;
+> - ~~trava entre suítes no `globalSetup`~~ feito no #198;
+> - ~~`dominio` com valor padrão no schema~~ feito no #199;
+> - ~~o código ainda usa `middleware.ts`, que o Next 16 trocou por `proxy.ts`~~ feito no #200;
 > - testes que conferem só o texto de uma recusa: a mensagem do Prisma traz o trecho do código vizinho, e um erro de constraint pode passar por recusa (visto no #176).
 >
 > **Perguntas ao dono que bloqueiam o e-mail real:**
