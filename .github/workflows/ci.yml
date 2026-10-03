@@ -114,6 +114,13 @@ jobs:
       - name: Build de produção
         run: npm run build
 
+      # O Next ignora SEM AVISO um `proxy.ts` fora do lugar da convenção, e o
+      # build fica verde sem a CSP e sem a defesa de mesma origem. Visto: com o
+      # arquivo movido para `src/app/`, `next build` saiu 0 e o manifesto não
+      # tinha o proxy. Ver `scripts/conferir-proxy.ts`.
+      - name: Proxy registrado no build
+        run: npx tsx scripts/conferir-proxy.ts
+
   segredos:
     name: Varredura de segredos
     runs-on: ubuntu-latest
