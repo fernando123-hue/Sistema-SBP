@@ -21,8 +21,9 @@ import { limparTudo } from '../../testes/apoio'
  * esta lê a pasta, então rota criada amanhã já nasce coberta — ou o teste fica
  * vermelho e obriga alguém a dizer, por escrito, por que ela é pública.
  *
- * Só o 401 sem cookie. Quem pode o quê (403) continua nos testes de cada
- * serviço e em `autorizacao-de-rotas.test.ts`.
+ * Sem cookie, 401. Com a senha provisória, 403 (bloco do fim do arquivo).
+ * Quem pode o quê por papel continua nos testes de cada serviço e em
+ * `autorizacao-de-rotas.test.ts`.
  */
 
 const cookieDaVez = { valor: '' }
@@ -101,17 +102,18 @@ describe('senha provisória só troca a senha e sai', () => {
 
   beforeEach(async () => {
     await limparTudo(banco)
-    const senhaDefinidaEm = new Date()
     const gestora = await banco.colaborador.create({
       data: {
         nome: 'Gestora Provisória',
         email: 'gestora-provisoria@teste.local',
         papel: 'gestor',
         precisaTrocarSenha: true,
-        senhaDefinidaEm,
+        senhaDefinidaEm: new Date(),
       },
     })
-    cookieDaVez.valor = montarCookie(gestora.id, 'gestor', senhaDefinidaEm)
+    // A data lida do banco, como em `autorizacao-de-rotas.test.ts`: o cookie
+    // carrega o carimbo que `perfilAtual` compara, na precisão da coluna.
+    cookieDaVez.valor = montarCookie(gestora.id, 'gestor', gestora.senhaDefinidaEm)
   })
 
   it.each(protegidas.filter((nome) => nome !== TROCA_DE_SENHA))('%s: todo método responde 403', async (nome) => {
@@ -131,7 +133,6 @@ describe('senha provisória só troca a senha e sai', () => {
     expect((await DELETE()).status).toBe(200)
   })
 })
-
 
 /** Chama cada método exportado pela rota, com corpo `{}` e um `id` que não existe. */
 async function chamarTodos(nome: string): Promise<{ metodo: string; status: number }[]> {
