@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
 import { ErroDeNegocio } from '../core/erros'
+import { PermissaoNegadaError } from '../servidor/ator'
 import { conferirSenha } from '../servidor/credenciais'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
@@ -35,13 +37,14 @@ describe('quem pode cadastrar', () => {
   it('só gestor', async () => {
     const { base } = await baseComGestor()
 
-    await expect(
+    await recusada(
       criarColaborador(
         banco,
         { nome: 'Fulano', email: 'fulano@teste.local', papel: 'colaborador' },
         base.operador,
       ),
-    ).rejects.toThrow()
+      PermissaoNegadaError,
+    )
   })
 })
 
@@ -329,13 +332,14 @@ describe('o que a API recusa antes de gravar', () => {
     // `.trim()` depois de `.min(1)` valida a string CRUA e só então apara:
     // "   " tem comprimento 3, passa, e vira "". A pessoa nasceria sem nome
     // nenhum na lista de acesso e na tela de plantão.
-    await expect(
+    await recusada(
       criarColaborador(
         banco,
         { nome: '   ', email: 'fulano@teste.local', papel: 'colaborador' },
         gestor,
       ),
-    ).rejects.toThrow()
+      ZodError,
+    )
 
     expect(await banco.colaborador.count({ where: { email: 'fulano@teste.local' } })).toBe(0)
   })
@@ -348,13 +352,14 @@ describe('o que a API recusa antes de gravar', () => {
     // certo, e agora existem DUAS pessoas que são a mesma — com o histórico de
     // carga partido entre elas. É exatamente o dano que a regra de "reative em
     // vez de duplicar" existe para impedir, entrando pela porta da frente.
-    await expect(
+    await recusada(
       criarColaborador(
         banco,
         { nome: 'Ana Sintética', email: 'ana.silva', papel: 'colaborador' },
         gestor,
       ),
-    ).rejects.toThrow()
+      ZodError,
+    )
 
     expect(await banco.colaborador.count({ where: { nome: 'Ana Sintética' } })).toBe(0)
   })
@@ -365,9 +370,10 @@ describe('o que a API recusa antes de gravar', () => {
     // Gravado como "", a conta existe e NUNCA abre: a entrada exige e-mail com
     // ao menos um caractere. Ninguém consegue entrar, e ninguém consegue ver
     // que o problema é esse.
-    await expect(
+    await recusada(
       criarColaborador(banco, { nome: 'Fulano', email: '     ', papel: 'colaborador' }, gestor),
-    ).rejects.toThrow()
+      ZodError,
+    )
   })
 
   it('aceita e-mail normal com maiúsculas e espaço sobrando', async () => {

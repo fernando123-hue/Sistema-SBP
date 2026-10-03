@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
 import { ErroDeNegocio } from '../core/erros'
 import { LIMITE_ITENS_POR_REGISTRO_MANUAL } from '../core/esquemas'
@@ -262,7 +263,7 @@ describe('quantidade', () => {
   it('acima do teto, recusa inteira — 111 no lugar de 11 tem de doer', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
 
-    await expect(
+    await recusada(
       registrarManual(
         banco,
         {
@@ -273,7 +274,8 @@ describe('quantidade', () => {
         },
         base.operador,
       ),
-    ).rejects.toThrow()
+      ZodError,
+    )
 
     expect(await banco.item.count()).toBe(0)
   })

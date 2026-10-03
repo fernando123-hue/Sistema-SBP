@@ -629,6 +629,8 @@ describe('invariantes de atribuição', () => {
     const existente = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
 
     // Índice único (itemId, ativa) — a garantia é do banco, não do código.
+    // Aqui a recusa É do banco — e é o índice único que se prova, pelo código
+    // de violação de unicidade, não por texto (ver `src/testes/recusa.ts`).
     await expect(
       banco.atribuicao.create({
         data: {
@@ -639,7 +641,7 @@ describe('invariantes de atribuição', () => {
           ativa: true,
         },
       }),
-    ).rejects.toThrow()
+    ).rejects.toMatchObject({ code: 'P2002' })
   })
 
   it('ninguém conclui item que não é seu', async () => {
@@ -653,9 +655,7 @@ describe('invariantes de atribuição', () => {
     const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
     const outro = base.colaboradores.find((pessoa) => pessoa.id !== atribuicao.colaboradorId)!
 
-    await expect(concluir(banco, { itemId: atribuicao.itemId }, outro.ator)).rejects.toThrow(
-      /responsável ativo/i,
-    )
+    await recusada(concluir(banco, { itemId: atribuicao.itemId }, outro.ator), ErroDeNegocio, /responsável ativo/i)
   })
 
   it('colaborador não puxa para si o item de um colega', async () => {
@@ -1290,9 +1290,10 @@ describe('camada de IA fora do ar', () => {
       },
     }
 
-    await expect(
+    await recusada(
       sincronizar({ banco, ingestao: new IngestaoDeVariosEmails(5), ia }, base.operador),
-    ).rejects.toThrow(InterpretacaoIndisponivelError)
+      InterpretacaoIndisponivelError,
+    )
 
     // Uma tentativa, não cinco. Seguir o laço gastaria uma chamada condenada
     // por mensagem e enterraria a causa real — chave errada — no meio de

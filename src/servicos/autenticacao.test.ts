@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
 import { TENTATIVAS_ANTES_DE_TRAVAR, segundosDeBloqueio } from '../core/autenticacao'
 import { ErroDeNegocio } from '../core/erros'
@@ -324,9 +325,11 @@ describe('entrada com senha', () => {
 
   it('conta sem senha definida não entra', async () => {
     await semearPessoa()
-    await expect(
+    await recusada(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
-    ).rejects.toThrow()
+      ErroDeNegocio,
+      'E-mail ou senha incorretos.',
+    )
   })
 
   it('conta desativada não entra mesmo com a senha certa', async () => {
@@ -339,9 +342,11 @@ describe('entrada com senha', () => {
     )
     await banco.colaborador.update({ where: { id: base.pessoaId }, data: { ativo: false } })
 
-    await expect(
+    await recusada(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
-    ).rejects.toThrow()
+      ErroDeNegocio,
+      'E-mail ou senha incorretos.',
+    )
   })
 
   it('trava a conta depois de erros seguidos e destrava sozinha', async () => {
@@ -358,11 +363,13 @@ describe('entrada com senha', () => {
     }
 
     // Senha CERTA agora: tem de bater na trava, senão o bloqueio não existe.
-    await expect(
+    await recusada(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
       // A mesma resposta de qualquer recusa (C-18, `A57`): o bloqueio se prova
-      // pela senha CERTA recusada, não por uma mensagem que só conta real recebe.
-    ).rejects.toThrow('E-mail ou senha incorretos.')
+      // pela senha CERTA recusada, não por uma mensagem que só conta real recebe.,
+      ErroDeNegocio,
+      'E-mail ou senha incorretos.',
+    )
 
     // Sem intervenção humana: o bloqueio é temporal e passa por si.
     await banco.colaborador.update({
@@ -517,9 +524,10 @@ describe('entrada com senha', () => {
     // Guarda (revisão de segurança do PR #67): o id com espaço no fim também é
     // recusado. Hoje a colação é NO PAD e ele nem acha a linha; a conferência
     // pelo id gravado não depende disso.
-    await expect(
+    await recusada(
       definirSenhaProvisoria(banco, { colaboradorId: `${base.gestorId} ` }, base.gestor),
-    ).rejects.toThrow()
+      ErroDeNegocio,
+    )
 
     const depois = await banco.colaborador.findUniqueOrThrow({ where: { id: base.gestorId } })
     expect(depois.senhaHash).toBe(antes.senhaHash)
@@ -594,9 +602,11 @@ describe('troca de senha', () => {
     expect(entrada.precisaTrocarSenha).toBe(false)
 
     // A provisória — que o gestor conhece — deixa de valer no mesmo instante.
-    await expect(
+    await recusada(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
-    ).rejects.toThrow()
+      ErroDeNegocio,
+      'E-mail ou senha incorretos.',
+    )
   })
 
   it('recusa a troca sem a senha atual correta', async () => {
@@ -664,9 +674,10 @@ describe('troca de senha', () => {
 
   it('recusa senha curta demais', async () => {
     const base = await comProvisoria()
-    await expect(
+    await recusada(
       trocarSenha(banco, { senhaAtual: SENHA_PROVISORIA, senhaNova: 'curta' }, base.pessoaAtor),
-    ).rejects.toThrow()
+      ZodError,
+    )
   })
 })
 
@@ -741,11 +752,13 @@ describe('destravar conta', () => {
     for (let tentativa = 0; tentativa < TENTATIVAS_ANTES_DE_TRAVAR; tentativa += 1) {
       await autenticar(banco, { email: 'pessoa@teste.local', senha: 'errada' }).catch(() => null)
     }
-    await expect(
+    await recusada(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
       // A mesma resposta de qualquer recusa (C-18, `A57`): o bloqueio se prova
-      // pela senha CERTA recusada, não por uma mensagem que só conta real recebe.
-    ).rejects.toThrow('E-mail ou senha incorretos.')
+      // pela senha CERTA recusada, não por uma mensagem que só conta real recebe.,
+      ErroDeNegocio,
+      'E-mail ou senha incorretos.',
+    )
 
     await destravarConta(banco, { colaboradorId: base.pessoaId }, base.gestor)
 
@@ -847,9 +860,11 @@ describe('ativar e desativar acesso', () => {
 
     await definirAtivacao(banco, { colaboradorId: base.pessoaId, ativo: false }, base.gestor)
 
-    await expect(
+    await recusada(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
-    ).rejects.toThrow()
+      ErroDeNegocio,
+      'E-mail ou senha incorretos.',
+    )
 
     // Reativar devolve o acesso sem exigir nova senha: desligar alguém de
     // férias não pode custar um ritual de redefinição na volta.

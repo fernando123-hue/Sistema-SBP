@@ -27,22 +27,37 @@ describe('recusada', () => {
     )
   })
 
+  it('texto como string confere que a mensagem o CONTÉM; sem mensagem, só a classe', async () => {
+    await recusada(Promise.reject(new ErroDeNegocio('E-mail ou senha incorretos.')), ErroDeNegocio, 'senha incorretos')
+    await recusada(Promise.reject(new ErroDeNegocio('qualquer coisa')), ErroDeNegocio)
+    await expect(
+      recusada(Promise.reject(new ErroDeNegocio('A conta está inativa.')), ErroDeNegocio, 'E-mail ou senha incorretos.'),
+    ).rejects.toThrow(/to contain/)
+  })
+
   it('recusa operação que foi aceita', async () => {
     await expect(recusada(Promise.resolve('ok'), ErroDeNegocio, /Liga/)).rejects.toThrow(/foi aceita/)
   })
 })
 
 /**
- * O padrão antigo não volta: nos testes de serviço, toda recusa passa por
- * `recusada`. A exceção é a trilha append-only, cuja recusa É do banco (o
- * trigger) e é conferida pela frase exata do `SIGNAL`.
+ * O padrão antigo não volta: nos testes de serviço, recusa passa por
+ * `recusada` (ou confere a classe com `toBeInstanceOf`, ou o código do Prisma
+ * com `toMatchObject`, quando a recusa É do banco de propósito).
+ *
+ * `rejects.toThrow(…)` — com regex, texto, constante ou vazio, numa linha ou
+ * quebrado pelo formatador — só nos dois arquivos cuja recusa é do banco e é
+ * conferida pela frase EXATA dele: o `SIGNAL` do trigger da trilha e o erro
+ * 1364 da coluna sem padrão.
  */
+const RECUSA_DO_BANCO_PELA_FRASE = new Set(['trilha-append-only.test.ts', 'dominio-obrigatorio.test.ts'])
+
 describe('testes de serviço conferem recusa pela classe', () => {
-  it('nenhum usa `rejects.toThrow(/texto/)`', () => {
+  it('nenhum usa `rejects.toThrow(…)`, em nenhuma formatação', () => {
     const pasta = join(dirname(fileURLToPath(import.meta.url)), '..', 'servicos')
     const comTextoSo = readdirSync(pasta)
-      .filter((nome) => nome.endsWith('.test.ts') && nome !== 'trilha-append-only.test.ts')
-      .filter((nome) => /\.rejects\.toThrow\(\//.test(readFileSync(join(pasta, nome), 'utf8')))
+      .filter((nome) => nome.endsWith('.test.ts') && !RECUSA_DO_BANCO_PELA_FRASE.has(nome))
+      .filter((nome) => /\.rejects\s*\.toThrow\s*\(/.test(readFileSync(join(pasta, nome), 'utf8')))
     expect(comTextoSo).toEqual([])
   })
 })

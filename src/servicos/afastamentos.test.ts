@@ -3,6 +3,7 @@ import { ZodError } from 'zod'
 
 import { ErroDeNegocio } from '../core/erros'
 import { deslocarDias } from '../core/util/datas'
+import { PermissaoNegadaError } from '../servidor/ator'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
 import { recusada } from '../testes/recusa'
@@ -613,8 +614,9 @@ describe('encerrar ausência em aberto', () => {
       atorDeTeste(gestor.id, 'gestor'),
     )
 
-    await expect(
+    await recusada(
       encerrar(banco, { afastamentoId: aberto.id, fim: DATA_BASE }, base.operador),
-    ).rejects.toThrow()
+      PermissaoNegadaError,
+    )
   })
 })

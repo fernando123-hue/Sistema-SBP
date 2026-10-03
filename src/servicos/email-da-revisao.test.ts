@@ -4,6 +4,7 @@ import { ErroDeNegocio } from '../core/erros'
 import { DOMINIO_ATUAL, EmailBrutoSchema } from '../core/esquemas'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
+import { PermissaoNegadaError } from '../servidor/ator'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
 import { recusada } from '../testes/recusa'
@@ -144,7 +145,7 @@ describe('lerEmailDaRevisao', () => {
     const { base, pendente } = await umaRevisaoPendente()
     const colaborador = base.colaboradores[0]!.ator
 
-    await expect(lerEmailDaRevisao(banco, pendente.revisaoId, colaborador)).rejects.toThrow()
+    await recusada(lerEmailDaRevisao(banco, pendente.revisaoId, colaborador), PermissaoNegadaError)
 
     expect(await banco.logAuditoria.count({ where: { acao: 'email_lido_na_revisao' } })).toBe(0)
   })
@@ -200,9 +201,7 @@ describe('lerEmailDaRevisao', () => {
     const item = await banco.item.findUniqueOrThrow({ where: { id: pendente.itemId } })
     await banco.emailConteudo.delete({ where: { emailId: item.emailId! } })
 
-    await expect(lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).rejects.toThrow(
-      /sem conteúdo e sem carimbo de expurgo/,
-    )
+    await recusada(lerEmailDaRevisao(banco, pendente.revisaoId, base.operador), Error, /sem conteúdo e sem carimbo de expurgo/)
   })
 
   it('item registrado à mão diz que não há e-mail', async () => {

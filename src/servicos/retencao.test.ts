@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
 import { ErroDeNegocio } from '../core/erros'
 import { PermissaoNegadaError } from '../servidor/ator'
@@ -58,9 +59,7 @@ describe('o valor em vigor', () => {
       data: { chave: 'motivo_de_afastamento', dias: 0, alteradoPor: 'edicao-manual' },
     })
 
-    await expect(prazoEmVigor(banco, 'motivo_de_afastamento')).rejects.toThrow(
-      /Prazo de retenção inválido/,
-    )
+    await recusada(prazoEmVigor(banco, 'motivo_de_afastamento'), ErroDeNegocio, /Prazo de retenção inválido/)
   })
 })
 
@@ -120,16 +119,18 @@ describe('mudar o prazo', () => {
 
   // 1 e 4 caem pelo piso de `A45`: o prazo mais curto que o sistema aceita é 5.
   it.each([0, 1, 4, -1, 7.5, 3651])('recusa %s dias na entrada', async (dias) => {
-    await expect(
+    await recusada(
       alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias, confirmarEncurtamento: true }, gestor),
-    ).rejects.toThrow()
+      ZodError,
+    )
 
     expect(await banco.prazoDeRetencao.count()).toBe(0)
   })
 
   it('recusa chave de prazo que não existe', async () => {
-    await expect(
+    await recusada(
       alterarPrazo(banco, { chave: 'qualquer_coisa', dias: 30 }, gestor),
-    ).rejects.toThrow()
+      ZodError,
+    )
   })
 })

@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { sequenciaDeDatas } from '../core/util/datas'
 import { IaMock } from '../adapters/ia-mock'
 import { IngestaoMock } from '../adapters/ingestao-mock'
+import { ConservacaoVioladaError } from '../core/erros'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, aprovarTudoNoBanco, limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { sincronizar } from './ingestao'
 
 /**
@@ -82,9 +84,7 @@ describe('conservação na gravação', () => {
 
     const { confirmar } = await import('./distribuicao')
 
-    await expect(confirmar(banco, { data, categorias: [] }, base.operador)).rejects.toThrow(
-      /Conservação violada/i,
-    )
+    await recusada(confirmar(banco, { data, categorias: [] }, base.operador), ConservacaoVioladaError, /Conservação violada/i)
 
     // NADA pode ter sobrado. Meia rodada gravada é pior que rodada nenhuma:
     // os itens sairiam da fila sem uma rodada que explique para onde foram.
@@ -117,9 +117,7 @@ describe('conservação na gravação', () => {
 
     const { confirmar } = await import('./distribuicao')
 
-    await expect(confirmar(banco, { data, categorias: [] }, base.operador)).rejects.toThrow(
-      /Conservação violada/i,
-    )
+    await recusada(confirmar(banco, { data, categorias: [] }, base.operador), Error, /Conservação violada/i)
 
     expect(await oQueFicouGravado()).toEqual({
       rodadas: 0,

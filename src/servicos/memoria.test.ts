@@ -305,9 +305,7 @@ describe('entidades consultáveis', () => {
     // Recusar é diferente de devolver `[]`: lista vazia diria "não aconteceu
     // nada com esse registro", que é uma resposta errada para uma pergunta
     // que o sistema não aceita fazer.
-    await expect(porEntidade(banco, 'Revisao', 'x', base.operador)).rejects.toThrow(
-      /não é consultável/i,
-    )
+    await recusada(porEntidade(banco, 'Revisao', 'x', base.operador), ErroDeNegocio, /não é consultável/i)
   })
 })
 

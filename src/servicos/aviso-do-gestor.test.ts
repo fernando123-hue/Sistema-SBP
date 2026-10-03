@@ -304,9 +304,7 @@ describe('o que mudou desde a última olhada (A39)', () => {
 
   it('só gestor marca como visto', async () => {
     for (const ator of [base.colaboradores[0]!.ator, base.operador]) {
-      await expect(marcarAvisoComoVisto(banco, { chaves: [] }, ator, DATA_BASE)).rejects.toThrow(
-        /Seu acesso não permite/,
-      )
+      await recusada(marcarAvisoComoVisto(banco, { chaves: [] }, ator, DATA_BASE), PermissaoNegadaError, /Seu acesso não permite/)
     }
   })
 })

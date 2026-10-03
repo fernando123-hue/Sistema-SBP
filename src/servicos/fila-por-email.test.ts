@@ -4,6 +4,7 @@ import { ErroDeNegocio } from '../core/erros'
 import { serializar } from '../core/esquemas'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo, semearBase, type BaseSemeada } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { concluirDoMesmoEmail, lerDadosDoItem, minhaFila, transferir } from './fila'
 import { registrarManual } from './itens'
 
@@ -154,7 +155,7 @@ describe('concluirDoMesmoEmail (3A)', () => {
     const tentativa = concluirDoMesmoEmail(banco, { itemIds }, dono!.ator)
 
     await expect(tentativa).rejects.toBeInstanceOf(ErroDeNegocio)
-    await expect(tentativa).rejects.toThrow('Atualize a tela')
+    await recusada(tentativa, ErroDeNegocio, 'Atualize a tela')
     expect(await banco.execucao.count()).toBe(0)
     expect(await banco.item.count({ where: { status: 'concluido' } })).toBe(0)
     // Quem já foi dono está com a tela desatualizada, não sondando: nada de
@@ -169,9 +170,11 @@ describe('concluirDoMesmoEmail (3A)', () => {
     const dono = base.colaboradores[0]!
     const { itemIds } = await emailComItens(base, dono.id, 2)
 
-    await expect(
+    await recusada(
       concluirDoMesmoEmail(banco, { itemIds: [...itemIds, 'nao-existe-1', 'nao-existe-2'] }, dono.ator),
-    ).rejects.toThrow('Nada foi concluído')
+      ErroDeNegocio,
+      'Nada foi concluído',
+    )
     expect(await banco.execucao.count()).toBe(0)
   })
 
@@ -242,9 +245,11 @@ describe('concluirDoMesmoEmail (3A)', () => {
     const primeiro = await emailComItens(base, dono.id, 2)
     const segundo = await emailComItens(base, dono.id, 2)
 
-    await expect(
+    await recusada(
       concluirDoMesmoEmail(banco, { itemIds: [primeiro.itemIds[0]!, segundo.itemIds[0]!] }, dono.ator),
-    ).rejects.toThrow('mesmo e-mail')
+      ErroDeNegocio,
+      'mesmo e-mail',
+    )
     expect(await banco.execucao.count()).toBe(0)
   })
 
@@ -259,9 +264,7 @@ describe('concluirDoMesmoEmail (3A)', () => {
       base.operador,
     )
 
-    await expect(concluirDoMesmoEmail(banco, { itemIds: feito.itensCriados }, dono.ator)).rejects.toThrow(
-      'mesmo e-mail',
-    )
+    await recusada(concluirDoMesmoEmail(banco, { itemIds: feito.itensCriados }, dono.ator), ErroDeNegocio, 'mesmo e-mail')
     expect(await banco.execucao.count()).toBe(0)
   })
 
@@ -271,7 +274,7 @@ describe('concluirDoMesmoEmail (3A)', () => {
     const { itemIds } = await emailComItens(base, dono!.id, 2)
 
     // A mesma frase de "mudou de mão": a recusa não diz de quem é o item.
-    await expect(concluirDoMesmoEmail(banco, { itemIds }, intruso!.ator)).rejects.toThrow('Nada foi concluído')
+    await recusada(concluirDoMesmoEmail(banco, { itemIds }, intruso!.ator), ErroDeNegocio, 'Nada foi concluído')
     expect(await banco.execucao.count()).toBe(0)
     expect(await banco.eventoProcessamento.count({ where: { etapa: 'autorizacao' } })).toBe(1)
   })
@@ -367,7 +370,7 @@ describe('lerDadosDoItem (3B)', () => {
     const { itemIds } = await emailComItens(base, dono.id, 1)
     await concluirDoMesmoEmail(banco, { itemIds }, dono.ator)
 
-    await expect(lerDadosDoItem(banco, itemIds[0]!, dono.ator)).rejects.toThrow('não está mais na sua fila')
+    await recusada(lerDadosDoItem(banco, itemIds[0]!, dono.ator), ErroDeNegocio, 'não está mais na sua fila')
     expect(await banco.logAuditoria.count({ where: { acao: 'dados_do_item_lidos' } })).toBe(0)
   })
 
@@ -413,7 +416,7 @@ describe('lerDadosDoItem (3B)', () => {
     const { itemIds } = await emailComItens(base, dono.id, 1)
     await banco.item.update({ where: { id: itemIds[0]! }, data: { payload: '{"campos": 5}' } })
 
-    await expect(lerDadosDoItem(banco, itemIds[0]!, dono.ator)).rejects.toThrow()
+    await recusada(lerDadosDoItem(banco, itemIds[0]!, dono.ator), Error)
     expect(await banco.logAuditoria.count({ where: { acao: 'dados_do_item_lidos' } })).toBe(0)
   })
 

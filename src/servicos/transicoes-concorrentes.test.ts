@@ -254,7 +254,7 @@ describe('quem não pode mexer no item não chega a travá-lo', () => {
         () => transferir(banco, { itemId, paraColaboradorId: outra.id, justificativa: 'pegando para mim' }, outra.ator),
       ]) {
         const inicio = Date.now()
-        await expect(tentativa()).rejects.toThrow()
+        await recusada(tentativa(), Error)
         expect(Date.now() - inicio).toBeLessThan(1000)
       }
     } finally {

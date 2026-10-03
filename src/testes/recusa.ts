@@ -21,10 +21,14 @@ type ClasseDeErro = abstract new (...argumentos: never[]) => Error
 
 const ERRO_DO_BANCO = /^(Prisma|DriverAdapter)/
 
+/**
+ * `mensagem`: regex, ou texto que a mensagem CONTÉM (como `toThrow('…')`).
+ * Sem ela, só a classe — para a recusa cujo texto não é o que se prova.
+ */
 export async function recusada<C extends ClasseDeErro>(
   promessa: Promise<unknown>,
   classe: C,
-  mensagem: RegExp,
+  mensagem?: RegExp | string,
 ): Promise<InstanceType<C>> {
   const erro: unknown = await promessa.then(
     () => {
@@ -34,6 +38,7 @@ export async function recusada<C extends ClasseDeErro>(
   )
   expect((erro as Error)?.constructor?.name).not.toMatch(ERRO_DO_BANCO)
   expect(erro).toBeInstanceOf(classe)
-  expect((erro as Error).message).toMatch(mensagem)
+  if (mensagem instanceof RegExp) expect((erro as Error).message).toMatch(mensagem)
+  else if (mensagem !== undefined) expect((erro as Error).message).toContain(mensagem)
   return erro as InstanceType<C>
 }

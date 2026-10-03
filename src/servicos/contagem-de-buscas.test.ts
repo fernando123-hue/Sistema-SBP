@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { ErroDeNegocio } from '../core/erros'
 import { deslocarDias } from '../core/util/datas'
 import { protegerCpf } from '../servidor/cpf-protegido'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase, type BaseSemeada } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { buscarPorChave } from './caixa'
 import { contarBusca, expurgarContagemDeBuscas } from './contagem-de-buscas'
 import { listarPrazos } from './retencao'
@@ -79,9 +81,10 @@ describe('cada busca é contada para quem buscou, no dia', () => {
 
   it('texto recusado antes de procurar não conta', async () => {
     // Dígito verificador errado: o sistema nem chegou a procurar.
-    await expect(
+    await recusada(
       buscarPorChave(banco, { texto: '111.444.777-00' }, base.operador, { hoje: HOJE }),
-    ).rejects.toThrow()
+      ErroDeNegocio,
+    )
 
     expect(await contagem(base.operadorId)).toBeNull()
   })
@@ -172,7 +175,7 @@ describe('a contagem tem prazo', () => {
   it('prazo inválido falha antes de apagar qualquer linha', async () => {
     await gravar(deslocarDias(HOJE, -1))
 
-    await expect(expurgarContagemDeBuscas(banco, { diasDeRetencao: 0, hoje: HOJE })).rejects.toThrow()
+    await recusada(expurgarContagemDeBuscas(banco, { diasDeRetencao: 0, hoje: HOJE }), ErroDeNegocio)
     expect(await contagem(base.operadorId, deslocarDias(HOJE, -1))).not.toBeNull()
   })
 

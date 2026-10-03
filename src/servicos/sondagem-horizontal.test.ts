@@ -4,6 +4,7 @@ import { ErroDeNegocio } from '../core/erros'
 import { DOMINIO_ATUAL } from '../core/esquemas'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { concluir, transferir } from './fila'
 import { registrarManual } from './itens'
 
@@ -46,7 +47,7 @@ describe('concluir item de outra pessoa', () => {
     const tentativa = concluir(banco, { itemId }, intruso!.ator)
 
     await expect(tentativa).rejects.toBeInstanceOf(ErroDeNegocio)
-    await expect(tentativa).rejects.toThrow('Só o responsável ativo pode concluir o item')
+    await recusada(tentativa, ErroDeNegocio, 'Só o responsável ativo pode concluir o item')
     const eventos = await banco.eventoProcessamento.findMany({ where: { etapa: 'autorizacao' } })
     expect(eventos).toHaveLength(1)
     expect(eventos[0]!.situacao).toBe('falha')
@@ -92,9 +93,7 @@ describe('concluir item de outra pessoa', () => {
     const itemId = await itemDe(base, antiga!.id)
     await transferir(banco, { itemId, paraColaboradorId: nova!.id, justificativa: 'remanejar carga do dia' }, base.operador)
 
-    await expect(concluir(banco, { itemId }, antiga!.ator)).rejects.toThrow(
-      'Só o responsável ativo pode concluir o item',
-    )
+    await recusada(concluir(banco, { itemId }, antiga!.ator), ErroDeNegocio, 'Só o responsável ativo pode concluir o item')
 
     expect(await banco.eventoProcessamento.count({ where: { etapa: 'autorizacao' } })).toBe(0)
   })
@@ -108,7 +107,7 @@ describe('concluir item de outra pessoa', () => {
     const tentativa = concluir(banco, { itemId }, intruso!.ator)
 
     await expect(tentativa).rejects.toBeInstanceOf(ErroDeNegocio)
-    await expect(tentativa).rejects.toThrow('Só o responsável ativo pode concluir o item')
+    await recusada(tentativa, ErroDeNegocio, 'Só o responsável ativo pode concluir o item')
     // Sem isto o teste passaria sem exercitar o `catch` (revisão de segurança do #130).
     expect(espiao).toHaveBeenCalled()
   })

@@ -79,7 +79,9 @@ describe('histórico operacional não desaparece em cascata', () => {
 
     const atribuicao = await banco.atribuicao.findFirstOrThrow({ select: { itemId: true } })
 
-    await expect(banco.item.delete({ where: { id: atribuicao.itemId } })).rejects.toThrow()
+    // A recusa É do banco: a chave estrangeira `Restrict`, provada pelo código de
+    // violação de FK, não por texto (ver `src/testes/recusa.ts`).
+    await expect(banco.item.delete({ where: { id: atribuicao.itemId } })).rejects.toMatchObject({ code: 'P2003' })
 
     // E a prova continua lá: a recusa não é decorativa.
     expect(await banco.atribuicao.count({ where: { itemId: atribuicao.itemId } })).toBeGreaterThan(0)
