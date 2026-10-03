@@ -1,5 +1,7 @@
 import { execSync } from 'node:child_process'
 
+import { nomeDaTrava, travarSuite } from './trava-da-suite'
+
 /**
  * `globalSetup` do Vitest.
  *
@@ -79,10 +81,15 @@ export function conferirBaseDeTeste(url: string): string {
   return base
 }
 
-export async function setup(): Promise<void> {
+export async function setup(): Promise<() => Promise<void>> {
   const url = process.env['DATABASE_URL'] ?? PADRAO_LOCAL
 
-  conferirBaseDeTeste(url)
+  const base = conferirBaseDeTeste(url)
+
+  // ANTES do reset: a segunda suíte é recusada sem apagar a base da primeira.
+  // A trava fica presa à conexão até o fim da suíte — a função devolvida é o
+  // `teardown` do Vitest. Ver `trava-da-suite.ts`.
+  const liberar = await travarSuite(url, nomeDaTrava(base))
 
   try {
     // `--force` pula a confirmação interativa, e é a ÚNICA bandeira que serve
@@ -114,6 +121,7 @@ export async function setup(): Promise<void> {
         ? String((erro as Record<typeof campo, unknown>)[campo] ?? '')
         : ''
 
+    await liberar()
     throw new Error(
       'Não foi possível preparar o banco de teste. Confira se o MySQL está de pé e se a base ' +
         'de teste existe com a colação certa (ver README).\n' +
@@ -121,4 +129,6 @@ export async function setup(): Promise<void> {
       { cause: erro },
     )
   }
+
+  return liberar
 }
