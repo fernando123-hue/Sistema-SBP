@@ -79,7 +79,7 @@ describe('tempo de resposta da recusa de entrada', () => {
    */
   async function medir(email: string): Promise<number> {
     const inicio = Date.now()
-    await recusada(autenticar(banco, { email, senha: 'senha-errada-qualquer' }), ErroDeNegocio, 'E-mail ou senha incorretos.')
+    await recusada(autenticar(banco, { email, senha: 'senha-errada-qualquer' }), ErroDeNegocio, /^E-mail ou senha incorretos\.$/)
     return Date.now() - inicio
   }
 

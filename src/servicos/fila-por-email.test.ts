@@ -416,7 +416,7 @@ describe('lerDadosDoItem (3B)', () => {
     const { itemIds } = await emailComItens(base, dono.id, 1)
     await banco.item.update({ where: { id: itemIds[0]! }, data: { payload: '{"campos": 5}' } })
 
-    await recusada(lerDadosDoItem(banco, itemIds[0]!, dono.ator), Error)
+    await recusada(lerDadosDoItem(banco, itemIds[0]!, dono.ator), Error, /payload fora do esquema/)
     expect(await banco.logAuditoria.count({ where: { acao: 'dados_do_item_lidos' } })).toBe(0)
   })
 

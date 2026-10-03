@@ -328,7 +328,7 @@ describe('entrada com senha', () => {
     await recusada(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
       ErroDeNegocio,
-      'E-mail ou senha incorretos.',
+      /^E-mail ou senha incorretos\.$/,
     )
   })
 
@@ -345,7 +345,7 @@ describe('entrada com senha', () => {
     await recusada(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
       ErroDeNegocio,
-      'E-mail ou senha incorretos.',
+      /^E-mail ou senha incorretos\.$/,
     )
   })
 
@@ -363,12 +363,12 @@ describe('entrada com senha', () => {
     }
 
     // Senha CERTA agora: tem de bater na trava, senão o bloqueio não existe.
+    // A mesma resposta de qualquer recusa (C-18, `A57`): o bloqueio se prova
+    // pela senha CERTA recusada, não por uma mensagem que só conta real recebe.
     await recusada(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
-      // A mesma resposta de qualquer recusa (C-18, `A57`): o bloqueio se prova
-      // pela senha CERTA recusada, não por uma mensagem que só conta real recebe.,
       ErroDeNegocio,
-      'E-mail ou senha incorretos.',
+      /^E-mail ou senha incorretos\.$/,
     )
 
     // Sem intervenção humana: o bloqueio é temporal e passa por si.
@@ -605,7 +605,7 @@ describe('troca de senha', () => {
     await recusada(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
       ErroDeNegocio,
-      'E-mail ou senha incorretos.',
+      /^E-mail ou senha incorretos\.$/,
     )
   })
 
@@ -752,12 +752,12 @@ describe('destravar conta', () => {
     for (let tentativa = 0; tentativa < TENTATIVAS_ANTES_DE_TRAVAR; tentativa += 1) {
       await autenticar(banco, { email: 'pessoa@teste.local', senha: 'errada' }).catch(() => null)
     }
+    // A mesma resposta de qualquer recusa (C-18, `A57`): o bloqueio se prova
+    // pela senha CERTA recusada, não por uma mensagem que só conta real recebe.
     await recusada(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
-      // A mesma resposta de qualquer recusa (C-18, `A57`): o bloqueio se prova
-      // pela senha CERTA recusada, não por uma mensagem que só conta real recebe.,
       ErroDeNegocio,
-      'E-mail ou senha incorretos.',
+      /^E-mail ou senha incorretos\.$/,
     )
 
     await destravarConta(banco, { colaboradorId: base.pessoaId }, base.gestor)
@@ -863,7 +863,7 @@ describe('ativar e desativar acesso', () => {
     await recusada(
       autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA_PROVISORIA }),
       ErroDeNegocio,
-      'E-mail ou senha incorretos.',
+      /^E-mail ou senha incorretos\.$/,
     )
 
     // Reativar devolve o acesso sem exigir nova senha: desligar alguém de
