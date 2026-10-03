@@ -114,12 +114,31 @@ describe('uma vez por dia', () => {
     const armazenamento = new ArmazenamentoEmMemoria()
     armazenamento.colocar('ab/orfao-antigo.pdf', new Date(Date.now() - 8 * 24 * 60 * 60 * 1000))
     armazenamento.colocar('cd/em-curso.pdf', new Date())
+    armazenamento.colocar('ef/com-dono.pdf', new Date())
+    await banco.email.create({
+      data: {
+        messageId: '<rotina-orfao@exemplo.test>',
+        recebidoEm: new Date(),
+        anexos: {
+          create: {
+            nomeSeguro: 'documento-sintetico.pdf',
+            tipoDeclarado: 'application/pdf',
+            tamanho: 3,
+            aceito: true,
+            chaveArmazenamento: 'ef/com-dono.pdf',
+          },
+        },
+      },
+    })
 
     const resultado = await rodarLimpezaDiaria(banco, { armazenamento, hoje: DATA_BASE })
 
     if (!resultado.executou || resultado.situacao !== 'sucesso') throw new Error('esperava sucesso')
-    expect(resultado.resumo.anexosSemRegistro).toEqual({ avaliados: 2, semRegistro: 2, removidos: 1, prazoEmDias: 7 })
-    expect((await armazenamento.listar()).map((arquivo) => arquivo.chave)).toEqual(['cd/em-curso.pdf'])
+    expect(resultado.resumo.anexosSemRegistro).toEqual({ avaliados: 3, semRegistro: 2, removidos: 1, prazoEmDias: 7 })
+    expect((await armazenamento.listar()).map((arquivo) => arquivo.chave).sort()).toEqual([
+      'cd/em-curso.pdf',
+      'ef/com-dono.pdf',
+    ])
     const registro = await banco.logAuditoria.findFirstOrThrow({ where: { acao: 'anexo_orfao_removido' } })
     expect(registro.correlacaoId).toBe(resultado.correlacaoId)
   })

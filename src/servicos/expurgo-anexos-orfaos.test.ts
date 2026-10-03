@@ -2,7 +2,7 @@ import { mkdtemp, rm, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ArmazenamentoEmDisco } from '../adapters/armazenamento-disco'
 import { FalhaDeArmazenamento, type ArmazenamentoPort } from '../ports/armazenamento'
@@ -11,7 +11,7 @@ import { limparTudo, semearBase } from '../testes/apoio'
 import { recusada } from '../testes/recusa'
 import {
   LIMITE_DE_ORFAOS_POR_EXECUCAO,
-  OrfaosAlemDoLimiteError,
+  LimpezaDeOrfaosRecusadaError,
   expurgarAnexosOrfaos,
 } from './expurgo-anexos-orfaos'
 
@@ -81,12 +81,13 @@ function expurgar(alvo: ArmazenamentoPort | null = armazenamento) {
 
 describe('o que sai e o que fica', () => {
   it('arquivo sem linha e com mais de 7 dias sai, e a trilha guarda a chave', async () => {
+    await anexoNoBanco(await arquivoGravadoHa(400))
     const orfao = await arquivoGravadoHa(8)
 
     const resultado = await expurgar()
 
-    expect(resultado).toEqual({ avaliados: 1, semRegistro: 1, removidos: 1 })
-    expect(await noDisco()).toEqual([])
+    expect(resultado).toEqual({ avaliados: 2, semRegistro: 1, removidos: 1 })
+    expect(await noDisco()).not.toContain(orfao)
     const linha = await banco.logAuditoria.findFirstOrThrow({ where: { acao: 'anexo_orfao_removido' } })
     expect(linha.entidadeId).toBe(orfao)
     expect(linha.usuario).toBe('sistema')
@@ -121,6 +122,7 @@ describe('o que sai e o que fica', () => {
   })
 
   it('a trilha não leva o conteúdo nem o nome do arquivo, só a chave e a data', async () => {
+    await anexoNoBanco(await arquivoGravadoHa(400))
     await arquivoGravadoHa(8)
 
     await expurgar()
@@ -138,15 +140,95 @@ describe('falhar alto', () => {
   it(`mais de ${LIMITE_DE_ORFAOS_POR_EXECUCAO} órfãos vencidos: nada sai e a execução falha`, async () => {
     // Banco errado (outra `DATABASE_URL`, base vazia) faria de TODO anexo um
     // órfão. O limite transforma isso numa falha visível, não numa pasta vazia.
+
+    await anexoNoBanco(await arquivoGravadoHa(400))
     for (let i = 0; i <= LIMITE_DE_ORFAOS_POR_EXECUCAO; i += 1) await arquivoGravadoHa(8)
 
-    await recusada(expurgar(), OrfaosAlemDoLimiteError)
+    await recusada(expurgar(), LimpezaDeOrfaosRecusadaError, /limite/)
 
-    expect(await noDisco()).toHaveLength(LIMITE_DE_ORFAOS_POR_EXECUCAO + 1)
+    expect(await noDisco()).toHaveLength(LIMITE_DE_ORFAOS_POR_EXECUCAO + 2)
     expect(await banco.logAuditoria.count({ where: { acao: 'anexo_orfao_removido' } })).toBe(0)
+  })
+})
+
+describe('uma pessoa aceita o número que viu (revisão técnica do #211, M2)', () => {
+  // Sem saída, a recusa se repetiria todo dia para sempre. A saída é uma
+  // pessoa conferir e repetir o número EXATO; outro número não serve.
+  it('com o número exato, os órfãos saem mesmo sem nenhum arquivo com dono, e a trilha diz que foi aceito', async () => {
+    for (let i = 0; i < 3; i += 1) await arquivoGravadoHa(8)
+
+    const resultado = await expurgarAnexosOrfaos(banco, { diasDeRetencao: 7, armazenamento, aceitarOrfaos: 3 })
+
+    expect(resultado.removidos).toBe(3)
+    const linha = await banco.logAuditoria.findFirstOrThrow({ where: { acao: 'anexo_orfao_removido' } })
+    expect(JSON.parse(linha.depois!)).toMatchObject({ aceitoNaLinhaDeComando: 3 })
+  })
+
+  it('número diferente do encontrado: nada sai', async () => {
+    for (let i = 0; i < 3; i += 1) await arquivoGravadoHa(8)
+
+    await recusada(
+      expurgarAnexosOrfaos(banco, { diasDeRetencao: 7, armazenamento, aceitarOrfaos: 2 }),
+      LimpezaDeOrfaosRecusadaError,
+      /3/,
+    )
+
+    expect(await noDisco()).toHaveLength(3)
+  })
+
+  it('nenhum arquivo do disco tem registro: é banco errado ou vazio, e nada sai', async () => {
+    // Menos de 50, então o limite sozinho não pegaria: com o banco vazio e
+    // três documentos vencidos, os três sumiriam. Revisão técnica do #211 (M1).
+    for (let i = 0; i < 3; i += 1) await arquivoGravadoHa(8)
+
+    await recusada(expurgar(), LimpezaDeOrfaosRecusadaError, /nenhum arquivo/i)
+
+    expect(await noDisco()).toHaveLength(3)
+  })
+
+  it('com um arquivo que tem dono, o órfão ao lado sai', async () => {
+    await anexoNoBanco(await arquivoGravadoHa(400))
+    await arquivoGravadoHa(8)
+
+    expect(await expurgar()).toEqual({ avaliados: 2, semRegistro: 1, removidos: 1 })
+  })
+
+  it('remoção feita e transação que aborta depois: o log diz que o arquivo SAIU sem trilha', async () => {
+    // A trilha e a remoção correm juntas, mas o disco não volta atrás. Se o
+    // commit falha depois de o arquivo sair, o log não pode dizer "continua
+    // guardado" — é o contrário. Revisão técnica do #211 (M3).
+    const orfao = await arquivoGravadoHa(8)
+    await anexoNoBanco(await arquivoGravadoHa(400))
+    const bancoQueAborta = new Proxy(banco, {
+      get(alvo, propriedade) {
+        if (propriedade !== '$transaction') return Reflect.get(alvo, propriedade)
+        return (executar: (tx: unknown) => Promise<unknown>) =>
+          alvo.$transaction(async (tx) => {
+            await executar(tx)
+            throw new Error('commit simulado')
+          })
+      },
+    })
+    const linhas: string[] = []
+    vi.spyOn(process.stderr, 'write').mockImplementation((linha) => {
+      linhas.push(String(linha))
+      return true
+    })
+
+    await recusada(
+      expurgarAnexosOrfaos(bancoQueAborta, { diasDeRetencao: 7, armazenamento }),
+      FalhaDeArmazenamento,
+    )
+
+    expect(await noDisco()).not.toContain(orfao)
+    expect(await banco.logAuditoria.count({ where: { acao: 'anexo_orfao_removido' } })).toBe(0)
+    const registro = linhas.find((linha) => linha.includes(orfao))
+    expect(registro).toMatch(/apagado sem linha na trilha/)
   })
 
   it('remoção que falha não deixa trilha mentindo, e não segura as outras', async () => {
+    const comDono = await arquivoGravadoHa(400)
+    await anexoNoBanco(comDono)
     const travado = await arquivoGravadoHa(8)
     const livre = await arquivoGravadoHa(8)
     const comFalha: ArmazenamentoPort = {
@@ -162,7 +244,7 @@ describe('falhar alto', () => {
 
     await recusada(expurgar(comFalha), FalhaDeArmazenamento)
 
-    expect(await noDisco()).toEqual([travado])
+    expect(await noDisco()).toEqual([comDono, travado].sort())
     const removidos = await banco.logAuditoria.findMany({ where: { acao: 'anexo_orfao_removido' } })
     expect(removidos.map((linha) => linha.entidadeId)).toEqual([livre])
   })

@@ -762,9 +762,12 @@ async function processarUm(
   // `remover` é idempotente por contrato, então limpar o que talvez nem tenha
   // sido escrito é seguro.
   //
-  // O desfazer só alcança o aborto DENTRO do processo. Para o processo que
-  // morre entre gravar o arquivo e gravar a linha, quem limpa é a limpeza
-  // diária, que varre o armazenamento (`A78`, `expurgo-anexos-orfaos.ts`).
+  // O desfazer NÃO alcança todo caminho que deixa órfão: o processo que morre
+  // entre gravar o arquivo e gravar a linha; o `return null` da corrida entre
+  // duas sincronizações, mais abaixo; e a falha de um `guardar` no meio do
+  // `Promise.all` acima, que sobe antes de `chavesGravadas` existir. Quem limpa
+  // esses é a limpeza diária, que varre o armazenamento depois do prazo
+  // (`A78`, `expurgo-anexos-orfaos.ts`). Revisão técnica do #211, M4.
   const chavesGravadas = anexosAvaliados
     .map((anexo) => anexo.chaveArmazenamento)
     .filter((chave): chave is string => chave !== null)
