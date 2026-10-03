@@ -16,7 +16,7 @@ Não é uma planilha melhor. É a troca da unidade de trabalho: sai a **contagem
 
 ## Começando
 
-Requisitos: **Node 22+**, npm e **MySQL 8** (decisão `A42`).
+Requisitos: **Node 22.12+**, npm e **MySQL 8** (decisão `A42`).
 
 ```bash
 npm install
