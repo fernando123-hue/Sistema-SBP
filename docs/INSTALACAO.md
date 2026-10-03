@@ -242,7 +242,9 @@ Um usuário com as duas já é administrador na prática (`AT-67`).
    sudo -u sbp bash -c 'cd /opt/sbp && set -a && . /etc/sbp/sbp.env && set +a && EXIGIR_PRIVILEGIO_MINIMO=sim npm run db:privilegios'
    ```
    A resposta tem de ser "OK: nada nas concessões deste usuário alcança
-   LogAuditoria nem EventoProcessamento."
+   LogAuditoria nem EventoProcessamento." e nada mais. Se ela disser que a
+   sessão não está em modo estrito, o comando sai com 1 mesmo com as
+   concessões certas: veja a seção 1 (`sql_mode` e `init_connect`).
 
 ## 5. A primeira pessoa gestora **(ensaiado)**
 

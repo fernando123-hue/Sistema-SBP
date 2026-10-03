@@ -46,16 +46,22 @@ async function principal(): Promise<void> {
   const exigir = config.NODE_ENV === 'production' || process.env['EXIGIR_PRIVILEGIO_MINIMO'] === 'sim'
 
   const [linhaDoModo] = await banco.$queryRaw<{ modo: unknown }[]>`SELECT @@SESSION.sql_mode AS modo`
-  if (!modoSqlEstrito(linhaDoModo?.modo)) {
+  const modoEstrito = modoSqlEstrito(linhaDoModo?.modo)
+
+  // As duas análises saem SEMPRE, e a decisão é uma só, no fim: recusar no
+  // primeiro problema escondia o segundo, e o TI precisaria de duas voltas
+  // (revisões do PR do `sql_mode`).
+  if (!modoEstrito) {
     escrever(`A sessão deste usuário NÃO está em modo estrito (sql_mode: ${String(linhaDoModo?.modo)}).`)
     escrever('Sem STRICT_TRANS_TABLES, linha sem domínio é gravada com aviso em vez de recusada (#199).')
-    escrever('Confira o sql_mode e o init_connect do servidor, e a DATABASE_URL (docs/INSTALACAO.md).')
-    if (exigir) throw new Error('Recusado: em produção a sessão da aplicação precisa estar em modo estrito.')
-    escrever('(Aviso, não erro: esta base não é de produção. Em produção isto derruba o comando.)')
+    escrever('Confira o sql_mode e o init_connect do servidor, e a DATABASE_URL (docs/INSTALACAO.md, seção 1).')
+    escrever('')
   }
 
   if (achados.length === 0) {
     escrever(`OK: nada nas concessões deste usuário alcança ${TABELAS_DA_TRILHA.join(' nem ')}.`)
+    if (modoEstrito) return
+    recusarOuAvisar(exigir, 'Recusado: em produção a sessão da aplicação precisa estar em modo estrito.')
     return
   }
 
@@ -78,11 +84,16 @@ async function principal(): Promise<void> {
   escrever('')
   escrever('O SQL de concessão mínima está em docs/03-SPEC.md, seção "Implantação".')
 
-  if (exigir) {
-    throw new Error(
-      'Recusado: em produção o usuário da aplicação não pode alterar nem apagar a trilha de auditoria.',
-    )
-  }
+  recusarOuAvisar(
+    exigir,
+    'Recusado: em produção o usuário da aplicação não pode alterar nem apagar a trilha de auditoria' +
+      (modoEstrito ? '.' : ', e a sessão dele precisa estar em modo estrito.'),
+  )
+}
+
+/** Em produção, derruba o comando; em desenvolvimento, um aviso só. */
+function recusarOuAvisar(exigir: boolean, motivo: string): void {
+  if (exigir) throw new Error(motivo)
   escrever('(Aviso, não erro: esta base não é de produção. Em produção isto derruba o comando.)')
 }
 
