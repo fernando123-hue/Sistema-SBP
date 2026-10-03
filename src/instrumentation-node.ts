@@ -74,6 +74,153 @@ export async function conferirAmbienteNaSubida(
   }
 }
 
+/** Quanto a leitura do modo SQL espera o MySQL responder. */
+const PRAZO_DA_LEITURA_MS = 10_000
+
+/** O que a conferência do modo SQL encontrou. */
+export type ResultadoDoModoSql = 'estrito' | 'nao-estrito' | 'ilegivel'
+
+/** Sai DEPOIS de o stderr esvaziar — ver o comentário de `conferirAmbienteNaSubida`. */
+const sairDepoisDoStderr = (codigo: number): void => {
+  process.stderr.write('', () => process.exit(codigo))
+}
+const escreverNoStderr = (texto: string): void => {
+  process.stderr.write(texto)
+}
+
+/**
+ * Confere que a SESSÃO da aplicação no MySQL está em modo estrito (revisão de
+ * segurança do #204). `db:conferir-trilha` e `db:privilegios` só conferem
+ * quando o TI roda o comando; um `SET GLOBAL` ou um `my.cnf` mexido depois
+ * passaria calado — e sem modo estrito, linha sem domínio é gravada com aviso
+ * em vez de recusada (#199), e texto longo é cortado.
+ *
+ * Em produção, modo LIDO e não estrito encerra com código 1, como a
+ * configuração errada — e devolve `'nao-estrito'`, para o `register` NÃO
+ * seguir: o `sair` espera o stderr esvaziar, e nesse meio-tempo a limpeza
+ * diária gravaria no banco sem modo estrito (revisão técnica do PR). O que não
+ * deu para LER (banco ainda subindo, na ordem do systemd) só vai ao log e
+ * devolve `'ilegivel'`: derrubar aqui viraria laço de reinício por um problema
+ * que não é do modo; `vigiarModoSql` tenta de novo.
+ *
+ * `lerModo`, `sair` e `escrever` são injetados só para o teste.
+ */
+export async function conferirModoSqlNaSubida(
+  lerModo: () => Promise<unknown> = lerModoDaSessao,
+  sair: (codigo: number) => void = sairDepoisDoStderr,
+  escrever: (texto: string) => void = escreverNoStderr,
+  prazoMs: number = PRAZO_DA_LEITURA_MS,
+): Promise<ResultadoDoModoSql> {
+  let modo: unknown
+  let relogio: ReturnType<typeof setTimeout> | undefined
+  try {
+    // Prazo próprio (revisão de segurança do PR): o pool só limita a espera
+    // por CONEXÃO; um MySQL que aceita e não responde deixaria a consulta
+    // pendente para sempre — a subida pendurada e o vigia parado, calado.
+    // A consulta vencida segue segurando a conexão dela; com o banco nesse
+    // estado a aplicação já não funciona, e quando o pool enche a próxima
+    // tentativa cai no `acquireTimeout`, que também conta como ilegível.
+    modo = await Promise.race([
+      lerModo(),
+      new Promise<never>((_, recusar) => {
+        relogio = setTimeout(() => recusar(new Error(`o MySQL não respondeu em ${prazoMs} ms`)), prazoMs)
+        relogio.unref?.()
+      }),
+    ])
+  } catch (erro) {
+    // Uma linha só: o log é lido no journal, uma linha por evento. A mensagem
+    // do driver traz host e porta, nunca a senha.
+    const motivo = (erro instanceof Error ? erro.message : String(erro)).replace(/\s+/g, ' ').trim()
+    escrever(`não deu para conferir o modo SQL agora (será tentado de novo): ${motivo}\n`)
+    return 'ilegivel'
+  } finally {
+    clearTimeout(relogio)
+  }
+
+  // Um valor ou vários (sessão E global): TODOS têm de ser estritos.
+  const modos = Array.isArray(modo) ? modo : [modo]
+  const { modoSqlEstrito } = await import('./servidor/privilegios')
+  let estrito: boolean
+  try {
+    estrito = modos.length > 0 && modos.every((cada) => modoSqlEstrito(cada))
+  } catch {
+    // Valor fora do esperado conta como NÃO estrito: na dúvida, falhar alto.
+    estrito = false
+  }
+  if (estrito) return 'estrito'
+
+  const motivo =
+    `o MySQL não está em modo estrito (sql_mode: ${modos.map(String).join(' | ')}). Sem STRICT_TRANS_TABLES, ` +
+    'linha sem domínio é gravada com aviso em vez de recusada. Ajuste o sql_mode do servidor (docs/INSTALACAO.md, seção 1).'
+  if (process.env['NODE_ENV'] === 'production') {
+    escrever(`O servidor NÃO subiu: ${motivo}\n`)
+    sair(1)
+    return 'nao-estrito'
+  }
+  escrever(`Aviso (em produção, isto encerraria o servidor): ${motivo}\n`)
+  return 'nao-estrito'
+}
+
+/** Sem conseguir ler: tenta de novo logo. Lido: confere de vez em quando. */
+const SEGUNDOS_PARA_TENTAR_DE_NOVO = 30
+const MINUTOS_ENTRE_CONFERENCIAS = 15
+
+/**
+ * Vigia o modo SQL depois da subida (revisão de segurança do PR): se o MySQL
+ * subiu DEPOIS do SBP, a conferência da subida não leu nada e não pode ficar
+ * esquecida; e um `SET GLOBAL` ou `init_connect` mudado depois só aparece em
+ * conexões novas. Tenta de novo a cada 30 s até ler, e daí confere a cada 15
+ * minutos — uma consulta de variável, sem custo que se note. Em produção, modo
+ * lido e não estrito encerra o processo pela mesma `conferirModoSqlNaSubida`.
+ *
+ * As conexões do pool ficam abertas e guardam o modo de quando abriram; por
+ * isso a leitura traz também o `@@GLOBAL`, que mostra um `SET GLOBAL` na hora.
+ *
+ * O temporizador não segura o processo vivo (`unref`), e a marca impede o
+ * modo de desenvolvimento de empilhar vigias a cada recarga. Fora de produção,
+ * o banco fora do ar é tentado a cada 15 minutos, e não a cada 30 s: quem
+ * desenvolve só telas sem MySQL não precisa de uma linha de log por meio
+ * minuto (revisão técnica do PR).
+ */
+export function vigiarModoSql(
+  ultimo: ResultadoDoModoSql,
+  conferir: () => Promise<ResultadoDoModoSql> = () => conferirModoSqlNaSubida(),
+  agendar: (acao: () => void, ms: number) => void = (acao, ms) => setTimeout(acao, ms).unref(),
+  escrever: (texto: string) => void = escreverNoStderr,
+): void {
+  const marca = globalThis as typeof globalThis & { vigiaDoModoSqlLigado?: boolean }
+  if (marca.vigiaDoModoSqlLigado === true) return
+  marca.vigiaDoModoSqlLigado = true
+
+  const emProducao = process.env['NODE_ENV'] === 'production'
+  const proxima = (resultado: ResultadoDoModoSql): void => {
+    const espera =
+      resultado === 'ilegivel' && emProducao ? SEGUNDOS_PARA_TENTAR_DE_NOVO * 1000 : MINUTOS_ENTRE_CONFERENCIAS * 60_000
+    agendar(() => {
+      // `.catch` depois do `.then`: cobre a rejeição da conferência (código
+      // que não carregou) e qualquer falha ao reagendar — o vigia nunca morre
+      // calado (revisões do PR).
+      conferir()
+        .then(proxima)
+        .catch((erro: unknown) => {
+          escrever(
+            `o vigia do modo SQL falhou e tenta de novo: ${(erro instanceof Error ? erro.message : String(erro)).replace(/\s+/g, ' ')}\n`,
+          )
+          proxima('ilegivel')
+        })
+    }, espera)
+  }
+  proxima(ultimo)
+}
+
+/** O modo da sessão que a aplicação usa (a mesma `obterPrisma()` das rotas) e o global. */
+async function lerModoDaSessao(): Promise<unknown[]> {
+  const { obterPrisma } = await import('./servidor/prisma')
+  const [linha] = await obterPrisma().$queryRaw<{ sessao: unknown; global: unknown }[]>`
+    SELECT @@SESSION.sql_mode AS sessao, @@GLOBAL.sql_mode AS global`
+  return [linha?.sessao, linha?.global]
+}
+
 const MINUTOS_ENTRE_TENTATIVAS = 15
 
 /**
