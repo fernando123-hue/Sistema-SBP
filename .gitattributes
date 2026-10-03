@@ -1,0 +1,7 @@
+# Fim de linha LF em todo arquivo de texto, inclusive no Windows.
+#
+# Com `core.autocrlf=true`, o Windows tirava os arquivos com CRLF, e o
+# Prisma, que assina os BYTES de cada migration.sql, via a mesma migração
+# com duas assinaturas: `prisma migrate dev` acusava migração "modificada" e
+# oferecia apagar a base. Ver scripts/fim-de-linha.test.ts.
+* text=auto eol=lf
