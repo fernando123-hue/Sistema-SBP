@@ -1,10 +1,39 @@
 # Estado do projeto — retomada
 
-Última atualização: **02/10/2026, noite — passagem para a próxima sessão.** `main` depois do #191. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **02/10/2026, fim da noite.** `main` depois do #194. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 02/10/2026, noite — PASSAGEM (este bloco vence os de baixo; o de "tarde", logo abaixo, tem o detalhe da V1)
+> ### 02/10/2026, fim da noite — itens 1 e 2 da passagem FEITOS (este bloco vence o de baixo onde conflitar)
+>
+> **Mesclado:**
+> - **#193:** SDK da Anthropic 0.128.0 → 0.129.0. Substitui o Dependabot #181, que foi fechado com o motivo.
+>   - As duas revisões compararam o pacote com o da 0.128 (`npm pack`): `helpers/zod` e `log.js` estão idênticos, e as variáveis `ANTHROPIC_*` são as mesmas.
+>   - O único dado novo na rede é o cabeçalho `X-Stainless-Timeout: 120`.
+>   - O comentário de `ia-anthropic.ts:113` passou a citar a conferência na 0.129.
+> - **#194:** pendências pequenas de teste.
+>   - O 401 sem cookie agora cobre `GET /api/ingestao` e `GET /api/ingestao/guardados`.
+>   - O cabeçalho "Nestas quatro" foi corrigido.
+>   - `scripts-encerram.test.ts` lê a caixa com `lerCaixaDosNomes`.
+>   - **A revisão de segurança achou `GET /api/diagnostico/origem` (só gestor) sem teste nenhum.** O teste foi incluído: 401, 403 para colaborador e operador, 200 para gestor.
+>   - Suíte: 167 arquivos, **2117 testes**.
+>
+> **Pendências novas, vindas das revisões do #194** (baixas, fora do pedido):
+> - **401 sem teste:** `POST /api/ingestao`, `rodadas/[id]`, `categorias`, `ligas`, `afastamentos/hoje`, `retencao` e `assistente/aviso`.
+>   - Em `categorias`, apagar o `exigirAtor` deixaria a rota pública sem nenhum teste acusar.
+>   - Destino: um teste de 401 por rota em `src/app/api/autorizacao-de-rotas.test.ts`.
+> - **`GET /api/qualidade` sem checagem de papel em lugar nenhum:** qualquer pessoa logada lê as métricas agregadas da IA.
+>   - Nenhuma decisão registra quem pode ver.
+>   - **Pergunta ao dono:** a equipe toda pode ver a qualidade da IA, ou só quem gere? Registrada em `DECISOES.md § H.4`, item 53.
+>
+> **Próximo do agente, sem depender do dono:**
+> 1. As pendências acima, num PR de teste.
+> 2. Os achados abertos do bloco de 01/10 (mais abaixo): `.gitattributes` com `eol=lf`, a trava entre suítes no `globalSetup`, `dominio` com valor padrão no schema, `middleware.ts` → `proxy.ts`, e os testes que conferem só o texto de uma recusa.
+> 3. Atualizar a V1 quando o dono quiser ver as novidades (item 3 do bloco de baixo).
+>
+> **Com o dono:** nada mudou. É a lista "Com o dono" do bloco de baixo, mais a pergunta da `qualidade`.
+>
+> ### 02/10/2026, noite — PASSAGEM (o de "tarde", logo abaixo, tem o detalhe da V1)
 >
 > **Esta máquina é a sessão local** (o dono disse: "você é uma sessão local, resolva todas as questões pendentes"). Ela roda o Ollama, o MySQL e a V1.
 >
