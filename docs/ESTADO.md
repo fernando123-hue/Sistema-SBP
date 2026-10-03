@@ -1,6 +1,6 @@
 # Estado do projeto — retomada
 
-Última atualização: **03/10/2026, noite.** `main` depois do #207. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **03/10/2026, noite.** `main` depois do #209. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
@@ -21,7 +21,21 @@
 >
 > **Ponto para o dono saber** (não precisa decidir agora): em produção, se alguém mexer no modo do MySQL, o sistema **para** até o TI corrigir. É a mesma regra de falhar alto que já vale para a configuração errada (invariante 7).
 >
-> **Próximo do agente:** os itens 3, 4 e 5 da lista de baixo, mais uma pendência nova (revisão de segurança do #207): conferir se uma saída abrupta do processo (o vigia encerrando em produção) pode deixar bytes de anexo órfãos no disco (`desfazerArquivos`, ingestão de anexos).
+> **Também mesclado:** **#209**, o item 3 da lista de baixo. Texto maior que a coluna é recusado (`P2000`), e não cortado. É o modo estrito provado pelo comportamento, em `Email.messageId` e `Colaborador.email`. Suíte: 177 arquivos, **2261 testes**.
+>
+> **Próximo do agente:**
+> 1. **Anexos órfãos numa saída abrupta: CONFIRMADO, e é anterior ao #207** (pendência da revisão de segurança do #207).
+>    - A ingestão grava os bytes do anexo no disco antes da transação do banco (`servicos/ingestao.ts`, por volta da linha 745), e `desfazerArquivos` só roda quando a transação aborta dentro do processo.
+>    - Se o processo morrer entre as duas etapas, o arquivo fica no disco sem linha de `Anexo` e sem log. Isso vale para o vigia encerrando, para um `kill` e para uma queda de energia.
+>    - O expurgo nunca alcança esse arquivo, porque caminha a partir das linhas do banco: é documento de associado que fica para sempre (invariante 11) sem nada registrando (invariante 7).
+>    - **Desenho proposto:**
+>      - `listar()` na `ArmazenamentoPort` e no adaptador de disco;
+>      - uma varredura diária, na mesma rotina da limpeza, que compara as chaves do disco com `Anexo.chaveArmazenamento`;
+>      - **remover** só o arquivo sem linha e com mais de 7 dias (o prazo do conteúdo, `A20`), o que também protege uma ingestão em curso;
+>      - registrar cada remoção na trilha.
+>    - **Decidido pelo dono em 03/10 (`A78`):** a limpeza automática identifica e **apaga**, com o prazo de 7 dias. Implementar.
+> 2. Pendência 46: o nonce chegar aos scripts num teste com `next start`.
+> 3. Acompanhar o primeiro PR do Dependabot depois do #203. Se o Node dele for menor que 22.12, o `engine-strict` o derruba; decidir então.
 >
 > ### 03/10/2026, tarde — o último achado de 01/10 e três pendências baixas
 >
@@ -47,7 +61,7 @@
 > **Próximo do agente, sem depender do dono** (todos baixos, das revisões de hoje):
 > 1. ~~Teste de rota para `GET` e `DELETE /api/sessao` sem cookie~~ feito no #206.
 > 2. ~~Checar `@@SESSION.sql_mode` na partida da aplicação~~ feito no #207 (com vigia).
-> 3. Teste de P2000 por `VarChar`, por exemplo `Email.messageId` com 192 caracteres, provando o modo estrito pelo comportamento (revisão do #204).
+> 3. ~~Teste de P2000 por `VarChar`~~ feito no #209.
 > 4. Pendência 46: o nonce chegar aos scripts num teste com `next start`.
 > 5. Acompanhar o primeiro PR do Dependabot depois do #203. Se o Node dele for menor que 22.12, o `engine-strict` o derruba; decidir então.
 >
