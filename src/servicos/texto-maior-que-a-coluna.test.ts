@@ -11,8 +11,12 @@ import { limparTudo } from '../testes/apoio'
  * aviso — e no e-mail do colaborador (`@unique`), dois endereços longos com o
  * mesmo começo virariam a mesma pessoa.
  *
- * `db:conferir-trilha`, `db:privilegios` e a subida conferem o `sql_mode`;
- * este teste é o que fica vermelho se a suíte rodar num MySQL afrouxado.
+ * A borda já recusa antes: o Zod limita `messageId` a 191 e o e-mail a 320
+ * (`core/esquemas.ts`). Este teste cobre a ÚLTIMA camada — o caminho que
+ * contorna o Zod (seed, script, SQL cru, um caminho novo de escrita que o
+ * esqueça). `db:conferir-trilha`, `db:privilegios` e a subida conferem o
+ * `sql_mode`; este teste é o que fica vermelho se a suíte rodar num MySQL
+ * afrouxado.
  */
 
 const banco = obterPrisma()
@@ -29,10 +33,13 @@ describe('texto maior que a coluna é recusado, não cortado', () => {
     expect(await banco.email.count()).toBe(0)
   })
 
-  it('Colaborador.email (VarChar 320, único): sem corte que junte duas pessoas', async () => {
-    const comeco = 'a'.repeat(318)
+  // Recusar já impede o corte que, num campo único, juntaria duas pessoas com
+  // o mesmo começo de e-mail.
+  it('Colaborador.email (VarChar 320, único)', async () => {
     await expect(
-      banco.colaborador.create({ data: { nome: 'Pessoa Sintética', email: `${comeco}@um.test`, papel: 'colaborador' } }),
+      banco.colaborador.create({
+        data: { nome: 'Pessoa Sintética', email: `${'a'.repeat(318)}@um.test`, papel: 'colaborador' },
+      }),
     ).rejects.toMatchObject({ code: 'P2000' })
     expect(await banco.colaborador.count()).toBe(0)
   })
