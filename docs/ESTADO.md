@@ -1,10 +1,29 @@
 # Estado do projeto — retomada
 
-Última atualização: **03/10/2026, tarde.** `main` depois do #204. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **03/10/2026, noite.** `main` depois do #207. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 03/10/2026, tarde — o último achado de 01/10 e três pendências baixas (este bloco vence os de baixo onde conflitar)
+> ### 03/10/2026, noite — itens 1 e 2 da fila de baixo FEITOS (este bloco vence o de baixo onde conflitar)
+>
+> **Mesclado:**
+> - **#206:** testes de rota de `/api/sessao`.
+>   - Sem login, o `GET` diz só "não autenticado" e o `DELETE` não grava nada.
+>   - Com sessão, sair revoga de verdade: a mesma cópia do cookie deixa de valer, inclusive com a senha provisória.
+>   - O cookie é apagado com o nome e o caminho do original.
+>   - O `GET` devolve só os cinco campos do `select`.
+> - **#207:** o **modo estrito do MySQL é conferido pelo próprio servidor**, sem depender do TI rodar comando.
+>   - **Na subida:** em produção, sessão ou global não estrito encerra com código 1, e o `register` para (nada mais é ligado).
+>   - **Depois:** um vigia em segundo plano tenta de novo a cada 30 s se o banco ainda não respondia e, lido, reconfere a cada 15 minutos. A leitura tem prazo de 10 s.
+>   - `INSTALACAO.md` §7: `RestartSec=30` e `StartLimit*`, e um `SET GLOBAL` não estrito para manutenção tira o SBP do ar (como voltar: `reset-failed` e `start`).
+>
+> Suíte: 175 arquivos, **2254 testes**.
+>
+> **Ponto para o dono saber** (não precisa decidir agora): em produção, se alguém mexer no modo do MySQL, o sistema **para** até o TI corrigir. É a mesma regra de falhar alto que já vale para a configuração errada (invariante 7).
+>
+> **Próximo do agente:** os itens 3, 4 e 5 da lista de baixo, mais uma pendência nova (revisão de segurança do #207): conferir se uma saída abrupta do processo (o vigia encerrando em produção) pode deixar bytes de anexo órfãos no disco (`desfazerArquivos`, ingestão de anexos).
+>
+> ### 03/10/2026, tarde — o último achado de 01/10 e três pendências baixas
 >
 > **Mesclado** (cada PR com revisão técnica e de segurança publicadas; as três rodadas acharam coisa real):
 > - **#202:** o último achado aberto da auditoria de 01/10. **Toda recusa dos testes de serviço é conferida pela CLASSE do erro**, com `recusada(promessa, Classe, texto?)` (`src/testes/recusa.ts`).
@@ -26,8 +45,8 @@
 > **A auditoria de 01/10 está toda fechada.** Na lista dela, mais abaixo, só resta o login do Graph por certificado, que depende do TI.
 >
 > **Próximo do agente, sem depender do dono** (todos baixos, das revisões de hoje):
-> 1. Teste de rota para `GET` e `DELETE /api/sessao` sem cookie (revisão do #196).
-> 2. Checar `@@SESSION.sql_mode` na **partida** da aplicação (`src/instrumentation-node.ts`), e não só quando o TI roda o comando (revisão do #204).
+> 1. ~~Teste de rota para `GET` e `DELETE /api/sessao` sem cookie~~ feito no #206.
+> 2. ~~Checar `@@SESSION.sql_mode` na partida da aplicação~~ feito no #207 (com vigia).
 > 3. Teste de P2000 por `VarChar`, por exemplo `Email.messageId` com 192 caracteres, provando o modo estrito pelo comportamento (revisão do #204).
 > 4. Pendência 46: o nonce chegar aos scripts num teste com `next start`.
 > 5. Acompanhar o primeiro PR do Dependabot depois do #203. Se o Node dele for menor que 22.12, o `engine-strict` o derruba; decidir então.
