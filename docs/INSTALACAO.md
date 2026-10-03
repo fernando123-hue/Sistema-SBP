@@ -38,7 +38,7 @@ distinguir de desenvolvimento. Por isso a regra está escrita aqui.
 
 ## 1. O que o servidor precisa
 
-- **Node 22**, a versão do CI, com `npm`. O `node` precisa estar num
+- **Node 22** (22.12 ou mais novo), a versão do CI, com `npm`. O `node` precisa estar num
   caminho do sistema, como `/usr/bin`, para o `sudo -u sbp` encontrar.
 - **MySQL 8.4**, de preferência **na mesma máquina** que o SBP.
 - **Proxy reverso com HTTPS** (nginx, Caddy ou o que o TI já usa) e um

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "description": "Sistema de distribuicao de demandas — substituto da planilha PRODUTIVIDADE 2026",
   "scripts": {

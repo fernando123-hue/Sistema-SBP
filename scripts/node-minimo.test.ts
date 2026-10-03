@@ -12,27 +12,43 @@ import { describe, expect, it } from 'vitest'
  * (revisão de segurança do #200). `docs/INSTALACAO.md` já pedia o Node 22, mas
  * só em texto. Agora `engines` declara, e `engine-strict` no `.npmrc` faz o
  * `npm ci` parar alto num Node antigo, no lugar de um aviso que ninguém lê.
+ *
+ * O mínimo é 22.12, e não 22.0: é o que o `vitest` e o `vite` exigem
+ * (`^22.12.0 || …`). Com `>=22`, um 22.5 passaria pelo projeto e cairia num
+ * EBADENGINE apontando para uma dependência (revisão técnica do PR).
  */
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..')
 const ler = (...partes: string[]) => readFileSync(join(RAIZ, ...partes), 'utf8')
+const minimo = (): string => (JSON.parse(ler('package.json')) as { engines?: { node?: string } }).engines?.node ?? ''
 
 describe('Node mínimo', () => {
-  it('engines.node é ">=" a versão do CI, e é a mesma em todo workflow', () => {
+  it('engines.node é o major do CI, a partir do .12, e o CI usa um só major', () => {
     const versoesDoCi = [ler('.github', 'workflows', 'ci.yml'), ler('.github', 'workflows', 'processo.yml')].flatMap(
       (texto) => [...texto.matchAll(/node-version:\s*(\d+)/g)].map((m) => m[1]),
     )
     expect(new Set(versoesDoCi).size).toBe(1)
-    const pacote = JSON.parse(ler('package.json')) as { engines?: { node?: string } }
-    expect(pacote.engines?.node).toBe(`>=${versoesDoCi[0]}`)
-  })
-
-  it('o npm recusa instalar num Node fora do mínimo', () => {
-    expect(ler('.npmrc')).toMatch(/^engine-strict=true$/m)
+    expect(minimo()).toBe(`>=${versoesDoCi[0]}.12`)
   })
 
   it('a instalação pede a mesma versão', () => {
-    const pacote = JSON.parse(ler('package.json')) as { engines?: { node?: string } }
-    const versao = pacote.engines?.node?.replace('>=', '')
-    expect(ler('docs', 'INSTALACAO.md')).toContain(`**Node ${versao}**`)
+    const [major, menor] = minimo().replace('>=', '').split('.')
+    expect(ler('docs', 'INSTALACAO.md')).toContain(`**Node ${major}** (${major}.${menor} ou mais novo)`)
+  })
+
+  /**
+   * Lista FECHADA (revisão de segurança do PR): o `.npmrc` versionado decide
+   * de onde o npm baixa (`registry`), se roda script de instalação
+   * (`ignore-scripts`), em que certificado confia (`strict-ssl`, `cafile`) e
+   * onde mora o token. Lista de proibidas sempre esquece uma chave; aqui, chave
+   * nova só entra mudando este teste — que é nível 3. E a chave aparece uma vez
+   * só: o npm usa a ÚLTIMA ocorrência, e um `engine-strict=false` no fim
+   * desligaria a trava com a primeira linha ainda certa.
+   */
+  it('o .npmrc só tem engine-strict=true, uma vez', () => {
+    const linhas = ler('.npmrc')
+      .split(/\r?\n/)
+      .map((linha) => linha.trim())
+      .filter((linha) => linha !== '' && !linha.startsWith('#') && !linha.startsWith(';'))
+    expect(linhas).toEqual(['engine-strict=true'])
   })
 })
