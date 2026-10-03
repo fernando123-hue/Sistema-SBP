@@ -121,7 +121,8 @@ export async function setup(): Promise<() => Promise<void>> {
         ? String((erro as Record<typeof campo, unknown>)[campo] ?? '')
         : ''
 
-    await liberar()
+    // Soltar a trava não pode esconder o erro do Prisma, que é o que importa.
+    await liberar().catch(() => {})
     throw new Error(
       'Não foi possível preparar o banco de teste. Confira se o MySQL está de pé e se a base ' +
         'de teste existe com a colação certa (ver README).\n' +
