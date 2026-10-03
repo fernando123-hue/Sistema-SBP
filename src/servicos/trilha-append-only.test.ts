@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { DOMINIO_ATUAL } from '../core/esquemas'
 import { obterPrisma } from '../servidor/prisma'
 import { conferirTravaDaTrilha, lerCaixaDosNomes, type TriggerNoBanco } from '../servidor/privilegios'
 import { limparTudo } from '../testes/apoio'
@@ -163,7 +164,7 @@ describe('a trilha é append-only', () => {
     await limparTudo(banco)
 
     await banco.eventoProcessamento.create({
-      data: { correlacaoId: 'correlacao-sintetica', etapa: 'teste', situacao: 'ok', mensagem: 'como nasceu' },
+      data: { dominio: DOMINIO_ATUAL, correlacaoId: 'correlacao-sintetica', etapa: 'teste', situacao: 'ok', mensagem: 'como nasceu' },
     })
 
     await expect(

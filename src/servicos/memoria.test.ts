@@ -232,6 +232,7 @@ describe('consulta por entidade', () => {
 
     await banco.logAuditoria.create({
       data: {
+        dominio: DOMINIO_ATUAL,
         entidade: 'Item',
         entidadeId: 'item-torto',
         acao: 'concluido',
@@ -316,6 +317,7 @@ describe('truncamento', () => {
     // lote quebrou — faria quem investiga concluir que não houve mais nada.
     await banco.logAuditoria.createMany({
       data: Array.from({ length: 205 }, (_, indice) => ({
+        dominio: DOMINIO_ATUAL,
         entidade: 'Item',
         entidadeId: `item-${indice}`,
         acao: 'concluido',

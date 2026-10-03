@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { EmailBrutoSchema } from '../core/esquemas'
+import { DOMINIO_ATUAL, EmailBrutoSchema } from '../core/esquemas'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { obterPrisma } from '../servidor/prisma'
@@ -222,7 +222,7 @@ describe('teto de leituras por hora (A72)', () => {
     const quando = new Date(Date.now() - minutosAtras * 60_000)
     await banco.logAuditoria.createMany({
       data: Array.from({ length: quantas }, (_, i) => ({
-        ...(dominio ? { dominio } : {}),
+        dominio: dominio ?? DOMINIO_ATUAL,
         entidade: 'Email',
         entidadeId: `email-anterior-${i}`,
         acao,
