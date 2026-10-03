@@ -31,8 +31,16 @@ import { pedidoDeOutraOrigem } from './servidor/mesma-origem'
  * cai e — o pior sintoma — formulários controlados param de reagir à digitação,
  * fazendo quem for conferir uma correção de tela ver uma tela quebrada por um
  * motivo que não é o dela. Em produção a diretriz sai, e o build não usa `eval`.
+ *
+ * ═══ `proxy.ts`, E NÃO MAIS `middleware.ts` ═══
+ *
+ * O Next 16 marcou a convenção `middleware` como obsoleta e a renomeou para
+ * `proxy` (achado da auditoria de 01/10). Junto, o padrão mudou de runtime:
+ * proxy roda em Node.js, não no Edge. Nada aqui dependia do Edge — `crypto`,
+ * `Buffer` e `Headers` existem nos dois —, e `mesma-origem.ts` segue sem
+ * dependência de Node, como antes.
  */
-export function middleware(requisicao: NextRequest): NextResponse {
+export function proxy(requisicao: NextRequest): NextResponse {
   // Pedido de outra origem que altera estado não chega à rota (achados C-13 e
   // C-17) — inclusive o de entrada, que não tem sessão para conferir. Ver
   // `servidor/mesma-origem.ts`. Mesmo formato de erro das rotas.
@@ -85,7 +93,7 @@ export const config = {
    * Fora: os arquivos estáticos e as imagens otimizadas.
    *
    * Eles não executam script e não precisam de nonce; passar por aqui só
-   * gastaria uma execução de middleware por arquivo. As ROTAS DE API ficam
+   * gastaria uma execução do proxy por arquivo. As ROTAS DE API ficam
    * dentro de propósito — a política também vale para o que elas devolvem.
    */
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],

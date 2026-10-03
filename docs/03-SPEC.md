@@ -405,7 +405,7 @@ src/
   servicos/               transações e orquestração
   servidor/               prisma · ambiente · ator · sessão · http
                           · credenciais · observabilidade
-  middleware.ts           CSP com nonce por requisição
+  proxy.ts                CSP com nonce por requisição (era middleware.ts até o Next 16)
   app/
     (telas)
     api/                  rotas

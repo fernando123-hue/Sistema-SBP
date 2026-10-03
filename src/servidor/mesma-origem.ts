@@ -16,7 +16,7 @@
  * - sem nenhum dos dois, não é navegador, e CSRF exige navegador: passa. A
  *   autenticação continua valendo como sempre.
  *
- * Sem dependência de Node: roda no middleware.
+ * Sem dependência de Node: roda no proxy (`src/proxy.ts`).
  *
  * ATRÁS DE PROXY (`A46`): a comparação do `Origin` usa o `Host` que chega ao
  * Next. Se o proxy reescrever o `Host`, os navegadores sem `Sec-Fetch-Site`
