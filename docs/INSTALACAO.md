@@ -40,7 +40,13 @@ distinguir de desenvolvimento. Por isso a regra está escrita aqui.
 
 - **Node 22** (22.12 ou mais novo), a versão do CI, com `npm`. O `node` precisa estar num
   caminho do sistema, como `/usr/bin`, para o `sudo -u sbp` encontrar.
-- **MySQL 8.4**, de preferência **na mesma máquina** que o SBP.
+- **MySQL 8.4**, de preferência **na mesma máquina** que o SBP, em **modo
+  estrito** (`sql_mode` com `STRICT_TRANS_TABLES`, que é o padrão do 8.4).
+  Não ponha `sql_mode=` no `my.cnf` sem esse item, nem `init_connect` que o
+  mude: sem modo estrito, o MySQL grava texto cortado e linha sem domínio com
+  um aviso, em vez de recusar (#199). `SET GLOBAL` não sobrevive a reiniciar;
+  o que persiste é o `my.cnf` ou `SET PERSIST`. Depois de mudar, reinicie o
+  MySQL e o SBP (as conexões já abertas guardam o modo antigo).
 - **Proxy reverso com HTTPS** (nginx, Caddy ou o que o TI já usa) e um
   certificado para o nome que a equipe vai digitar. **Obrigatório.** Fora do
   `localhost`, o cookie de sessão só é aceito em HTTPS. O sistema também
@@ -180,8 +186,12 @@ Um usuário com as duas já é administrador na prática (`AT-67`).
 3. **Conferir a trava da trilha**, no mesmo bloco:
    `npm run db:conferir-trilha` **(ensaiado)**. A resposta tem de ser "OK: as
    triggers de LogAuditoria e EventoProcessamento estão presentes, com o
-   corpo exato da migração (AT-66)." Qualquer outra resposta sai com código 1
-   e diz o que fazer.
+   corpo exato da migração (AT-66), e o MySQL está em modo estrito." Qualquer
+   outra resposta sai com código 1 e diz o que fazer — inclusive quando a
+   trava está certa mas o `sql_mode` global não é estrito (veja a seção 1).
+   O `npm run db:privilegios`, com o `sbp_app`, confere o modo da SESSÃO da
+   aplicação, que é o que vale (um `init_connect` não aparece para o
+   administrador).
 
    A trigger roda como quem migrou (o `DEFINER`, que `SHOW TRIGGERS FROM sbp`
    mostra). Por isso o passo 8 manda recriar `sbp_admin` antes de restaurar
@@ -232,7 +242,9 @@ Um usuário com as duas já é administrador na prática (`AT-67`).
    sudo -u sbp bash -c 'cd /opt/sbp && set -a && . /etc/sbp/sbp.env && set +a && EXIGIR_PRIVILEGIO_MINIMO=sim npm run db:privilegios'
    ```
    A resposta tem de ser "OK: nada nas concessões deste usuário alcança
-   LogAuditoria nem EventoProcessamento."
+   LogAuditoria nem EventoProcessamento." e nada mais. Se ela disser que a
+   sessão não está em modo estrito, o comando sai com 1 mesmo com as
+   concessões certas: veja a seção 1 (`sql_mode` e `init_connect`).
 
 ## 5. A primeira pessoa gestora **(ensaiado)**
 

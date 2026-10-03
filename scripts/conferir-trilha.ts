@@ -12,10 +12,14 @@
  * parou no meio e foi dada como aplicada à mão, ou uma restauração
  * interrompida, deixam o sistema subindo normal com o passado reescrevível
  * (`AT-66`, revisões do #184). Sai com código 1 se algo não estiver certo.
+ *
+ * Confere também o modo ESTRITO do MySQL (`@@GLOBAL.sql_mode`): sem ele, a
+ * recusa de linha sem domínio (#199) vira gravação de '' com aviso, e o
+ * invariante 14 deixa de valer em silêncio.
  */
 
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
-import { conferirTravaDaTrilha, lerCaixaDosNomes, type TriggerNoBanco } from '../src/servidor/privilegios'
+import { conferirTravaDaTrilha, lerCaixaDosNomes, modoSqlEstrito, type TriggerNoBanco } from '../src/servidor/privilegios'
 
 function escrever(texto: string): void {
   process.stdout.write(`${texto}\n`)
@@ -29,6 +33,12 @@ async function principal(): Promise<void> {
     WHERE TRIGGER_SCHEMA = DATABASE()`
   const [linhaDaCaixa] = await obterPrisma().$queryRaw<{ caixa: unknown }[]>`
     SELECT @@lower_case_table_names AS caixa`
+  const [linhaDoModo] = await obterPrisma().$queryRaw<{ modo: unknown }[]>`SELECT @@GLOBAL.sql_mode AS modo`
+  const estrito = modoSqlEstrito(linhaDoModo?.modo)
+  if (!estrito) {
+    escrever(`- O MySQL não está em modo estrito (sql_mode: ${String(linhaDoModo?.modo)}). Sem STRICT_TRANS_TABLES,`)
+    escrever('  linha sem domínio é gravada com aviso em vez de recusada (#199). Ajuste o sql_mode do servidor.')
+  }
 
   const { semTrava, foraDaForma, nenhumaVisivel } = conferirTravaDaTrilha(
     triggers,
@@ -39,8 +49,9 @@ async function principal(): Promise<void> {
     escrever('Nenhuma trigger visível nesta base. Ou a trilha está sem trava, ou esta credencial não tem TRIGGER')
     escrever('(a da aplicação não tem, de propósito). Rode com a conta administradora do MySQL.')
     escrever('Se já é ela, a trilha está sem trava: veja as duas saídas abaixo.')
-  } else if (semTrava.length === 0 && foraDaForma.length === 0) {
-    escrever('OK: as triggers de LogAuditoria e EventoProcessamento estão presentes, com o corpo exato da migração (AT-66).')
+  } else if (semTrava.length === 0 && foraDaForma.length === 0 && estrito) {
+    escrever('OK: as triggers de LogAuditoria e EventoProcessamento estão presentes, com o corpo exato da migração (AT-66),')
+    escrever('e o MySQL está em modo estrito.')
     return
   }
 
