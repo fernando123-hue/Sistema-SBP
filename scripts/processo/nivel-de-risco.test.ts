@@ -44,6 +44,7 @@ describe('nivelDoArquivo', () => {
     ['prisma/schema.prisma', 3],
     ['package.json', 3],
     ['package-lock.json', 3],
+    ['.npmrc', 3],
     ['.github/workflows/ci.yml', 3],
     ['.env.example', 3],
     ['.gitignore', 3],

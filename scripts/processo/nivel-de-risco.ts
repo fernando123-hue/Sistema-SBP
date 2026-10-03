@@ -36,7 +36,8 @@ const REGRAS: readonly Regra[] = [
   { nivel: 3, padrao: /(^|\/)(CLAUDE|AGENTS)\.md$/, motivo: 'regras que governam os agentes' },
   // O documento que diz o que cada nível exige: mudá-lo afrouxa o portão.
   { nivel: 3, padrao: /^docs\/PROCESSO\.md$/, motivo: 'o processo que este portão aplica' },
-  { nivel: 3, padrao: /^package(-lock)?\.json$/, motivo: 'dependências' },
+  // `.npmrc` decide como o npm instala (`engine-strict`, registro, scripts).
+  { nivel: 3, padrao: /^(package(-lock)?\.json|\.npmrc)$/, motivo: 'dependências' },
   { nivel: 3, padrao: /^prisma\//, motivo: 'banco de dados' },
   { nivel: 3, padrao: /^scripts\//, motivo: 'scripts com acesso ao banco, aos anexos ou ao próprio processo' },
   // `.gitleaksignore` diz o que a varredura de segredos deixa passar;
