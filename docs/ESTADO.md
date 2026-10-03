@@ -1,10 +1,45 @@
 # Estado do projeto — retomada
 
-Última atualização: **03/10/2026.** `main` depois do #200. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **03/10/2026, tarde.** `main` depois do #204. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 03/10/2026 — achados da auditoria de 01/10 fechados, um por PR (este bloco vence os de baixo onde conflitar)
+> ### 03/10/2026, tarde — o último achado de 01/10 e três pendências baixas (este bloco vence os de baixo onde conflitar)
+>
+> **Mesclado** (cada PR com revisão técnica e de segurança publicadas; as três rodadas acharam coisa real):
+> - **#202:** o último achado aberto da auditoria de 01/10. **Toda recusa dos testes de serviço é conferida pela CLASSE do erro**, com `recusada(promessa, Classe, texto?)` (`src/testes/recusa.ts`).
+>   - O ajudante recusa sempre erro do Prisma ou do driver.
+>   - 105 asserções foram convertidas, com a classe registrada na execução real.
+>   - O login exige a mensagem uniforme exata (C-18).
+>   - As recusas do banco de propósito conferem o código do Prisma (`P2002`, `P2003`).
+>   - Uma varredura impede `rejects.toThrow(` em `src/servicos/`, menos a trilha e o `dominio-obrigatorio`, que conferem a frase exata do banco.
+> - **#203:** `engines.node` `>=22.12`, porque o `vitest` exige o 22.12.
+>   - `.npmrc` com `engine-strict=true`: o `npm ci` num Node antigo para com `EBADENGINE`.
+>   - O `.npmrc` é uma **lista fechada**, que só aceita essa chave. Um `\r` solto escondia `registry=` dentro de um comentário; a segurança achou, conferido no npm 11.16.
+> - **#204:** o modo estrito do MySQL é conferido nos dois níveis.
+>   - `db:conferir-trilha` confere o global.
+>   - `db:privilegios`, como `sbp_app`, confere a **sessão da aplicação**, que pega `init_connect` e `sessionVariables`. Ele mostra as duas análises e decide uma vez só.
+>   - O `INSTALACAO.md` pede o modo estrito e diz como ajustar.
+>
+> Suíte: 174 arquivos, **2236 testes**.
+>
+> **A auditoria de 01/10 está toda fechada.** Na lista dela, mais abaixo, só resta o login do Graph por certificado, que depende do TI.
+>
+> **Próximo do agente, sem depender do dono** (todos baixos, das revisões de hoje):
+> 1. Teste de rota para `GET` e `DELETE /api/sessao` sem cookie (revisão do #196).
+> 2. Checar `@@SESSION.sql_mode` na **partida** da aplicação (`src/instrumentation-node.ts`), e não só quando o TI roda o comando (revisão do #204).
+> 3. Teste de P2000 por `VarChar`, por exemplo `Email.messageId` com 192 caracteres, provando o modo estrito pelo comportamento (revisão do #204).
+> 4. Pendência 46: o nonce chegar aos scripts num teste com `next start`.
+> 5. Acompanhar o primeiro PR do Dependabot depois do #203. Se o Node dele for menor que 22.12, o `engine-strict` o derruba; decidir então.
+>
+> **Com o dono:** nada novo. É a lista do bloco de 02/10, noite: o teste de tela da V1, o ok para apagar `sbp_restaurada` e `backup.sql`, o modelo maior e a V2. **Atualizar a V1** agora traz duas migrações (`dominio`) e o `engine-strict`. O Node desta máquina é o 24, que passa.
+>
+> **Armadilhas vistas hoje:**
+> - **`sed` com `\r` no texto grava um CR de verdade.** O heredoc do Git Bash come barras. Para texto com barra invertida, use a ferramenta de arquivo ou `String.fromCharCode(92)`.
+> - **`sed -i "${N}d"` com `N` vazio apaga o arquivo inteiro.** Confira a variável antes.
+> - **`sed` amplo no `package-lock.json` pega o `engines` das dependências.** Altere só a linha da raiz.
+>
+> ### 03/10/2026 — achados da auditoria de 01/10 fechados, um por PR
 >
 > **Mesclado** (cada PR com revisão técnica e de segurança publicadas, de 1 a 3 rodadas; em todas as rodadas 1 houve achado real):
 > - **#195:** decisão `A77` registrada: a equipe toda vê a qualidade da IA.
@@ -194,7 +229,7 @@
 > - ~~trava entre suítes no `globalSetup`~~ feito no #198;
 > - ~~`dominio` com valor padrão no schema~~ feito no #199;
 > - ~~o código ainda usa `middleware.ts`, que o Next 16 trocou por `proxy.ts`~~ feito no #200;
-> - testes que conferem só o texto de uma recusa: a mensagem do Prisma traz o trecho do código vizinho, e um erro de constraint pode passar por recusa (visto no #176).
+> - ~~testes que conferem só o texto de uma recusa~~ feito no #202 (recusa conferida pela classe do erro).
 >
 > **Perguntas ao dono que bloqueiam o e-mail real:**
 > - liberar e-mail real na IA local (`A56 (e)`);
