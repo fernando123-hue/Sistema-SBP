@@ -109,12 +109,17 @@ export async function travarSuite(
     throw erro
   }
 
+  // `soltando` cobre o fim normal (o `end` não é queda) e a segunda notícia
+  // da mesma queda (o evento e o ping seguinte): avisa uma vez só.
   let soltando = false
   const perdida = (causa: unknown) => {
-    if (!soltando) aoPerder(nome, causa)
+    if (soltando) return
+    soltando = true
+    clearInterval(ping)
+    aoPerder(nome, causa)
   }
   conexao.on('error', perdida)
-  const ping = setInterval(() => {
+  const ping: NodeJS.Timeout = setInterval(() => {
     conexao.ping().catch(perdida)
   }, INTERVALO_DO_PING_MS)
   // O ping não segura o processo vivo depois do fim da suíte.

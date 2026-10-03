@@ -49,23 +49,24 @@ describe('trava entre suítes', () => {
   // da suíte solta o bloqueio — tem de ser percebido, não engolido.
   it('a conexão da trava cair é percebida', async () => {
     let perdida: unknown = null
+    let avisar = (): void => {}
     const avisada = new Promise<void>((resolve) => {
-      void travarSuite(URL_DE_TESTE, 'sbp_suite:teste-da-queda', (_nome, causa) => {
-        perdida = causa
-        resolve()
-      })
+      avisar = resolve
+    })
+    // Com `await`: se pegar a trava falhar, o teste falha AQUI, com o motivo,
+    // e não 90 s depois esperando um aviso que nunca vem (revisão técnica, L1).
+    const liberar = await travarSuite(URL_DE_TESTE, 'sbp_suite:teste-da-queda', (_nome, causa) => {
+      perdida = causa
+      avisar()
     })
     const outra = await mariadb.createConnection(configDaConexao(URL_DE_TESTE))
     try {
       // `IS_USED_LOCK` diz qual conexão segura a trava; derrubá-la é o
       // MySQL reiniciando, visto de dentro.
-      let dono: bigint | number | null = null
-      for (let tentativa = 0; dono === null && tentativa < 100; tentativa++) {
-        const [linha] = await outra.query<{ dono: bigint | number | null }[]>('SELECT IS_USED_LOCK(?) AS dono', [
-          'sbp_suite:teste-da-queda',
-        ])
-        dono = linha?.dono ?? null
-      }
+      const [linha] = await outra.query<{ dono: bigint | number | null }[]>('SELECT IS_USED_LOCK(?) AS dono', [
+        'sbp_suite:teste-da-queda',
+      ])
+      const dono = linha?.dono ?? null
       expect(dono).not.toBeNull()
       await outra.query('KILL ?', [dono])
       await avisada
@@ -74,6 +75,8 @@ describe('trava entre suítes', () => {
       const [livre] = await outra.query<{ ok: bigint | number }[]>("SELECT GET_LOCK('sbp_suite:teste-da-queda', 0) AS ok")
       expect(Number(livre?.ok)).toBe(1)
     } finally {
+      // Se algo falhou antes do `KILL`, a trava do teste ainda está presa (L2).
+      await liberar().catch(() => {})
       await outra.end()
     }
   })
