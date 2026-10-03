@@ -12,8 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const avisarTrocaDaChaveDeSessao = vi.fn(async () => {})
 const agendarLimpezaDiaria = vi.fn(async () => {})
 const conferirAmbienteNaSubida = vi.fn(async () => {})
+const conferirModoSqlNaSubida = vi.fn(async () => {})
 
-vi.mock('./instrumentation-node', () => ({ avisarTrocaDaChaveDeSessao, agendarLimpezaDiaria, conferirAmbienteNaSubida }))
+vi.mock('./instrumentation-node', () => ({
+  avisarTrocaDaChaveDeSessao,
+  agendarLimpezaDiaria,
+  conferirAmbienteNaSubida,
+  conferirModoSqlNaSubida,
+}))
 
 const { register } = await import('./instrumentation')
 
@@ -23,6 +29,7 @@ beforeEach(() => {
   avisarTrocaDaChaveDeSessao.mockClear()
   agendarLimpezaDiaria.mockClear()
   conferirAmbienteNaSubida.mockClear()
+  conferirModoSqlNaSubida.mockClear()
 })
 
 afterEach(() => {
@@ -36,6 +43,7 @@ describe('register', () => {
     process.env.NEXT_PHASE = ''
     await register()
     expect(conferirAmbienteNaSubida).toHaveBeenCalledTimes(1)
+    expect(conferirModoSqlNaSubida).toHaveBeenCalledTimes(1)
     expect(avisarTrocaDaChaveDeSessao).toHaveBeenCalledTimes(1)
     expect(agendarLimpezaDiaria).toHaveBeenCalledTimes(1)
     // A conferência vem PRIMEIRO: com a configuração errada, em produção o
@@ -43,6 +51,10 @@ describe('register', () => {
     const ordem = (fn: { mock: { invocationCallOrder: number[] } }) => fn.mock.invocationCallOrder[0]!
     expect(ordem(conferirAmbienteNaSubida)).toBeLessThan(ordem(avisarTrocaDaChaveDeSessao))
     expect(ordem(conferirAmbienteNaSubida)).toBeLessThan(ordem(agendarLimpezaDiaria))
+    // O modo SQL depois do ambiente (ele usa o banco, que o ambiente configura)
+    // e antes de agendar rotina que gravaria no banco sem modo estrito.
+    expect(ordem(conferirAmbienteNaSubida)).toBeLessThan(ordem(conferirModoSqlNaSubida))
+    expect(ordem(conferirModoSqlNaSubida)).toBeLessThan(ordem(agendarLimpezaDiaria))
   })
 
   it('durante o build de produção, não liga nada', async () => {
@@ -52,6 +64,7 @@ describe('register', () => {
     // O `next build` pode rodar numa máquina sem a configuração de produção:
     // conferir ali encerraria o build.
     expect(conferirAmbienteNaSubida).not.toHaveBeenCalled()
+    expect(conferirModoSqlNaSubida).not.toHaveBeenCalled()
     expect(avisarTrocaDaChaveDeSessao).not.toHaveBeenCalled()
     expect(agendarLimpezaDiaria).not.toHaveBeenCalled()
   })
@@ -60,6 +73,7 @@ describe('register', () => {
     process.env.NEXT_RUNTIME = 'edge'
     await register()
     expect(conferirAmbienteNaSubida).not.toHaveBeenCalled()
+    expect(conferirModoSqlNaSubida).not.toHaveBeenCalled()
     expect(avisarTrocaDaChaveDeSessao).not.toHaveBeenCalled()
     expect(agendarLimpezaDiaria).not.toHaveBeenCalled()
   })

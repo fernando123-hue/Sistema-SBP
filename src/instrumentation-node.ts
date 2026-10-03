@@ -74,6 +74,61 @@ export async function conferirAmbienteNaSubida(
   }
 }
 
+/**
+ * Confere, na subida, que a SESSÃO da aplicação no MySQL está em modo estrito
+ * (revisão de segurança do #204). `db:conferir-trilha` e `db:privilegios` só
+ * conferem quando o TI roda o comando; um `SET GLOBAL` ou um `my.cnf` mexido
+ * depois passaria calado — e sem modo estrito, linha sem domínio é gravada com
+ * aviso em vez de recusada (#199), e texto longo é cortado.
+ *
+ * Em produção, modo LIDO e não estrito encerra com código 1, como a
+ * configuração errada. O que não deu para LER (banco ainda subindo, na ordem
+ * do systemd) só vai ao log: derrubar aqui viraria laço de reinício por um
+ * problema que não é do modo, e a primeira requisição já falha alto pelo banco.
+ *
+ * `lerModo`, `sair` e `escrever` são injetados só para o teste.
+ */
+export async function conferirModoSqlNaSubida(
+  lerModo: () => Promise<unknown> = lerModoDaSessao,
+  sair: (codigo: number) => void = (codigo) => process.stderr.write('', () => process.exit(codigo)),
+  escrever: (texto: string) => void = (texto) => process.stderr.write(texto),
+): Promise<void> {
+  let modo: unknown
+  try {
+    modo = await lerModo()
+  } catch (erro) {
+    escrever(`não deu para conferir o modo SQL na subida: ${erro instanceof Error ? erro.message : String(erro)}\n`)
+    return
+  }
+
+  const { modoSqlEstrito } = await import('./servidor/privilegios')
+  let estrito: boolean
+  try {
+    estrito = modoSqlEstrito(modo)
+  } catch (erro) {
+    estrito = false
+    escrever(`${erro instanceof Error ? erro.message : String(erro)}\n`)
+  }
+  if (estrito) return
+
+  const motivo =
+    `a sessão do MySQL não está em modo estrito (sql_mode: ${String(modo)}). Sem STRICT_TRANS_TABLES, ` +
+    'linha sem domínio é gravada com aviso em vez de recusada. Ajuste o sql_mode do servidor (docs/INSTALACAO.md, seção 1).'
+  if (process.env['NODE_ENV'] === 'production') {
+    escrever(`O servidor NÃO subiu: ${motivo}\n`)
+    sair(1)
+    return
+  }
+  escrever(`Aviso (em produção, isto encerraria o servidor): ${motivo}\n`)
+}
+
+/** A sessão que a aplicação usa: a mesma `obterPrisma()` das rotas. */
+async function lerModoDaSessao(): Promise<unknown> {
+  const { obterPrisma } = await import('./servidor/prisma')
+  const [linha] = await obterPrisma().$queryRaw<{ modo: unknown }[]>`SELECT @@SESSION.sql_mode AS modo`
+  return linha?.modo
+}
+
 const MINUTOS_ENTRE_TENTATIVAS = 15
 
 /**
