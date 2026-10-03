@@ -5,6 +5,7 @@ import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { obterPrisma, type Banco } from '../servidor/prisma'
 import { limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { sincronizar } from './ingestao'
 import { listarPendentes, resolver } from './revisao'
 
@@ -112,7 +113,7 @@ describe('resolver com payload ilegível (N-35)', () => {
     const ilegivel = '{"campos":5,"ligaMencionada":"Liga Sintética"}'
     await banco.item.update({ where: { id: pendente.itemId }, data: { payload: ilegivel } })
 
-    await expect(
+    await recusada(
       resolver(
         banco,
         {
@@ -124,7 +125,9 @@ describe('resolver com payload ilegível (N-35)', () => {
         },
         base.operador,
       ),
-    ).rejects.toThrow(/Item\.payload ilegível/)
+      Error,
+      /Item\.payload ilegível/,
+    )
 
     const depois = await banco.item.findUniqueOrThrow({ where: { id: pendente.itemId } })
     expect(depois.payload).toBe(ilegivel)

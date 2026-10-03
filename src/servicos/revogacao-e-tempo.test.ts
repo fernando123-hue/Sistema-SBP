@@ -3,10 +3,12 @@ import { createHmac } from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PISO_DE_RESPOSTA_DE_ENTRADA_MS } from '../core/autenticacao'
+import { ErroDeNegocio } from '../core/erros'
 import { obterPrisma } from '../servidor/prisma'
 import { lerCookie, montarCookie, perfilAtual } from '../servidor/sessao'
 import { limparCacheDeAmbiente } from '../servidor/ambiente'
 import { atorDeTeste, limparTudo } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { autenticar, definirSenhaProvisoria, trocarSenha } from './autenticacao'
 
 /**
@@ -77,7 +79,7 @@ describe('tempo de resposta da recusa de entrada', () => {
    */
   async function medir(email: string): Promise<number> {
     const inicio = Date.now()
-    await expect(autenticar(banco, { email, senha: 'senha-errada-qualquer' })).rejects.toThrow()
+    await recusada(autenticar(banco, { email, senha: 'senha-errada-qualquer' }), ErroDeNegocio, /^E-mail ou senha incorretos\.$/)
     return Date.now() - inicio
   }
 

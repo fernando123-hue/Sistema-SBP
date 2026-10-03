@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
+import { ErroDeNegocio } from '../core/erros'
+import { PermissaoNegadaError } from '../servidor/ator'
 import { obterPrisma } from '../servidor/prisma'
 import type { Ator } from '../servidor/ator'
 import { atorDeTeste, limparTudo, semearBase, type BaseSemeada } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { alterarPrazo, listarPrazos, prazoEmVigor } from './retencao'
 
 const banco = obterPrisma()
@@ -28,10 +32,12 @@ beforeEach(async () => {
 describe('quem pode', () => {
   it('colaborador e operador não veem nem mudam prazo', async () => {
     for (const ator of [base.colaboradores[0]!.ator, base.operador]) {
-      await expect(listarPrazos(banco, ator)).rejects.toThrow(/Seu acesso não permite/)
-      await expect(
+      await recusada(listarPrazos(banco, ator), PermissaoNegadaError, /Seu acesso não permite/)
+      await recusada(
         alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias: 30 }, ator),
-      ).rejects.toThrow(/Seu acesso não permite/)
+        PermissaoNegadaError,
+        /Seu acesso não permite/,
+      )
     }
 
     expect(await banco.prazoDeRetencao.count()).toBe(0)
@@ -53,9 +59,7 @@ describe('o valor em vigor', () => {
       data: { chave: 'motivo_de_afastamento', dias: 0, alteradoPor: 'edicao-manual' },
     })
 
-    await expect(prazoEmVigor(banco, 'motivo_de_afastamento')).rejects.toThrow(
-      /Prazo de retenção inválido/,
-    )
+    await recusada(prazoEmVigor(banco, 'motivo_de_afastamento'), ErroDeNegocio, /Prazo de retenção inválido/)
   })
 })
 
@@ -78,9 +82,11 @@ describe('mudar o prazo', () => {
   })
 
   it('encurtar SEM confirmação é recusado pelo servidor, e nada é gravado', async () => {
-    await expect(
+    await recusada(
       alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias: 5 }, gestor),
-    ).rejects.toThrow(/Encurtar de 7 para 5 dias apaga/)
+      ErroDeNegocio,
+      /Encurtar de 7 para 5 dias apaga/,
+    )
 
     expect(await prazoEmVigor(banco, 'motivo_de_afastamento')).toBe(7)
     expect(await banco.logAuditoria.count({ where: { acao: 'prazo_de_retencao_alterado' } })).toBe(0)
@@ -96,9 +102,11 @@ describe('mudar o prazo', () => {
     await alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias: 30 }, gestor)
 
     // 10 é mais que o padrão, e menos que os 30 em vigor: ainda é encurtar.
-    await expect(
+    await recusada(
       alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias: 10 }, gestor),
-    ).rejects.toThrow(/Encurtar de 30 para 10 dias/)
+      ErroDeNegocio,
+      /Encurtar de 30 para 10 dias/,
+    )
   })
 
   it('repetir o valor em vigor não grava nem escreve na trilha', async () => {
@@ -111,16 +119,18 @@ describe('mudar o prazo', () => {
 
   // 1 e 4 caem pelo piso de `A45`: o prazo mais curto que o sistema aceita é 5.
   it.each([0, 1, 4, -1, 7.5, 3651])('recusa %s dias na entrada', async (dias) => {
-    await expect(
+    await recusada(
       alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias, confirmarEncurtamento: true }, gestor),
-    ).rejects.toThrow()
+      ZodError,
+    )
 
     expect(await banco.prazoDeRetencao.count()).toBe(0)
   })
 
   it('recusa chave de prazo que não existe', async () => {
-    await expect(
+    await recusada(
       alterarPrazo(banco, { chave: 'qualquer_coisa', dias: 30 }, gestor),
-    ).rejects.toThrow()
+      ZodError,
+    )
   })
 })

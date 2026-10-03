@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { ErroDeNegocio } from '../core/erros'
 import { deslocarDias } from '../core/util/datas'
 import { FalhaDeArmazenamento, type ArmazenamentoPort } from '../ports/armazenamento'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, limparTudo, semearBase, type BaseSemeada } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { expurgarConteudoDosEmails } from './expurgo-conteudo'
 
 const banco = obterPrisma()
@@ -275,7 +277,7 @@ describe('falha alto, e nunca apaga do banco o que ficou no disco', () => {
     const livre = await emailDeTeste({ recebidoHa: 30, anexos: 1 })
     armazenamento.falhaAoRemover.add(travado.chaves[1]!)
 
-    await expect(expurgar()).rejects.toThrow(/continuam com o conteúdo guardado/)
+    await recusada(expurgar(), FalhaDeArmazenamento, /continuam com o conteúdo guardado/)
 
     // Nada marcado no travado: a próxima execução tenta de novo. O primeiro
     // arquivo já saiu, e isso não é problema — `remover` é idempotente.
@@ -292,7 +294,7 @@ describe('falha alto, e nunca apaga do banco o que ficou no disco', () => {
     const comAnexo = await emailDeTeste({ recebidoHa: 30, anexos: 1 })
     const semAnexo = await emailDeTeste({ recebidoHa: 30 })
 
-    await expect(expurgar({ armazenamento: null })).rejects.toThrow(/continuam com o conteúdo guardado/)
+    await recusada(expurgar({ armazenamento: null }), FalhaDeArmazenamento, /continuam com o conteúdo guardado/)
 
     expect((await estado(comAnexo.id)).conteudoExpurgadoEm).toBeNull()
     expect((await estado(semAnexo.id)).conteudo).toBeNull()
@@ -302,7 +304,7 @@ describe('falha alto, e nunca apaga do banco o que ficou no disco', () => {
     const email = await emailDeTeste({ recebidoHa: 30 })
 
     for (const dias of [0, -1, Number.NaN]) {
-      await expect(expurgar({ diasDeRetencao: dias })).rejects.toThrow(/Prazo de retenção inválido/)
+      await recusada(expurgar({ diasDeRetencao: dias }), ErroDeNegocio, /Prazo de retenção inválido/)
     }
 
     expect((await estado(email.id)).conteudo).not.toBeNull()

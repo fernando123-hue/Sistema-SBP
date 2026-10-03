@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
+import { ErroDeNegocio } from '../core/erros'
 import { LIMITE_ITENS_POR_REGISTRO_MANUAL } from '../core/esquemas'
 import { hojeIso, sequenciaDeDatas } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { confirmar } from './distribuicao'
 import { listarCaixa } from './caixa'
 import { concluir, minhaFila } from './fila'
@@ -69,13 +72,15 @@ describe('categoria fora do rateio exige responsável', () => {
   it('sem responsável, recusa — o item nasceria pendente para sempre', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
 
-    await expect(
+    await recusada(
       registrarManual(
         banco,
         { categoriaCodigo: 'ISENTO', titulo: 'Associado isento' },
         base.operador,
       ),
-    ).rejects.toThrow(/fora do rateio/i)
+      ErroDeNegocio,
+      /fora do rateio/i,
+    )
 
     expect(await banco.item.count()).toBe(0)
   })
@@ -135,13 +140,15 @@ describe('categoria fora do rateio exige responsável', () => {
     const pessoa = base.colaboradores[0]!
     await banco.colaborador.update({ where: { id: pessoa.id }, data: { ativo: false } })
 
-    await expect(
+    await recusada(
       registrarManual(
         banco,
         { categoriaCodigo: 'INADIMP', titulo: 'Inadimplente', colaboradorId: pessoa.id },
         base.operador,
       ),
-    ).rejects.toThrow(/desligado/i)
+      ErroDeNegocio,
+      /desligado/i,
+    )
 
     expect(await banco.item.count()).toBe(0)
   })
@@ -169,7 +176,7 @@ describe('categoria do rateio recusa responsável escolhido a dedo', () => {
   it('escolher a pessoa seria a porta lateral que o motor existe para fechar', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
 
-    await expect(
+    await recusada(
       registrarManual(
         banco,
         {
@@ -179,7 +186,9 @@ describe('categoria do rateio recusa responsável escolhido a dedo', () => {
         },
         base.operador,
       ),
-    ).rejects.toThrow(/rateio diário/i)
+      ErroDeNegocio,
+      /rateio diário/i,
+    )
 
     expect(await banco.item.count()).toBe(0)
   })
@@ -254,7 +263,7 @@ describe('quantidade', () => {
   it('acima do teto, recusa inteira — 111 no lugar de 11 tem de doer', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
 
-    await expect(
+    await recusada(
       registrarManual(
         banco,
         {
@@ -265,7 +274,8 @@ describe('quantidade', () => {
         },
         base.operador,
       ),
-    ).rejects.toThrow()
+      ZodError,
+    )
 
     expect(await banco.item.count()).toBe(0)
   })
@@ -277,7 +287,7 @@ describe('quantidade', () => {
     // A recusa sai ANTES de o primeiro item existir. Criar quatro e falhar no
     // quinto deixaria o operador sem saber quantos passaram — e a transação
     // desfaz, mas só porque a conferência é feita fora do laço.
-    await expect(
+    await recusada(
       registrarManual(
         banco,
         {
@@ -288,7 +298,9 @@ describe('quantidade', () => {
         },
         base.operador,
       ),
-    ).rejects.toThrow(/inativa/i)
+      ErroDeNegocio,
+      /inativa/i,
+    )
 
     expect(await banco.item.count()).toBe(0)
   })

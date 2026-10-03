@@ -153,7 +153,7 @@ describe('a trilha é append-only', () => {
 
     await expect(
       banco.$executeRaw`UPDATE LogAuditoria SET acao = 'reescrito'`,
-    ).rejects.toThrow(/append-only|45000|1644/i)
+    ).rejects.toThrow(/LogAuditoria e append-only: grave um registro novo/)
 
     // E a linha continua como nasceu.
     expect((await banco.logAuditoria.findFirstOrThrow({})).acao).toBe('teste')
@@ -169,7 +169,7 @@ describe('a trilha é append-only', () => {
 
     await expect(
       banco.$executeRaw`UPDATE EventoProcessamento SET mensagem = 'reescrito'`,
-    ).rejects.toThrow(/append-only|45000|1644/i)
+    ).rejects.toThrow(/EventoProcessamento e append-only: grave um registro novo/)
     expect((await banco.eventoProcessamento.findFirstOrThrow({})).mensagem).toBe('como nasceu')
   })
 

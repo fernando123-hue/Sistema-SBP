@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
+import { ErroDeNegocio } from '../core/erros'
+import { PermissaoNegadaError } from '../servidor/ator'
 import { conferirSenha } from '../servidor/credenciais'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { criarColaborador, definirHabilitacoes } from './colaboradores'
 import { obterEscala } from './escala'
 
@@ -33,13 +37,14 @@ describe('quem pode cadastrar', () => {
   it('só gestor', async () => {
     const { base } = await baseComGestor()
 
-    await expect(
+    await recusada(
       criarColaborador(
         banco,
         { nome: 'Fulano', email: 'fulano@teste.local', papel: 'colaborador' },
         base.operador,
       ),
-    ).rejects.toThrow()
+      PermissaoNegadaError,
+    )
   })
 })
 
@@ -87,13 +92,15 @@ describe('cadastro', () => {
       gestor,
     )
 
-    await expect(
+    await recusada(
       criarColaborador(
         banco,
         { nome: 'Outro Fulano', email: 'fulano@teste.local', papel: 'colaborador' },
         gestor,
       ),
-    ).rejects.toThrow(/Já existe colaborador/)
+      ErroDeNegocio,
+      /Já existe colaborador/,
+    )
   })
 
   it('manda reativar em vez de duplicar quando o e-mail é de alguém desligado', async () => {
@@ -110,20 +117,22 @@ describe('cadastro', () => {
 
     // Cadastrar de novo partiria o histórico de carga em duas pessoas que são
     // a mesma — e o crédito acumulado da primeira ficaria órfão.
-    await expect(
+    await recusada(
       criarColaborador(
         banco,
         { nome: 'Fulano', email: 'fulano@teste.local', papel: 'colaborador' },
         gestor,
       ),
-    ).rejects.toThrow(/Reative/)
+      ErroDeNegocio,
+      /Reative/,
+    )
   })
 
   it('categoria desativada não grava NADA — nem a pessoa', async () => {
     const { gestor } = await baseComGestor()
     await banco.categoria.update({ where: { codigo: 'INADIMP' }, data: { ativa: false } })
 
-    await expect(
+    await recusada(
       criarColaborador(
         banco,
         {
@@ -134,7 +143,9 @@ describe('cadastro', () => {
         },
         gestor,
       ),
-    ).rejects.toThrow(/Categoria inexistente/)
+      ErroDeNegocio,
+      /Categoria inexistente/,
+    )
 
     // Transação inteira desfeita. Meia gravação aqui deixaria uma pessoa
     // cadastrada com metade das categorias que o gestor pediu, sem ele saber.
@@ -294,13 +305,15 @@ describe('habilitação', () => {
       gestor,
     )
 
-    await expect(
+    await recusada(
       definirHabilitacoes(
         banco,
         { colaboradorId: criado.colaboradorId, categorias: ['LIGA', 'INADIMP'] },
         gestor,
       ),
-    ).rejects.toThrow(/Categoria inexistente/)
+      ErroDeNegocio,
+      /Categoria inexistente/,
+    )
 
     // Aplicar só as válidas deixaria o gestor achando que gravou uma coisa e o
     // banco com outra.
@@ -319,13 +332,14 @@ describe('o que a API recusa antes de gravar', () => {
     // `.trim()` depois de `.min(1)` valida a string CRUA e só então apara:
     // "   " tem comprimento 3, passa, e vira "". A pessoa nasceria sem nome
     // nenhum na lista de acesso e na tela de plantão.
-    await expect(
+    await recusada(
       criarColaborador(
         banco,
         { nome: '   ', email: 'fulano@teste.local', papel: 'colaborador' },
         gestor,
       ),
-    ).rejects.toThrow()
+      ZodError,
+    )
 
     expect(await banco.colaborador.count({ where: { email: 'fulano@teste.local' } })).toBe(0)
   })
@@ -338,13 +352,14 @@ describe('o que a API recusa antes de gravar', () => {
     // certo, e agora existem DUAS pessoas que são a mesma — com o histórico de
     // carga partido entre elas. É exatamente o dano que a regra de "reative em
     // vez de duplicar" existe para impedir, entrando pela porta da frente.
-    await expect(
+    await recusada(
       criarColaborador(
         banco,
         { nome: 'Ana Sintética', email: 'ana.silva', papel: 'colaborador' },
         gestor,
       ),
-    ).rejects.toThrow()
+      ZodError,
+    )
 
     expect(await banco.colaborador.count({ where: { nome: 'Ana Sintética' } })).toBe(0)
   })
@@ -355,9 +370,10 @@ describe('o que a API recusa antes de gravar', () => {
     // Gravado como "", a conta existe e NUNCA abre: a entrada exige e-mail com
     // ao menos um caractere. Ninguém consegue entrar, e ninguém consegue ver
     // que o problema é esse.
-    await expect(
+    await recusada(
       criarColaborador(banco, { nome: 'Fulano', email: '     ', papel: 'colaborador' }, gestor),
-    ).rejects.toThrow()
+      ZodError,
+    )
   })
 
   it('aceita e-mail normal com maiúsculas e espaço sobrando', async () => {

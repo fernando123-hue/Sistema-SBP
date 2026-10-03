@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { limparCacheDeAmbiente } from '../servidor/ambiente'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { DOMINIO_SINTETICO, exigirBaseSintetica } from './base-sintetica'
 
 /**
@@ -72,7 +73,7 @@ describe('demo e seed só rodam em base sintética', () => {
 
   it('o domínio é o fim do endereço, não um pedaço dele', async () => {
     await pessoa(`ana${DOMINIO_SINTETICO}.outro.example`)
-    await expect(exigirBaseSintetica(banco, 'o seed')).rejects.toThrow(/domínio sintético/)
+    await recusada(exigirBaseSintetica(banco, 'o seed'), Error, /domínio sintético/)
   })
 
   it('NODE_ENV=production recusa mesmo com a base vazia', async () => {
@@ -87,7 +88,7 @@ describe('demo e seed só rodam em base sintética', () => {
     vi.stubEnv('IA_ADAPTER', 'mock')
     vi.stubEnv('ACESSO_LOCAL_SEM_SENHA', '')
     limparCacheDeAmbiente()
-    await expect(exigirBaseSintetica(banco, 'a demo')).rejects.toThrow(/a demo grava dado sintético e não roda com NODE_ENV=production/)
+    await recusada(exigirBaseSintetica(banco, 'a demo'), Error, /a demo grava dado sintético e não roda com NODE_ENV=production/)
   })
 })
 

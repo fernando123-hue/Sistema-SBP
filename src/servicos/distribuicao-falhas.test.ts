@@ -6,6 +6,7 @@ import { DATA_BASE, aprovarTudoNoBanco, limparTudo, semearBase } from '../testes
 import { IaMock } from '../adapters/ia-mock'
 import { IngestaoMock } from '../adapters/ingestao-mock'
 import { sequenciaDeDatas } from '../core/util/datas'
+import { recusada } from '../testes/recusa'
 import { sincronizar } from './ingestao'
 
 /**
@@ -53,9 +54,7 @@ describe('violação de conservação não pode virar aviso de rotina', () => {
     // Engolir aqui apagaria a única prova de que o motor errou. O operador
     // veria "categoria não distribuída hoje" com a mesma cara de um dia sem
     // plantão, e os itens ficariam presos sem ninguém saber por quê.
-    await expect(previa(banco, { data, categorias: [] }, base.operador)).rejects.toThrow(
-      ConservacaoVioladaError,
-    )
+    await recusada(previa(banco, { data, categorias: [] }, base.operador), ConservacaoVioladaError)
   })
 
   it('mas "ninguém de plantão" continua sendo resultado, não exceção', async () => {

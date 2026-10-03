@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { ErroDeNegocio } from '../core/erros'
 import { DOMINIO_ATUAL, EmailBrutoSchema } from '../core/esquemas'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
+import { PermissaoNegadaError } from '../servidor/ator'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { sincronizar } from './ingestao'
 import { LEITURAS_DE_EMAIL_POR_HORA, lerEmailDaRevisao, listarPendentes, resolver } from './revisao'
 
@@ -142,7 +145,7 @@ describe('lerEmailDaRevisao', () => {
     const { base, pendente } = await umaRevisaoPendente()
     const colaborador = base.colaboradores[0]!.ator
 
-    await expect(lerEmailDaRevisao(banco, pendente.revisaoId, colaborador)).rejects.toThrow()
+    await recusada(lerEmailDaRevisao(banco, pendente.revisaoId, colaborador), PermissaoNegadaError)
 
     expect(await banco.logAuditoria.count({ where: { acao: 'email_lido_na_revisao' } })).toBe(0)
   })
@@ -172,12 +175,12 @@ describe('lerEmailDaRevisao', () => {
       base.operador,
     )
 
-    await expect(lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).rejects.toThrow(/já foi resolvida/)
+    await recusada(lerEmailDaRevisao(banco, pendente.revisaoId, base.operador), ErroDeNegocio, /já foi resolvida/)
   })
 
   it('revisão inexistente é recusada', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
-    await expect(lerEmailDaRevisao(banco, 'nao-existe', base.operador)).rejects.toThrow(/não foi encontrada/)
+    await recusada(lerEmailDaRevisao(banco, 'nao-existe', base.operador), ErroDeNegocio, /não foi encontrada/)
   })
 
   it('conteúdo expurgado pela retenção diz que foi expurgado, e quando (invariante 11)', async () => {
@@ -198,9 +201,7 @@ describe('lerEmailDaRevisao', () => {
     const item = await banco.item.findUniqueOrThrow({ where: { id: pendente.itemId } })
     await banco.emailConteudo.delete({ where: { emailId: item.emailId! } })
 
-    await expect(lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).rejects.toThrow(
-      /sem conteúdo e sem carimbo de expurgo/,
-    )
+    await recusada(lerEmailDaRevisao(banco, pendente.revisaoId, base.operador), Error, /sem conteúdo e sem carimbo de expurgo/)
   })
 
   it('item registrado à mão diz que não há e-mail', async () => {
@@ -252,7 +253,7 @@ describe('teto de leituras por hora (A72)', () => {
     const { base } = await umaRevisaoPendente()
     await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA, 30)
 
-    await expect(lerEmailDaRevisao(banco, 'nao-existe', base.operador)).rejects.toThrow(/indisponível nesta conta/)
+    await recusada(lerEmailDaRevisao(banco, 'nao-existe', base.operador), ErroDeNegocio, /indisponível nesta conta/)
   })
 
   it('um a menos que o teto ainda lê', async () => {

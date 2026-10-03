@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
 import { MENSAGEM_BUSCA_NAO_RECONHECIDA, MENSAGEM_CPF_NAO_CONFERE } from '../core/busca-por-chave'
+import { ErroDeNegocio } from '../core/erros'
 import { protegerCpf } from '../servidor/cpf-protegido'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { buscarPorChave } from './caixa'
 
 /**
@@ -68,20 +71,16 @@ describe('busca por CPF ou matrícula', () => {
 
   it('CPF que não confere: frase clara, sem procurar e sem repetir o número', async () => {
     const { base } = await preparar()
-    await expect(buscarPorChave(banco, { texto: '111.444.777-36' }, base.operador)).rejects.toThrow(
-      MENSAGEM_CPF_NAO_CONFERE,
-    )
+    await recusada(buscarPorChave(banco, { texto: '111.444.777-36' }, base.operador), ErroDeNegocio, MENSAGEM_CPF_NAO_CONFERE)
   })
 
   it('texto que não é CPF nem matrícula: frase clara', async () => {
     const { base } = await preparar()
-    await expect(buscarPorChave(banco, { texto: 'Helena Prado' }, base.operador)).rejects.toThrow(
-      MENSAGEM_BUSCA_NAO_RECONHECIDA,
-    )
+    await recusada(buscarPorChave(banco, { texto: 'Helena Prado' }, base.operador), ErroDeNegocio, MENSAGEM_BUSCA_NAO_RECONHECIDA)
   })
 
   it('texto comprido demais é recusado antes de qualquer consulta', async () => {
     const { base } = await preparar()
-    await expect(buscarPorChave(banco, { texto: '1'.repeat(200) }, base.operador)).rejects.toThrow()
+    await recusada(buscarPorChave(banco, { texto: '1'.repeat(200) }, base.operador), ZodError)
   })
 })

@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { ErroDeNegocio } from '../core/erros'
 import { EmailBrutoSchema } from '../core/esquemas'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { definirAtivacao } from './autenticacao'
 import { concluir, devolver, transferir } from './fila'
 import { sincronizar } from './ingestao'
@@ -178,13 +180,15 @@ describe('resolver a mesma revisão', () => {
     const pendente = await revisaoPendente(base, '<inativa@exemplo.test>')
     await banco.categoria.update({ where: { codigo: 'LIGANTE' }, data: { ativa: false } })
 
-    await expect(
+    await recusada(
       resolver(
         banco,
         { revisaoId: pendente.revisaoId, categoriaCodigo: 'LIGANTE', titulo: pendente.titulo },
         base.operador,
       ),
-    ).rejects.toThrow(/desativada/)
+      ErroDeNegocio,
+      /desativada/,
+    )
     const revisao = await banco.revisao.findUniqueOrThrow({ where: { id: pendente.revisaoId } })
     expect(revisao.resolvidoEm).toBeNull()
   })
@@ -250,7 +254,9 @@ describe('quem não pode mexer no item não chega a travá-lo', () => {
         () => transferir(banco, { itemId, paraColaboradorId: outra.id, justificativa: 'pegando para mim' }, outra.ator),
       ]) {
         const inicio = Date.now()
-        await expect(tentativa()).rejects.toThrow()
+        // Concluir recusa por não ser o responsável; devolver e transferir, por
+        // permissão. Classes diferentes por tentativa — o texto ancora as duas.
+        await recusada(tentativa(), Error, /Seu acesso não permite|responsável ativo/)
         expect(Date.now() - inicio).toBeLessThan(1000)
       }
     } finally {

@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
+import { ErroDeNegocio } from '../core/erros'
 import { EmailBrutoSchema } from '../core/esquemas'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
+import { PermissaoNegadaError } from '../servidor/ator'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { sincronizar } from './ingestao'
 import { listarPendentes, resolver, resolverEmailDaRevisao } from './revisao'
 
@@ -153,9 +157,11 @@ describe('resolverEmailDaRevisao (1A)', () => {
   it('faltar uma revisão do e-mail recusa tudo', async () => {
     const { base, itens } = await umaListaNaRevisao()
 
-    await expect(
+    await recusada(
       resolverEmailDaRevisao(banco, { emailId: itens[0]!.emailId!, revisoes: decisaoDe(itens).slice(0, 2), novos: [] }, base.operador),
-    ).rejects.toThrow('Nada foi decidido')
+      ErroDeNegocio,
+      'Nada foi decidido',
+    )
     expect(await banco.revisao.count({ where: { resolvidoEm: { not: null } } })).toBe(0)
   })
 
@@ -167,9 +173,11 @@ describe('resolverEmailDaRevisao (1A)', () => {
       base.operador,
     )
 
-    await expect(
+    await recusada(
       resolverEmailDaRevisao(banco, { emailId: itens[0]!.emailId!, revisoes: decisaoDe(itens), novos: [] }, base.operador),
-    ).rejects.toThrow('Nada foi decidido')
+      ErroDeNegocio,
+      'Nada foi decidido',
+    )
     expect(await banco.revisao.count({ where: { resolvidoEm: { not: null } } })).toBe(1)
   })
 
@@ -179,9 +187,11 @@ describe('resolverEmailDaRevisao (1A)', () => {
     const doOutro = itens.find((item) => item.emailId !== emailId)!
     const doMesmo = itens.filter((item) => item.emailId === emailId)
 
-    await expect(
+    await recusada(
       resolverEmailDaRevisao(banco, { emailId, revisoes: decisaoDe([...doMesmo, doOutro]), novos: [] }, base.operador),
-    ).rejects.toThrow('Nada foi decidido')
+      ErroDeNegocio,
+      'Nada foi decidido',
+    )
     expect(await banco.revisao.count({ where: { resolvidoEm: { not: null } } })).toBe(0)
   })
 
@@ -189,9 +199,10 @@ describe('resolverEmailDaRevisao (1A)', () => {
     const { base, itens } = await umaListaNaRevisao()
     const linhas = decisaoDe(itens)
 
-    await expect(
+    await recusada(
       resolverEmailDaRevisao(banco, { emailId: itens[0]!.emailId!, revisoes: [...linhas, linhas[0]!], novos: [] }, base.operador),
-    ).rejects.toThrow()
+      ZodError,
+    )
     expect(await banco.revisao.count({ where: { resolvidoEm: { not: null } } })).toBe(0)
   })
 
@@ -201,9 +212,11 @@ describe('resolverEmailDaRevisao (1A)', () => {
     const { base, itens } = await umaListaNaRevisao()
     await banco.email.update({ where: { id: itens[0]!.emailId! }, data: { conteudoSuspeito: true } })
 
-    await expect(
+    await recusada(
       resolverEmailDaRevisao(banco, { emailId: itens[0]!.emailId!, revisoes: decisaoDe(itens), novos: [] }, base.operador),
-    ).rejects.toThrow('item a item')
+      ErroDeNegocio,
+      'item a item',
+    )
     expect(await banco.revisao.count({ where: { resolvidoEm: { not: null } } })).toBe(0)
   })
 
@@ -211,9 +224,11 @@ describe('resolverEmailDaRevisao (1A)', () => {
     const { base, itens } = await umaListaNaRevisao()
     await banco.revisao.update({ where: { id: itens[1]!.revisaoId }, data: { motivo: 'cpf_invalido' } })
 
-    await expect(
+    await recusada(
       resolverEmailDaRevisao(banco, { emailId: itens[0]!.emailId!, revisoes: decisaoDe(itens), novos: [] }, base.operador),
-    ).rejects.toThrow('item a item')
+      ErroDeNegocio,
+      'item a item',
+    )
     expect(await banco.revisao.count({ where: { resolvidoEm: { not: null } } })).toBe(0)
   })
 
@@ -223,9 +238,11 @@ describe('resolverEmailDaRevisao (1A)', () => {
     const { base, itens } = await umaListaNaRevisao()
     await banco.revisao.update({ where: { id: itens[1]!.revisaoId }, data: { campoIncerto: 'nome' } })
 
-    await expect(
+    await recusada(
       resolverEmailDaRevisao(banco, { emailId: itens[0]!.emailId!, revisoes: decisaoDe(itens), novos: [] }, base.operador),
-    ).rejects.toThrow('item a item')
+      ErroDeNegocio,
+      'item a item',
+    )
     expect(await banco.revisao.count({ where: { resolvidoEm: { not: null } } })).toBe(0)
   })
 
@@ -273,7 +290,7 @@ describe('resolverEmailDaRevisao (1A)', () => {
   it('acrescentar gente sem aprovar ninguém é recusado', async () => {
     const { base, itens } = await umaListaNaRevisao()
 
-    await expect(
+    await recusada(
       resolverEmailDaRevisao(
         banco,
         {
@@ -283,16 +300,19 @@ describe('resolverEmailDaRevisao (1A)', () => {
         },
         base.operador,
       ),
-    ).rejects.toThrow('aprove pelo menos um')
+      ErroDeNegocio,
+      'aprove pelo menos um',
+    )
     expect(await banco.revisao.count({ where: { resolvidoEm: { not: null } } })).toBe(0)
   })
 
   it('colaborador não decide revisão', async () => {
     const { base, itens } = await umaListaNaRevisao()
 
-    await expect(
+    await recusada(
       resolverEmailDaRevisao(banco, { emailId: itens[0]!.emailId!, revisoes: decisaoDe(itens), novos: [] }, base.colaboradores[0]!.ator),
-    ).rejects.toThrow()
+      PermissaoNegadaError,
+    )
     expect(await banco.revisao.count({ where: { resolvidoEm: { not: null } } })).toBe(0)
   })
 
@@ -300,12 +320,13 @@ describe('resolverEmailDaRevisao (1A)', () => {
   it('corpo com campo a mais é recusado', async () => {
     const { base, itens } = await umaListaNaRevisao()
 
-    await expect(
+    await recusada(
       resolverEmailDaRevisao(
         banco,
         { emailId: itens[0]!.emailId!, revisoes: decisaoDe(itens), novos: [], resolvidoPor: base.colaboradores[0]!.id },
         base.operador,
       ),
-    ).rejects.toThrow()
+      ZodError,
+    )
   })
 })
