@@ -25,6 +25,17 @@ export interface ArmazenamentoPort {
   remover(chave: string): Promise<void>
 
   /**
+   * Todo arquivo de anexo guardado, com a chave no MESMO formato que `guardar`
+   * devolve.
+   *
+   * Existe para a limpeza achar o arquivo que nenhuma linha de `Anexo` aponta
+   * (`A78`): a ingestão grava os bytes antes da transação, e um processo que
+   * morre entre as duas deixa o documento no disco, invisível ao expurgo, que
+   * caminha a partir do banco. Só o armazenamento sabe o que tem.
+   */
+  listar(): Promise<ArquivoGuardado[]>
+
+  /**
    * Confere, antes de qualquer trabalho, que a chave em uso é a que cifrou os
    * anexos existentes. Lança `ChaveDosAnexosMudouError` quando não é.
    *
@@ -35,6 +46,12 @@ export interface ArmazenamentoPort {
    * chamada.
    */
   conferirChave?(): Promise<void>
+}
+
+export interface ArquivoGuardado {
+  chave: string
+  /** Última gravação dos bytes. É por ela que a limpeza sabe que não há ingestão em curso. */
+  gravadoEm: Date
 }
 
 export class FalhaDeArmazenamento extends ErroOperacional {

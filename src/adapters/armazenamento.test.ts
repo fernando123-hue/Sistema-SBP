@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -224,6 +224,49 @@ describe('armazenamento em disco', () => {
     await writeFile(caminho, cifrado)
 
     await expect(armazenamento.ler(chave)).rejects.toThrow(FalhaDeArmazenamento)
+  })
+})
+
+describe('listar o que está guardado (A78)', () => {
+  it('devolve cada chave no MESMO formato de guardar, com a data de gravação', async () => {
+    const primeira = await armazenamento.guardar(PDF, '.pdf')
+    const segunda = await armazenamento.guardar(PDF, '')
+    const antiga = new Date('2026-01-10T12:00:00Z')
+    await utimes(join(raiz, primeira), antiga, antiga)
+
+    const lista = await armazenamento.listar()
+
+    expect(lista.map((arquivo) => arquivo.chave).sort()).toEqual([primeira, segunda].sort())
+    expect(lista.find((arquivo) => arquivo.chave === primeira)!.gravadoEm.getTime()).toBe(antiga.getTime())
+  })
+
+  it('a sentinela e os temporários da raiz não são anexo', async () => {
+    await armazenamento.guardar(PDF, '.pdf')
+    await writeFile(join(raiz, '.sentinela-da-chave.abc.tmp'), 'x')
+
+    const chaves = (await armazenamento.listar()).map((arquivo) => arquivo.chave)
+
+    expect(chaves).toHaveLength(1)
+    expect(chaves.some((chave) => chave.includes('sentinela'))).toBe(false)
+  })
+
+  it('pasta fora do formato de duas letras não é do armazenamento, e não é listada', async () => {
+    // Quem guarda espalha em `ab/`. Uma `copia/` posta ali por alguém não é
+    // anexo do sistema — listá-la a faria parecer órfã, e a limpeza a apagaria.
+    await mkdir(join(raiz, 'copia'))
+    await writeFile(join(raiz, 'copia', 'documento.pdf'), 'x')
+
+    expect(await armazenamento.listar()).toEqual([])
+  })
+
+  it('pasta ainda inexistente é lista vazia, não falha', async () => {
+    expect(await new ArmazenamentoEmDisco(join(raiz, 'nunca-criada')).listar()).toEqual([])
+  })
+
+  it('uma pasta no lugar de arquivo é estrutura corrompida: falha com nome', async () => {
+    await mkdir(join(raiz, 'ab', 'nao-devia-existir'), { recursive: true })
+
+    await expect(armazenamento.listar()).rejects.toThrow(FalhaDeArmazenamento)
   })
 })
 

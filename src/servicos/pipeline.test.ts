@@ -9,7 +9,7 @@ import {
   type EmailBruto,
   type Interpretacao,
 } from '../core/esquemas'
-import type { ArmazenamentoPort } from '../ports/armazenamento'
+import type { ArmazenamentoPort, ArquivoGuardado } from '../ports/armazenamento'
 import { FalhaDeInterpretacao, InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { fimDoDia, sequenciaDeDatas } from '../core/util/datas'
@@ -58,6 +58,10 @@ class ArmazenamentoEmMemoria implements ArmazenamentoPort {
 
   async remover(chave: string): Promise<void> {
     this.guardados.delete(chave)
+  }
+
+  async listar(): Promise<ArquivoGuardado[]> {
+    return [...this.guardados.keys()].map((chave) => ({ chave, gravadoEm: new Date() }))
   }
 }
 

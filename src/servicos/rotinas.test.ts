@@ -4,6 +4,7 @@ import { deslocarDias } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import type { Ator } from '../servidor/ator'
 import { atorDeTeste, DATA_BASE, limparTudo, semearBase, type BaseSemeada } from '../testes/apoio'
+import { ArmazenamentoEmMemoria } from '../testes/armazenamento-em-memoria'
 import { registrar } from './afastamentos'
 import { alterarPrazo } from './retencao'
 import { MINUTOS_PARA_DAR_COMO_ABANDONADA, TENTATIVAS_POR_DIA, rodarLimpezaDiaria } from './rotinas'
@@ -49,8 +50,8 @@ describe('uma vez por dia', () => {
   it('a segunda chamada do mesmo dia não faz nada', async () => {
     await atestadoQueVoltouHa(0, 10)
 
-    const primeira = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
-    const segunda = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+    const primeira = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })
+    const segunda = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })
 
     expect(primeira.executou && primeira.situacao).toBe('sucesso')
     expect(segunda).toEqual({ executou: false, motivo: 'ja_concluida' })
@@ -58,8 +59,8 @@ describe('uma vez por dia', () => {
   })
 
   it('dia novo, limpeza nova', async () => {
-    const hoje = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
-    const amanha = await rodarLimpezaDiaria(banco, { hoje: deslocarDias(DATA_BASE, 1) })
+    const hoje = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })
+    const amanha = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: deslocarDias(DATA_BASE, 1) })
 
     expect(hoje.executou).toBe(true)
     expect(amanha.executou).toBe(true)
@@ -70,7 +71,7 @@ describe('uma vez por dia', () => {
     const voltouHa10 = await atestadoQueVoltouHa(0, 10, 'fica com prazo de 30')
     await alterarPrazo(banco, { chave: 'motivo_de_afastamento', dias: 30 }, gestor)
 
-    const resultado = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+    const resultado = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })
 
     if (!resultado.executou || resultado.situacao !== 'sucesso') throw new Error('esperava sucesso')
     expect(resultado.resumo.motivosDeAfastamento.prazoEmDias).toBe(30)
@@ -83,7 +84,7 @@ describe('uma vez por dia', () => {
   it('a trilha do que foi apagado leva a correlação da execução', async () => {
     await atestadoQueVoltouHa(0, 10)
 
-    const resultado = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+    const resultado = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })
     if (!resultado.executou) throw new Error('esperava execução')
 
     const registro = await banco.logAuditoria.findFirstOrThrow({ where: { acao: 'afastamento_motivo_expurgado' } })
@@ -100,7 +101,7 @@ describe('uma vez por dia', () => {
       },
     })
 
-    const resultado = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+    const resultado = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })
 
     if (!resultado.executou || resultado.situacao !== 'sucesso') throw new Error('esperava sucesso')
     expect(resultado.resumo.conteudoDosEmails).toMatchObject({ prazoEmDias: 7, apagados: 1 })
@@ -108,14 +109,40 @@ describe('uma vez por dia', () => {
     expect(depois.conteudo).toBeNull()
     expect(depois.conteudoExpurgadoEm).not.toBeNull()
   })
+
+  it('também apaga o arquivo de anexo sem registro (A78), com o prazo do conteúdo', async () => {
+    const armazenamento = new ArmazenamentoEmMemoria()
+    armazenamento.colocar('ab/orfao-antigo.pdf', new Date(Date.now() - 8 * 24 * 60 * 60 * 1000))
+    armazenamento.colocar('cd/em-curso.pdf', new Date())
+
+    const resultado = await rodarLimpezaDiaria(banco, { armazenamento, hoje: DATA_BASE })
+
+    if (!resultado.executou || resultado.situacao !== 'sucesso') throw new Error('esperava sucesso')
+    expect(resultado.resumo.anexosSemRegistro).toEqual({ avaliados: 2, semRegistro: 2, removidos: 1, prazoEmDias: 7 })
+    expect((await armazenamento.listar()).map((arquivo) => arquivo.chave)).toEqual(['cd/em-curso.pdf'])
+    const registro = await banco.logAuditoria.findFirstOrThrow({ where: { acao: 'anexo_orfao_removido' } })
+    expect(registro.correlacaoId).toBe(resultado.correlacaoId)
+  })
 })
 
 describe('falha não some', () => {
+  it('sem armazenamento, a varredura de anexo sem registro falha alto, e as outras etapas rodam', async () => {
+    // Não ter olhado o disco não é não ter órfão (A78). Mas o motivo de
+    // afastamento — dado de saúde — não espera o armazenamento voltar.
+    const voltou = await atestadoQueVoltouHa(0, 10)
+
+    const resultado = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+
+    if (!resultado.executou || resultado.situacao !== 'falha') throw new Error('esperava falha')
+    expect(resultado.mensagem).toContain('anexo sem registro')
+    expect((await banco.afastamento.findUniqueOrThrow({ where: { id: voltou.id } })).observacao).toBeNull()
+  })
+
   it('fica registrada, com evento, e a tentativa seguinte do dia roda de novo', async () => {
     const corrompida = await atestadoQueVoltouHa(0, 10)
     await banco.afastamento.update({ where: { id: corrompida.id }, data: { tipo: 'Atestado' } })
 
-    const falhou = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+    const falhou = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })
     expect(falhou.executou && falhou.situacao).toBe('falha')
 
     const execucao = await banco.execucaoDeRotina.findFirstOrThrow()
@@ -127,7 +154,7 @@ describe('falha não some', () => {
 
     // Alguém corrige a linha; a próxima tentativa do MESMO dia roda.
     await banco.afastamento.update({ where: { id: corrompida.id }, data: { tipo: 'atestado' } })
-    const deNovo = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+    const deNovo = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })
 
     expect(deNovo.executou && deNovo.situacao).toBe('sucesso')
     const depois = await banco.execucaoDeRotina.findFirstOrThrow()
@@ -157,7 +184,7 @@ describe('falha não some', () => {
       data: { colaboradorId: base.operadorId, dia: deslocarDias(DATA_BASE, -400), buscas: 3 },
     })
 
-    const resultado = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+    const resultado = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })
 
     // A rotina falha — a linha torta continua lá, e isso não pode ser abafado.
     expect(resultado.executou && resultado.situacao).toBe('falha')
@@ -174,11 +201,11 @@ describe('falha não some', () => {
     await banco.afastamento.update({ where: { id: corrompida.id }, data: { tipo: 'Atestado' } })
 
     for (let vez = 0; vez < TENTATIVAS_POR_DIA; vez += 1) {
-      const resultado = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+      const resultado = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })
       expect(resultado.executou && resultado.situacao).toBe('falha')
     }
 
-    expect(await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })).toEqual({
+    expect(await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })).toEqual({
       executou: false,
       motivo: 'tentativas_esgotadas',
     })
@@ -198,13 +225,13 @@ describe('execução de outro processo', () => {
       },
     })
 
-    expect(await rodarLimpezaDiaria(banco, { hoje: DATA_BASE, agora })).toEqual({
+    expect(await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE, agora })).toEqual({
       executou: false,
       motivo: 'em_curso',
     })
 
     const muitoDepois = new Date(agora.getTime() + MINUTOS_PARA_DAR_COMO_ABANDONADA * 60_000)
-    const retomada = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE, agora: muitoDepois })
+    const retomada = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE, agora: muitoDepois })
 
     expect(retomada.executou && retomada.situacao).toBe('sucesso')
   })

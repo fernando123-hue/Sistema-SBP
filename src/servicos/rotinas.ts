@@ -10,6 +10,7 @@ import {
 import type { ArmazenamentoPort } from '../ports/armazenamento'
 import type { Banco } from '../servidor/prisma'
 import { expurgarContagemDeBuscas, type ResultadoDoExpurgoDaContagem } from './contagem-de-buscas'
+import { expurgarAnexosOrfaos, type ResultadoDoExpurgoDeOrfaos } from './expurgo-anexos-orfaos'
 import { expurgarConteudoDosEmails, type ResultadoDoExpurgoDeConteudo } from './expurgo-conteudo'
 import { expurgarDadosDosItens, type ResultadoDoExpurgoDosDadosDoItem } from './expurgo-dados-do-item'
 import { expurgarMotivosDeAfastamento, type ResultadoDoExpurgoDeMotivos } from './expurgo-lgpd'
@@ -42,6 +43,7 @@ export const TENTATIVAS_POR_DIA = 3
 export interface ResumoDaLimpeza {
   motivosDeAfastamento: ResultadoDoExpurgoDeMotivos & { prazoEmDias: number }
   conteudoDosEmails: ResultadoDoExpurgoDeConteudo & { prazoEmDias: number }
+  anexosSemRegistro: ResultadoDoExpurgoDeOrfaos & { prazoEmDias: number }
   dadosDosItens: ResultadoDoExpurgoDosDadosDoItem & { prazoEmDias: number }
   contagemDeBuscas: ResultadoDoExpurgoDaContagem & { prazoEmDias: number }
 }
@@ -199,6 +201,18 @@ export async function rodarLimpezaDiaria(
       }),
     )
 
+    // Depois do conteúdo, que acabou de remover os arquivos vencidos COM linha,
+    // e com o mesmo prazo (`A78`). Sem armazenamento, falha: não ter olhado
+    // não é não ter órfão.
+    const anexosSemRegistro = await etapa('anexo sem registro', () =>
+      expurgarAnexosOrfaos(banco, {
+        diasDeRetencao: prazoDoConteudo,
+        armazenamento: opcoes.armazenamento ?? null,
+        agora,
+        correlacaoId,
+      }),
+    )
+
     // Depois do conteúdo, e com o MESMO prazo: os itens de um e-mail que acabou
     // de ter o texto apagado perdem título e campos já nesta execução (`A23(a)`).
     const dadosDosItens = await etapa('dados do item', () =>
@@ -217,7 +231,7 @@ export async function rodarLimpezaDiaria(
 
     // Alguma etapa quebrou: a rotina é FALHA, mesmo tendo feito o resto — o
     // defeito não pode ser abafado por três sucessos. A tentativa seguinte do
-    // dia repete tudo, e repetir não custa: as quatro limpezas são
+    // dia repete tudo, e repetir não custa: as cinco limpezas são
     // idempotentes, e é por isso que as que deram certo podem rodar de novo.
     //
     // Grava direto, sem relançar: cada linha de `falhas` já passou por
@@ -226,11 +240,12 @@ export async function rodarLimpezaDiaria(
     // voltava a ser só "Error", e o "qual etapa" se perdia.
     if (falhas.length > 0) return await registrarFalha(falhas.join(' | '))
 
-    // Daqui para baixo, as quatro etapas terminaram: `falhas` vazio significa
+    // Daqui para baixo, as cinco etapas terminaram: `falhas` vazio significa
     // que nenhuma devolveu `null`.
     const resumo: ResumoDaLimpeza = {
       motivosDeAfastamento: { ...motivos!, prazoEmDias },
       conteudoDosEmails: { ...conteudo!, prazoEmDias: prazoDoConteudo },
+      anexosSemRegistro: { ...anexosSemRegistro!, prazoEmDias: prazoDoConteudo },
       dadosDosItens: { ...dadosDosItens!, prazoEmDias: prazoDoConteudo },
       contagemDeBuscas: { ...contagem!, prazoEmDias: prazoDaContagem },
     }

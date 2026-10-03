@@ -33,7 +33,7 @@ async function principal(): Promise<void> {
   } catch (erro) {
     process.stderr.write(
       `Armazenamento de anexos indisponível (${erro instanceof Error ? erro.message : String(erro)}). ` +
-        'E-mails com anexo ficam pendentes.\n',
+        'E-mails com anexo ficam pendentes, e a varredura de anexo sem registro falha.\n',
     )
   }
 
@@ -55,6 +55,7 @@ async function principal(): Promise<void> {
 
   const motivos = resultado.resumo.motivosDeAfastamento
   const conteudo = resultado.resumo.conteudoDosEmails
+  const semRegistro = resultado.resumo.anexosSemRegistro
   process.stdout.write(
     `Limpeza diária concluída (ref. ${resultado.correlacaoId.slice(0, 8)}):\n` +
       `  - prazo do motivo de afastamento: ${motivos.prazoEmDias} dias\n` +
@@ -62,7 +63,8 @@ async function principal(): Promise<void> {
       `  - motivos vencidos: ${motivos.vencidos} (com algo a apagar: ${motivos.apagados})\n` +
       `  - prazo do texto dos e-mails: ${conteudo.prazoEmDias} dias\n` +
       `  - e-mails avaliados: ${conteudo.avaliados}\n` +
-      `  - e-mails vencidos: ${conteudo.vencidos} (apagados: ${conteudo.apagados}, anexos removidos: ${conteudo.anexosRemovidos})\n`,
+      `  - e-mails vencidos: ${conteudo.vencidos} (apagados: ${conteudo.apagados}, anexos removidos: ${conteudo.anexosRemovidos})\n` +
+      `  - arquivos de anexo no armazenamento: ${semRegistro.avaliados} (sem registro: ${semRegistro.semRegistro}, apagados: ${semRegistro.removidos})\n`,
   )
 }
 

@@ -1,11 +1,13 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto'
-import { link, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import type { Dirent } from 'node:fs'
+import { link, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 
 import {
   ChaveDosAnexosMudouError,
   FalhaDeArmazenamento,
   type ArmazenamentoPort,
+  type ArquivoGuardado,
 } from '../ports/armazenamento'
 import { ambiente } from '../servidor/ambiente'
 import { registrarLog } from '../servidor/observabilidade'
@@ -21,6 +23,9 @@ const TAMANHO_TAG = 16 // 16 bytes para tag de autenticação
  */
 const NOME_DA_SENTINELA = '.sentinela-da-chave'
 const CONTEUDO_DA_SENTINELA = Buffer.from('SBP-SENTINELA-DA-CHAVE-v1')
+
+/** O nome das subpastas que `guardar` cria: os dois primeiros caracteres do sorteio. */
+const SUBPASTA_DE_ANEXO = /^[0-9a-f]{2}$/
 
 /**
  * A conferência de cada raiz, por chave, neste processo — a PROMESSA, não só o
@@ -465,6 +470,62 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
       await rm(this.caminhoDe(chave), { force: true })
     } catch (erro) {
       throw new FalhaDeArmazenamento('remover', mensagemDoErro(erro))
+    }
+  }
+
+  /**
+   * Só as subpastas de duas letras hexadecimais, que são as que `guardar` cria.
+   *
+   * Outra pasta na raiz não é do sistema — uma cópia que alguém deixou ali, por
+   * exemplo. Listá-la a faria parecer órfã, e a limpeza diária (`A78`) apagaria
+   * o que nunca foi dela. Dentro da subpasta, ao contrário, TUDO é listado: uma
+   * pasta no lugar de um arquivo é estrutura corrompida e falha com nome.
+   */
+  async listar(): Promise<ArquivoGuardado[]> {
+    const raiz = resolve(this.raiz)
+    const arquivos: ArquivoGuardado[] = []
+
+    // Raiz ausente é instalação que ainda não recebeu anexo. SÓ ela: uma
+    // subpasta que some no meio da volta não pode transformar a lista inteira
+    // em "não há nada" — e "não consegui olhar" também não.
+    let pastas: Dirent[]
+    try {
+      pastas = await readdir(raiz, { withFileTypes: true })
+    } catch (erro) {
+      if (codigoDoErro(erro) === 'ENOENT') return []
+      throw new FalhaDeArmazenamento('listar', mensagemDoErro(erro))
+    }
+
+    for (const pasta of pastas) {
+      if (!pasta.isDirectory() || !SUBPASTA_DE_ANEXO.test(pasta.name)) continue
+
+      let entradas: Dirent[]
+      try {
+        entradas = await readdir(join(raiz, pasta.name), { withFileTypes: true })
+      } catch (erro) {
+        throw new FalhaDeArmazenamento('listar', mensagemDoErro(erro))
+      }
+
+      for (const entrada of entradas) {
+        const chave = `${pasta.name}/${entrada.name}`
+        if (!entrada.isFile()) {
+          throw new FalhaDeArmazenamento('listar', `entrada que não é arquivo: "${chave}"`)
+        }
+        const gravadoEm = await this.gravadoEm(join(raiz, pasta.name, entrada.name))
+        // Removido entre a listagem e a consulta: o expurgo pode estar rodando.
+        if (gravadoEm !== null) arquivos.push({ chave, gravadoEm })
+      }
+    }
+
+    return arquivos
+  }
+
+  private async gravadoEm(caminho: string): Promise<Date | null> {
+    try {
+      return (await stat(caminho)).mtime
+    } catch (erro) {
+      if (codigoDoErro(erro) === 'ENOENT') return null
+      throw new FalhaDeArmazenamento('listar', mensagemDoErro(erro))
     }
   }
 }

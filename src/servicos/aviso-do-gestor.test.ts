@@ -5,6 +5,7 @@ import { PermissaoNegadaError } from '../servidor/ator'
 import { obterPrisma } from '../servidor/prisma'
 import type { Ator } from '../servidor/ator'
 import { atorDeTeste, DATA_BASE, limparTudo, semearBase, type BaseSemeada } from '../testes/apoio'
+import { ArmazenamentoEmMemoria } from '../testes/armazenamento-em-memoria'
 import { recusada } from '../testes/recusa'
 import { cancelar, encerrar, registrar } from './afastamentos'
 import { avisoDoGestor, marcarAvisoComoVisto } from './aviso-do-gestor'
@@ -79,7 +80,7 @@ describe('o que chega à gestora', () => {
     expect(antes.motivosQueSaem).toHaveLength(1)
     expect(antes.motivosQueSaem[0]!.atrasado).toBe(true)
 
-    await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+    await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })
     const depois = await avisoDoGestor(banco, gestor, DATA_BASE)
 
     expect(depois.limpeza).toBe('concluida')
