@@ -149,7 +149,10 @@ export function lerCaixaDosNomes(valor: unknown): CaixaDosNomes {
  * `@@sql_mode` tem `STRICT_TRANS_TABLES` ou `STRICT_ALL_TABLES`? Sem modo
  * estrito, coluna obrigatória omitida vira `''` e texto longo é cortado, com
  * um aviso que ninguém lê — e a recusa de linha sem `dominio` (#199) deixa de
- * existir. Compara item a item da lista, nunca por substring.
+ * existir. O mesmo vale para todo `@db.VarChar` (o Prisma não confere o
+ * tamanho; é o modo estrito que troca o corte calado pelo P2000). Compara item
+ * a item da lista, nunca por substring. Confere "estrito", não o padrão
+ * completo do 8.4 (`NO_ZERO_DATE` e companhia): basta para o que se prova aqui.
  */
 export function modoSqlEstrito(valor: unknown): boolean {
   if (typeof valor !== 'string') throw new Error(`@@sql_mode fora do esperado (texto): ${String(valor)}.`)

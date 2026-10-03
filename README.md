@@ -83,7 +83,7 @@ Abra `http://localhost:3000` e entre como **ana.operadora@exemplo.test** com a s
 | `npm run db:preparar -- --nome … --email …` | Servidor novo: categorias e a primeira pessoa gestora, real. Recusa se já houver gestor |
 | `PERMITIR_LIMPEZA=sim npm run db:limpar` | Apaga dados transacionais, preserva o cadastro. Exige o opt-in explícito: sem ele, recusa — a trava anterior deduzia segurança da ausência de `NODE_ENV` |
 | `npm run db:expurgar` | Roda agora a limpeza diária que o servidor já roda sozinho: apaga o motivo das ausências cujo prazo venceu (`A17`). **Irreversível**; uma execução por dia — se o servidor já rodou hoje, não faz nada. O prazo é o da tela de acesso, não de variável de ambiente |
-| `npm run db:conferir-trilha` | Confere a trava da trilha de auditoria (as triggers, com o corpo exato da migração). Rode com a conta administradora do MySQL depois de migrar e depois de restaurar um backup; sai com código 1 se faltar alguma coisa (`AT-66`) |
+| `npm run db:conferir-trilha` | Confere a trava da trilha de auditoria (as triggers, com o corpo exato da migração). Confere também que o MySQL está em modo estrito (`sql_mode`, #199). Rode com a conta administradora do MySQL depois de migrar e depois de restaurar um backup; sai com código 1 se faltar alguma coisa (`AT-66`) |
 | `npm run anexos:conferir` | Diz quantos anexos ainda estão em texto puro no disco |
 | `npm run anexos:recifrar` | Cifra os que faltam, conferindo cada um pela leitura antes de trocar |
 | `npm run db:migrate` | Cria e aplica migração |

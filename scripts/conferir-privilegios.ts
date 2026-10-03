@@ -16,11 +16,18 @@
  * código 1 e lista cada concessão que ainda alcança a trilha.
  *
  * O SQL de concessão mínima está em `docs/03-SPEC.md`, seção de implantação.
+ *
+ * Confere também o MODO SQL DA SESSÃO deste usuário (`@@SESSION.sql_mode`), na
+ * mesma conexão que a aplicação abre. `db:conferir-trilha` lê o `@@GLOBAL` com a
+ * conta administradora, que não vê um `init_connect` (o MySQL isenta quem tem
+ * `CONNECTION_ADMIN`) nem `sessionVariables` na `DATABASE_URL` — e é a sessão do
+ * app que decide se linha sem domínio é recusada (#199). Revisão de segurança do
+ * PR do `sql_mode`.
  */
 
 import { ambiente } from '../src/servidor/ambiente'
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
-import { privilegiosQueAmeacamATrilha, TABELAS_DA_TRILHA } from '../src/servidor/privilegios'
+import { modoSqlEstrito, privilegiosQueAmeacamATrilha, TABELAS_DA_TRILHA } from '../src/servidor/privilegios'
 
 function escrever(texto: string): void {
   process.stdout.write(`${texto}\n`)
@@ -36,6 +43,16 @@ async function principal(): Promise<void> {
   const concessoes = linhas.map((linha) => Object.values(linha)[0] ?? '')
 
   const achados = privilegiosQueAmeacamATrilha(concessoes)
+  const exigir = config.NODE_ENV === 'production' || process.env['EXIGIR_PRIVILEGIO_MINIMO'] === 'sim'
+
+  const [linhaDoModo] = await banco.$queryRaw<{ modo: unknown }[]>`SELECT @@SESSION.sql_mode AS modo`
+  if (!modoSqlEstrito(linhaDoModo?.modo)) {
+    escrever(`A sessão deste usuário NÃO está em modo estrito (sql_mode: ${String(linhaDoModo?.modo)}).`)
+    escrever('Sem STRICT_TRANS_TABLES, linha sem domínio é gravada com aviso em vez de recusada (#199).')
+    escrever('Confira o sql_mode e o init_connect do servidor, e a DATABASE_URL (docs/INSTALACAO.md).')
+    if (exigir) throw new Error('Recusado: em produção a sessão da aplicação precisa estar em modo estrito.')
+    escrever('(Aviso, não erro: esta base não é de produção. Em produção isto derruba o comando.)')
+  }
 
   if (achados.length === 0) {
     escrever(`OK: nada nas concessões deste usuário alcança ${TABELAS_DA_TRILHA.join(' nem ')}.`)
@@ -61,7 +78,6 @@ async function principal(): Promise<void> {
   escrever('')
   escrever('O SQL de concessão mínima está em docs/03-SPEC.md, seção "Implantação".')
 
-  const exigir = config.NODE_ENV === 'production' || process.env['EXIGIR_PRIVILEGIO_MINIMO'] === 'sim'
   if (exigir) {
     throw new Error(
       'Recusado: em produção o usuário da aplicação não pode alterar nem apagar a trilha de auditoria.',
