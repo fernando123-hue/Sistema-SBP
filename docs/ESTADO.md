@@ -31,9 +31,9 @@
 >    - **Desenho proposto:**
 >      - `listar()` na `ArmazenamentoPort` e no adaptador de disco;
 >      - uma varredura diária, na mesma rotina da limpeza, que compara as chaves do disco com `Anexo.chaveArmazenamento`;
->      - **remover** só o arquivo sem linha e mais velho que uma folga (por exemplo, 24 h), para não pegar uma ingestão em curso;
+>      - **remover** só o arquivo sem linha e com mais de 7 dias (o prazo do conteúdo, `A20`), o que também protege uma ingestão em curso;
 >      - registrar cada remoção na trilha.
->    - Antes de remover qualquer coisa, conferir se o dono quer **remover** ou só **relatar**: são bytes de documento de associado, e o expurgo atual só apaga a partir do banco.
+>    - **Decidido pelo dono em 03/10 (`A78`):** a limpeza automática identifica e **apaga**, com o prazo de 7 dias. Implementar.
 > 2. Pendência 46: o nonce chegar aos scripts num teste com `next start`.
 > 3. Acompanhar o primeiro PR do Dependabot depois do #203. Se o Node dele for menor que 22.12, o `engine-strict` o derruba; decidir então.
 >
