@@ -8,6 +8,7 @@ import { atorDeTeste } from '../testes/apoio'
 import { autenticar, trocarSenha } from './autenticacao'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { exigirBaseSintetica } from './base-sintetica'
 import { garantirCategorias, prepararServidor } from './preparacao-do-servidor'
 
@@ -98,7 +99,7 @@ describe('a primeira gestora', () => {
 
   it('depois dela, a demo e o seed recusam a base', async () => {
     await prepararServidor(banco, GESTORA)
-    await expect(exigirBaseSintetica(banco, 'o seed')).rejects.toThrow(/domínio sintético/)
+    await recusada(exigirBaseSintetica(banco, 'o seed'), Error, /domínio sintético/)
   })
 
   it.each([true, false])('base que já tem gestor (ativo: %s) recusa, e nada é criado', async (ativo) => {

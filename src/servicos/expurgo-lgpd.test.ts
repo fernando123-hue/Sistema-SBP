@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { ErroDeNegocio } from '../core/erros'
 import { deslocarDias, paraDataIso } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import { semearBase, limparTudo, atorDeTeste, DATA_BASE, type BaseSemeada } from '../testes/apoio'
 import type { Ator } from '../servidor/ator'
+import { recusada } from '../testes/recusa'
 import { cancelar, registrar } from './afastamentos'
 import { expurgarMotivosDeAfastamento } from './expurgo-lgpd'
 
@@ -289,9 +291,11 @@ describe('falha alto, antes de apagar', () => {
     )
 
     for (const dias of [-30, Number.NaN, 0]) {
-      await expect(
+      await recusada(
         expurgarMotivosDeAfastamento(banco, { diasDeRetencao: dias, hoje: DATA_BASE }),
-      ).rejects.toThrow(/Prazo de retenção inválido/)
+        ErroDeNegocio,
+        /Prazo de retenção inválido/,
+      )
     }
 
     expect((await linha(recente.id)).observacao).toBe('atestado de ontem')
@@ -322,9 +326,11 @@ describe('falha alto, antes de apagar', () => {
     )
     await banco.afastamento.update({ where: { id: corrompida.id }, data: { tipo: 'Atestado' } })
 
-    await expect(
+    await recusada(
       expurgarMotivosDeAfastamento(banco, { diasDeRetencao: 7, hoje: DATA_BASE }),
-    ).rejects.toThrow(/Valor inválido no banco/)
+      Error,
+      /Valor inválido no banco/,
+    )
 
     expect((await linha(boa.id)).observacao).toBe('linha boa')
     expect((await linha(boa.id)).motivoExpurgadoEm).toBeNull()

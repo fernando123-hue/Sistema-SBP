@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { ErroDeNegocio } from '../core/erros'
 import { DOMINIO_ATUAL, TAMANHO_MAXIMO_DA_NOTA } from '../core/esquemas'
 import { LIMITE_DE_NOTAS_EXIBIDAS } from '../core/notas'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { LIMITE_DA_LISTAGEM, arquivar, listar, paraContexto, registrar } from './notas'
 
 /**
@@ -92,13 +94,15 @@ describe('vínculo inexistente é recusado', () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     await banco.categoria.update({ where: { codigo: 'DOC_CADASTRO' }, data: { ativa: false } })
 
-    await expect(
+    await recusada(
       registrar(
         banco,
         { texto: 'Conferir o documento antes de aprovar.', categoriaCodigo: 'DOC_CADASTRO' },
         base.colaboradores[0]!.ator,
       ),
-    ).rejects.toThrow(/inativa/i)
+      ErroDeNegocio,
+      /inativa/i,
+    )
 
     expect(await banco.nota.count()).toBe(0)
   })
@@ -106,13 +110,15 @@ describe('vínculo inexistente é recusado', () => {
   it('liga que não existe', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
 
-    await expect(
+    await recusada(
       registrar(
         banco,
         { texto: 'Nota presa a uma liga inventada.', ligaId: 'liga-inexistente' },
         base.colaboradores[0]!.ator,
       ),
-    ).rejects.toThrow(/liga não encontrada/i)
+      ErroDeNegocio,
+      /liga não encontrada/i,
+    )
 
     expect(await banco.nota.count()).toBe(0)
   })

@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { ErroDeNegocio } from '../core/erros'
 import { DOMINIO_ATUAL, EmailBrutoSchema } from '../core/esquemas'
 import type { AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { sincronizar } from './ingestao'
 import { LEITURAS_DE_EMAIL_POR_HORA, lerEmailDaRevisao, listarPendentes, resolver } from './revisao'
 
@@ -172,12 +174,12 @@ describe('lerEmailDaRevisao', () => {
       base.operador,
     )
 
-    await expect(lerEmailDaRevisao(banco, pendente.revisaoId, base.operador)).rejects.toThrow(/já foi resolvida/)
+    await recusada(lerEmailDaRevisao(banco, pendente.revisaoId, base.operador), ErroDeNegocio, /já foi resolvida/)
   })
 
   it('revisão inexistente é recusada', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
-    await expect(lerEmailDaRevisao(banco, 'nao-existe', base.operador)).rejects.toThrow(/não foi encontrada/)
+    await recusada(lerEmailDaRevisao(banco, 'nao-existe', base.operador), ErroDeNegocio, /não foi encontrada/)
   })
 
   it('conteúdo expurgado pela retenção diz que foi expurgado, e quando (invariante 11)', async () => {
@@ -252,7 +254,7 @@ describe('teto de leituras por hora (A72)', () => {
     const { base } = await umaRevisaoPendente()
     await leiturasFeitas(base.operador.colaboradorId, LEITURAS_DE_EMAIL_POR_HORA, 30)
 
-    await expect(lerEmailDaRevisao(banco, 'nao-existe', base.operador)).rejects.toThrow(/indisponível nesta conta/)
+    await recusada(lerEmailDaRevisao(banco, 'nao-existe', base.operador), ErroDeNegocio, /indisponível nesta conta/)
   })
 
   it('um a menos que o teto ainda lê', async () => {

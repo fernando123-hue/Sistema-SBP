@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { ErroDeNegocio } from '../core/erros'
 import { conferirSenha } from '../servidor/credenciais'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { criarColaborador, definirHabilitacoes } from './colaboradores'
 import { obterEscala } from './escala'
 
@@ -87,13 +89,15 @@ describe('cadastro', () => {
       gestor,
     )
 
-    await expect(
+    await recusada(
       criarColaborador(
         banco,
         { nome: 'Outro Fulano', email: 'fulano@teste.local', papel: 'colaborador' },
         gestor,
       ),
-    ).rejects.toThrow(/Já existe colaborador/)
+      ErroDeNegocio,
+      /Já existe colaborador/,
+    )
   })
 
   it('manda reativar em vez de duplicar quando o e-mail é de alguém desligado', async () => {
@@ -110,20 +114,22 @@ describe('cadastro', () => {
 
     // Cadastrar de novo partiria o histórico de carga em duas pessoas que são
     // a mesma — e o crédito acumulado da primeira ficaria órfão.
-    await expect(
+    await recusada(
       criarColaborador(
         banco,
         { nome: 'Fulano', email: 'fulano@teste.local', papel: 'colaborador' },
         gestor,
       ),
-    ).rejects.toThrow(/Reative/)
+      ErroDeNegocio,
+      /Reative/,
+    )
   })
 
   it('categoria desativada não grava NADA — nem a pessoa', async () => {
     const { gestor } = await baseComGestor()
     await banco.categoria.update({ where: { codigo: 'INADIMP' }, data: { ativa: false } })
 
-    await expect(
+    await recusada(
       criarColaborador(
         banco,
         {
@@ -134,7 +140,9 @@ describe('cadastro', () => {
         },
         gestor,
       ),
-    ).rejects.toThrow(/Categoria inexistente/)
+      ErroDeNegocio,
+      /Categoria inexistente/,
+    )
 
     // Transação inteira desfeita. Meia gravação aqui deixaria uma pessoa
     // cadastrada com metade das categorias que o gestor pediu, sem ele saber.
@@ -294,13 +302,15 @@ describe('habilitação', () => {
       gestor,
     )
 
-    await expect(
+    await recusada(
       definirHabilitacoes(
         banco,
         { colaboradorId: criado.colaboradorId, categorias: ['LIGA', 'INADIMP'] },
         gestor,
       ),
-    ).rejects.toThrow(/Categoria inexistente/)
+      ErroDeNegocio,
+      /Categoria inexistente/,
+    )
 
     // Aplicar só as válidas deixaria o gestor achando que gravou uma coisa e o
     // banco com outra.

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { IaMock } from '../adapters/ia-mock'
 import { IngestaoMock } from '../adapters/ingestao-mock'
+import { ErroDeNegocio } from '../core/erros'
 import {
   EmailBrutoSchema,
   InterpretacaoSchema,
@@ -12,8 +13,10 @@ import type { ArmazenamentoPort } from '../ports/armazenamento'
 import { FalhaDeInterpretacao, InterpretacaoIndisponivelError, type AiPort } from '../ports/ia'
 import type { IngestaoPort } from '../ports/ingestao'
 import { fimDoDia, sequenciaDeDatas } from '../core/util/datas'
+import { PermissaoNegadaError } from '../servidor/ator'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, aprovarTudoNoBanco, limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { listarCaixa } from './caixa'
 import { confirmar, previa } from './distribuicao'
 import { concluir, devolver, minhaFila, transferir } from './fila'
@@ -666,7 +669,7 @@ describe('invariantes de atribuição', () => {
     const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
     const outro = base.colaboradores.find((pessoa) => pessoa.id !== atribuicao.colaboradorId)!
 
-    await expect(
+    await recusada(
       transferir(
         banco,
         {
@@ -676,7 +679,9 @@ describe('invariantes de atribuição', () => {
         },
         outro.ator,
       ),
-    ).rejects.toThrow(/Seu acesso não permite/)
+      PermissaoNegadaError,
+      /Seu acesso não permite/,
+    )
   })
 
   // N-05 da auditoria: transferir para quem já é o dono respondia
@@ -694,7 +699,7 @@ describe('invariantes de atribuição', () => {
     const dono = base.colaboradores.find((pessoa) => pessoa.id === atribuicao.colaboradorId)!
 
     for (const ator of [dono.ator, base.operador]) {
-      await expect(
+      await recusada(
         transferir(
           banco,
           {
@@ -704,7 +709,9 @@ describe('invariantes de atribuição', () => {
           },
           ator,
         ),
-      ).rejects.toThrow(/já está com essa pessoa/i)
+        ErroDeNegocio,
+        /já está com essa pessoa/i,
+      )
     }
 
     const vigente = await banco.atribuicao.findFirstOrThrow({
@@ -756,7 +763,7 @@ describe('invariantes de atribuição', () => {
 
     await concluir(banco, { itemId: atribuicao.itemId }, dono.ator)
 
-    await expect(
+    await recusada(
       transferir(
         banco,
         {
@@ -766,7 +773,9 @@ describe('invariantes de atribuição', () => {
         },
         base.operador,
       ),
-    ).rejects.toThrow(/concluído/i)
+      ErroDeNegocio,
+      /concluído/i,
+    )
 
     // E o dono continua sendo quem executou.
     const ativa = await banco.atribuicao.findFirstOrThrow({
@@ -789,13 +798,15 @@ describe('invariantes de atribuição', () => {
     })
     const outro = base.colaboradores.find((pessoa) => pessoa.id !== atribuicao.colaboradorId)!
 
-    await expect(
+    await recusada(
       transferir(
         banco,
         { itemId: atribuicao.itemId, paraColaboradorId: outro.id, justificativa: 'x' },
         base.operador,
       ),
-    ).rejects.toThrow(/justificativa/i)
+      ErroDeNegocio,
+      /justificativa/i,
+    )
 
     await transferir(
       banco,
@@ -865,9 +876,11 @@ describe('devolução ao pool (AT-07)', () => {
     const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
     const dono = base.colaboradores.find((pessoa) => pessoa.id === atribuicao.colaboradorId)!
 
-    await expect(
+    await recusada(
       devolver(banco, { itemId: atribuicao.itemId, justificativa: 'x' }, dono.ator),
-    ).rejects.toThrow(/justificativa/i)
+      ErroDeNegocio,
+      /justificativa/i,
+    )
 
     await devolver(
       banco,
@@ -908,9 +921,11 @@ describe('devolução ao pool (AT-07)', () => {
     const atribuicao = await banco.atribuicao.findFirstOrThrow({ where: { ativa: true } })
     const outro = base.colaboradores.find((pessoa) => pessoa.id !== atribuicao.colaboradorId)!
 
-    await expect(
+    await recusada(
       devolver(banco, { itemId: atribuicao.itemId, justificativa: 'Quero soltar este.' }, outro.ator),
-    ).rejects.toThrow(/Seu acesso não permite/)
+      PermissaoNegadaError,
+      /Seu acesso não permite/,
+    )
   })
 })
 

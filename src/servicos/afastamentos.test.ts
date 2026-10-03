@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
+import { ErroDeNegocio } from '../core/erros'
 import { deslocarDias } from '../core/util/datas'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { cancelar, encerrar, listar, quemEstaFora, registrar } from './afastamentos'
 import { obterEscala } from './escala'
 import { confirmar } from './distribuicao'
@@ -77,7 +80,7 @@ describe('validação do período', () => {
     // Sem esta trava o afastamento nunca cobriria data nenhuma: a consulta pede
     // `inicio <= data AND fim >= data`, e nenhum dia satisfaz as duas. O gestor
     // veria a linha na tela e a pessoa continuaria recebendo trabalho.
-    await expect(
+    await recusada(
       registrar(
         banco,
         {
@@ -88,7 +91,9 @@ describe('validação do período', () => {
         },
         base.gestor,
       ),
-    ).rejects.toThrow(/anterior ao início/i)
+      ZodError,
+      /anterior ao início/i,
+    )
   })
 
   it('aceita ausência de um dia só', async () => {
@@ -125,7 +130,7 @@ describe('validação do período', () => {
 
     // Dois afastamentos no mesmo dia não mudam a elegibilidade, mas quebram a
     // leitura: cancelar UM deixaria a pessoa fora do rateio sem a tela explicar.
-    await expect(
+    await recusada(
       registrar(
         banco,
         {
@@ -136,7 +141,9 @@ describe('validação do período', () => {
         },
         base.gestor,
       ),
-    ).rejects.toThrow(/já tem afastamento/i)
+      ErroDeNegocio,
+      /já tem afastamento/i,
+    )
   })
 
   it('permite outro afastamento depois que o primeiro termina', async () => {
@@ -490,7 +497,7 @@ describe('cancelamento carimba, nunca apaga', () => {
     )
     await cancelar(banco, feito.id, base.gestor)
 
-    await expect(cancelar(banco, feito.id, base.gestor)).rejects.toThrow(/já foi cancelado/i)
+    await recusada(cancelar(banco, feito.id, base.gestor), ErroDeNegocio, /já foi cancelado/i)
   })
 
   it('some da listagem, mas o registro fica', async () => {
@@ -565,9 +572,11 @@ describe('encerrar ausência em aberto', () => {
       { colaboradorId: pessoa.id, tipo: 'licenca', inicio: DATA_BASE, fim: null },
       ator,
     )
-    await expect(
+    await recusada(
       encerrar(banco, { afastamentoId: aberto.id, fim: deslocarDias(DATA_BASE, -5) }, ator),
-    ).rejects.toThrow(/anterior ao início/i)
+      ErroDeNegocio,
+      /anterior ao início/i,
+    )
 
     const fechado = await registrar(
       banco,
@@ -579,14 +588,18 @@ describe('encerrar ausência em aberto', () => {
       },
       ator,
     )
-    await expect(
+    await recusada(
       encerrar(banco, { afastamentoId: fechado.id, fim: DATA_BASE }, ator),
-    ).rejects.toThrow(/já termina/i)
+      ErroDeNegocio,
+      /já termina/i,
+    )
 
     await cancelar(banco, aberto.id, ator)
-    await expect(
+    await recusada(
       encerrar(banco, { afastamentoId: aberto.id, fim: DATA_BASE }, ator),
-    ).rejects.toThrow(/cancelado/i)
+      ErroDeNegocio,
+      /cancelado/i,
+    )
   })
 
   it('operador não encerra afastamento — é operação de gestor', async () => {

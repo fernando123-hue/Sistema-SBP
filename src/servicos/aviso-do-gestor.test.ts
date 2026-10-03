@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { deslocarDias } from '../core/util/datas'
+import { PermissaoNegadaError } from '../servidor/ator'
 import { obterPrisma } from '../servidor/prisma'
 import type { Ator } from '../servidor/ator'
 import { atorDeTeste, DATA_BASE, limparTudo, semearBase, type BaseSemeada } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { cancelar, encerrar, registrar } from './afastamentos'
 import { avisoDoGestor, marcarAvisoComoVisto } from './aviso-do-gestor'
 import { alterarPrazo } from './retencao'
@@ -32,7 +34,7 @@ beforeEach(async () => {
 describe('quem pode', () => {
   it('colaborador e operador não recebem o aviso — ele carrega motivo de ausência', async () => {
     for (const ator of [base.colaboradores[0]!.ator, base.operador]) {
-      await expect(avisoDoGestor(banco, ator, DATA_BASE)).rejects.toThrow(/Seu acesso não permite/)
+      await recusada(avisoDoGestor(banco, ator, DATA_BASE), PermissaoNegadaError, /Seu acesso não permite/)
     }
   })
 })

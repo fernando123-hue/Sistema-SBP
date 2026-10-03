@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { TENTATIVAS_ANTES_DE_TRAVAR, segundosDeBloqueio } from '../core/autenticacao'
+import { ErroDeNegocio } from '../core/erros'
 import { DOMINIO_ATUAL } from '../core/esquemas'
 import { conferirSenha, gerarHash, precisaRehash } from '../servidor/credenciais'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import {
   autenticar,
   definirAtivacao,
@@ -279,13 +281,15 @@ describe('entrada com senha', () => {
     // senha nova fica; com transação, as duas voltam atrás. O dublê precisa
     // derrubar a escrita DE DENTRO da transação — espionar o cliente de fora
     // não alcança o `tx`, que é outro objeto.
-    await expect(
+    await recusada(
       trocarSenha(
         bancoQueDerrubaATrilha(banco),
         { senhaAtual: SENHA_PROVISORIA, senhaNova: SENHA_NOVA },
         base.pessoaAtor,
       ),
-    ).rejects.toThrow(/banco caiu/)
+      Error,
+      /banco caiu/,
+    )
 
     const depois = await banco.colaborador.findUniqueOrThrow({
       where: { id: base.pessoaId },
@@ -505,9 +509,11 @@ describe('entrada com senha', () => {
     await definirSenhaProvisoria(banco, { colaboradorId: base.gestorId }, atorDeTeste(base.pessoaId, 'gestor'), SENHA_PROVISORIA)
     const antes = await banco.colaborador.findUniqueOrThrow({ where: { id: base.gestorId } })
 
-    await expect(
+    await recusada(
       definirSenhaProvisoria(banco, { colaboradorId: base.gestorId }, base.gestor),
-    ).rejects.toThrow(/própria senha/)
+      ErroDeNegocio,
+      /própria senha/,
+    )
     // Guarda (revisão de segurança do PR #67): o id com espaço no fim também é
     // recusado. Hoje a colação é NO PAD e ele nem acha a linha; a conferência
     // pelo id gravado não depende disso.
@@ -596,9 +602,11 @@ describe('troca de senha', () => {
   it('recusa a troca sem a senha atual correta', async () => {
     const base = await comProvisoria()
     // Só o cookie não basta: um cookie roubado não deve trancar o dono para fora.
-    await expect(
+    await recusada(
       trocarSenha(banco, { senhaAtual: 'chute', senhaNova: SENHA_NOVA }, base.pessoaAtor),
-    ).rejects.toThrow(/atual/i)
+      ErroDeNegocio,
+      /atual/i,
+    )
   })
 
   it('a troca também trava por tentativas — não é oráculo de senha sem limite', async () => {
@@ -615,13 +623,15 @@ describe('troca de senha', () => {
       ).catch(() => null)
     }
 
-    await expect(
+    await recusada(
       trocarSenha(
         banco,
         { senhaAtual: SENHA_PROVISORIA, senhaNova: SENHA_NOVA },
         base.pessoaAtor,
       ),
-    ).rejects.toThrow(/tentativas/i)
+      ErroDeNegocio,
+      /tentativas/i,
+    )
   })
 
   it('trocar a senha avança `senhaDefinidaEm`, que é o que revoga as sessões antigas', async () => {
@@ -641,13 +651,15 @@ describe('troca de senha', () => {
 
   it('recusa repetir a senha atual como nova', async () => {
     const base = await comProvisoria()
-    await expect(
+    await recusada(
       trocarSenha(
         banco,
         { senhaAtual: SENHA_PROVISORIA, senhaNova: SENHA_PROVISORIA },
         base.pessoaAtor,
       ),
-    ).rejects.toThrow(/diferente/i)
+      ErroDeNegocio,
+      /diferente/i,
+    )
   })
 
   it('recusa senha curta demais', async () => {
@@ -855,9 +867,11 @@ describe('ativar e desativar acesso', () => {
     // A gestora do cenário é a única. Desativá-la deixaria a associação sem
     // ninguém capaz de cadastrar senha, destravar conta ou reativar acesso —
     // e sem ninguém capaz de desfazer isso, porque desfazer exige ser gestor.
-    await expect(
+    await recusada(
       definirAtivacao(banco, { colaboradorId: base.gestorId, ativo: false }, base.gestor),
-    ).rejects.toThrow(/gestor/i)
+      ErroDeNegocio,
+      /gestor/i,
+    )
 
     // Com outra gestora ativa, a saída passa a ser permitida.
     const segunda = await banco.colaborador.create({

@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { DOMINIO_ATUAL } from '../core/esquemas'
-import { ConservacaoVioladaError } from '../core/erros'
+import { ConservacaoVioladaError, ErroDeNegocio } from '../core/erros'
 import { rota } from '../servidor/http'
 import { obterPrisma } from '../servidor/prisma'
 import { registrarEvento } from '../servidor/observabilidade'
 import { atorDeTeste, limparTudo, semearBase } from '../testes/apoio'
+import { recusada } from '../testes/recusa'
 import { auditar } from './auditoria'
 import { registrarManual } from './itens'
 import { porCorrelacao, porEntidade } from './memoria'
@@ -257,9 +258,11 @@ describe('entidades consultáveis', () => {
     // e-mail e papel — que `GET /api/colaboradores` exige `gestor` para ver —
     // mais quantas vezes ela errou a senha e por quanto tempo ficou trancada.
     // Os ids saem de graça de `GET /api/painel`. Auditoria virando vigilância.
-    await expect(
+    await recusada(
       porEntidade(banco, 'Colaborador', base.colaboradores[0]!.id, base.operador),
-    ).rejects.toThrow(/não é consultável/i)
+      ErroDeNegocio,
+      /não é consultável/i,
+    )
   })
 
   it('a consulta por correlação também não devolve a trilha de uma pessoa (achado C-20)', async () => {
