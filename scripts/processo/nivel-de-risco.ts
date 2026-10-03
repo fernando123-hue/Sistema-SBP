@@ -39,7 +39,10 @@ const REGRAS: readonly Regra[] = [
   { nivel: 3, padrao: /^package(-lock)?\.json$/, motivo: 'dependências' },
   { nivel: 3, padrao: /^prisma\//, motivo: 'banco de dados' },
   { nivel: 3, padrao: /^scripts\//, motivo: 'scripts com acesso ao banco, aos anexos ou ao próprio processo' },
-  { nivel: 3, padrao: /^(\.env\.example|\.gitignore)$/, motivo: 'segredos e o que entra no Git' },
+  // `.gitleaksignore` diz o que a varredura de segredos deixa passar;
+  // `.gitattributes`, com que bytes o arquivo sai do Git (o Prisma assina os
+  // bytes de cada migração — `scripts/fim-de-linha.test.ts`).
+  { nivel: 3, padrao: /^(\.env\.example|\.gitignore|\.gitleaksignore|\.gitattributes)$/, motivo: 'segredos e o que entra no Git' },
   { nivel: 3, padrao: /^(next|vitest|prisma|postcss)\.config\.[a-z]+$|^tsconfig\.json$/, motivo: 'configuração que pode desligar proteção ou teste' },
   // `proxy.ts` é o nome que o Next 16 deu ao middleware: a troca de nome não
   // pode baixar o nível da CSP e da conferência de origem.

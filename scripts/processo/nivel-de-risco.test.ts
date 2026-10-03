@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -78,6 +79,16 @@ describe('nivelDoArquivo', () => {
     const r = nivelDoArquivo('infra/terraform/main.tf')
     expect(r.nivel).toBe(3)
     expect(r.motivo).toMatch(/desconhecido/)
+  })
+
+  // O "desconhecido" é rede de segurança para o que AINDA não existe. Arquivo
+  // que já está no Git e cai nele foi esquecido na tabela, e o motivo que o CI
+  // mostra no PR ("classifique…") não diz ao revisor o que olhar. Achado ao
+  // criar o `.gitattributes`; o `.gitleaksignore` já estava assim.
+  it('todo arquivo versionado tem caminho conhecido', () => {
+    const versionados = execFileSync('git', ['ls-files'], { encoding: 'utf8' }).split('\n').filter(Boolean)
+    expect(versionados.length).toBeGreaterThan(100)
+    expect(versionados.filter((arquivo) => /desconhecido/.test(nivelDoArquivo(arquivo).motivo))).toEqual([])
   })
 
   // Teste também é código que prova: enfraquecer um teste do motor é mudança
