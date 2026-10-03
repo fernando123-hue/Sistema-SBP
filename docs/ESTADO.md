@@ -19,19 +19,19 @@
 >   - Suíte: 167 arquivos, **2117 testes**.
 >
 > **Pendências novas, vindas das revisões do #194** (baixas, fora do pedido):
-> - **401 sem teste:** `POST /api/ingestao`, `rodadas/[id]`, `categorias`, `ligas`, `afastamentos/hoje`, `retencao` e `assistente/aviso`.
+> - **401 sem teste:** `POST /api/ingestao`, `rodadas/[id]`, `categorias`, `ligas`, `qualidade`, `afastamentos/hoje`, `retencao` e `assistente/aviso`.
 >   - Em `categorias`, apagar o `exigirAtor` deixaria a rota pública sem nenhum teste acusar.
 >   - Destino: um teste de 401 por rota em `src/app/api/autorizacao-de-rotas.test.ts`.
-> - **`GET /api/qualidade` sem checagem de papel em lugar nenhum:** qualquer pessoa logada lê as métricas agregadas da IA.
->   - Nenhuma decisão registra quem pode ver.
->   - **Pergunta ao dono:** a equipe toda pode ver a qualidade da IA, ou só quem gere? Registrada em `DECISOES.md § H.4`, item 53.
+> - **`GET /api/qualidade` sem checagem de papel:** é de propósito. **O dono decidiu em 03/10 (`A77`): a equipe toda vê.** Falta só o teste de 401 sem cookie, junto com as rotas acima.
 >
 > **Próximo do agente, sem depender do dono:**
 > 1. As pendências acima, num PR de teste.
 > 2. Os achados abertos do bloco de 01/10 (mais abaixo): `.gitattributes` com `eol=lf`, a trava entre suítes no `globalSetup`, `dominio` com valor padrão no schema, `middleware.ts` → `proxy.ts`, e os testes que conferem só o texto de uma recusa.
 > 3. Atualizar a V1 quando o dono quiser ver as novidades (item 3 do bloco de baixo).
 >
-> **Com o dono:** nada mudou. É a lista "Com o dono" do bloco de baixo, mais a pergunta da `qualidade`.
+> **Com o dono:** nada mudou. É a lista "Com o dono" do bloco de baixo. A pergunta da `qualidade` foi respondida (`A77`).
+>
+> **Autonomia (dono, 03/10):** "prosseguir por todos os passos que não precisem de mim; só parar quando estiver sem saída".
 >
 > ### 02/10/2026, noite — PASSAGEM (o de "tarde", logo abaixo, tem o detalhe da V1)
 >
