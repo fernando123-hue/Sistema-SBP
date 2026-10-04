@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { CASOS_DO_GABARITO } from './avaliacao/casos'
 import { CamposExtraidosSchema } from './esquemas'
@@ -568,13 +568,51 @@ describe('custo', () => {
    */
   it('valores longos gastam orçamento, e 1.800 deles não travam o servidor', () => {
     const doTexto = prepararTextoParaConferir(`Nome: Fulana Sintética, CPF 111.444.777-35. ${'1 '.repeat(1000)}`)
-    const inicio = performance.now()
+    // CPU DESTE processo, e não relógio de parede: travar o servidor é gastar
+    // processador, e o relógio soma a espera pelos outros programas da
+    // máquina. Com a suíte inteira carregando a máquina, o relógio deu 3,2 s
+    // num trabalho de 0,5 s, e o teste ficou vermelho sem defeito (04/10). O
+    // teto continua 2 s, sem folga acrescentada.
+    const inicio = process.cpuUsage()
     for (let i = 0; i < 600; i += 1) {
       valorEstaNoTexto(doTexto, `${i}${'1'.repeat(1990)}`)
       valorEstaNoTexto(doTexto, `a@${'.'.repeat(1990)}${i}`)
       valorEstaNoTexto(doTexto, `${'ﷺ'.repeat(1990)}${i}`)
     }
-    expect(performance.now() - inicio).toBeLessThan(2000)
+    const gasto = process.cpuUsage(inicio)
+    expect((gasto.user + gasto.system) / 1000).toBeLessThan(2000)
     expect(doTexto.orcamento).toBeLessThan(0)
+  })
+
+  /**
+   * O teto de tempo acima não pega tudo: dobrar o valor ANTES de cobrar o
+   * orçamento triplica o custo e ainda cabe em 2 s (medido em 04/10). Isto se
+   * prova por contagem: sem orçamento, o valor só paga o tamanho e volta, sem
+   * ser dobrado. O controle mostra que o espião vê o trabalho quando ele
+   * acontece — sem ele, trocar o `normalize` por outra coisa deixaria este
+   * teste verde sem provar nada.
+   */
+  it('sem orçamento, o valor longo não é nem dobrado: paga o tamanho e volta', () => {
+    const normalize = vi.spyOn(String.prototype, 'normalize')
+    try {
+      const comOrcamento = prepararTextoParaConferir('Nome: Fulana Sintética.')
+      normalize.mockClear()
+      valorEstaNoTexto(comOrcamento, 'ﷺ'.repeat(1990))
+      const chamadasComOrcamento = normalize.mock.calls.length
+
+      const semOrcamento = prepararTextoParaConferir('Nome: Fulana Sintética.')
+      semOrcamento.orcamento = 0
+      const valores = Array.from({ length: 1800 }, (_, i) => `${'ﷺ'.repeat(1990)}${i}`)
+      normalize.mockClear()
+      const respostas = valores.map((valor) => valorEstaNoTexto(semOrcamento, valor))
+      const chamadasSemOrcamento = normalize.mock.calls.length
+
+      expect(chamadasComOrcamento).toBeGreaterThan(0)
+      expect(chamadasSemOrcamento).toBe(0)
+      expect(respostas.every((resposta) => resposta === false)).toBe(true)
+      expect(semOrcamento.orcamento).toBe(-valores.reduce((total, valor) => total + valor.length, 0))
+    } finally {
+      normalize.mockRestore()
+    }
   })
 })
