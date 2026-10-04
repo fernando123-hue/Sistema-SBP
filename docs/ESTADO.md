@@ -52,6 +52,8 @@
 >   - Uma falha num arquivo aborta o lote.
 >   - `chavesDeAnexo` e `--conferir` não têm teste.
 >
+> **Skills sugeridas para a próxima sessão:** `passagem-de-sessao` para retomar, `processo-qualidade` só se o `docs/PROCESSO.md` não bastar, e `verification-before-completion` antes de dizer "pronto".
+>
 > **Armadilhas vistas hoje:**
 > - **`next start` em produção roda a limpeza diária na partida.** Qualquer teste local com `next start` vai em base `_teste` e pasta temporária, nunca na `sbp` com `./armazenamento`.
 > - **O heredoc e o `node -e` em linha comem `\\`** e transformam `\n` em quebra real. Para texto com barra invertida, use a ferramenta de edição.
