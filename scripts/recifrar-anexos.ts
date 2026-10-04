@@ -67,10 +67,10 @@ async function principal(): Promise<void> {
         `Nada foi conferido — e "nada conferido" não é o mesmo que "nada a corrigir".`,
     )
   })
-  // Link e pasta dentro das subpastas não são anexo que `guardar` cria: não são
-  // recifrados, mas são ditos — sumir da contagem seria esconder (S3 do #215).
+  // Link, pasta ou nome fora da forma não são anexo que `guardar` cria: não são
+  // recifrados, mas são ditos — sumir da contagem seria esconder (S3 do #215, S1 do #219).
   for (const ignorada of ignoradas) {
-    process.stdout.write(`Não é arquivo comum, não foi conferido nem recifrado: ${JSON.stringify(ignorada)}\n`)
+    process.stdout.write(`Não é anexo do sistema, não foi conferido nem recifrado: ${JSON.stringify(ignorada)}\n`)
   }
   const emTextoPuro: string[] = []
   for (const chave of chaves) {

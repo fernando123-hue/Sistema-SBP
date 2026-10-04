@@ -25,10 +25,10 @@ const NOME_DA_SENTINELA = '.sentinela-da-chave'
 const CONTEUDO_DA_SENTINELA = Buffer.from('SBP-SENTINELA-DA-CHAVE-v1')
 
 /** O nome das subpastas que `guardar` cria: os dois primeiros caracteres do sorteio. */
-const SUBPASTA_DE_ANEXO = /^[0-9a-f]{2}$/
+export const SUBPASTA_DE_ANEXO = /^[0-9a-f]{2}$/
 
 /** O nome do arquivo que `guardar` cria: o sorteio inteiro e a extensão segura. */
-const NOME_DE_ANEXO = /^[0-9a-f]{32}(\.[a-z0-9]{1,10})?$/
+export const NOME_DE_ANEXO = /^[0-9a-f]{32}(\.[a-z0-9]{1,10})?$/
 
 /** Avisos individuais por listagem; o resto vira uma linha com o total. */
 const AVISOS_POR_LISTAGEM = 20

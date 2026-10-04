@@ -105,6 +105,14 @@ describe('recifrar um anexo', () => {
     expect(await readdir(join(raiz, 'ab'))).toEqual([])
   })
 
+  it('o original já não existe na chamada: diz que sumiu, não que é link (revisões do #219, técnica 1 e segurança S2)', async () => {
+    await rm(join(raiz, 'ab', NOME))
+
+    await expect(recifrarUm(raiz, CHAVE, { cifrar, lerDeVolta: async () => ORIGINAL })).rejects.toThrow(/sumiu/)
+
+    expect(await readdir(join(raiz, 'ab'))).toEqual([])
+  })
+
   it('link simbólico não é trocado por cópia cifrada do alvo (revisão de segurança do #215, S3)', async (contexto) => {
     const fora = await mkdtemp(join(tmpdir(), 'sbp-recifrar-fora-'))
     try {
@@ -127,13 +135,34 @@ describe('recifrar um anexo', () => {
 })
 
 describe('chaves de anexo a recifrar', () => {
-  it('só arquivo comum vira chave; sobra é pulada; pasta e link são ditos, não recifrados (revisão de segurança do #215, S3)', async (contexto) => {
+  it('só o anexo que guardar cria vira chave; sobra é pulada; o resto é dito, não recifrado (revisão de segurança do #219, S1)', async () => {
     await writeFile(join(raiz, 'ab', `${NOME}${SUFIXO_TEMPORARIO}`), CIFRADO)
-    await mkdir(join(raiz, 'ab', 'subpasta'))
+    await mkdir(join(raiz, 'ab', `ab${'9'.repeat(30)}`))
+    await writeFile(join(raiz, 'ab', 'leiame.txt'), 'x')
+    await writeFile(join(raiz, 'ab', `qualquer.pdf${SUFIXO_TEMPORARIO}`), 'x')
+    await writeFile(join(raiz, 'ab', `cd${'0'.repeat(30)}.pdf`), 'x')
+    await mkdir(join(raiz, 'backup'))
+    await writeFile(join(raiz, 'backup', 'planilha.xlsx'), 'x')
+    await writeFile(join(raiz, '.sentinela-da-chave'), 'x')
+    await writeFile(join(raiz, 'cd'), 'tem nome de subpasta e não é pasta')
+
+    expect(await chavesDeAnexo(raiz)).toEqual({
+      chaves: [CHAVE],
+      ignoradas: [
+        'ab/leiame.txt',
+        `ab/qualquer.pdf${SUFIXO_TEMPORARIO}`,
+        `ab/ab${'9'.repeat(30)}`,
+        `ab/cd${'0'.repeat(30)}.pdf`,
+        'cd',
+      ].sort(),
+    })
+  })
+
+  it('link simbólico com nome de anexo é dito, não vira chave (revisão de segurança do #215, S3)', async (contexto) => {
     const link = `ab${'f'.repeat(30)}.pdf`
     if (!(await criarLink(join(raiz, 'ab', NOME), join(raiz, 'ab', link)))) contexto.skip()
 
-    expect(await chavesDeAnexo(raiz)).toEqual({ chaves: [CHAVE], ignoradas: [`ab/${link}`, 'ab/subpasta'].sort() })
+    expect(await chavesDeAnexo(raiz)).toEqual({ chaves: [CHAVE], ignoradas: [`ab/${link}`] })
   })
 
   it('pasta que ainda não existe: a falha sobe com o código, para quem chama decidir', async () => {

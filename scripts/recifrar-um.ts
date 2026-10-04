@@ -1,6 +1,8 @@
 import { lstat, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import { NOME_DE_ANEXO, SUBPASTA_DE_ANEXO } from '../src/adapters/armazenamento-disco'
+
 /**
  * A recifragem de UM anexo, e a limpeza das sobras — separadas de
  * `recifrar-anexos.ts` para o teste importá-las sem disparar o script.
@@ -14,8 +16,7 @@ import { join } from 'node:path'
 
 export const SUFIXO_TEMPORARIO = '.recifrando'
 
-/** Subpasta e nome que `guardar` cria — só eles podem ter sobra de recifragem. */
-const SUBPASTA_DE_ANEXO = /^[0-9a-f]{2}$/
+/** Nome que `guardar` cria, mais o sufixo — só ele pode ser sobra de recifragem. */
 const NOME_DE_SOBRA = /^([0-9a-f]{32}(?:\.[a-z0-9]{1,10})?)\.recifrando$/
 
 export interface DependenciasDaRecifragem {
@@ -38,10 +39,11 @@ export async function recifrarUm(raiz: string, chave: string, deps: Dependencias
   const temporario = `${caminho}${SUFIXO_TEMPORARIO}`
   // O `readFile` segue link simbólico, e o `rename` do fim trocaria o link por
   // uma cópia cifrada do ALVO, que passaria a morar na pasta de anexos
-  // (revisão de segurança do #215, S3). Só arquivo comum é recifrado.
-  if (!(await ehArquivo(caminho))) {
-    throw new Error(`Recusado: ${JSON.stringify(chave)} não é arquivo comum (link simbólico ou pasta). Nada foi trocado.`)
-  }
+  // (revisão de segurança do #215, S3). Só arquivo comum é recifrado. Ausente
+  // não é "link": entre a listagem e aqui a limpeza pode ter expurgado, e a
+  // mensagem não pode mandar ninguém procurar um link que não existe
+  // (revisões do #219, técnica 1 e segurança S2).
+  await exigirArquivoComum(caminho, chave)
   const bytes = await readFile(caminho)
 
   // Qualquer falha antes da troca leva o temporário junto — mas só o que ESTA
@@ -72,12 +74,8 @@ export async function recifrarUm(raiz: string, chave: string, deps: Dependencias
     // varredura do A78 achá-lo 7 dias depois (revisão de segurança do #215,
     // S4). Conferir logo antes estreita a janela a microssegundos; fechá-la de
     // vez é não rodar a recifragem junto com a limpeza, como diz o cabeçalho.
-    if (!(await ehArquivo(caminho))) {
-      throw new Error(
-        `Recusado: ${JSON.stringify(chave)} sumiu no meio da recifragem (expurgado pela limpeza diária?). ` +
-          'Nada foi recriado; rode de novo para seguir com os outros.',
-      )
-    }
+    // Confere o tipo também: virar link depois da leitura é recusado igual.
+    await exigirArquivoComum(caminho, chave)
     await rename(temporario, caminho)
   } catch (erro) {
     if (criado) {
@@ -94,26 +92,55 @@ export async function recifrarUm(raiz: string, chave: string, deps: Dependencias
   }
 }
 
+async function exigirArquivoComum(caminho: string, chave: string): Promise<void> {
+  const tipo = await tipoDaEntrada(caminho)
+  if (tipo === 'ausente') {
+    throw new Error(
+      `Recusado: ${JSON.stringify(chave)} sumiu no meio da recifragem (expurgado pela limpeza diária?). ` +
+        'Nada foi recriado; rode de novo para seguir com os outros.',
+    )
+  }
+  if (tipo === 'outro') {
+    throw new Error(`Recusado: ${JSON.stringify(chave)} não é arquivo comum (link simbólico ou pasta). Nada foi trocado.`)
+  }
+}
+
 /**
- * Todas as chaves de anexo sob a raiz: `xx/arquivo.ext`, dois níveis. Só
- * arquivo comum vira chave; o resto dentro das subpastas (link, pasta) volta em
- * `ignoradas`, para ser dito em vez de sumir (revisão de segurança do #215,
- * S3). Pasta inexistente sobe com `ENOENT`: quem chama decide se é zero.
+ * As chaves de anexo sob a raiz, com a mesma forma que o `listar` do adapter
+ * aceita: subpasta de duas letras hexadecimais, arquivo comum, nome que
+ * `guardar` cria. Antes, qualquer arquivo de qualquer pasta da raiz entrava, e
+ * um `backup/planilha.xlsx` deixado ali seria cifrado com a chave dos anexos
+ * (revisão de segurança do #219, S1).
+ *
+ * O resto volta em `ignoradas`, para ser dito em vez de sumir: dentro das
+ * subpastas, tudo que não é anexo nem sobra de recifragem; na raiz, só o que
+ * tem NOME de subpasta e não é pasta de verdade (uma junção `ab` para outro
+ * disco, que deixaria anexos fora da contagem — segurança S4). Outras entradas
+ * da raiz, como a sentinela da chave, não são do assunto e não poluem a saída.
+ *
+ * Pasta inexistente sobe com `ENOENT`: quem chama decide se é zero.
  */
 export async function chavesDeAnexo(raiz: string): Promise<{ chaves: string[]; ignoradas: string[] }> {
   const chaves: string[] = []
   const ignoradas: string[] = []
   for (const pasta of await readdir(raiz, { withFileTypes: true })) {
-    if (!pasta.isDirectory()) continue
+    if (!SUBPASTA_DE_ANEXO.test(pasta.name)) continue
+    if (!pasta.isDirectory()) {
+      ignoradas.push(pasta.name)
+      continue
+    }
     for (const entrada of await readdir(join(raiz, pasta.name), { withFileTypes: true })) {
-      // Temporário de recifragem não é anexo: é sobra, e `limparSobras` cuida.
-      if (entrada.name.endsWith(SUFIXO_TEMPORARIO)) continue
       const chave = `${pasta.name}/${entrada.name}`
-      if (entrada.isFile()) chaves.push(chave)
-      else ignoradas.push(chave)
+      if (ehDaForma(pasta.name, entrada.name, NOME_DE_ANEXO) && entrada.isFile()) chaves.push(chave)
+      // Sobra de recifragem não é anexo: `limparSobras` cuida dela.
+      else if (!(ehDaForma(pasta.name, entrada.name, NOME_DE_SOBRA) && entrada.isFile())) ignoradas.push(chave)
     }
   }
   return { chaves: chaves.sort(), ignoradas: ignoradas.sort() }
+}
+
+function ehDaForma(pasta: string, nome: string, forma: RegExp): boolean {
+  return forma.test(nome) && nome.startsWith(pasta)
 }
 
 export interface SobrasEncontradas {
@@ -154,10 +181,15 @@ export async function encontrarSobras(raiz: string): Promise<SobrasEncontradas> 
 }
 
 async function ehArquivo(caminho: string): Promise<boolean> {
+  return (await tipoDaEntrada(caminho)) === 'arquivo'
+}
+
+/** `lstat` não segue link: um link para arquivo é `'outro'`, nunca `'arquivo'`. */
+async function tipoDaEntrada(caminho: string): Promise<'arquivo' | 'ausente' | 'outro'> {
   try {
-    return (await lstat(caminho)).isFile()
+    return (await lstat(caminho)).isFile() ? 'arquivo' : 'outro'
   } catch (erro) {
-    if (codigoDoErro(erro) === 'ENOENT') return false
+    if (codigoDoErro(erro) === 'ENOENT') return 'ausente'
     throw erro
   }
 }
