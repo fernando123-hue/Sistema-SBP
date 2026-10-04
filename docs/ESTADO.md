@@ -1,10 +1,33 @@
 # Estado do projeto — retomada
 
-Última atualização: **04/10/2026, manhã.** `main` depois do #216. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **04/10/2026, tarde.** `main` depois do #219. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 04/10/2026, manhã — a fila do agente esvaziou (este bloco vence os de baixo onde conflitar)
+> ### 04/10/2026, tarde — #219, a recifragem não cria arquivo que não estava lá (este bloco vence os de baixo onde conflitar)
+>
+> **Mesclado: #219** (técnica e segurança em 3 rodadas cada; as rodadas 1 e 2 acharam coisa real, a 3 aprovou sem achado). Detalhes e limites aceitos em `DECISOES.md`, `AT-74`.
+> - Um anexo expurgado no meio da recifragem não volta: antes de ler e logo antes do `rename`, confere que o original ainda é arquivo comum; se sumiu, diz "sumiu" e não recria.
+> - Link simbólico não vira cópia cifrada do alvo.
+> - A lista de anexos usa a forma do `listar` do adapter (regexes agora exportadas). Antes, um `backup/planilha.xlsx` na pasta seria cifrado.
+> - A sobra de anexo sem extensão (`<32 hex>.recifrando`) não é tomada por anexo.
+> - O que fica de fora é dito na saída, até 20 linhas e o total.
+>
+> Suíte: 182 arquivos, **2341 testes** (CI, 0 pulados; no Windows os 2 de link simbólico pulam por falta de permissão).
+>
+> **Saíram da lista de baixos do #215:** link simbólico, anexo expurgado recriado, `.recifrando` fora da forma, `chavesDeAnexo` sem teste.
+>
+> **Baixos novos, das revisões do #219, sem PR próprio:**
+> - `ENOENT` de uma subpasta que some entre os dois `readdir` vira "a pasta de anexos ainda não existe" (já era assim; técnica 5, segurança N2). Fecho: tratar o `ENOENT` só no `readdir` da raiz.
+> - `ehDaForma` do script repete `ehAnexoDoSistema`, privado no adapter (técnica N2).
+> - Entrada ignorada não muda o código de saída nem o resumo (segurança N3; hipotético, o formato é o mesmo em todas as versões).
+> - `encontrarSobras` com sobra sem extensão não tem teste próprio (segurança, rodada 3; correto pela leitura).
+>
+> **Teste de tempo intermitente:** `conferencia-da-extracao.test.ts > valores longos gastam orçamento` ficou vermelho uma vez com a suíte inteira (3,2 s contra 2 s) e passou 3 de 3 sozinho e no CI. Candidato a correção como a do #216: provar o custo por contagem, não por relógio.
+>
+> **Próximo do agente:** o teste de tempo acima (um PR), depois os baixos, um PR por tema. Antes, as respostas do dono e o Dependabot, como no bloco de baixo.
+>
+> ### 04/10/2026, manhã — a fila do agente esvaziou
 >
 > **Mesclado** (cada PR com revisão técnica e, no nível 3, de segurança publicadas; todas as rodadas 1 acharam coisa real):
 > - **#213:** a ingestão desfaz, com o processo vivo, os arquivos que não viraram linha.
@@ -46,11 +69,9 @@
 >   - A regex é quadrática com `<script` sem fechamento.
 >   - O SIGKILL não alcança processos netos.
 > - **#215:**
->   - Um link simbólico dentro de `xx/` é trocado por cópia cifrada.
->   - Um anexo expurgado no meio da recifragem pode ser recriado pelo `rename`.
->   - `*.recifrando` fora da forma não é avisado.
->   - Uma falha num arquivo aborta o lote.
->   - `chavesDeAnexo` e `--conferir` não têm teste.
+>   - ~~Link simbólico, anexo expurgado recriado, `.recifrando` fora da forma, `chavesDeAnexo` sem teste~~: feitos no #219.
+>   - Uma falha num arquivo aborta o lote (coerente com falhar alto; rodar de novo segue).
+>   - `--conferir` não tem teste.
 >
 > **Skills sugeridas para a próxima sessão:** `passagem-de-sessao` para retomar, `processo-qualidade` só se o `docs/PROCESSO.md` não bastar, e `verification-before-completion` antes de dizer "pronto".
 >
