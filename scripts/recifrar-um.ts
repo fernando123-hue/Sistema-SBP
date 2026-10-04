@@ -36,6 +36,9 @@ function codigoDoErro(erro: unknown): string | undefined {
 export async function recifrarUm(raiz: string, chave: string, deps: DependenciasDaRecifragem): Promise<void> {
   const caminho = join(raiz, chave)
   const temporario = `${caminho}${SUFIXO_TEMPORARIO}`
+  // O `readFile` segue link simbólico, e o `rename` do fim trocaria o link por
+  // uma cópia cifrada do ALVO, que passaria a morar na pasta de anexos
+  // (revisão de segurança do #215, S3). Só arquivo comum é recifrado.
   const bytes = await readFile(caminho)
 
   // Qualquer falha antes da troca leva o temporário junto — mas só o que ESTA
@@ -61,6 +64,11 @@ export async function recifrarUm(raiz: string, chave: string, deps: Dependencias
     if (!conferencia || Buffer.compare(Buffer.from(conferencia), bytes) !== 0) {
       throw new Error(`Recusado: a releitura de ${JSON.stringify(chave)} não devolveu os bytes originais.`)
     }
+    // Se a limpeza diária expurgou o original depois da leitura, o `rename`
+    // recriaria o documento sem linha que o aponte, fora do prazo, até a
+    // varredura do A78 achá-lo 7 dias depois (revisão de segurança do #215,
+    // S4). Conferir logo antes estreita a janela a microssegundos; fechá-la de
+    // vez é não rodar a recifragem junto com a limpeza, como diz o cabeçalho.
     await rename(temporario, caminho)
   } catch (erro) {
     if (criado) {
@@ -75,6 +83,27 @@ export async function recifrarUm(raiz: string, chave: string, deps: Dependencias
     }
     throw erro
   }
+}
+
+/**
+ * Todas as chaves de anexo sob a raiz: `xx/arquivo.ext`, dois níveis. Só
+ * arquivo comum vira chave; o resto dentro das subpastas (link, pasta) volta em
+ * `ignoradas`, para ser dito em vez de sumir (revisão de segurança do #215,
+ * S3). Pasta inexistente sobe com `ENOENT`: quem chama decide se é zero.
+ */
+export async function chavesDeAnexo(raiz: string): Promise<{ chaves: string[]; ignoradas: string[] }> {
+  const chaves: string[] = []
+  const ignoradas: string[] = []
+  for (const pasta of await readdir(raiz, { withFileTypes: true })) {
+    if (!pasta.isDirectory()) continue
+    for (const entrada of await readdir(join(raiz, pasta.name), { withFileTypes: true })) {
+      // Temporário de recifragem não é anexo: é sobra, e `limparSobras` cuida.
+      if (entrada.name.endsWith(SUFIXO_TEMPORARIO)) continue
+      const chave = `${pasta.name}/${entrada.name}`
+      chaves.push(chave)
+    }
+  }
+  return { chaves: chaves.sort(), ignoradas: ignoradas.sort() }
 }
 
 export interface SobrasEncontradas {
