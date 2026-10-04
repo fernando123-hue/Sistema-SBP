@@ -5,7 +5,6 @@ import { CamposExtraidosSchema } from './esquemas'
 import {
   CAMPO_DA_LIGA,
   PASSOS_POR_EMAIL,
-  type TextoParaConferir,
   conferirExtracao,
   ligaEstaNoTexto,
   prepararTextoParaConferir,
@@ -418,13 +417,17 @@ describe('caixa e símbolos que o critério manda ignorar', () => {
   })
 })
 
+const TENTATIVAS_DE_MEDICAO = 3
+
 /**
  * Tempo de parede de `medir`, na menor de até três tentativas.
  *
  * Amostra maior, nunca teto maior: o teste de 1.800 valores longos ficou
  * vermelho uma vez com a suíte inteira (3,2 s num trabalho de 0,5 s, 04/10) e
- * passou sozinho; a causa não foi reproduzida. Uma pausa passageira da máquina
- * some na menor das três; um defeito de verdade deixa as três lentas. Para na
+ * passou sozinho; a causa não foi reproduzida. Se foi pausa passageira da
+ * máquina, ela some na menor das três; um defeito de verdade deixa as três
+ * lentas. Carga que dure a suíte inteira também deixa as três lentas, e aí o
+ * teste continua vermelho — o auxiliar só absorve pausa curta. Para na
  * primeira abaixo do teto, então no caso normal custa uma medição.
  *
  * Cada tentativa prepara estado NOVO, fora do cronômetro: a memória por e-mail
@@ -441,8 +444,6 @@ function menorTempoEmMs<T>(teto: number, preparar: () => T, medir: (estado: T) =
   }
   return menor
 }
-
-const TENTATIVAS_DE_MEDICAO = 3
 
 describe('custo', () => {
   it('um e-mail no tamanho máximo com muitos valores confere em tempo de tela', () => {
@@ -616,7 +617,7 @@ describe('custo', () => {
     const tempo = menorTempoEmMs(
       2000,
       () => prepararTextoParaConferir(`Nome: Fulana Sintética, CPF 111.444.777-35. ${'1 '.repeat(1000)}`),
-      (doTexto: TextoParaConferir) => {
+      (doTexto) => {
         for (let i = 0; i < 600; i += 1) {
           valorEstaNoTexto(doTexto, `${i}${'1'.repeat(1990)}`)
           valorEstaNoTexto(doTexto, `a@${'.'.repeat(1990)}${i}`)
