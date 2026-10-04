@@ -1693,7 +1693,7 @@ então a coluna `Email.dadoSemItem` recebe o motivo (`cpf`, `crm` ou `anexo` —
 - **Sem armazenamento, a etapa falha**, e a rotina termina `falha` com as outras etapas feitas. Não ter olhado o disco não é não ter órfão.
 - **A chave do banco é comparada com `\` trocado por `/`.** As chaves gravadas antes do N-25 têm `\`; sem isso, todo anexo antigo pareceria órfão.
 - **A trilha e a remoção correm na mesma transação, trilha primeiro, com prazo de 30 s** (o padrão de 5 s do Prisma é curto para disco de rede). Se a remoção falha, a linha volta atrás. Sobra a janela do commit falhar depois da remoção. Nesse caso o log de erro diz que o arquivo **saiu sem trilha**, com a chave, e não que ele continua guardado (M3).
-- **A ingestão não gera mais órfão com o processo vivo** (M4, fechado no PR seguinte ao #211): `Promise.allSettled` nos anexos, com o que os outros gravaram desfeito quando um `guardar` falha (`todosOuNenhum`), e o desfazer também no `return null` da corrida entre duas sincronizações. Sobra só o processo que morre no meio, que é o caso da varredura.
+- **A ingestão desfaz o que não virou linha, com o processo vivo** (M4, fechado no PR seguinte ao #211): `Promise.allSettled` nos anexos, com o que os outros gravaram desfeito quando um `guardar` falha (`todosOuNenhum`), e o desfazer também no `return null` da corrida entre duas sincronizações. Sobram dois casos para a varredura: o processo que morre no meio, e o arquivo parcial de um `guardar` que falha no meio da escrita, com o disco cheio, porque a chave dele nunca foi devolvida (revisão técnica do #213, M1). O contrato de `guardar` agora diz que cada chamada devolve chave nova; é disso que depende apagar com segurança na corrida (M2).
 
 **Status:** 🟢 em vigor.
 

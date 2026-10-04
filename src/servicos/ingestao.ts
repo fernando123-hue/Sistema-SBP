@@ -768,9 +768,11 @@ async function processarUm(
   //
   // O desfazer roda na transação abortada, no `return null` da corrida entre
   // duas sincronizações e, em `todosOuNenhum`, no `guardar` que falha no meio
-  // dos anexos. O que nenhum desfazer alcança é o processo que MORRE entre
-  // gravar o arquivo e gravar a linha: esse fica para a limpeza diária, que
-  // varre o armazenamento depois do prazo (`A78`, `expurgo-anexos-orfaos.ts`).
+  // dos anexos. O que nenhum desfazer alcança: o processo que MORRE entre
+  // gravar o arquivo e gravar a linha, e o arquivo PARCIAL de um `guardar` que
+  // falha no meio da escrita (disco cheio), cuja chave nunca foi devolvida.
+  // Esses ficam para a limpeza diária, que varre o armazenamento depois do
+  // prazo (`A78`, `expurgo-anexos-orfaos.ts`). Revisão técnica do #213, M1.
   const chavesGravadas = anexosAvaliados
     .map((anexo) => anexo.chaveArmazenamento)
     .filter((chave): chave is string => chave !== null)
@@ -926,12 +928,20 @@ async function todosOuNenhum<T extends { chaveArmazenamento: string | null }>(
   correlacaoId: string,
 ): Promise<T[]> {
   const avaliados = tentativas.flatMap((tentativa) => (tentativa.status === 'fulfilled' ? [tentativa.value] : []))
-  const falha = tentativas.find((tentativa) => tentativa.status === 'rejected')
-  if (falha === undefined) return avaliados
+  const falhas = tentativas.filter((tentativa): tentativa is PromiseRejectedResult => tentativa.status === 'rejected')
+  const [primeira, ...demais] = falhas
+  if (primeira === undefined) return avaliados
 
   const gravadas = avaliados.map((anexo) => anexo.chaveArmazenamento).filter((chave): chave is string => chave !== null)
   await removerSemEsconder(gravadas, armazenamento, correlacaoId)
-  throw falha.reason
+  // Sobe a primeira; as outras não somem caladas.
+  for (const outra of demais) {
+    registrarLog('erro', 'outro anexo do mesmo e-mail também falhou', {
+      correlacaoId,
+      erro: mensagemDoErro(outra.reason),
+    })
+  }
+  throw primeira.reason
 }
 
 async function criarItens(

@@ -72,10 +72,16 @@ describe('a ingestão não deixa arquivo sem linha com o processo vivo', () => {
     const armazenamento = new ArmazenamentoQueEnche()
     const ia: AiPort = { nome: 'duble', interpretar: async () => INTERPRETACAO }
 
-    await sincronizar({ banco, ingestao: comDoisAnexos('<enche@exemplo.test>'), ia, armazenamento }, base.operador)
+    const resumo = await sincronizar(
+      { banco, ingestao: comDoisAnexos('<enche@exemplo.test>'), ia, armazenamento },
+      base.operador,
+    )
 
-    expect(await banco.anexo.count()).toBe(0)
     expect(await armazenamento.listar()).toEqual([])
+    // A falha continua sendo a de antes: o e-mail não foi gravado e volta na
+    // próxima busca.
+    expect(resumo.falhas).toBe(1)
+    expect(await banco.email.count({ where: { messageId: '<enche@exemplo.test>' } })).toBe(0)
   })
 
   it('outra sincronização gravou o mesmo e-mail primeiro: os arquivos desta tentativa saem', async () => {
@@ -84,19 +90,41 @@ describe('a ingestão não deixa arquivo sem linha com o processo vivo', () => {
     // gravando o e-mail processado enquanto "a IA lê".
     const base = await semearBase(banco, { totalDeDias: 1 })
     const armazenamento = new ArmazenamentoEmMemoria()
+    let daOutra = ''
     const ia: AiPort = {
       nome: 'duble',
       interpretar: async () => {
+        // A outra sincronização, com o anexo DELA já gravado e com linha.
+        daOutra = await armazenamento.guardar(PDF, '.pdf')
         await banco.email.create({
-          data: { messageId: '<corrida@exemplo.test>', recebidoEm: new Date(), processadoEm: new Date() },
+          data: {
+            messageId: '<corrida@exemplo.test>',
+            recebidoEm: new Date(),
+            processadoEm: new Date(),
+            anexos: {
+              create: {
+                nomeSeguro: 'primeiro.pdf',
+                tipoDeclarado: 'application/pdf',
+                tamanho: PDF.byteLength,
+                aceito: true,
+                chaveArmazenamento: daOutra,
+                armazenadoEm: new Date(),
+              },
+            },
+          },
         })
         return INTERPRETACAO
       },
     }
 
-    await sincronizar({ banco, ingestao: comDoisAnexos('<corrida@exemplo.test>'), ia, armazenamento }, base.operador)
+    const resumo = await sincronizar(
+      { banco, ingestao: comDoisAnexos('<corrida@exemplo.test>'), ia, armazenamento },
+      base.operador,
+    )
 
-    expect(await banco.anexo.count()).toBe(0)
-    expect(await armazenamento.listar()).toEqual([])
+    expect(resumo.duplicados).toBe(1)
+    // Os dois desta tentativa saíram; o da outra, que tem linha, ficou.
+    expect((await armazenamento.listar()).map((arquivo) => arquivo.chave)).toEqual([daOutra])
+    expect(await banco.anexo.count()).toBe(1)
   })
 })
