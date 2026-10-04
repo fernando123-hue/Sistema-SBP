@@ -1,11 +1,13 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto'
-import { link, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import type { Dirent } from 'node:fs'
+import { link, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 
 import {
   ChaveDosAnexosMudouError,
   FalhaDeArmazenamento,
   type ArmazenamentoPort,
+  type ArquivoGuardado,
 } from '../ports/armazenamento'
 import { ambiente } from '../servidor/ambiente'
 import { registrarLog } from '../servidor/observabilidade'
@@ -21,6 +23,15 @@ const TAMANHO_TAG = 16 // 16 bytes para tag de autenticação
  */
 const NOME_DA_SENTINELA = '.sentinela-da-chave'
 const CONTEUDO_DA_SENTINELA = Buffer.from('SBP-SENTINELA-DA-CHAVE-v1')
+
+/** O nome das subpastas que `guardar` cria: os dois primeiros caracteres do sorteio. */
+const SUBPASTA_DE_ANEXO = /^[0-9a-f]{2}$/
+
+/** O nome do arquivo que `guardar` cria: o sorteio inteiro e a extensão segura. */
+const NOME_DE_ANEXO = /^[0-9a-f]{32}(\.[a-z0-9]{1,10})?$/
+
+/** Avisos individuais por listagem; o resto vira uma linha com o total. */
+const AVISOS_POR_LISTAGEM = 20
 
 /**
  * A conferência de cada raiz, por chave, neste processo — a PROMESSA, não só o
@@ -465,6 +476,86 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
       await rm(this.caminhoDe(chave), { force: true })
     } catch (erro) {
       throw new FalhaDeArmazenamento('remover', mensagemDoErro(erro))
+    }
+  }
+
+  /**
+   * Só as subpastas de duas letras hexadecimais, que são as que `guardar` cria.
+   *
+   * Outra pasta na raiz não é do sistema — uma cópia que alguém deixou ali, por
+   * exemplo. Listá-la a faria parecer órfã, e a limpeza diária (`A78`) apagaria
+   * o que nunca foi dela. Dentro da subpasta vale o mesmo, pelo nome: ver
+   * `ehAnexoDoSistema`.
+   */
+  async listar(): Promise<ArquivoGuardado[]> {
+    const raiz = resolve(this.raiz)
+    const arquivos: ArquivoGuardado[] = []
+    let puladas = 0
+
+    // Raiz ausente é instalação que ainda não recebeu anexo. SÓ ela: uma
+    // subpasta que some no meio da volta não pode transformar a lista inteira
+    // em "não há nada" — e "não consegui olhar" também não.
+    let pastas: Dirent[]
+    try {
+      pastas = await readdir(raiz, { withFileTypes: true })
+    } catch (erro) {
+      if (codigoDoErro(erro) === 'ENOENT') return []
+      throw new FalhaDeArmazenamento('listar', mensagemDoErro(erro))
+    }
+
+    for (const pasta of pastas) {
+      if (!pasta.isDirectory() || !SUBPASTA_DE_ANEXO.test(pasta.name)) continue
+
+      let entradas: Dirent[]
+      try {
+        entradas = await readdir(join(raiz, pasta.name), { withFileTypes: true })
+      } catch (erro) {
+        throw new FalhaDeArmazenamento('listar', mensagemDoErro(erro))
+      }
+
+      for (const entrada of entradas) {
+        const chave = `${pasta.name}/${entrada.name}`
+        if (!this.ehAnexoDoSistema(pasta.name, entrada)) {
+          // Pular, nunca falhar: quem escreve na pasta derrubaria a limpeza
+          // todo dia com uma pasta ou um nome gigante (revisão de segurança
+          // do #211, S6). Pular, nunca listar: listado, seria apagado como
+          // órfão. Avisar, nunca calar: está lá, e alguém precisa saber.
+          // Com teto: quem enche a pasta de lixo não enche o log (N3).
+          puladas += 1
+          if (puladas <= AVISOS_POR_LISTAGEM) {
+            registrarLog('aviso', 'entrada no armazenamento não é anexo do sistema; não listada', {
+              entrada: chave.slice(0, 120),
+            })
+          }
+          continue
+        }
+        const gravadoEm = await this.gravadoEm(join(raiz, pasta.name, entrada.name))
+        // Removido entre a listagem e a consulta: o expurgo pode estar rodando.
+        if (gravadoEm !== null) arquivos.push({ chave, gravadoEm })
+      }
+    }
+
+    if (puladas > AVISOS_POR_LISTAGEM) {
+      registrarLog('aviso', 'entradas do armazenamento que não são anexo do sistema, contando as avisadas', { puladas })
+    }
+    return arquivos
+  }
+
+  /**
+   * Arquivo comum com o nome que `guardar` cria: 32 hexadecimais, a extensão
+   * permitida e os dois primeiros caracteres iguais aos da subpasta. Conferido
+   * em todas as versões do `guardar` desde a primeira.
+   */
+  private ehAnexoDoSistema(pasta: string, entrada: Dirent): boolean {
+    return entrada.isFile() && NOME_DE_ANEXO.test(entrada.name) && entrada.name.startsWith(pasta)
+  }
+
+  private async gravadoEm(caminho: string): Promise<Date | null> {
+    try {
+      return (await stat(caminho)).mtime
+    } catch (erro) {
+      if (codigoDoErro(erro) === 'ENOENT') return null
+      throw new FalhaDeArmazenamento('listar', mensagemDoErro(erro))
     }
   }
 }

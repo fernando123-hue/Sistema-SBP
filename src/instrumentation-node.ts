@@ -283,9 +283,10 @@ export async function agendarLimpezaDiaria(): Promise<void> {
     modulos
 
   const tentar = (): void => {
-    // Sem armazenamento, a limpeza segue sem ele: o motivo de afastamento sai, e
-    // e-mail com anexo fica pendente com a execução marcada como falha — nunca
-    // "apagado do banco" com o arquivo ainda no disco.
+    // Sem armazenamento, a limpeza segue sem ele: o motivo de afastamento sai,
+    // e-mail com anexo fica pendente — nunca "apagado do banco" com o arquivo
+    // ainda no disco — e a execução é marcada como falha, porque a varredura
+    // de anexo sem registro (`A78`) não pôde olhar o disco.
     let armazenamento: ArmazenamentoPort | null = null
     try {
       armazenamento = criarArmazenamentoPort()

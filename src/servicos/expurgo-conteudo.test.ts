@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { ErroDeNegocio } from '../core/erros'
 import { deslocarDias } from '../core/util/datas'
-import { FalhaDeArmazenamento, type ArmazenamentoPort } from '../ports/armazenamento'
+import { FalhaDeArmazenamento, type ArmazenamentoPort, type ArquivoGuardado } from '../ports/armazenamento'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, limparTudo, semearBase, type BaseSemeada } from '../testes/apoio'
 import { recusada } from '../testes/recusa'
@@ -38,6 +38,10 @@ class ArmazenamentoDeTeste implements ArmazenamentoPort {
   async remover(chave: string): Promise<void> {
     if (this.falhaAoRemover.has(chave)) throw new FalhaDeArmazenamento('remover', 'falha simulada')
     this.arquivos.delete(chave)
+  }
+
+  async listar(): Promise<ArquivoGuardado[]> {
+    return [...this.arquivos.keys()].map((chave) => ({ chave, gravadoEm: new Date() }))
   }
 }
 

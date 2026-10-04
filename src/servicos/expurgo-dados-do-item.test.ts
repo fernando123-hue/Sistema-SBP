@@ -4,6 +4,7 @@ import { deslocarDias } from '../core/util/datas'
 import { protegerCpf } from '../servidor/cpf-protegido'
 import { obterPrisma } from '../servidor/prisma'
 import { DATA_BASE, limparTudo, semearBase, type BaseSemeada } from '../testes/apoio'
+import { ArmazenamentoEmMemoria } from '../testes/armazenamento-em-memoria'
 import { expurgarDadosDosItens } from './expurgo-dados-do-item'
 import { medirQualidadeDaIa } from './qualidade'
 import { rodarLimpezaDiaria } from './rotinas'
@@ -369,7 +370,7 @@ describe('trilha e repetição', () => {
   it('a limpeza diária também tira os dados dos itens', async () => {
     const { itens } = await emailComItens({ textoApagado: true, itens: 1 })
 
-    const resultado = await rodarLimpezaDiaria(banco, { hoje: DATA_BASE })
+    const resultado = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE })
 
     if (!resultado.executou || resultado.situacao !== 'sucesso') throw new Error('esperava sucesso')
     expect(resultado.resumo.dadosDosItens).toMatchObject({ apagados: 1, prazoEmDias: 7 })

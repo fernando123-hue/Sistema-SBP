@@ -1,8 +1,8 @@
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { FalhaDeArmazenamento } from '../ports/armazenamento'
@@ -224,6 +224,91 @@ describe('armazenamento em disco', () => {
     await writeFile(caminho, cifrado)
 
     await expect(armazenamento.ler(chave)).rejects.toThrow(FalhaDeArmazenamento)
+  })
+})
+
+describe('listar o que está guardado (A78)', () => {
+  it('devolve cada chave no MESMO formato de guardar, com a data de gravação', async () => {
+    const primeira = await armazenamento.guardar(PDF, '.pdf')
+    const segunda = await armazenamento.guardar(PDF, '')
+    const antiga = new Date('2026-01-10T12:00:00Z')
+    await utimes(join(raiz, primeira), antiga, antiga)
+
+    const lista = await armazenamento.listar()
+
+    expect(lista.map((arquivo) => arquivo.chave).sort()).toEqual([primeira, segunda].sort())
+    expect(lista.find((arquivo) => arquivo.chave === primeira)!.gravadoEm.getTime()).toBe(antiga.getTime())
+  })
+
+  it('a sentinela e os temporários da raiz não são anexo', async () => {
+    await armazenamento.guardar(PDF, '.pdf')
+    await writeFile(join(raiz, '.sentinela-da-chave.abc.tmp'), 'x')
+
+    const chaves = (await armazenamento.listar()).map((arquivo) => arquivo.chave)
+
+    expect(chaves).toHaveLength(1)
+    expect(chaves.some((chave) => chave.includes('sentinela'))).toBe(false)
+  })
+
+  it('pasta fora do formato de duas letras não é do armazenamento, e não é listada', async () => {
+    // Quem guarda espalha em `ab/`. Uma `copia/` posta ali por alguém não é
+    // anexo do sistema — listá-la a faria parecer órfã, e a limpeza a apagaria.
+    await mkdir(join(raiz, 'copia'))
+    await writeFile(join(raiz, 'copia', 'documento.pdf'), 'x')
+
+    expect(await armazenamento.listar()).toEqual([])
+  })
+
+  it('pasta ainda inexistente é lista vazia, não falha', async () => {
+    expect(await new ArmazenamentoEmDisco(join(raiz, 'nunca-criada')).listar()).toEqual([])
+  })
+
+  it('só o nome que guardar cria é listado; o resto da subpasta não é anexo do sistema', async () => {
+    // Revisão de segurança do #211 (S1, S6). Um `desktop.ini`, uma cópia
+    // manual ou o `.recifrando` de uma migração interrompida, listados, seriam
+    // apagados como órfãos; uma pasta ou um nome de 300 caracteres derrubariam
+    // a etapa todo dia. Não listados, ficam — e o log diz que estão lá.
+    const chave = await armazenamento.guardar(PDF, '.pdf')
+    const [pasta] = chave.split('/')
+    const estranhos = [
+      'desktop.ini',
+      `${chave.split('/')[1]}.recifrando`,
+      `${'0'.repeat(32)}.pdf`, // prefixo de outra pasta
+      'x'.repeat(200),
+    ]
+    for (const nome of estranhos) await writeFile(join(raiz, pasta!, nome), 'x')
+    await mkdir(join(raiz, pasta!, 'f'.repeat(32)))
+    const avisos: string[] = []
+    for (const saida of [process.stdout, process.stderr]) {
+      vi.spyOn(saida, 'write').mockImplementation((linha) => {
+        avisos.push(String(linha))
+        return true
+      })
+    }
+
+    const chaves = (await armazenamento.listar()).map((arquivo) => arquivo.chave)
+
+    vi.restoreAllMocks()
+    expect(chaves).toEqual([chave])
+    expect(avisos.filter((linha) => linha.includes('não é anexo do sistema'))).toHaveLength(estranhos.length + 1)
+  })
+
+  it('o aviso tem teto: quem enche a pasta de lixo não enche o log (revisão de segurança do #211, N3)', async () => {
+    await mkdir(join(raiz, 'ab'))
+    for (let i = 0; i < 30; i += 1) await writeFile(join(raiz, 'ab', `lixo-${i}`), 'x')
+    const avisos: string[] = []
+    for (const saida of [process.stdout, process.stderr]) {
+      vi.spyOn(saida, 'write').mockImplementation((linha) => {
+        avisos.push(String(linha))
+        return true
+      })
+    }
+
+    await armazenamento.listar()
+
+    vi.restoreAllMocks()
+    expect(avisos.filter((linha) => linha.includes('não é anexo do sistema; não listada'))).toHaveLength(20)
+    expect(avisos.filter((linha) => linha.includes('"puladas":30'))).toHaveLength(1)
   })
 })
 

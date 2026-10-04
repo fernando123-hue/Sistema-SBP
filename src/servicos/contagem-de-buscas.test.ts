@@ -5,6 +5,7 @@ import { deslocarDias } from '../core/util/datas'
 import { protegerCpf } from '../servidor/cpf-protegido'
 import { obterPrisma } from '../servidor/prisma'
 import { atorDeTeste, limparTudo, semearBase, type BaseSemeada } from '../testes/apoio'
+import { ArmazenamentoEmMemoria } from '../testes/armazenamento-em-memoria'
 import { recusada } from '../testes/recusa'
 import { buscarPorChave } from './caixa'
 import { contarBusca, expurgarContagemDeBuscas } from './contagem-de-buscas'
@@ -183,7 +184,7 @@ describe('a contagem tem prazo', () => {
     await gravar(deslocarDias(HOJE, -90))
     await gravar(deslocarDias(HOJE, -89))
 
-    const resultado = await rodarLimpezaDiaria(banco, { hoje: HOJE })
+    const resultado = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: HOJE })
 
     expect(resultado).toMatchObject({
       executou: true,

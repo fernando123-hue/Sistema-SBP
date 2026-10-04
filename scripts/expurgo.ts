@@ -8,6 +8,12 @@
  *
  *   npm run db:expurgar
  *
+ * Quando a limpeza RECUSA apagar anexos sem registro (banco errado? `AT-74`),
+ * uma pessoa confere o banco, vê QUAIS arquivos são e só então autoriza:
+ *
+ *   npm run db:expurgar -- --listar-orfaos
+ *   npm run db:expurgar -- --aceitar-orfaos=<o número> --por=<seu nome>
+ *
  * Os prazos NÃO vêm de variável de ambiente. Eles são editados pelo gestor, na
  * tela, com a mudança na trilha (`A17`, `A20`); uma variável aqui seria uma
  * segunda porta para mudar quanto tempo dado pessoal fica guardado, sem trilha e
@@ -16,8 +22,11 @@
 
 import { criarArmazenamentoPort } from '../src/adapters/fabrica'
 import type { ArmazenamentoPort } from '../src/ports/armazenamento'
+import { expurgarAnexosOrfaos, levantarAnexosOrfaos } from '../src/servicos/expurgo-anexos-orfaos'
+import { prazoEmVigor } from '../src/servicos/retencao'
 import { rodarLimpezaDiaria } from '../src/servicos/rotinas'
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
+import { lerOpcoesDeOrfaos } from './opcoes-de-orfaos'
 
 const POR_QUE_NAO_RODOU = {
   ja_concluida: 'a limpeza de hoje já foi feita.',
@@ -26,6 +35,50 @@ const POR_QUE_NAO_RODOU = {
     'a limpeza de hoje falhou em todas as tentativas. Veja a mensagem em ExecucaoDeRotina e o evento em EventoProcessamento.',
 } as const
 
+/**
+ * Mostra o que a limpeza de anexo sem registro apagaria, e se ela se recusaria,
+ * sem apagar nada. É o que se olha ANTES de aceitar: chave e data de cada um.
+ */
+async function listarOrfaos(armazenamento: ArmazenamentoPort | null): Promise<void> {
+  const banco = obterPrisma()
+  const levantamento = await levantarAnexosOrfaos(banco, {
+    diasDeRetencao: await prazoEmVigor(banco, 'conteudo_do_email'),
+    armazenamento,
+  })
+  const linhas = levantamento.vencidos.map(
+    (arquivo) => `  - ${arquivo.chave}  gravado em ${arquivo.gravadoEm.toISOString()}`,
+  )
+  process.stdout.write(
+    `${levantamento.avaliados} arquivo(s) no armazenamento; ${levantamento.semRegistro} sem registro; ` +
+      `${levantamento.vencidos.length} vencido(s), que a limpeza apagaria:\n` +
+      (linhas.length > 0 ? `${linhas.join('\n')}\n` : '') +
+      (levantamento.recusa === null
+        ? 'A limpeza diária apaga estes sozinha.\n'
+        : `A limpeza diária RECUSA: ${levantamento.recusa}\n`),
+  )
+}
+
+/**
+ * Só a varredura de anexo sem registro, fora da rotina do dia: a recusa se
+ * repete a cada tentativa, e esta é a saída que uma pessoa autoriza. Cada
+ * arquivo apagado vai para a trilha com o número aceito e o nome declarado.
+ */
+async function apagarOrfaosAceitos(
+  armazenamento: ArmazenamentoPort | null,
+  aceite: { quantidade: number; por: string },
+): Promise<void> {
+  const banco = obterPrisma()
+  const resultado = await expurgarAnexosOrfaos(banco, {
+    diasDeRetencao: await prazoEmVigor(banco, 'conteudo_do_email'),
+    armazenamento,
+    aceite,
+  })
+  process.stdout.write(
+    `Anexos sem registro: ${resultado.removidos} apagado(s), de ${resultado.semRegistro} sem registro ` +
+      `entre ${resultado.avaliados} arquivo(s).\n`,
+  )
+}
+
 async function principal(): Promise<void> {
   let armazenamento: ArmazenamentoPort | null = null
   try {
@@ -33,9 +86,13 @@ async function principal(): Promise<void> {
   } catch (erro) {
     process.stderr.write(
       `Armazenamento de anexos indisponível (${erro instanceof Error ? erro.message : String(erro)}). ` +
-        'E-mails com anexo ficam pendentes.\n',
+        'E-mails com anexo ficam pendentes, e a varredura de anexo sem registro falha.\n',
     )
   }
+
+  const opcoes = lerOpcoesDeOrfaos(process.argv.slice(2))
+  if (opcoes.modo === 'listar') return await listarOrfaos(armazenamento)
+  if (opcoes.modo === 'aceitar') return await apagarOrfaosAceitos(armazenamento, opcoes)
 
   const resultado = await rodarLimpezaDiaria(obterPrisma(), { armazenamento })
 
@@ -55,6 +112,7 @@ async function principal(): Promise<void> {
 
   const motivos = resultado.resumo.motivosDeAfastamento
   const conteudo = resultado.resumo.conteudoDosEmails
+  const semRegistro = resultado.resumo.anexosSemRegistro
   process.stdout.write(
     `Limpeza diária concluída (ref. ${resultado.correlacaoId.slice(0, 8)}):\n` +
       `  - prazo do motivo de afastamento: ${motivos.prazoEmDias} dias\n` +
@@ -62,7 +120,8 @@ async function principal(): Promise<void> {
       `  - motivos vencidos: ${motivos.vencidos} (com algo a apagar: ${motivos.apagados})\n` +
       `  - prazo do texto dos e-mails: ${conteudo.prazoEmDias} dias\n` +
       `  - e-mails avaliados: ${conteudo.avaliados}\n` +
-      `  - e-mails vencidos: ${conteudo.vencidos} (apagados: ${conteudo.apagados}, anexos removidos: ${conteudo.anexosRemovidos})\n`,
+      `  - e-mails vencidos: ${conteudo.vencidos} (apagados: ${conteudo.apagados}, anexos removidos: ${conteudo.anexosRemovidos})\n` +
+      `  - arquivos de anexo no armazenamento: ${semRegistro.avaliados} (sem registro: ${semRegistro.semRegistro}, apagados: ${semRegistro.removidos})\n`,
   )
 }
 
