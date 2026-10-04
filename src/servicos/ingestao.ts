@@ -699,7 +699,10 @@ async function processarUm(
       ? await colherSegundaOpiniao(deps.classificador, email, estadoDaSegundaOpiniao, correlacaoId)
       : null
 
-  const anexosAvaliados = await Promise.all(
+  // `allSettled`, não `all`: com `all`, o primeiro `guardar` que falhasse subia
+  // na hora, com os outros anexos ainda gravando, e nenhum desfazer alcançava o
+  // que eles gravaram (revisão técnica do #211, M4).
+  const tentativasDosAnexos = await Promise.allSettled(
     email.anexos.map(async (anexo) => {
       // O tamanho que vale é o dos BYTES, quando eles vieram (achado N-27): o
       // declarado é da origem, e um adapter futuro (IMAP) o recebe de quem
@@ -739,6 +742,7 @@ async function processarUm(
       return { ...anexo, tamanho, veredicto, chaveArmazenamento }
     }),
   )
+  const anexosAvaliados = await todosOuNenhum(tentativasDosAnexos, deps.armazenamento, correlacaoId)
   const anexosRejeitados = anexosAvaliados.filter((anexo) => !anexo.veredicto.aceito).length
 
   // ═══ BYTES NO DISCO ANTES DA TRANSAÇÃO PRECISAM DE VOLTA ATRÁS ═══
@@ -762,36 +766,20 @@ async function processarUm(
   // `remover` é idempotente por contrato, então limpar o que talvez nem tenha
   // sido escrito é seguro.
   //
-  // O desfazer NÃO alcança todo caminho que deixa órfão: o processo que morre
-  // entre gravar o arquivo e gravar a linha; o `return null` da corrida entre
-  // duas sincronizações, mais abaixo; e a falha de um `guardar` no meio do
-  // `Promise.all` acima, que sobe antes de `chavesGravadas` existir. Quem limpa
-  // esses é a limpeza diária, que varre o armazenamento depois do prazo
-  // (`A78`, `expurgo-anexos-orfaos.ts`). Revisão técnica do #211, M4.
+  // O desfazer roda na transação abortada, no `return null` da corrida entre
+  // duas sincronizações e, em `todosOuNenhum`, no `guardar` que falha no meio
+  // dos anexos. O que nenhum desfazer alcança é o processo que MORRE entre
+  // gravar o arquivo e gravar a linha: esse fica para a limpeza diária, que
+  // varre o armazenamento depois do prazo (`A78`, `expurgo-anexos-orfaos.ts`).
   const chavesGravadas = anexosAvaliados
     .map((anexo) => anexo.chaveArmazenamento)
     .filter((chave): chave is string => chave !== null)
 
   /** Apaga o que esta tentativa escreveu. Nunca substitui o erro original. */
-  async function desfazerArquivos(): Promise<void> {
-    if (!deps.armazenamento) return
-    for (const chave of chavesGravadas) {
-      try {
-        await deps.armazenamento.remover(chave)
-      } catch (aoRemover) {
-        // Falhou a limpeza: o arquivo continua órfão, e agora pelo menos
-        // existe uma linha dizendo qual é.
-        registrarLog('erro', 'anexo órfão no armazenamento após transação abortada', {
-          correlacaoId,
-          chave,
-          erro: mensagemDoErro(aoRemover),
-        })
-      }
-    }
-  }
+  const desfazerArquivos = (): Promise<void> => removerSemEsconder(chavesGravadas, deps.armazenamento, correlacaoId)
 
   try {
-    return await deps.banco.$transaction(async (tx) => {
+    const gravado = await deps.banco.$transaction(async (tx) => {
       // Segunda checagem, agora DENTRO da transação: fecha a janela entre a
       // verificação de existência e a gravação.
       const jaProcessado = await tx.email.findUnique({
@@ -891,10 +879,59 @@ async function processarUm(
 
       return { ...resultado, anexosRejeitados, conteudoSuspeito, naoInterpretado: desistir, dadoSemItem }
     })
+    // `null`: outra sincronização gravou este e-mail primeiro. As linhas de
+    // `Anexo` são as dela, com as chaves dela; as que esta tentativa gravou não
+    // têm dono (M4).
+    if (gravado === null) await desfazerArquivos()
+    return gravado
   } catch (erro) {
     await desfazerArquivos()
     throw erro
   }
+}
+
+/**
+ * Apaga as chaves que uma tentativa gravou e que não viraram linha. Nunca
+ * lança: quem chama está desfazendo por causa de OUTRO erro, ou de uma corrida,
+ * e uma falha aqui não pode esconder isso.
+ */
+async function removerSemEsconder(
+  chaves: readonly string[],
+  armazenamento: ArmazenamentoPort | undefined,
+  correlacaoId: string,
+): Promise<void> {
+  if (!armazenamento) return
+  for (const chave of chaves) {
+    try {
+      await armazenamento.remover(chave)
+    } catch (aoRemover) {
+      // Falhou a limpeza: o arquivo continua órfão, e agora pelo menos
+      // existe uma linha dizendo qual é. A limpeza diária o alcança depois.
+      registrarLog('erro', 'anexo órfão no armazenamento após tentativa desfeita', {
+        correlacaoId,
+        chave,
+        erro: mensagemDoErro(aoRemover),
+      })
+    }
+  }
+}
+
+/**
+ * Todos os anexos avaliados, ou nenhum: se um falhou, o que os outros gravaram
+ * sai antes de o erro subir.
+ */
+async function todosOuNenhum<T extends { chaveArmazenamento: string | null }>(
+  tentativas: readonly PromiseSettledResult<T>[],
+  armazenamento: ArmazenamentoPort | undefined,
+  correlacaoId: string,
+): Promise<T[]> {
+  const avaliados = tentativas.flatMap((tentativa) => (tentativa.status === 'fulfilled' ? [tentativa.value] : []))
+  const falha = tentativas.find((tentativa) => tentativa.status === 'rejected')
+  if (falha === undefined) return avaliados
+
+  const gravadas = avaliados.map((anexo) => anexo.chaveArmazenamento).filter((chave): chave is string => chave !== null)
+  await removerSemEsconder(gravadas, armazenamento, correlacaoId)
+  throw falha.reason
 }
 
 async function criarItens(
