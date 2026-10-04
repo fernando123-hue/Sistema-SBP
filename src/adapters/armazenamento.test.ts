@@ -78,6 +78,14 @@ describe('armazenamento em disco', () => {
     expect(Array.from(lido!)).toEqual(Array.from(PDF))
   })
 
+  it('cada guardar devolve chave nova, mesmo com os mesmos bytes (contrato da porta)', async () => {
+    const primeira = await armazenamento.guardar(PDF, '.pdf')
+    const segunda = await armazenamento.guardar(PDF, '.pdf')
+
+    expect(segunda).not.toBe(primeira)
+    expect(await armazenamento.ler(primeira)).not.toBeNull()
+  })
+
   it('a chave não deriva do nome do arquivo', async () => {
     const primeira = await armazenamento.guardar(PDF, '.pdf')
     const segunda = await armazenamento.guardar(PDF, '.pdf')

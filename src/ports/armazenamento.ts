@@ -15,7 +15,15 @@ import { ErroOperacional } from '../core/erros'
 export interface ArmazenamentoPort {
   readonly nome: string
 
-  /** Guarda os bytes e devolve a chave para recuperá-los. */
+  /**
+   * Guarda os bytes e devolve a chave para recuperá-los.
+   *
+   * Cada chamada devolve uma chave NOVA, mesmo para bytes iguais — nunca
+   * endereçada pelo conteúdo. A ingestão depende disso: a tentativa que perde
+   * a corrida entre duas sincronizações apaga as chaves que ELA gravou, e com
+   * chave por conteúdo apagaria o arquivo que a outra referencia (revisão
+   * técnica do #213, M2).
+   */
   guardar(bytes: Uint8Array, extensao: string): Promise<string>
 
   /** Devolve os bytes, ou `null` se a chave não existe mais (expurgo, por exemplo). */
