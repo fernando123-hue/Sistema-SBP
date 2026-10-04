@@ -1,10 +1,10 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { SUFIXO_TEMPORARIO, encontrarSobras, limparSobras, recifrarUm } from './recifrar-um'
+import { SUFIXO_TEMPORARIO, chavesDeAnexo, encontrarSobras, limparSobras, recifrarUm } from './recifrar-um'
 
 /**
  * A recifragem de um anexo não pode deixar cópia do documento para trás: um
@@ -92,7 +92,65 @@ describe('recifrar um anexo', () => {
     expect(await readFile(join(raiz, 'ab', `${NOME}${SUFIXO_TEMPORARIO}`), 'utf8')).toBe('de outra execução')
     expect(await readFile(join(raiz, 'ab', NOME))).toEqual(ORIGINAL)
   })
+
+  it('o original some no meio (a limpeza diária expurgou): o rename não o ressuscita (revisão de segurança do #215, S4)', async () => {
+    // A releitura é o passo entre a leitura e a troca: é ali que a expurgação cai.
+    const lerDeVoltaEnquantoExpurga = async () => {
+      await rm(join(raiz, 'ab', NOME))
+      return ORIGINAL
+    }
+
+    await expect(recifrarUm(raiz, CHAVE, { cifrar, lerDeVolta: lerDeVoltaEnquantoExpurga })).rejects.toThrow(/sumiu/)
+
+    expect(await readdir(join(raiz, 'ab'))).toEqual([])
+  })
+
+  it('link simbólico não é trocado por cópia cifrada do alvo (revisão de segurança do #215, S3)', async (contexto) => {
+    const fora = await mkdtemp(join(tmpdir(), 'sbp-recifrar-fora-'))
+    try {
+      const alvo = join(fora, 'qualquer.txt')
+      await writeFile(alvo, ORIGINAL)
+      const link = `ab${'f'.repeat(30)}.pdf`
+      if (!(await criarLink(alvo, join(raiz, 'ab', link)))) contexto.skip()
+
+      await expect(recifrarUm(raiz, `ab/${link}`, { cifrar, lerDeVolta: async () => ORIGINAL })).rejects.toThrow(
+        /arquivo comum/,
+      )
+
+      expect((await lstat(join(raiz, 'ab', link))).isSymbolicLink()).toBe(true)
+      expect(await readFile(alvo)).toEqual(ORIGINAL)
+      expect((await readdir(join(raiz, 'ab'))).sort()).toEqual([NOME, link].sort())
+    } finally {
+      await rm(fora, { recursive: true, force: true })
+    }
+  })
 })
+
+describe('chaves de anexo a recifrar', () => {
+  it('só arquivo comum vira chave; sobra é pulada; pasta e link são ditos, não recifrados (revisão de segurança do #215, S3)', async (contexto) => {
+    await writeFile(join(raiz, 'ab', `${NOME}${SUFIXO_TEMPORARIO}`), CIFRADO)
+    await mkdir(join(raiz, 'ab', 'subpasta'))
+    const link = `ab${'f'.repeat(30)}.pdf`
+    if (!(await criarLink(join(raiz, 'ab', NOME), join(raiz, 'ab', link)))) contexto.skip()
+
+    expect(await chavesDeAnexo(raiz)).toEqual({ chaves: [CHAVE], ignoradas: [`ab/${link}`, 'ab/subpasta'].sort() })
+  })
+
+  it('pasta que ainda não existe: a falha sobe com o código, para quem chama decidir', async () => {
+    await expect(chavesDeAnexo(join(raiz, 'nunca-criada'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+})
+
+/** No Windows sem permissão de link, `symlink` dá `EPERM`: o teste pula ali e roda no CI. */
+async function criarLink(alvo: string, caminho: string): Promise<boolean> {
+  try {
+    await symlink(alvo, caminho)
+    return true
+  } catch (erro) {
+    if ((erro as { code?: unknown }).code === 'EPERM') return false
+    throw erro
+  }
+}
 
 describe('sobras de uma execução interrompida', () => {
   it('com o original ao lado, saem; o original fica', async () => {
