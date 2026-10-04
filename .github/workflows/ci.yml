@@ -121,6 +121,25 @@ jobs:
       - name: Proxy registrado no build
         run: npx tsx scripts/conferir-proxy.ts
 
+      # Pendência 46: o Next repassa o nonce da CSP aos próprios scripts? Só uma
+      # página servida de verdade mostra; se uma versão futura deixar de
+      # repassar, a tela quebra sem erro nenhum no servidor. Sobe `next start`
+      # sobre o build acima, na base efêmera do job, com segredos sorteados aqui
+      # (em produção, valor de teste conhecido é recusado na partida).
+      # `NODE_ENV: production` no passo: herdado do job (`test`), o servidor
+      # subia meio de teste e a trava de segredos de produção nem rodava
+      # (revisões do #214, M1/S1). O prazo segura um passo pendurado.
+      - name: Nonce da CSP nos scripts
+        timeout-minutes: 3
+        env:
+          NODE_ENV: production
+        run: |
+          export SESSAO_SECRET="$(openssl rand -hex 32)"
+          export ANEXOS_SECRET="$(openssl rand -hex 32)"
+          export BUSCA_SECRET="$(openssl rand -hex 32)"
+          export ARMAZENAMENTO_DIR="$RUNNER_TEMP/anexos"
+          npx tsx scripts/conferir-nonce.ts
+
   segredos:
     name: Varredura de segredos
     runs-on: ubuntu-latest
