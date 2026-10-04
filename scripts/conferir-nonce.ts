@@ -77,10 +77,16 @@ async function derrubar(servidor: ChildProcess, estado: { encerrou: number | nul
   if (estado.encerrou !== null) return
   const saiu = new Promise<void>((resolver) => servidor.once('exit', () => resolver()))
   servidor.kill()
+  let prazo: NodeJS.Timeout | undefined
   const noPrazo = await Promise.race([
     saiu.then(() => true),
-    new Promise<boolean>((resolver) => setTimeout(() => resolver(false), PRAZO_PARA_ENCERRAR_MS)),
+    new Promise<boolean>((resolver) => {
+      prazo = setTimeout(() => resolver(false), PRAZO_PARA_ENCERRAR_MS)
+    }),
   ])
+  // Sem isto, o temporizador segurava o processo vivo até o fim do prazo,
+  // mesmo com o servidor já fora (revisão técnica do #214).
+  clearTimeout(prazo)
   if (!noPrazo) servidor.kill('SIGKILL')
 }
 

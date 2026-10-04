@@ -14,6 +14,9 @@
 
 const NONCE_NA_CSP = /'nonce-([^']+)'/
 
+/** Como `new URL` devolve o host desta máquina (o IPv6 vem entre colchetes). */
+const HOSTS_DESTA_MAQUINA = new Set(['127.0.0.1', 'localhost', '[::1]'])
+
 /** A abertura do script inteira: `>` dentro de um valor entre aspas não a corta. */
 const ABERTURA_DE_SCRIPT = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi
 
@@ -68,10 +71,19 @@ export function recusaDoAmbiente(ambiente: Readonly<Record<string, string | unde
     return 'DATABASE_URL precisa vir no ambiente do comando, apontando para uma base de teste (o .env não serve).'
   }
   let base: string
+  let host: string
   try {
-    base = new URL(url).pathname.replace(/^\//, '')
+    const endereco = new URL(url)
+    base = endereco.pathname.replace(/^\//, '')
+    host = endereco.hostname
   } catch {
     return 'DATABASE_URL não é uma URL válida.'
+  }
+  // O nome `_teste` sozinho não prova nada: `servidor-de-verdade/qualquer_teste`
+  // passaria (revisão de segurança do #214, N1). A base efêmera do CI e a de
+  // teste local estão nesta máquina.
+  if (!HOSTS_DESTA_MAQUINA.has(host)) {
+    return `A base está em "${host}", fora desta máquina: a conferência só roda contra base de teste local.`
   }
   if (!base.endsWith('_teste')) {
     return `A base "${base}" não termina em _teste: a limpeza diária da partida rodaria nela.`

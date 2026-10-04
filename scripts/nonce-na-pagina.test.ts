@@ -89,6 +89,17 @@ describe('onde a conferência aceita rodar (revisão técnica do #214, M2)', () 
     expect(recusaDoAmbiente(TESTE)).toBeNull()
   })
 
+  it.each(['localhost', '[::1]'])('base _teste em %s também roda', (host) => {
+    expect(recusaDoAmbiente({ ...TESTE, DATABASE_URL: `mysql://root@${host}:3306/sbp_teste` })).toBeNull()
+  })
+
+  it.each(['banco.exemplo.test', '10.0.0.5', '127.0.0.1.exemplo.test'])(
+    'base _teste FORA desta máquina (%s): recusa — o nome sozinho não prova que é de teste (revisão de segurança do #214)',
+    (host) => {
+      expect(recusaDoAmbiente({ ...TESTE, DATABASE_URL: `mysql://root@${host}:3306/sbp_teste` })).toMatch(/desta máquina/)
+    },
+  )
+
   it('base que não termina em _teste: recusa', () => {
     expect(recusaDoAmbiente({ ...TESTE, DATABASE_URL: 'mysql://root@127.0.0.1:3307/sbp' })).toMatch(/_teste/)
   })
