@@ -1,7 +1,8 @@
 import { lstat, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import type { Dirent } from 'node:fs'
 import { join } from 'node:path'
 
-import { NOME_DE_ANEXO, SUBPASTA_DE_ANEXO } from '../src/adapters/armazenamento-disco'
+import { SUBPASTA_DE_ANEXO, ehAnexoDoSistema } from '../src/adapters/armazenamento-disco'
 
 /**
  * A recifragem de UM anexo, e a limpeza das sobras — separadas de
@@ -118,7 +119,11 @@ async function exigirArquivoComum(caminho: string, chave: string): Promise<void>
  * disco, que deixaria anexos fora da contagem — segurança S4). Outras entradas
  * da raiz, como a sentinela da chave, não são do assunto e não poluem a saída.
  *
- * Pasta inexistente sobe com `ENOENT`: quem chama decide se é zero.
+ * Pasta inexistente sobe com `ENOENT`: quem chama decide se é zero. Só a
+ * RAIZ: uma subpasta que some entre as duas leituras sobe como erro próprio,
+ * sem esse código — antes, o script a lia como "a pasta de anexos ainda não
+ * existe" e respondia zero com a raiz cheia (revisões do #219, técnica 5 e
+ * segurança N2).
  */
 export async function chavesDeAnexo(raiz: string): Promise<{ chaves: string[]; ignoradas: string[] }> {
   const chaves: string[] = []
@@ -129,22 +134,37 @@ export async function chavesDeAnexo(raiz: string): Promise<{ chaves: string[]; i
       ignoradas.push(pasta.name)
       continue
     }
-    for (const entrada of await readdir(join(raiz, pasta.name), { withFileTypes: true })) {
+    for (const entrada of await lerSubpasta(raiz, pasta.name)) {
       const chave = `${pasta.name}/${entrada.name}`
       // Sobra de recifragem não é anexo: `limparSobras` cuida dela. Testada
       // ANTES da forma de anexo: `<32 hex>.recifrando`, a sobra de anexo sem
-      // extensão, também passa em `NOME_DE_ANEXO`, porque `recifrando` cabe nos
+      // extensão, também passa na forma de anexo, porque `recifrando` cabe nos
       // 10 caracteres de extensão (revisões do #219, rodada 2, N1).
-      if (ehDaForma(pasta.name, entrada.name, NOME_DE_SOBRA) && entrada.isFile()) continue
-      if (ehDaForma(pasta.name, entrada.name, NOME_DE_ANEXO) && entrada.isFile()) chaves.push(chave)
+      if (ehSobra(pasta.name, entrada)) continue
+      if (ehAnexoDoSistema(pasta.name, entrada)) chaves.push(chave)
       else ignoradas.push(chave)
     }
   }
   return { chaves: chaves.sort(), ignoradas: ignoradas.sort() }
 }
 
-function ehDaForma(pasta: string, nome: string, forma: RegExp): boolean {
-  return forma.test(nome) && nome.startsWith(pasta)
+function ehSobra(pasta: string, entrada: Dirent): boolean {
+  return entrada.isFile() && NOME_DE_SOBRA.test(entrada.name) && entrada.name.startsWith(pasta)
+}
+
+async function lerSubpasta(raiz: string, pasta: string): Promise<Dirent[]> {
+  try {
+    return await readdir(join(raiz, pasta), { withFileTypes: true })
+  } catch (erro) {
+    if (codigoDoErro(erro) !== 'ENOENT') throw erro
+    // O `code` fica só na causa: no erro de cima, `ENOENT` é o que o script lê
+    // como "pasta não existe" (revisão de segurança do #222, S3).
+    throw new Error(
+      `A subpasta ${JSON.stringify(pasta)} sumiu durante a listagem (o sistema não apaga subpasta: alguém mexeu na pasta?). ` +
+        'Rode de novo.',
+      { cause: erro },
+    )
+  }
 }
 
 export interface SobrasEncontradas {
@@ -173,7 +193,7 @@ export async function encontrarSobras(raiz: string): Promise<SobrasEncontradas> 
   }
   for (const pasta of pastas) {
     if (!pasta.isDirectory() || !SUBPASTA_DE_ANEXO.test(pasta.name)) continue
-    for (const entrada of await readdir(join(raiz, pasta.name), { withFileTypes: true })) {
+    for (const entrada of await lerSubpasta(raiz, pasta.name)) {
       const original = entrada.name.match(NOME_DE_SOBRA)?.[1]
       if (!entrada.isFile() || original === undefined || !original.startsWith(pasta.name)) continue
       const chave = `${pasta.name}/${entrada.name}`

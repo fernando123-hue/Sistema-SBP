@@ -2,9 +2,25 @@ import { lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SUFIXO_TEMPORARIO, chavesDeAnexo, encontrarSobras, limparSobras, recifrarUm } from './recifrar-um'
+
+// Repassa ao `readdir` de verdade; só o caminho marcado falha, com o código
+// marcado — `ENOENT` é a pasta que sumiu entre duas leituras, a corrida que
+// nenhum teste de disco reproduz.
+const pastaQueSome = vi.hoisted(() => ({ caminho: null as string | null, codigo: 'ENOENT' }))
+vi.mock('node:fs/promises', async (importarOriginal) => {
+  const original = await importarOriginal<typeof import('node:fs/promises')>()
+  const readdir = ((caminho: Parameters<typeof original.readdir>[0], ...resto: unknown[]) => {
+    if (pastaQueSome.caminho !== null && String(caminho) === pastaQueSome.caminho) {
+      const codigo = pastaQueSome.codigo
+      return Promise.reject(Object.assign(new Error(`${codigo}: falha simulada`), { code: codigo }))
+    }
+    return (original.readdir as (...argumentos: unknown[]) => Promise<unknown>)(caminho, ...resto)
+  }) as typeof original.readdir
+  return { ...original, readdir }
+})
 
 /**
  * A recifragem de um anexo não pode deixar cópia do documento para trás: um
@@ -27,6 +43,8 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  pastaQueSome.caminho = null
+  pastaQueSome.codigo = 'ENOENT'
   await rm(raiz, { recursive: true, force: true })
 })
 
@@ -176,6 +194,25 @@ describe('chaves de anexo a recifrar', () => {
   it('pasta que ainda não existe: a falha sobe com o código, para quem chama decidir', async () => {
     await expect(chavesDeAnexo(join(raiz, 'nunca-criada'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
+
+  it('subpasta que some no meio da listagem não vira "pasta não existe" (revisões do #219, técnica 5 e segurança N2)', async () => {
+    pastaQueSome.caminho = join(raiz, 'ab')
+
+    const falha = await chavesDeAnexo(raiz).catch((erro: unknown) => erro)
+
+    expect(falha).toBeInstanceOf(Error)
+    expect((falha as Error).message).toMatch(/sumiu durante a listagem/)
+    expect((falha as { code?: unknown }).code).toBeUndefined()
+    expect(((falha as Error).cause as { code?: unknown }).code).toBe('ENOENT')
+  })
+
+  it('outra falha da subpasta sobe como veio, sem virar "sumiu" (revisão técnica do #222, achado 1)', async () => {
+    pastaQueSome.caminho = join(raiz, 'ab')
+    pastaQueSome.codigo = 'EACCES'
+
+    await expect(chavesDeAnexo(raiz)).rejects.toMatchObject({ code: 'EACCES' })
+    await expect(encontrarSobras(raiz)).rejects.toMatchObject({ code: 'EACCES' })
+  })
 })
 
 /** No Windows sem permissão de link, `symlink` dá `EPERM`: o teste pula ali e roda no CI. */
@@ -217,6 +254,25 @@ describe('sobras de uma execução interrompida', () => {
 
     expect(await readdir(join(raiz, 'backup'))).toHaveLength(1)
     expect(await readdir(join(raiz, 'ab'))).toHaveLength(3)
+  })
+
+  it('a sobra de anexo SEM extensão é reconhecida, com e sem o original ao lado (revisão de segurança do #219, rodada 3)', async () => {
+    const comOriginal = `ab${'2'.repeat(30)}`
+    const semOriginal = `ab${'3'.repeat(30)}`
+    await writeFile(join(raiz, 'ab', comOriginal), ORIGINAL)
+    await writeFile(join(raiz, 'ab', `${comOriginal}${SUFIXO_TEMPORARIO}`), CIFRADO)
+    await writeFile(join(raiz, 'ab', `${semOriginal}${SUFIXO_TEMPORARIO}`), CIFRADO)
+
+    expect(await encontrarSobras(raiz)).toEqual({
+      comOriginal: [`ab/${comOriginal}${SUFIXO_TEMPORARIO}`],
+      semOriginal: [`ab/${semOriginal}${SUFIXO_TEMPORARIO}`],
+    })
+  })
+
+  it('subpasta que some enquanto as sobras são procuradas dá a mesma mensagem da listagem (revisões do #222, técnica 2 e segurança S2)', async () => {
+    pastaQueSome.caminho = join(raiz, 'ab')
+
+    await expect(encontrarSobras(raiz)).rejects.toThrow(/sumiu durante a listagem/)
   })
 
   it('encontrar só conta, sem apagar — é o que o --conferir mostra', async () => {

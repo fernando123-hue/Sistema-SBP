@@ -28,7 +28,26 @@ const CONTEUDO_DA_SENTINELA = Buffer.from('SBP-SENTINELA-DA-CHAVE-v1')
 export const SUBPASTA_DE_ANEXO = /^[0-9a-f]{2}$/
 
 /** O nome do arquivo que `guardar` cria: o sorteio inteiro e a extensão segura. */
-export const NOME_DE_ANEXO = /^[0-9a-f]{32}(\.[a-z0-9]{1,10})?$/
+const NOME_DE_ANEXO = /^[0-9a-f]{32}(\.[a-z0-9]{1,10})?$/
+
+/**
+ * Arquivo comum com o nome que `guardar` cria: 32 hexadecimais, a extensão
+ * permitida e os dois primeiros caracteres iguais aos da subpasta. Conferido
+ * em todas as versões do `guardar` desde a primeira. Exportado para a
+ * recifragem usar a MESMA regra, e não uma cópia que diverge em silêncio
+ * (revisão técnica do #219, rodada 2, N2). Confere a subpasta também: com
+ * `pasta` vazia, `startsWith` aceitaria nome de anexo vindo de qualquer lugar,
+ * e um chamador futuro que esquecesse o filtro apagaria ou cifraria o que não
+ * é anexo (revisão de segurança do #222, S1).
+ */
+export function ehAnexoDoSistema(pasta: string, entrada: Dirent): boolean {
+  return (
+    SUBPASTA_DE_ANEXO.test(pasta) &&
+    entrada.isFile() &&
+    NOME_DE_ANEXO.test(entrada.name) &&
+    entrada.name.startsWith(pasta)
+  )
+}
 
 /** Avisos individuais por listagem; o resto vira uma linha com o total. */
 const AVISOS_POR_LISTAGEM = 20
@@ -515,7 +534,7 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
 
       for (const entrada of entradas) {
         const chave = `${pasta.name}/${entrada.name}`
-        if (!this.ehAnexoDoSistema(pasta.name, entrada)) {
+        if (!ehAnexoDoSistema(pasta.name, entrada)) {
           // Pular, nunca falhar: quem escreve na pasta derrubaria a limpeza
           // todo dia com uma pasta ou um nome gigante (revisão de segurança
           // do #211, S6). Pular, nunca listar: listado, seria apagado como
@@ -539,15 +558,6 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
       registrarLog('aviso', 'entradas do armazenamento que não são anexo do sistema, contando as avisadas', { puladas })
     }
     return arquivos
-  }
-
-  /**
-   * Arquivo comum com o nome que `guardar` cria: 32 hexadecimais, a extensão
-   * permitida e os dois primeiros caracteres iguais aos da subpasta. Conferido
-   * em todas as versões do `guardar` desde a primeira.
-   */
-  private ehAnexoDoSistema(pasta: string, entrada: Dirent): boolean {
-    return entrada.isFile() && NOME_DE_ANEXO.test(entrada.name) && entrada.name.startsWith(pasta)
   }
 
   private async gravadoEm(caminho: string): Promise<Date | null> {

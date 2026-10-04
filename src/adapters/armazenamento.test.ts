@@ -1,3 +1,4 @@
+import type { Dirent } from 'node:fs'
 import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { FalhaDeArmazenamento } from '../ports/armazenamento'
-import { ArmazenamentoEmDisco } from './armazenamento-disco'
+import { ArmazenamentoEmDisco, ehAnexoDoSistema } from './armazenamento-disco'
 
 /**
  * Testes do armazenamento de anexos e da conferência de tipo real.
@@ -354,5 +355,19 @@ describe('conferência do tipo real do arquivo', () => {
 
     // E não confunde um com o outro.
     expect(conferirAssinatura('foto.png', jpeg).situacao).toBe('divergente')
+  })
+})
+
+describe('o predicado de anexo do sistema', () => {
+  const arquivo = (nome: string) => ({ name: nome, isFile: () => true }) as unknown as Dirent
+
+  it('confere a subpasta também: sem ela, nome de anexo vindo de qualquer pasta passaria (revisão de segurança do #222, S1)', () => {
+    const nome = `ab${'c'.repeat(30)}.pdf`
+
+    expect(ehAnexoDoSistema('ab', arquivo(nome))).toBe(true)
+    expect(ehAnexoDoSistema('', arquivo(nome))).toBe(false)
+    expect(ehAnexoDoSistema('a', arquivo(nome))).toBe(false)
+    // Nome e prefixo válidos; só a subpasta tem três letras.
+    expect(ehAnexoDoSistema('abc', arquivo(`abc${'c'.repeat(29)}.pdf`))).toBe(false)
   })
 })
