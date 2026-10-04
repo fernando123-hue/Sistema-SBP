@@ -71,6 +71,19 @@ describe('recifrar um anexo', () => {
     expect(await readFile(join(raiz, 'ab', NOME))).toEqual(ORIGINAL)
   })
 
+  it('cifrar que lança não apaga o temporário de outra execução (revisão técnica do #215, rodada 3, B9)', async () => {
+    await writeFile(join(raiz, 'ab', `${NOME}${SUFIXO_TEMPORARIO}`), 'de outra execução')
+    const cifrarQueLanca = () => {
+      throw new Error('cifra falhou (simulado)')
+    }
+
+    await expect(recifrarUm(raiz, CHAVE, { cifrar: cifrarQueLanca, lerDeVolta: async () => ORIGINAL })).rejects.toThrow(
+      'cifra falhou',
+    )
+
+    expect(await readFile(join(raiz, 'ab', `${NOME}${SUFIXO_TEMPORARIO}`), 'utf8')).toBe('de outra execução')
+  })
+
   it('temporário já existente não é sobrescrito: recusa, e o que estava lá fica (revisão de segurança do #215, S2)', async () => {
     await writeFile(join(raiz, 'ab', `${NOME}${SUFIXO_TEMPORARIO}`), 'de outra execução')
 

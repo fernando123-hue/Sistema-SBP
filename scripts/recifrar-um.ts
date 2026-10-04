@@ -45,10 +45,13 @@ export async function recifrarUm(raiz: string, chave: string, deps: Dependencias
   // meio) já criou o arquivo, parcial, e ele sai também (rodada 2, N1). O original só desaparece depois de existir uma cópia cifrada
   // que o adapter consegue ler.
   const gravar = deps.gravar ?? gravarSemSobrescrever
+  // Fora do `try`: um `cifrar` que lança não pode marcar `criado` e levar o
+  // temporário de outra execução (rodada 3 da técnica, B9).
+  const dados = deps.cifrar(bytes)
   let criado = false
   try {
     try {
-      await gravar(temporario, deps.cifrar(bytes))
+      await gravar(temporario, dados)
     } catch (erro) {
       criado = codigoDoErro(erro) !== 'EEXIST'
       throw erro
