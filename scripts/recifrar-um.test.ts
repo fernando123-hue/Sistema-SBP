@@ -6,14 +6,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SUFIXO_TEMPORARIO, chavesDeAnexo, encontrarSobras, limparSobras, recifrarUm } from './recifrar-um'
 
-// Repassa ao `readdir` de verdade; só o caminho marcado responde como pasta que
-// sumiu entre duas leituras — a corrida que nenhum teste de disco reproduz.
-const pastaQueSome = vi.hoisted(() => ({ caminho: null as string | null }))
+// Repassa ao `readdir` de verdade; só o caminho marcado falha, com o código
+// marcado — `ENOENT` é a pasta que sumiu entre duas leituras, a corrida que
+// nenhum teste de disco reproduz.
+const pastaQueSome = vi.hoisted(() => ({ caminho: null as string | null, codigo: 'ENOENT' }))
 vi.mock('node:fs/promises', async (importarOriginal) => {
   const original = await importarOriginal<typeof import('node:fs/promises')>()
   const readdir = ((caminho: Parameters<typeof original.readdir>[0], ...resto: unknown[]) => {
     if (pastaQueSome.caminho !== null && String(caminho) === pastaQueSome.caminho) {
-      return Promise.reject(Object.assign(new Error('ENOENT: no such file or directory (simulado)'), { code: 'ENOENT' }))
+      const codigo = pastaQueSome.codigo
+      return Promise.reject(Object.assign(new Error(`${codigo}: falha simulada`), { code: codigo }))
     }
     return (original.readdir as (...argumentos: unknown[]) => Promise<unknown>)(caminho, ...resto)
   }) as typeof original.readdir
@@ -42,6 +44,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   pastaQueSome.caminho = null
+  pastaQueSome.codigo = 'ENOENT'
   await rm(raiz, { recursive: true, force: true })
 })
 
@@ -200,6 +203,15 @@ describe('chaves de anexo a recifrar', () => {
     expect(falha).toBeInstanceOf(Error)
     expect((falha as Error).message).toMatch(/sumiu durante a listagem/)
     expect((falha as { code?: unknown }).code).toBeUndefined()
+    expect(((falha as Error).cause as { code?: unknown }).code).toBe('ENOENT')
+  })
+
+  it('outra falha da subpasta sobe como veio, sem virar "sumiu" (revisão técnica do #222, achado 1)', async () => {
+    pastaQueSome.caminho = join(raiz, 'ab')
+    pastaQueSome.codigo = 'EACCES'
+
+    await expect(chavesDeAnexo(raiz)).rejects.toMatchObject({ code: 'EACCES' })
+    await expect(encontrarSobras(raiz)).rejects.toMatchObject({ code: 'EACCES' })
   })
 })
 
@@ -255,6 +267,12 @@ describe('sobras de uma execução interrompida', () => {
       comOriginal: [`ab/${comOriginal}${SUFIXO_TEMPORARIO}`],
       semOriginal: [`ab/${semOriginal}${SUFIXO_TEMPORARIO}`],
     })
+  })
+
+  it('subpasta que some enquanto as sobras são procuradas dá a mesma mensagem da listagem (revisões do #222, técnica 2 e segurança S2)', async () => {
+    pastaQueSome.caminho = join(raiz, 'ab')
+
+    await expect(encontrarSobras(raiz)).rejects.toThrow(/sumiu durante a listagem/)
   })
 
   it('encontrar só conta, sem apagar — é o que o --conferir mostra', async () => {

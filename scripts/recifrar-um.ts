@@ -157,9 +157,12 @@ async function lerSubpasta(raiz: string, pasta: string): Promise<Dirent[]> {
     return await readdir(join(raiz, pasta), { withFileTypes: true })
   } catch (erro) {
     if (codigoDoErro(erro) !== 'ENOENT') throw erro
+    // O `code` fica só na causa: no erro de cima, `ENOENT` é o que o script lê
+    // como "pasta não existe" (revisão de segurança do #222, S3).
     throw new Error(
       `A subpasta ${JSON.stringify(pasta)} sumiu durante a listagem (o sistema não apaga subpasta: alguém mexeu na pasta?). ` +
-        'Nada foi conferido; rode de novo.',
+        'Rode de novo.',
+      { cause: erro },
     )
   }
 }
@@ -190,7 +193,7 @@ export async function encontrarSobras(raiz: string): Promise<SobrasEncontradas> 
   }
   for (const pasta of pastas) {
     if (!pasta.isDirectory() || !SUBPASTA_DE_ANEXO.test(pasta.name)) continue
-    for (const entrada of await readdir(join(raiz, pasta.name), { withFileTypes: true })) {
+    for (const entrada of await lerSubpasta(raiz, pasta.name)) {
       const original = entrada.name.match(NOME_DE_SOBRA)?.[1]
       if (!entrada.isFile() || original === undefined || !original.startsWith(pasta.name)) continue
       const chave = `${pasta.name}/${entrada.name}`

@@ -35,10 +35,18 @@ const NOME_DE_ANEXO = /^[0-9a-f]{32}(\.[a-z0-9]{1,10})?$/
  * permitida e os dois primeiros caracteres iguais aos da subpasta. Conferido
  * em todas as versões do `guardar` desde a primeira. Exportado para a
  * recifragem usar a MESMA regra, e não uma cópia que diverge em silêncio
- * (revisão técnica do #219, rodada 2, N2).
+ * (revisão técnica do #219, rodada 2, N2). Confere a subpasta também: com
+ * `pasta` vazia, `startsWith` aceitaria nome de anexo vindo de qualquer lugar,
+ * e um chamador futuro que esquecesse o filtro apagaria ou cifraria o que não
+ * é anexo (revisão de segurança do #222, S1).
  */
 export function ehAnexoDoSistema(pasta: string, entrada: Dirent): boolean {
-  return entrada.isFile() && NOME_DE_ANEXO.test(entrada.name) && entrada.name.startsWith(pasta)
+  return (
+    SUBPASTA_DE_ANEXO.test(pasta) &&
+    entrada.isFile() &&
+    NOME_DE_ANEXO.test(entrada.name) &&
+    entrada.name.startsWith(pasta)
+  )
 }
 
 /** Avisos individuais por listagem; o resto vira uma linha com o total. */
