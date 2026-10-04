@@ -36,6 +36,9 @@ import { chavesDeAnexo, encontrarSobras, limparSobras, recifrarUm } from './reci
 
 const CABECALHO_MAGICO = Buffer.from('SBP_ENC_v1!!')
 
+/** Avisos individuais de entrada ignorada; o resto vira uma linha com o total. */
+const AVISOS_DE_IGNORADAS = 20
+
 async function estaEmTextoPuro(caminho: string): Promise<boolean> {
   const inicio = await readFile(caminho)
   return !inicio.subarray(0, CABECALHO_MAGICO.length).equals(CABECALHO_MAGICO)
@@ -69,8 +72,13 @@ async function principal(): Promise<void> {
   })
   // Link, pasta ou nome fora da forma não são anexo que `guardar` cria: não são
   // recifrados, mas são ditos — sumir da contagem seria esconder (S3 do #215, S1 do #219).
-  for (const ignorada of ignoradas) {
+  // Com teto, como o `listar` do adapter: quem enche a pasta de lixo não enche
+  // a saída (revisão técnica do #219, rodada 2, N3).
+  for (const ignorada of ignoradas.slice(0, AVISOS_DE_IGNORADAS)) {
     process.stdout.write(`Não é anexo do sistema, não foi conferido nem recifrado: ${JSON.stringify(ignorada)}\n`)
+  }
+  if (ignoradas.length > AVISOS_DE_IGNORADAS) {
+    process.stdout.write(`${ignoradas.length} entrada(s) que não são anexo do sistema, contando as avisadas.\n`)
   }
   const emTextoPuro: string[] = []
   for (const chave of chaves) {

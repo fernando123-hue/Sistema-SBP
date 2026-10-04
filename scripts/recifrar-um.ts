@@ -131,9 +131,13 @@ export async function chavesDeAnexo(raiz: string): Promise<{ chaves: string[]; i
     }
     for (const entrada of await readdir(join(raiz, pasta.name), { withFileTypes: true })) {
       const chave = `${pasta.name}/${entrada.name}`
+      // Sobra de recifragem não é anexo: `limparSobras` cuida dela. Testada
+      // ANTES da forma de anexo: `<32 hex>.recifrando`, a sobra de anexo sem
+      // extensão, também passa em `NOME_DE_ANEXO`, porque `recifrando` cabe nos
+      // 10 caracteres de extensão (revisões do #219, rodada 2, N1).
+      if (ehDaForma(pasta.name, entrada.name, NOME_DE_SOBRA) && entrada.isFile()) continue
       if (ehDaForma(pasta.name, entrada.name, NOME_DE_ANEXO) && entrada.isFile()) chaves.push(chave)
-      // Sobra de recifragem não é anexo: `limparSobras` cuida dela.
-      else if (!(ehDaForma(pasta.name, entrada.name, NOME_DE_SOBRA) && entrada.isFile())) ignoradas.push(chave)
+      else ignoradas.push(chave)
     }
   }
   return { chaves: chaves.sort(), ignoradas: ignoradas.sort() }

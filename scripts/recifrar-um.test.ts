@@ -158,6 +158,14 @@ describe('chaves de anexo a recifrar', () => {
     })
   })
 
+  it('a sobra de anexo SEM extensão não vira chave, embora `recifrando` caiba na forma de extensão (revisões do #219, rodada 2, N1)', async () => {
+    const semExtensao = `ab${'1'.repeat(30)}`
+    await writeFile(join(raiz, 'ab', semExtensao), ORIGINAL)
+    await writeFile(join(raiz, 'ab', `${semExtensao}${SUFIXO_TEMPORARIO}`), 'parcial')
+
+    expect(await chavesDeAnexo(raiz)).toEqual({ chaves: [CHAVE, `ab/${semExtensao}`].sort(), ignoradas: [] })
+  })
+
   it('link simbólico com nome de anexo é dito, não vira chave (revisão de segurança do #215, S3)', async (contexto) => {
     const link = `ab${'f'.repeat(30)}.pdf`
     if (!(await criarLink(join(raiz, 'ab', NOME), join(raiz, 'ab', link)))) contexto.skip()
