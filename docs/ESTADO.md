@@ -1,10 +1,40 @@
 # Estado do projeto — retomada
 
-Última atualização: **03/10/2026, noite.** `main` depois do #209. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **03/10/2026, fim da noite.** `main` depois do #211. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 03/10/2026, noite — itens 1 e 2 da fila de baixo FEITOS (este bloco vence o de baixo onde conflitar)
+> ### 03/10/2026, fim da noite — `A78` FEITO no #211 (este bloco vence os de baixo onde conflitar)
+>
+> **Mesclado: #211.** A limpeza diária agora acha e apaga o arquivo de anexo que nenhuma linha de `Anexo` aponta, depois do prazo do conteúdo (7 dias), com a chave na trilha (`anexo_orfao_removido`). O como e as hipóteses estão em `DECISOES.md`, `AT-74`.
+> - **`ArmazenamentoPort.listar()`:** só devolve o nome que `guardar` cria. O resto da pasta não é tocado e vira aviso no log, no máximo 20 por listagem.
+> - **Três travas contra o banco errado:** mais de 50 órfãos vencidos; nenhum arquivo com dono; órfão mais novo que o último anexo registrado. Antes de tudo, a chave da pasta é conferida.
+> - **Saída manual:** `npm run db:expurgar -- --listar-orfaos` mostra quais são, sem apagar. `npm run db:expurgar -- --aceitar-orfaos=N --por=<nome>` apaga o número exato, com o nome na trilha.
+> - **Sem armazenamento,** a etapa falha e as outras seguem.
+> - **Revisões:** técnica em 3 rodadas, segurança em 2. Todas as rodadas 1 acharam coisa real, e os médios foram corrigidos com teste.
+>
+> Suíte: 179 arquivos, **2302 testes**.
+>
+> **Para o dono (precisa de resposta):**
+> - **Há 16 arquivos de anexo sintéticos, de 08/09, sem registro no banco local** (`sbp`, pasta `./armazenamento` deste checkout). O `--listar-orfaos` mostrou os 16, e as travas não os seguram. Na primeira vez que o servidor local subir com esta versão, a limpeza diária os apaga, com trilha. Pela regra de sempre (apagar dado, mesmo sintético e local, é com o dono), o agente não apagou nem subiu o servidor. **Pergunta:** pode deixar a limpeza apagar?
+> - **V1** (`C:\sbp-validacao`): quando for atualizada, rode `--listar-orfaos` antes de subir. A pasta e o banco dela são outros.
+> - **Ponto para saber:** num período parado (nenhum e-mail com anexo por mais de 7 dias), um órfão de verdade é recusado. A rotina fica `falha` até alguém rodar `--listar-orfaos` e aceitar. É o preço das travas.
+>
+> **Próximo do agente (todos baixos, das revisões do #211):**
+> 1. **Fechar na origem os órfãos que a ingestão ainda gera com o processo vivo** (técnica M4).
+>    - Primeiro caso: o `return null` da corrida entre duas sincronizações (`ingestao.ts`, dentro do `$transaction`) não chama `desfazerArquivos`.
+>    - Segundo caso: um `guardar` que falha no meio do `Promise.all` sobe antes de `chavesGravadas` existir.
+>    - Hoje a varredura limpa os dois depois de 7 dias.
+> 2. **`scripts/recifrar-anexos.ts`:** se o script cair no meio, sobra `<chave>.recifrando`. Ele não é listado, fica com aviso diário e guarda uma cópia do documento fora do prazo (invariante 11). Pôr `try/finally` no script (técnica N7).
+> 3. **`--aceitar-orfaos` fora da trava de execução única:** rodado junto com a limpeza do dia, pode duplicar linha na trilha (técnica N2 da rodada 2).
+> 4. Remoção que passa de 30 s: o log pode dizer "continua" com o arquivo já fora (técnica N3). O `stat` sequencial no `listar` ainda não foi medido com 20 mil arquivos (técnica B1).
+> 5. Os da fila de baixo: a pendência 46 (nonce com `next start`) e o primeiro PR do Dependabot depois do #203.
+>
+> **Armadilhas vistas hoje:**
+> - **O heredoc do Git Bash come `\\`, e `node -e` em linha também.** Para texto com barra invertida, use a ferramenta de edição.
+> - **Revisor e suíte disputam o mesmo MySQL.** Com a suíte rodando, peça ao revisor só `tsc`, sem `vitest`.
+>
+> ### 03/10/2026, noite — itens 1 e 2 da fila de baixo FEITOS
 >
 > **Mesclado:**
 > - **#206:** testes de rota de `/api/sessao`.
