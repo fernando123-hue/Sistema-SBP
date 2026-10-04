@@ -5,6 +5,7 @@ import { CamposExtraidosSchema } from './esquemas'
 import {
   CAMPO_DA_LIGA,
   PASSOS_POR_EMAIL,
+  type TextoParaConferir,
   conferirExtracao,
   ligaEstaNoTexto,
   prepararTextoParaConferir,
@@ -417,16 +418,46 @@ describe('caixa e símbolos que o critério manda ignorar', () => {
   })
 })
 
+/**
+ * Tempo de parede de `medir`, na menor de até três tentativas.
+ *
+ * Amostra maior, nunca teto maior: o teste de 1.800 valores longos ficou
+ * vermelho uma vez com a suíte inteira (3,2 s num trabalho de 0,5 s, 04/10) e
+ * passou sozinho; a causa não foi reproduzida. Uma pausa passageira da máquina
+ * some na menor das três; um defeito de verdade deixa as três lentas. Para na
+ * primeira abaixo do teto, então no caso normal custa uma medição.
+ *
+ * Cada tentativa prepara estado NOVO, fora do cronômetro: a memória por e-mail
+ * faria a segunda tentativa no mesmo texto custar quase zero, e o teste ficaria
+ * verde sem medir nada.
+ */
+function menorTempoEmMs<T>(teto: number, preparar: () => T, medir: (estado: T) => void): number {
+  let menor = Number.POSITIVE_INFINITY
+  for (let tentativa = 0; tentativa < TENTATIVAS_DE_MEDICAO && menor >= teto; tentativa += 1) {
+    const estado = preparar()
+    const inicio = performance.now()
+    medir(estado)
+    menor = Math.min(menor, performance.now() - inicio)
+  }
+  return menor
+}
+
+const TENTATIVAS_DE_MEDICAO = 3
+
 describe('custo', () => {
   it('um e-mail no tamanho máximo com muitos valores confere em tempo de tela', () => {
     const linha = 'Nome: Fulano Sintético, CPF 111.444.777-35, telefone (11) 98765-4321.\n'
-    const grande = prepararTextoParaConferir(linha.repeat(2800))
-    const inicio = performance.now()
-    for (let i = 0; i < 1000; i += 1) {
-      conferirExtracao(grande, { nome: 'Fulano Sintético', cpf: '111.444.777-35', telefone: '11987654321' }, null)
-      valorEstaNoTexto(grande, 'Fulano Inexistente')
-    }
-    expect(performance.now() - inicio).toBeLessThan(5000)
+    const tempo = menorTempoEmMs(
+      5000,
+      () => prepararTextoParaConferir(linha.repeat(2800)),
+      (grande) => {
+        for (let i = 0; i < 1000; i += 1) {
+          conferirExtracao(grande, { nome: 'Fulano Sintético', cpf: '111.444.777-35', telefone: '11987654321' }, null)
+          valorEstaNoTexto(grande, 'Fulano Inexistente')
+        }
+      },
+    )
+    expect(tempo).toBeLessThan(5000)
   })
 
   /**
@@ -436,18 +467,26 @@ describe('custo', () => {
    * passos por e-mail, o tempo tem teto.
    */
   it('texto hostil com cem mil números iguais e 1.800 valores não trava o servidor', () => {
-    const hostil = prepararTextoParaConferir(`${'1 '.repeat(100_000)}CPF 111.444.777-35`)
-    const inicio = performance.now()
-    for (let i = 0; i < 1800; i += 1) valorEstaNoTexto(hostil, `1${String(i).padStart(10, '0')}`)
-    expect(performance.now() - inicio).toBeLessThan(2000)
+    const tempo = menorTempoEmMs(
+      2000,
+      () => prepararTextoParaConferir(`${'1 '.repeat(100_000)}CPF 111.444.777-35`),
+      (hostil) => {
+        for (let i = 0; i < 1800; i += 1) valorEstaNoTexto(hostil, `1${String(i).padStart(10, '0')}`)
+      },
+    )
+    expect(tempo).toBeLessThan(2000)
   })
 
   it('texto hostil com valores longos que quase casam não trava o servidor', () => {
-    const hostil = prepararTextoParaConferir('a 1 '.repeat(50_000))
     const quase = `${'a 1 '.repeat(499)}b`
-    const inicio = performance.now()
-    for (let i = 0; i < 25; i += 1) valorEstaNoTexto(hostil, `${quase} ${i}`)
-    expect(performance.now() - inicio).toBeLessThan(2000)
+    const tempo = menorTempoEmMs(
+      2000,
+      () => prepararTextoParaConferir('a 1 '.repeat(50_000)),
+      (hostil) => {
+        for (let i = 0; i < 25; i += 1) valorEstaNoTexto(hostil, `${quase} ${i}`)
+      },
+    )
+    expect(tempo).toBeLessThan(2000)
   })
 
   /**
@@ -463,11 +502,17 @@ describe('custo', () => {
     ['pontos e @', `a${'.@'.repeat(100_000)}a`],
     ['"⅟", que a forma de compatibilidade dobra em dois', '⅟'.repeat(200_000)],
   ])('preparar um texto hostil (%s) não trava o servidor', (_nome, hostil) => {
-    const inicio = performance.now()
-    const preparado = prepararTextoParaConferir(hostil)
-    valorEstaNoTexto(preparado, 'fulana@exemplo.test')
-    valorEstaNoTexto(preparado, `a${'.'.repeat(1000)}a@b`)
-    expect(performance.now() - inicio).toBeLessThan(2000)
+    // Aqui a preparação É o que se mede: fica dentro do cronômetro.
+    const tempo = menorTempoEmMs(
+      2000,
+      () => hostil,
+      (texto) => {
+        const preparado = prepararTextoParaConferir(texto)
+        valorEstaNoTexto(preparado, 'fulana@exemplo.test')
+        valorEstaNoTexto(preparado, `a${'.'.repeat(1000)}a@b`)
+      },
+    )
+    expect(tempo).toBeLessThan(2000)
   })
 
   it('orçamento esgotado conta como NÃO achado: o item vai para uma pessoa', () => {
@@ -567,21 +612,21 @@ describe('custo', () => {
    * pontos passavam pela limpeza, sem gastar passo (2ª rodada de segurança).
    */
   it('valores longos gastam orçamento, e 1.800 deles não travam o servidor', () => {
-    const doTexto = prepararTextoParaConferir(`Nome: Fulana Sintética, CPF 111.444.777-35. ${'1 '.repeat(1000)}`)
-    // CPU DESTE processo, e não relógio de parede: travar o servidor é gastar
-    // processador, e o relógio soma a espera pelos outros programas da
-    // máquina. Com a suíte inteira carregando a máquina, o relógio deu 3,2 s
-    // num trabalho de 0,5 s, e o teste ficou vermelho sem defeito (04/10). O
-    // teto continua 2 s, sem folga acrescentada.
-    const inicio = process.cpuUsage()
-    for (let i = 0; i < 600; i += 1) {
-      valorEstaNoTexto(doTexto, `${i}${'1'.repeat(1990)}`)
-      valorEstaNoTexto(doTexto, `a@${'.'.repeat(1990)}${i}`)
-      valorEstaNoTexto(doTexto, `${'ﷺ'.repeat(1990)}${i}`)
-    }
-    const gasto = process.cpuUsage(inicio)
-    expect((gasto.user + gasto.system) / 1000).toBeLessThan(2000)
-    expect(doTexto.orcamento).toBeLessThan(0)
+    const orcamentosFinais: number[] = []
+    const tempo = menorTempoEmMs(
+      2000,
+      () => prepararTextoParaConferir(`Nome: Fulana Sintética, CPF 111.444.777-35. ${'1 '.repeat(1000)}`),
+      (doTexto: TextoParaConferir) => {
+        for (let i = 0; i < 600; i += 1) {
+          valorEstaNoTexto(doTexto, `${i}${'1'.repeat(1990)}`)
+          valorEstaNoTexto(doTexto, `a@${'.'.repeat(1990)}${i}`)
+          valorEstaNoTexto(doTexto, `${'ﷺ'.repeat(1990)}${i}`)
+        }
+        orcamentosFinais.push(doTexto.orcamento)
+      },
+    )
+    expect(tempo).toBeLessThan(2000)
+    expect(orcamentosFinais.every((orcamento) => orcamento < 0)).toBe(true)
   })
 
   /**
@@ -591,6 +636,11 @@ describe('custo', () => {
    * ser dobrado. O controle mostra que o espião vê o trabalho quando ele
    * acontece — sem ele, trocar o `normalize` por outra coisa deixaria este
    * teste verde sem provar nada.
+   *
+   * O alcance é estreito, de propósito: hoje o único `normalize` no caminho de
+   * `valorEstaNoTexto` é o de `dobrar`, e o espião não vê as trocas de caixa
+   * nem os `replace` que viessem antes da cobrança. Esses ficam com o teto de
+   * tempo acima (revisão técnica do #221, achado 3).
    */
   it('sem orçamento, o valor longo não é nem dobrado: paga o tamanho e volta', () => {
     const normalize = vi.spyOn(String.prototype, 'normalize')
