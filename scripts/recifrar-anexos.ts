@@ -26,7 +26,7 @@ import { join } from 'node:path'
 
 import { ArmazenamentoEmDisco } from '../src/adapters/armazenamento-disco'
 import { ambiente } from '../src/servidor/ambiente'
-import { SUFIXO_TEMPORARIO, limparSobras, recifrarUm } from './recifrar-um'
+import { SUFIXO_TEMPORARIO, encontrarSobras, limparSobras, recifrarUm } from './recifrar-um'
 
 const CABECALHO_MAGICO = Buffer.from('SBP_ENC_v1!!')
 
@@ -85,11 +85,28 @@ async function principal(): Promise<void> {
     `${chaves.length} anexo(s) no disco; ${emTextoPuro.length} ainda em texto puro.\n`,
   )
 
-  if (somenteConferir) return
+  if (somenteConferir) {
+    // Só conta: a listagem acima pula as sobras, e sem isto elas sumiriam do
+    // relatório (revisão técnica do #215, B1).
+    const sobras = await encontrarSobras(raiz)
+    const total = sobras.comOriginal.length + sobras.semOriginal.length
+    if (total > 0) {
+      process.stdout.write(
+        `${total} sobra(s) de recifragem interrompida (${sobras.semOriginal.length} sem o original ao lado); ` +
+          'npm run anexos:recifrar apaga as que têm o original.\n',
+      )
+    }
+    return
+  }
 
   // Antes de tudo, o que uma execução interrompida deixou (revisão do #211, N7).
-  for (const sobra of await limparSobras(raiz)) {
-    process.stdout.write(`Sobra de execução interrompida apagada: ${sobra}\n`)
+  // Nomes vindos do disco saem entre aspas, escapados (revisão de segurança do #215, S5).
+  const { apagadas, mantidas } = await limparSobras(raiz)
+  for (const sobra of apagadas) {
+    process.stdout.write(`Sobra de execução interrompida apagada: ${JSON.stringify(sobra)}\n`)
+  }
+  for (const sobra of mantidas) {
+    process.stdout.write(`Sobra SEM o original ao lado, mantida (pode ser a única cópia): ${JSON.stringify(sobra)}\n`)
   }
   if (emTextoPuro.length === 0) return
 

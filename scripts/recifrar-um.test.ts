@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { SUFIXO_TEMPORARIO, limparSobras, recifrarUm } from './recifrar-um'
+import { SUFIXO_TEMPORARIO, encontrarSobras, limparSobras, recifrarUm } from './recifrar-um'
 
 /**
  * A recifragem de um anexo não pode deixar cópia do documento para trás: um
@@ -15,13 +15,15 @@ import { SUFIXO_TEMPORARIO, limparSobras, recifrarUm } from './recifrar-um'
 
 const ORIGINAL = Buffer.from('%PDF-1.4 texto puro sintetico')
 const CIFRADO = Buffer.from('SBP_ENC_v1!!cifrado-sintetico')
+const NOME = `ab${'c'.repeat(30)}.pdf`
+const CHAVE = `ab/${NOME}`
 
 let raiz: string
 
 beforeEach(async () => {
   raiz = await mkdtemp(join(tmpdir(), 'sbp-recifrar-'))
   await mkdir(join(raiz, 'ab'))
-  await writeFile(join(raiz, 'ab', 'abc.pdf'), ORIGINAL)
+  await writeFile(join(raiz, 'ab', NOME), ORIGINAL)
 })
 
 afterEach(async () => {
@@ -32,45 +34,77 @@ const cifrar = () => CIFRADO
 
 describe('recifrar um anexo', () => {
   it('caminho feliz: o original vira o cifrado, e nada sobra ao lado', async () => {
-    await recifrarUm(raiz, 'ab/abc.pdf', { cifrar, lerDeVolta: async () => ORIGINAL })
+    await recifrarUm(raiz, CHAVE, { cifrar, lerDeVolta: async () => ORIGINAL })
 
-    expect(await readFile(join(raiz, 'ab', 'abc.pdf'))).toEqual(CIFRADO)
-    expect(await readdir(join(raiz, 'ab'))).toEqual(['abc.pdf'])
+    expect(await readFile(join(raiz, 'ab', NOME))).toEqual(CIFRADO)
+    expect(await readdir(join(raiz, 'ab'))).toEqual([NOME])
   })
 
   it('a releitura lança: o temporário sai, o original fica intacto, e o erro sobe', async () => {
     const lerDeVolta = async () => Promise.reject(new Error('não decifra (simulado)'))
 
-    await expect(recifrarUm(raiz, 'ab/abc.pdf', { cifrar, lerDeVolta })).rejects.toThrow('não decifra')
+    await expect(recifrarUm(raiz, CHAVE, { cifrar, lerDeVolta })).rejects.toThrow('não decifra')
 
-    expect(await readFile(join(raiz, 'ab', 'abc.pdf'))).toEqual(ORIGINAL)
-    expect(await readdir(join(raiz, 'ab'))).toEqual(['abc.pdf'])
+    expect(await readFile(join(raiz, 'ab', NOME))).toEqual(ORIGINAL)
+    expect(await readdir(join(raiz, 'ab'))).toEqual([NOME])
   })
 
   it('a releitura devolve outros bytes: recusa, e nada sobra', async () => {
     const lerDeVolta = async () => Buffer.from('outra coisa')
 
-    await expect(recifrarUm(raiz, 'ab/abc.pdf', { cifrar, lerDeVolta })).rejects.toThrow(/releitura/)
+    await expect(recifrarUm(raiz, CHAVE, { cifrar, lerDeVolta })).rejects.toThrow(/releitura/)
 
-    expect(await readdir(join(raiz, 'ab'))).toEqual(['abc.pdf'])
+    expect(await readdir(join(raiz, 'ab'))).toEqual([NOME])
+  })
+
+  it('temporário já existente não é sobrescrito: recusa, e o que estava lá fica (revisão de segurança do #215, S2)', async () => {
+    await writeFile(join(raiz, 'ab', `${NOME}${SUFIXO_TEMPORARIO}`), 'de outra execução')
+
+    await expect(recifrarUm(raiz, CHAVE, { cifrar, lerDeVolta: async () => ORIGINAL })).rejects.toThrow(/EEXIST/)
+
+    expect(await readFile(join(raiz, 'ab', `${NOME}${SUFIXO_TEMPORARIO}`), 'utf8')).toBe('de outra execução')
+    expect(await readFile(join(raiz, 'ab', NOME))).toEqual(ORIGINAL)
   })
 })
 
 describe('sobras de uma execução interrompida', () => {
-  it('saem, e o original ao lado fica', async () => {
-    await writeFile(join(raiz, 'ab', `abc.pdf${SUFIXO_TEMPORARIO}`), CIFRADO)
+  it('com o original ao lado, saem; o original fica', async () => {
+    await writeFile(join(raiz, 'ab', `${NOME}${SUFIXO_TEMPORARIO}`), CIFRADO)
 
-    expect(await limparSobras(raiz)).toEqual([`ab/abc.pdf${SUFIXO_TEMPORARIO}`])
+    expect(await limparSobras(raiz)).toEqual({ apagadas: [`${CHAVE}${SUFIXO_TEMPORARIO}`], mantidas: [] })
 
-    expect(await readdir(join(raiz, 'ab'))).toEqual(['abc.pdf'])
+    expect(await readdir(join(raiz, 'ab'))).toEqual([NOME])
+  })
+
+  it('SEM o original ao lado, fica: pode ser a única cópia (revisões do #215, M2 e S1)', async () => {
+    const orfa = `ab${'d'.repeat(30)}.pdf${SUFIXO_TEMPORARIO}`
+    await writeFile(join(raiz, 'ab', orfa), CIFRADO)
+
+    expect(await limparSobras(raiz)).toEqual({ apagadas: [], mantidas: [`ab/${orfa}`] })
+
+    expect((await readdir(join(raiz, 'ab'))).sort()).toEqual([NOME, orfa].sort())
+  })
+
+  it('nome fora do formato de chave, ou fora de subpasta de anexo, não é sobra e não é tocado', async () => {
+    await writeFile(join(raiz, 'ab', `qualquer.pdf${SUFIXO_TEMPORARIO}`), 'x')
+    await mkdir(join(raiz, 'backup'))
+    await writeFile(join(raiz, 'backup', `${NOME}${SUFIXO_TEMPORARIO}`), 'x')
+    await mkdir(join(raiz, 'ab', `${'e'.repeat(32)}${SUFIXO_TEMPORARIO}`))
+
+    expect(await limparSobras(raiz)).toEqual({ apagadas: [], mantidas: [] })
+
+    expect(await readdir(join(raiz, 'backup'))).toHaveLength(1)
+    expect(await readdir(join(raiz, 'ab'))).toHaveLength(3)
+  })
+
+  it('encontrar só conta, sem apagar — é o que o --conferir mostra', async () => {
+    await writeFile(join(raiz, 'ab', `${NOME}${SUFIXO_TEMPORARIO}`), CIFRADO)
+
+    expect(await encontrarSobras(raiz)).toEqual({ comOriginal: [`${CHAVE}${SUFIXO_TEMPORARIO}`], semOriginal: [] })
+    expect(await readdir(join(raiz, 'ab'))).toHaveLength(2)
   })
 
   it('pasta que ainda não existe: nenhuma sobra, sem falha', async () => {
-    expect(await limparSobras(join(raiz, 'nunca-criada'))).toEqual([])
-  })
-
-  it('sem sobra, nada muda', async () => {
-    expect(await limparSobras(raiz)).toEqual([])
-    expect(await readdir(join(raiz, 'ab'))).toEqual(['abc.pdf'])
+    expect(await limparSobras(join(raiz, 'nunca-criada'))).toEqual({ apagadas: [], mantidas: [] })
   })
 })
