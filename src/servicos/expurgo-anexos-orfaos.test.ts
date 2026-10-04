@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ArmazenamentoEmDisco } from '../adapters/armazenamento-disco'
-import { FalhaDeArmazenamento, type ArmazenamentoPort } from '../ports/armazenamento'
+import { ChaveDosAnexosMudouError, FalhaDeArmazenamento, type ArmazenamentoPort } from '../ports/armazenamento'
 import { obterPrisma } from '../servidor/prisma'
 import { limparTudo, semearBase } from '../testes/apoio'
 import { recusada } from '../testes/recusa'
@@ -13,6 +13,7 @@ import {
   LIMITE_DE_ORFAOS_POR_EXECUCAO,
   LimpezaDeOrfaosRecusadaError,
   expurgarAnexosOrfaos,
+  levantarAnexosOrfaos,
 } from './expurgo-anexos-orfaos'
 
 const banco = obterPrisma()
@@ -52,7 +53,7 @@ async function arquivoGravadoHa(dias: number): Promise<string> {
 }
 
 /** Uma linha de `Anexo` apontando para `chave` — o arquivo que tem dono. */
-async function anexoNoBanco(chave: string): Promise<void> {
+async function anexoNoBanco(chave: string, armazenadoEm = new Date()): Promise<void> {
   contador += 1
   await banco.email.create({
     data: {
@@ -65,7 +66,7 @@ async function anexoNoBanco(chave: string): Promise<void> {
           tamanho: 3,
           aceito: true,
           chaveArmazenamento: chave,
-          armazenadoEm: new Date(),
+          armazenadoEm,
         },
       },
     },
@@ -152,24 +153,58 @@ describe('falhar alto', () => {
   })
 })
 
+describe('revisão de segurança do #211', () => {
+  it('S3: órfão mais novo que o último anexo registrado é banco restaurado de backup, e nada sai', async () => {
+    // Banco voltado de um backup de 30 dias atrás, disco de hoje: os anexos
+    // dos últimos 30 dias não têm linha. Com menos de 50 e algum arquivo com
+    // dono, as outras travas não pegam.
+    await anexoNoBanco(await arquivoGravadoHa(400), new Date(Date.now() - 30 * DIA))
+    await arquivoGravadoHa(8)
+
+    await recusada(expurgar(), LimpezaDeOrfaosRecusadaError, /mais novo/)
+
+    expect(await noDisco()).toHaveLength(2)
+  })
+
+  it('S4: pasta cifrada com outra chave não é desta instalação, e nada é listado nem apagado', async () => {
+    await anexoNoBanco(await arquivoGravadoHa(400))
+    await arquivoGravadoHa(8)
+    const outraChave = new ArmazenamentoEmDisco(raiz, 'segredo-sintetico-de-outra-instalacao-0123456789')
+
+    await recusada(expurgar(outraChave), ChaveDosAnexosMudouError)
+
+    expect(await noDisco()).toHaveLength(2)
+  })
+
+  it('S2: o levantamento mostra quais arquivos e por que recusaria, sem apagar nada', async () => {
+    const orfaos = [await arquivoGravadoHa(8), await arquivoGravadoHa(9)].sort()
+
+    const levantamento = await levantarAnexosOrfaos(banco, { diasDeRetencao: 7, armazenamento })
+
+    expect(levantamento.vencidos.map((arquivo) => arquivo.chave).sort()).toEqual(orfaos)
+    expect(levantamento.recusa).toMatch(/nenhum arquivo/i)
+    expect(await noDisco()).toEqual(orfaos)
+  })
+})
+
 describe('uma pessoa aceita o número que viu (revisão técnica do #211, M2)', () => {
   // Sem saída, a recusa se repetiria todo dia para sempre. A saída é uma
   // pessoa conferir e repetir o número EXATO; outro número não serve.
   it('com o número exato, os órfãos saem mesmo sem nenhum arquivo com dono, e a trilha diz que foi aceito', async () => {
     for (let i = 0; i < 3; i += 1) await arquivoGravadoHa(8)
 
-    const resultado = await expurgarAnexosOrfaos(banco, { diasDeRetencao: 7, armazenamento, aceitarOrfaos: 3 })
+    const resultado = await expurgarAnexosOrfaos(banco, { diasDeRetencao: 7, armazenamento, aceite: { quantidade: 3, por: 'Gestora Sintetica' } })
 
     expect(resultado.removidos).toBe(3)
     const linha = await banco.logAuditoria.findFirstOrThrow({ where: { acao: 'anexo_orfao_removido' } })
-    expect(JSON.parse(linha.depois!)).toMatchObject({ aceitoNaLinhaDeComando: 3 })
+    expect(JSON.parse(linha.depois!)).toMatchObject({ aceitoNaLinhaDeComando: 3, aceitoPor: 'Gestora Sintetica' })
   })
 
   it('número diferente do encontrado: nada sai', async () => {
     for (let i = 0; i < 3; i += 1) await arquivoGravadoHa(8)
 
     await recusada(
-      expurgarAnexosOrfaos(banco, { diasDeRetencao: 7, armazenamento, aceitarOrfaos: 2 }),
+      expurgarAnexosOrfaos(banco, { diasDeRetencao: 7, armazenamento, aceite: { quantidade: 2, por: 'Gestora Sintetica' } }),
       LimpezaDeOrfaosRecusadaError,
       /3/,
     )

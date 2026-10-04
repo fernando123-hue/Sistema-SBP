@@ -1675,11 +1675,21 @@ então a coluna `Email.dadoSemItem` recebe o motivo (`cpf`, `crm` ou `anexo` —
 
 **Hipóteses (do agente):**
 - **O prazo conta da data de gravação do arquivo** (a data de modificação no disco). Uma cópia restaurada de backup com a data original preservada parece antiga; está coberta pelo limite abaixo, e não pela data.
-- **Duas travas contra o banco errado; nas duas, nada sai e a etapa falha** (`LimpezaDeOrfaosRecusadaError`). Cada queda entre gravar o arquivo e gravar a linha deixa os anexos de UM e-mail. Com a aplicação ligada a um banco vazio ou a outro banco, todo documento parece órfão. As travas são:
+- **Três travas contra o banco errado; em todas, nada sai e a etapa falha** (`LimpezaDeOrfaosRecusadaError`). Cada queda entre gravar o arquivo e gravar a linha deixa os anexos de UM e-mail. Com a aplicação ligada a um banco vazio ou a outro banco, todo documento parece órfão. As travas são:
   - **mais de 50 órfãos vencidos** numa execução (`LIMITE_DE_ORFAOS_POR_EXECUCAO`);
   - **nenhum arquivo do armazenamento com dono** e algum órfão vencido. Pega o banco errado com menos de 50 arquivos (revisão técnica do #211, M1). Tem um preço: num período parado, com todos os arquivos com dono já expurgados, um órfão de verdade também é recusado.
-- **A saída é uma pessoa repetir o número que viu:** `npm run db:expurgar -- --aceitar-orfaos=N`. Só a linha de comando passa isso, a rotina diária nunca. Um número diferente do encontrado não apaga nada. Cada remoção leva `aceitoNaLinhaDeComando: N` na trilha (M2). Não houve quarentena: ela adiaria a mesma decisão sem acrescentar quem a toma.
-- **Só as subpastas de duas letras hexadecimais são do sistema.** É o que `guardar` cria. Outra pasta na raiz (uma cópia deixada ali) não é listada, porque listar seria apagar. Dentro da subpasta tudo é listado, e uma pasta no lugar de arquivo faz a etapa falhar com nome.
+  - **órfão vencido mais novo que o último `Anexo.armazenadoEm`**: é o retrato de um banco restaurado de backup antigo com o disco de hoje (revisão de segurança do #211, S3). Tem o mesmo preço da trava anterior num período parado.
+- **A saída é uma pessoa ver e repetir o número:**
+  - `npm run db:expurgar -- --listar-orfaos` mostra a chave e a data de cada órfão vencido e se a limpeza recusaria, sem apagar nada (S2).
+  - `npm run db:expurgar -- --aceitar-orfaos=N --por=<nome>` apaga. Só a linha de comando passa isso, a rotina diária nunca. Um número diferente do encontrado não apaga nada.
+  - A trilha leva `aceitoNaLinhaDeComando: N` e `aceitoPor`. O nome é **declarado**, porque a linha de comando não tem sessão; por isso fica no `depois`, e o `usuario` continua `sistema` (invariante 5).
+  - Não houve quarentena: ela adiaria a mesma decisão sem acrescentar quem a toma.
+- **Só é listado o nome que `guardar` cria** (32 hexadecimais, extensão segura, prefixo igual ao da subpasta; o formato é o mesmo em todas as versões). Outra pasta na raiz, `desktop.ini`, cópia manual, `.recifrando` de migração interrompida, pasta ou nome gigante dentro da subpasta: nada disso é listado nem apagado, e cada um vira um aviso no log (S1, S6). O `.recifrando` deixado por uma migração interrompida fica, portanto, até alguém olhar o aviso.
+- **A pasta é conferida antes de varrer:** `conferirChave()` recusa a pasta cifrada com outra chave, ou seja, de outra instalação (S4).
+- **Limites aceitos (revisão de segurança do #211):**
+  - **S5:** quem consegue escrever na pasta e troca uma subpasta por uma junção entre a listagem e a remoção faz o `rm` apagar o arquivo do alvo. O `remover` não resolve `realpath`. Exige escrita na pasta, e com ela já dá para apagar direto.
+  - **S7:** a data de gravação é manipulável por quem escreve na pasta, e o relógio pode estar adiantado. Só afeta arquivo sem dono.
+  - **S8:** o log de erro do servidor leva o caminho absoluto que vem do erro do sistema de arquivos. Não chega à tela nem ao banco.
 - **Sem armazenamento, a etapa falha**, e a rotina termina `falha` com as outras etapas feitas. Não ter olhado o disco não é não ter órfão.
 - **A chave do banco é comparada com `\` trocado por `/`.** As chaves gravadas antes do N-25 têm `\`; sem isso, todo anexo antigo pareceria órfão.
 - **A trilha e a remoção correm na mesma transação, trilha primeiro, com prazo de 30 s** (o padrão de 5 s do Prisma é curto para disco de rede). Se a remoção falha, a linha volta atrás. Sobra a janela do commit falhar depois da remoção. Nesse caso o log de erro diz que o arquivo **saiu sem trilha**, com a chave, e não que ele continua guardado (M3).

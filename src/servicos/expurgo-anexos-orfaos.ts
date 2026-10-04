@@ -29,25 +29,38 @@ export interface ResultadoDoExpurgoDeOrfaos {
   removidos: number
 }
 
-export interface OpcoesDoExpurgoDeOrfaos {
+export interface OpcoesDoLevantamento {
   diasDeRetencao: number
   /** `null` quando o armazenamento não pôde ser criado: a execução falha. */
   armazenamento: ArmazenamentoPort | null
   agora?: Date
+}
+
+export interface OpcoesDoExpurgoDeOrfaos extends OpcoesDoLevantamento {
   atorId?: string
   correlacaoId?: string
   /**
-   * Uma pessoa conferiu e aceita apagar EXATAMENTE este número de órfãos
-   * vencidos, passando por cima das duas travas abaixo. Só a linha de comando
-   * passa isto (`npm run db:expurgar -- --aceitar-orfaos=N`); a rotina diária,
-   * nunca. Número diferente do encontrado: nada sai.
+   * Uma pessoa viu a lista (`--listar-orfaos`) e aceita apagar EXATAMENTE este
+   * número de órfãos vencidos, passando por cima das travas. Só a linha de
+   * comando passa isto; a rotina diária, nunca. Número diferente do
+   * encontrado: nada sai. O nome declarado vai para a trilha.
    */
-  aceitarOrfaos?: number
+  aceite?: { quantidade: number; por: string }
+}
+
+export interface LevantamentoDeOrfaos {
+  avaliados: number
+  semRegistro: number
+  /** Os órfãos que passaram do prazo — os que a limpeza apagaria. */
+  vencidos: ArquivoGuardado[]
+  /** `null` quando a limpeza pode apagar sozinha; senão, o porquê da recusa. */
+  recusa: string | null
 }
 
 const CONFIRA_O_BANCO =
   'Nada foi apagado. Confira se a aplicação está ligada ao banco certo antes de qualquer outra coisa. ' +
-  'Se estiver, e os arquivos forem mesmo órfãos, rode npm run db:expurgar -- --aceitar-orfaos=<o número acima>.'
+  'Veja quais são com npm run db:expurgar -- --listar-orfaos; se forem mesmo órfãos, ' +
+  'npm run db:expurgar -- --aceitar-orfaos=<o número> --por=<seu nome>.'
 
 /**
  * A limpeza dos órfãos se recusou a apagar.
@@ -64,23 +77,37 @@ export class LimpezaDeOrfaosRecusadaError extends ErroOperacional {
   readonly statusHttp = 503
 }
 
-/** `null` quando pode apagar; senão, o porquê da recusa. */
-function motivoDaRecusa(vencidos: number, algumComDono: boolean, aceitos: number | undefined): string | null {
-  if (aceitos !== undefined) {
-    return vencidos === aceitos
-      ? null
-      : `Aceitos ${aceitos} órfão(s), mas há ${vencidos} vencido(s) agora. Nada foi apagado; confira de novo.`
-  }
-  if (vencidos > LIMITE_DE_ORFAOS_POR_EXECUCAO) {
+/**
+ * `null` quando pode apagar; senão, o porquê da recusa. Três retratos de banco
+ * errado, e nenhum depende dos outros: muitos órfãos; nenhum arquivo com dono
+ * (banco vazio ou outro banco, revisão técnica do #211, M1); órfão mais novo
+ * que o último anexo registrado (banco restaurado de um backup antigo, revisão
+ * de segurança do #211, S3).
+ */
+function motivoDaRecusa(
+  vencidos: readonly ArquivoGuardado[],
+  algumComDono: boolean,
+  ultimoArmazenadoEm: Date | null,
+): string | null {
+  if (vencidos.length === 0) return null
+  if (vencidos.length > LIMITE_DE_ORFAOS_POR_EXECUCAO) {
     return (
-      `${vencidos} arquivo(s) de anexo vencido(s) sem registro no banco — mais que o limite de ` +
+      `${vencidos.length} arquivo(s) de anexo vencido(s) sem registro no banco — mais que o limite de ` +
       `${LIMITE_DE_ORFAOS_POR_EXECUCAO} por execução. ${CONFIRA_O_BANCO}`
     )
   }
-  if (vencidos > 0 && !algumComDono) {
+  if (!algumComDono) {
     return (
-      `${vencidos} arquivo(s) de anexo vencido(s) sem registro, e nenhum arquivo do armazenamento ` +
+      `${vencidos.length} arquivo(s) de anexo vencido(s) sem registro, e nenhum arquivo do armazenamento ` +
       `tem registro no banco. ${CONFIRA_O_BANCO}`
+    )
+  }
+  const limite = ultimoArmazenadoEm?.getTime() ?? Number.NEGATIVE_INFINITY
+  const maisNovos = vencidos.filter((arquivo) => arquivo.gravadoEm.getTime() > limite).length
+  if (maisNovos > 0) {
+    return (
+      `${maisNovos} arquivo(s) de anexo sem registro é(são) mais novo(s) que o último anexo registrado no ` +
+      `banco — o retrato de um banco restaurado de backup. ${CONFIRA_O_BANCO}`
     )
   }
   return null
@@ -122,41 +149,27 @@ export async function expurgarAnexosOrfaos(
   banco: Banco,
   opcoes: OpcoesDoExpurgoDeOrfaos,
 ): Promise<ResultadoDoExpurgoDeOrfaos> {
-  exigirPrazoValido(opcoes.diasDeRetencao)
+  const armazenamento = exigirArmazenamento(opcoes.armazenamento)
+  const { avaliados, semRegistro, vencidos, recusa } = await levantarAnexosOrfaos(banco, opcoes)
 
-  const armazenamento = opcoes.armazenamento
-  if (armazenamento === null) {
-    throw new FalhaDeArmazenamento('listar', 'armazenamento indisponível nesta execução')
+  const aceite = opcoes.aceite
+  if (aceite !== undefined && aceite.quantidade !== vencidos.length) {
+    throw new LimpezaDeOrfaosRecusadaError(
+      `Aceitos ${aceite.quantidade} órfão(s), mas há ${vencidos.length} vencido(s) agora. ` +
+        'Nada foi apagado; liste de novo antes de aceitar.',
+    )
   }
-
-  const dias = opcoes.diasDeRetencao
-  const agora = opcoes.agora ?? new Date()
-  const usuario = opcoes.atorId ?? 'sistema'
-  const correlacaoId = opcoes.correlacaoId ?? novaCorrelacao()
-
-  // O disco ANTES do banco: um arquivo gravado depois da listagem nem entra na
-  // conta, e um gravado antes e cuja linha nasceu depois da consulta é recente
-  // demais para sair.
-  const arquivos = await armazenamento.listar()
-  const comDono = new Set(
-    (
-      await banco.anexo.findMany({
-        where: { chaveArmazenamento: { not: null } },
-        select: { chaveArmazenamento: true },
-      })
-    ).map((anexo) => normalizada(anexo.chaveArmazenamento!)),
-  )
-
-  const semRegistro = arquivos.filter((arquivo) => !comDono.has(normalizada(arquivo.chave)))
-  const limite = agora.getTime() - dias * DIA_EM_MS
-  const vencidos = semRegistro.filter((arquivo) => arquivo.gravadoEm.getTime() < limite)
-
-  const recusa = motivoDaRecusa(vencidos.length, semRegistro.length < arquivos.length, opcoes.aceitarOrfaos)
-  if (recusa !== null) throw new LimpezaDeOrfaosRecusadaError(recusa)
+  if (aceite === undefined && recusa !== null) throw new LimpezaDeOrfaosRecusadaError(recusa)
 
   let removidos = 0
   const falhas: string[] = []
-  const contexto = { dias, usuario, correlacaoId, aceitos: opcoes.aceitarOrfaos }
+  const contexto = {
+    dias: opcoes.diasDeRetencao,
+    usuario: opcoes.atorId ?? 'sistema',
+    correlacaoId: opcoes.correlacaoId ?? novaCorrelacao(),
+    aceite,
+  }
+  const { correlacaoId } = contexto
 
   for (const arquivo of vencidos) {
     const tentativa = { removido: false }
@@ -185,14 +198,65 @@ export async function expurgarAnexosOrfaos(
     )
   }
 
-  return { avaliados: arquivos.length, semRegistro: semRegistro.length, removidos }
+  return { avaliados, semRegistro, removidos }
+}
+
+function exigirArmazenamento(armazenamento: ArmazenamentoPort | null): ArmazenamentoPort {
+  if (armazenamento === null) {
+    throw new FalhaDeArmazenamento('listar', 'armazenamento indisponível nesta execução')
+  }
+  return armazenamento
+}
+
+/**
+ * O que a limpeza apagaria, e se ela se recusaria — sem apagar nada. É o que
+ * `npm run db:expurgar -- --listar-orfaos` mostra a quem vai decidir: autorizar
+ * só por um número, sem ver quais arquivos, seria decidir no escuro (revisão de
+ * segurança do #211, S2).
+ */
+export async function levantarAnexosOrfaos(
+  banco: Banco,
+  opcoes: OpcoesDoLevantamento,
+): Promise<LevantamentoDeOrfaos> {
+  exigirPrazoValido(opcoes.diasDeRetencao)
+  const armazenamento = exigirArmazenamento(opcoes.armazenamento)
+  const agora = opcoes.agora ?? new Date()
+
+  // A pasta é desta instalação? A sentinela confere que a chave em uso é a que
+  // cifrou estes anexos; pasta de outra instalação, com outra chave, não é
+  // varrida (revisão de segurança do #211, S4).
+  await armazenamento.conferirChave?.()
+
+  // O disco ANTES do banco: um arquivo gravado depois da listagem nem entra na
+  // conta, e um gravado antes e cuja linha nasceu depois da consulta é recente
+  // demais para sair.
+  const arquivos = await armazenamento.listar()
+  const [linhas, ultimo] = await Promise.all([
+    banco.anexo.findMany({
+      where: { chaveArmazenamento: { not: null } },
+      select: { chaveArmazenamento: true },
+    }),
+    banco.anexo.aggregate({ _max: { armazenadoEm: true } }),
+  ])
+  const comDono = new Set(linhas.map((anexo) => normalizada(anexo.chaveArmazenamento!)))
+
+  const semRegistro = arquivos.filter((arquivo) => !comDono.has(normalizada(arquivo.chave)))
+  const limite = agora.getTime() - opcoes.diasDeRetencao * DIA_EM_MS
+  const vencidos = semRegistro.filter((arquivo) => arquivo.gravadoEm.getTime() < limite)
+
+  return {
+    avaliados: arquivos.length,
+    semRegistro: semRegistro.length,
+    vencidos,
+    recusa: motivoDaRecusa(vencidos, semRegistro.length < arquivos.length, ultimo._max.armazenadoEm),
+  }
 }
 
 async function removerComTrilha(
   banco: Banco,
   armazenamento: ArmazenamentoPort,
   arquivo: ArquivoGuardado,
-  contexto: { dias: number; usuario: string; correlacaoId: string; aceitos: number | undefined },
+  contexto: { dias: number; usuario: string; correlacaoId: string; aceite: { quantidade: number; por: string } | undefined },
   tentativa: { removido: boolean },
 ): Promise<void> {
   await banco.$transaction(
@@ -206,7 +270,9 @@ async function removerComTrilha(
         depois: {
           gravadoEm: arquivo.gravadoEm.toISOString(),
           prazoEmDias: contexto.dias,
-          ...(contexto.aceitos === undefined ? {} : { aceitoNaLinhaDeComando: contexto.aceitos }),
+          ...(contexto.aceite === undefined
+            ? {}
+            : { aceitoNaLinhaDeComando: contexto.aceite.quantidade, aceitoPor: contexto.aceite.por }),
         },
         usuario: contexto.usuario,
         correlacaoId: contexto.correlacaoId,

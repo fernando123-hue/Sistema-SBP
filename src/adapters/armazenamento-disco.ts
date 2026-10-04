@@ -27,6 +27,9 @@ const CONTEUDO_DA_SENTINELA = Buffer.from('SBP-SENTINELA-DA-CHAVE-v1')
 /** O nome das subpastas que `guardar` cria: os dois primeiros caracteres do sorteio. */
 const SUBPASTA_DE_ANEXO = /^[0-9a-f]{2}$/
 
+/** O nome do arquivo que `guardar` cria: o sorteio inteiro e a extensão segura. */
+const NOME_DE_ANEXO = /^[0-9a-f]{32}(\.[a-z0-9]{1,10})?$/
+
 /**
  * A conferência de cada raiz, por chave, neste processo — a PROMESSA, não só o
  * resultado. Chaveado pelo `Buffer` que `chaveDeCifragem` memoriza: a mesma
@@ -478,8 +481,8 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
    *
    * Outra pasta na raiz não é do sistema — uma cópia que alguém deixou ali, por
    * exemplo. Listá-la a faria parecer órfã, e a limpeza diária (`A78`) apagaria
-   * o que nunca foi dela. Dentro da subpasta, ao contrário, TUDO é listado: uma
-   * pasta no lugar de um arquivo é estrutura corrompida e falha com nome.
+   * o que nunca foi dela. Dentro da subpasta vale o mesmo, pelo nome: ver
+   * `ehAnexoDoSistema`.
    */
   async listar(): Promise<ArquivoGuardado[]> {
     const raiz = resolve(this.raiz)
@@ -508,8 +511,15 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
 
       for (const entrada of entradas) {
         const chave = `${pasta.name}/${entrada.name}`
-        if (!entrada.isFile()) {
-          throw new FalhaDeArmazenamento('listar', `entrada que não é arquivo: "${chave}"`)
+        if (!this.ehAnexoDoSistema(pasta.name, entrada)) {
+          // Pular, nunca falhar: quem escreve na pasta derrubaria a limpeza
+          // todo dia com uma pasta ou um nome gigante (revisão de segurança
+          // do #211, S6). Pular, nunca listar: listado, seria apagado como
+          // órfão. Avisar, nunca calar: está lá, e alguém precisa saber.
+          registrarLog('aviso', 'entrada no armazenamento não é anexo do sistema; não listada', {
+            entrada: chave.slice(0, 120),
+          })
+          continue
         }
         const gravadoEm = await this.gravadoEm(join(raiz, pasta.name, entrada.name))
         // Removido entre a listagem e a consulta: o expurgo pode estar rodando.
@@ -518,6 +528,15 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
     }
 
     return arquivos
+  }
+
+  /**
+   * Arquivo comum com o nome que `guardar` cria: 32 hexadecimais, a extensão
+   * permitida e os dois primeiros caracteres iguais aos da subpasta. Conferido
+   * em todas as versões do `guardar` desde a primeira.
+   */
+  private ehAnexoDoSistema(pasta: string, entrada: Dirent): boolean {
+    return entrada.isFile() && NOME_DE_ANEXO.test(entrada.name) && entrada.name.startsWith(pasta)
   }
 
   private async gravadoEm(caminho: string): Promise<Date | null> {

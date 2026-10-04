@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
 import { FalhaDeArmazenamento } from '../ports/armazenamento'
@@ -263,10 +263,34 @@ describe('listar o que está guardado (A78)', () => {
     expect(await new ArmazenamentoEmDisco(join(raiz, 'nunca-criada')).listar()).toEqual([])
   })
 
-  it('uma pasta no lugar de arquivo é estrutura corrompida: falha com nome', async () => {
-    await mkdir(join(raiz, 'ab', 'nao-devia-existir'), { recursive: true })
+  it('só o nome que guardar cria é listado; o resto da subpasta não é anexo do sistema', async () => {
+    // Revisão de segurança do #211 (S1, S6). Um `desktop.ini`, uma cópia
+    // manual ou o `.recifrando` de uma migração interrompida, listados, seriam
+    // apagados como órfãos; uma pasta ou um nome de 300 caracteres derrubariam
+    // a etapa todo dia. Não listados, ficam — e o log diz que estão lá.
+    const chave = await armazenamento.guardar(PDF, '.pdf')
+    const [pasta] = chave.split('/')
+    const estranhos = [
+      'desktop.ini',
+      `${chave.split('/')[1]}.recifrando`,
+      `${'0'.repeat(32)}.pdf`, // prefixo de outra pasta
+      'x'.repeat(200),
+    ]
+    for (const nome of estranhos) await writeFile(join(raiz, pasta!, nome), 'x')
+    await mkdir(join(raiz, pasta!, 'f'.repeat(32)))
+    const avisos: string[] = []
+    for (const saida of [process.stdout, process.stderr]) {
+      vi.spyOn(saida, 'write').mockImplementation((linha) => {
+        avisos.push(String(linha))
+        return true
+      })
+    }
 
-    await expect(armazenamento.listar()).rejects.toThrow(FalhaDeArmazenamento)
+    const chaves = (await armazenamento.listar()).map((arquivo) => arquivo.chave)
+
+    vi.restoreAllMocks()
+    expect(chaves).toEqual([chave])
+    expect(avisos.filter((linha) => linha.includes('não é anexo do sistema'))).toHaveLength(estranhos.length + 1)
   })
 })
 

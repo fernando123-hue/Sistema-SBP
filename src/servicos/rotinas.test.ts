@@ -126,6 +126,7 @@ describe('uma vez por dia', () => {
             tamanho: 3,
             aceito: true,
             chaveArmazenamento: 'ef/com-dono.pdf',
+            armazenadoEm: new Date(),
           },
         },
       },
