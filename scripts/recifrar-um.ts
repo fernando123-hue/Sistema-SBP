@@ -39,6 +39,9 @@ export async function recifrarUm(raiz: string, chave: string, deps: Dependencias
   // O `readFile` segue link simbólico, e o `rename` do fim trocaria o link por
   // uma cópia cifrada do ALVO, que passaria a morar na pasta de anexos
   // (revisão de segurança do #215, S3). Só arquivo comum é recifrado.
+  if (!(await ehArquivo(caminho))) {
+    throw new Error(`Recusado: ${JSON.stringify(chave)} não é arquivo comum (link simbólico ou pasta). Nada foi trocado.`)
+  }
   const bytes = await readFile(caminho)
 
   // Qualquer falha antes da troca leva o temporário junto — mas só o que ESTA
@@ -69,6 +72,12 @@ export async function recifrarUm(raiz: string, chave: string, deps: Dependencias
     // varredura do A78 achá-lo 7 dias depois (revisão de segurança do #215,
     // S4). Conferir logo antes estreita a janela a microssegundos; fechá-la de
     // vez é não rodar a recifragem junto com a limpeza, como diz o cabeçalho.
+    if (!(await ehArquivo(caminho))) {
+      throw new Error(
+        `Recusado: ${JSON.stringify(chave)} sumiu no meio da recifragem (expurgado pela limpeza diária?). ` +
+          'Nada foi recriado; rode de novo para seguir com os outros.',
+      )
+    }
     await rename(temporario, caminho)
   } catch (erro) {
     if (criado) {
@@ -100,7 +109,8 @@ export async function chavesDeAnexo(raiz: string): Promise<{ chaves: string[]; i
       // Temporário de recifragem não é anexo: é sobra, e `limparSobras` cuida.
       if (entrada.name.endsWith(SUFIXO_TEMPORARIO)) continue
       const chave = `${pasta.name}/${entrada.name}`
-      chaves.push(chave)
+      if (entrada.isFile()) chaves.push(chave)
+      else ignoradas.push(chave)
     }
   }
   return { chaves: chaves.sort(), ignoradas: ignoradas.sort() }
