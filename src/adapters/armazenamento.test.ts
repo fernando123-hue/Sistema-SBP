@@ -292,6 +292,24 @@ describe('listar o que está guardado (A78)', () => {
     expect(chaves).toEqual([chave])
     expect(avisos.filter((linha) => linha.includes('não é anexo do sistema'))).toHaveLength(estranhos.length + 1)
   })
+
+  it('o aviso tem teto: quem enche a pasta de lixo não enche o log (revisão de segurança do #211, N3)', async () => {
+    await mkdir(join(raiz, 'ab'))
+    for (let i = 0; i < 30; i += 1) await writeFile(join(raiz, 'ab', `lixo-${i}`), 'x')
+    const avisos: string[] = []
+    for (const saida of [process.stdout, process.stderr]) {
+      vi.spyOn(saida, 'write').mockImplementation((linha) => {
+        avisos.push(String(linha))
+        return true
+      })
+    }
+
+    await armazenamento.listar()
+
+    vi.restoreAllMocks()
+    expect(avisos.filter((linha) => linha.includes('não é anexo do sistema; não listada'))).toHaveLength(20)
+    expect(avisos.filter((linha) => linha.includes('"puladas":30'))).toHaveLength(1)
+  })
 })
 
 describe('conferência do tipo real do arquivo', () => {

@@ -30,6 +30,9 @@ const SUBPASTA_DE_ANEXO = /^[0-9a-f]{2}$/
 /** O nome do arquivo que `guardar` cria: o sorteio inteiro e a extensão segura. */
 const NOME_DE_ANEXO = /^[0-9a-f]{32}(\.[a-z0-9]{1,10})?$/
 
+/** Avisos individuais por listagem; o resto vira uma linha com o total. */
+const AVISOS_POR_LISTAGEM = 20
+
 /**
  * A conferência de cada raiz, por chave, neste processo — a PROMESSA, não só o
  * resultado. Chaveado pelo `Buffer` que `chaveDeCifragem` memoriza: a mesma
@@ -487,6 +490,7 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
   async listar(): Promise<ArquivoGuardado[]> {
     const raiz = resolve(this.raiz)
     const arquivos: ArquivoGuardado[] = []
+    let puladas = 0
 
     // Raiz ausente é instalação que ainda não recebeu anexo. SÓ ela: uma
     // subpasta que some no meio da volta não pode transformar a lista inteira
@@ -516,9 +520,13 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
           // todo dia com uma pasta ou um nome gigante (revisão de segurança
           // do #211, S6). Pular, nunca listar: listado, seria apagado como
           // órfão. Avisar, nunca calar: está lá, e alguém precisa saber.
-          registrarLog('aviso', 'entrada no armazenamento não é anexo do sistema; não listada', {
-            entrada: chave.slice(0, 120),
-          })
+          // Com teto: quem enche a pasta de lixo não enche o log (N3).
+          puladas += 1
+          if (puladas <= AVISOS_POR_LISTAGEM) {
+            registrarLog('aviso', 'entrada no armazenamento não é anexo do sistema; não listada', {
+              entrada: chave.slice(0, 120),
+            })
+          }
           continue
         }
         const gravadoEm = await this.gravadoEm(join(raiz, pasta.name, entrada.name))
@@ -527,6 +535,9 @@ export class ArmazenamentoEmDisco implements ArmazenamentoPort {
       }
     }
 
+    if (puladas > AVISOS_POR_LISTAGEM) {
+      registrarLog('aviso', 'entradas do armazenamento que não são anexo do sistema, contando as avisadas', { puladas })
+    }
     return arquivos
   }
 
