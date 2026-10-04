@@ -84,6 +84,32 @@ describe('a ingestão não deixa arquivo sem linha com o processo vivo', () => {
     expect(await banco.email.count({ where: { messageId: '<enche@exemplo.test>' } })).toBe(0)
   })
 
+  it('se não der para conferir as linhas, o desfazer não apaga nada (a varredura decide depois)', async () => {
+    // Um arquivo a mais fica para a limpeza diária; um a menos não tem volta.
+    // Revisão de segurança do #213, rodada 2, N1.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const armazenamento = new ArmazenamentoQueEnche()
+    const ia: AiPort = { nome: 'duble', interpretar: async () => INTERPRETACAO }
+    const anexoQueFalha = new Proxy(banco.anexo, {
+      get(alvo, propriedade) {
+        if (propriedade === 'findMany') return async () => Promise.reject(new Error('banco fora (simulado)'))
+        return Reflect.get(alvo, propriedade)
+      },
+    })
+    const bancoSemConferencia = new Proxy(banco, {
+      get(alvo, propriedade) {
+        return propriedade === 'anexo' ? anexoQueFalha : Reflect.get(alvo, propriedade)
+      },
+    })
+
+    await sincronizar(
+      { banco: bancoSemConferencia, ingestao: comDoisAnexos('<sem-conferencia@exemplo.test>'), ia, armazenamento },
+      base.operador,
+    )
+
+    expect(await armazenamento.listar()).toHaveLength(1)
+  })
+
   it('commit efetivado e resposta perdida: o desfazer não apaga arquivo que tem linha', async () => {
     // O banco gravou, mas o erro chegou mesmo assim (conexão caiu depois do
     // COMMIT). O `catch` desfaz por crença; sem conferir as linhas, apagaria

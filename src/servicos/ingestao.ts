@@ -915,7 +915,9 @@ interface Desfazimento {
  * entre o COMMIT e a resposta —, e aí as linhas existem e apontam para estas
  * chaves. Apagar por crença levaria os documentos que o banco acabou de
  * registrar. Se a própria conferência falhar, nada sai: um arquivo a mais fica
- * para a limpeza diária (`A78`); um a menos não tem volta.
+ * para a limpeza diária (`A78`); um a menos não tem volta. A janela fica mais
+ * estreita, não fechada: um COMMIT que chegue ao servidor depois desta consulta
+ * ainda perde o arquivo (rodada 3 da técnica, B7).
  */
 async function removerSemEsconder(chaves: readonly string[], contexto: Desfazimento): Promise<void> {
   const { armazenamento, correlacaoId, messageId } = contexto
@@ -927,7 +929,7 @@ async function removerSemEsconder(chaves: readonly string[], contexto: Desfazime
       where: { chaveArmazenamento: { in: [...chaves] } },
       select: { chaveArmazenamento: true },
     })
-    comLinha = new Set(linhas.map((linha) => linha.chaveArmazenamento!))
+    comLinha = new Set(linhas.flatMap((linha) => (linha.chaveArmazenamento === null ? [] : [linha.chaveArmazenamento])))
   } catch (aoConferir) {
     registrarLog('erro', 'desfazer de anexos suspenso: não deu para conferir as linhas; a limpeza diária decide', {
       correlacaoId,
