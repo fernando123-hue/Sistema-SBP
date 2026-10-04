@@ -161,6 +161,12 @@ describe('tempo de resposta da recusa de entrada', () => {
     // (visto: 375 ms em 04/10) e o teste ficava vermelho sem defeito nenhum. O
     // que ele afirma é COMPORTAMENTO — o acerto não espera o piso de propósito —,
     // e isso se confere por quem chamou a espera, não pelo cronômetro.
+    //
+    // O QUE ELE NÃO PEGA (revisão técnica do #216, B1): um atraso novo no ramo
+    // do acerto que não passe por `esperarAtePisoDeEntrada` — um `setTimeout`
+    // solto, por exemplo. Trocado de propósito pelo falso vermelho do relógio;
+    // quem acrescentar espera ao acerto que a faça pela função, que é onde ela
+    // se vê.
     esperaDoPiso.chamadas = 0
     await autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA })
     expect(esperaDoPiso.chamadas).toBe(0)
