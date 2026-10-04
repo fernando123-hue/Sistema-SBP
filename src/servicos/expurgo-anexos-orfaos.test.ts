@@ -39,6 +39,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   await rm(raiz, { recursive: true, force: true })
 })
 
