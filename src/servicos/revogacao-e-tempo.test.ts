@@ -43,6 +43,20 @@ vi.mock('next/headers', () => ({
   }),
 }))
 
+// Espião que REPASSA à função real: os testes de tempo deste arquivo continuam
+// medindo o piso de verdade; o do acerto confere quem chamou, não o relógio.
+const esperaDoPiso = vi.hoisted(() => ({ chamadas: 0 }))
+vi.mock('../servidor/credenciais', async (importarOriginal) => {
+  const original = await importarOriginal<typeof import('../servidor/credenciais')>()
+  return {
+    ...original,
+    esperarAtePisoDeEntrada: async (inicioEmMs: number) => {
+      esperaDoPiso.chamadas += 1
+      return original.esperarAtePisoDeEntrada(inicioEmMs)
+    },
+  }
+})
+
 const banco = obterPrisma()
 const SENHA = 'frase-longa-escolhida-pela-pessoa'
 
@@ -142,20 +156,18 @@ describe('tempo de resposta da recusa de entrada', () => {
   it('quem acerta a senha não paga o piso — atrasar quem acerta é custo sem defesa', async () => {
     await semearPessoa()
 
-    // MEDIANA de três, e não uma amostra: uma pausa do sistema operacional no
-    // meio da única medição fazia este teste ficar vermelho com a máquina
-    // ocupada e verde com ela livre. O que ele afirma continua idêntico — o
-    // caminho do acerto não espera o piso de propósito —, e o teto continua
-    // sendo o piso, sem folga acrescentada.
-    const amostras: number[] = []
-    for (let volta = 0; volta < 3; volta += 1) {
-      const inicio = Date.now()
-      await autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA })
-      amostras.push(Date.now() - inicio)
-    }
+    // Era relógio: a mediana de três entradas tinha de ficar abaixo do piso. Com
+    // a suíte inteira carregando a máquina, o scrypt sozinho passava dos 250 ms
+    // (visto: 375 ms em 04/10) e o teste ficava vermelho sem defeito nenhum. O
+    // que ele afirma é COMPORTAMENTO — o acerto não espera o piso de propósito —,
+    // e isso se confere por quem chamou a espera, não pelo cronômetro.
+    esperaDoPiso.chamadas = 0
+    await autenticar(banco, { email: 'pessoa@teste.local', senha: SENHA })
+    expect(esperaDoPiso.chamadas).toBe(0)
 
-    const mediana = amostras.sort((a, b) => a - b)[1]!
-    expect(mediana).toBeLessThan(PISO_DE_RESPOSTA_DE_ENTRADA_MS)
+    // O contraponto, para o espião não estar cego: a senha errada espera.
+    await recusada(autenticar(banco, { email: 'pessoa@teste.local', senha: 'errada-mas-longa-o-bastante' }), ErroDeNegocio)
+    expect(esperaDoPiso.chamadas).toBe(1)
   })
 })
 
