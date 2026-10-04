@@ -57,6 +57,20 @@ describe('recifrar um anexo', () => {
     expect(await readdir(join(raiz, 'ab'))).toEqual([NOME])
   })
 
+  it('disco cheio no meio da gravação: o pedaço parcial sai na hora (revisões do #215, rodada 2, N1)', async () => {
+    const gravarAteEncher = async (caminho: string, dados: Buffer) => {
+      await writeFile(caminho, dados.subarray(0, 4), { flag: 'wx' })
+      throw Object.assign(new Error('ENOSPC: no space left on device (simulado)'), { code: 'ENOSPC' })
+    }
+
+    await expect(
+      recifrarUm(raiz, CHAVE, { cifrar, lerDeVolta: async () => ORIGINAL, gravar: gravarAteEncher }),
+    ).rejects.toThrow('ENOSPC')
+
+    expect(await readdir(join(raiz, 'ab'))).toEqual([NOME])
+    expect(await readFile(join(raiz, 'ab', NOME))).toEqual(ORIGINAL)
+  })
+
   it('temporário já existente não é sobrescrito: recusa, e o que estava lá fica (revisão de segurança do #215, S2)', async () => {
     await writeFile(join(raiz, 'ab', `${NOME}${SUFIXO_TEMPORARIO}`), 'de outra execução')
 

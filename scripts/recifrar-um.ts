@@ -22,7 +22,12 @@ export interface DependenciasDaRecifragem {
   cifrar: (bytes: Buffer) => Buffer
   /** Lê o temporário pelo adapter de verdade — é o que prova que ele abre. */
   lerDeVolta: (chaveTemporaria: string) => Promise<Uint8Array | null>
+  /** Grava o temporário com `wx`. Injetável só para o teste simular disco cheio. */
+  gravar?: (caminho: string, dados: Buffer) => Promise<void>
 }
+
+const gravarSemSobrescrever = (caminho: string, dados: Buffer): Promise<void> =>
+  writeFile(caminho, dados, { flag: 'wx' })
 
 function codigoDoErro(erro: unknown): string | undefined {
   return erro instanceof Error && 'code' in erro && typeof erro.code === 'string' ? erro.code : undefined
@@ -35,12 +40,19 @@ export async function recifrarUm(raiz: string, chave: string, deps: Dependencias
 
   // Qualquer falha antes da troca leva o temporário junto — mas só o que ESTA
   // execução criou: com `wx`, um temporário que já existia faz o `writeFile`
-  // falhar, e apagá-lo seria apagar o de outra execução (revisão de segurança
-  // do #215, S2). O original só desaparece depois de existir uma cópia cifrada
+  // falhar com `EEXIST`, e apagá-lo seria apagar o de outra execução (revisão
+  // de segurança do #215, S2). Qualquer OUTRA falha da gravação (disco cheio no
+  // meio) já criou o arquivo, parcial, e ele sai também (rodada 2, N1). O original só desaparece depois de existir uma cópia cifrada
   // que o adapter consegue ler.
+  const gravar = deps.gravar ?? gravarSemSobrescrever
   let criado = false
   try {
-    await writeFile(temporario, deps.cifrar(bytes), { flag: 'wx' })
+    try {
+      await gravar(temporario, deps.cifrar(bytes))
+    } catch (erro) {
+      criado = codigoDoErro(erro) !== 'EEXIST'
+      throw erro
+    }
     criado = true
     const conferencia = await deps.lerDeVolta(`${chave}${SUFIXO_TEMPORARIO}`)
     if (!conferencia || Buffer.compare(Buffer.from(conferencia), bytes) !== 0) {
