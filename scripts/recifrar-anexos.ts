@@ -19,31 +19,25 @@
  * disco. Uma queda de energia no meio deixaria o anexo perdido — e é documento
  * de associado, não cache. Aqui o cifrado é escrito ao lado, conferido lendo de
  * volta pelo próprio adapter, e só então substitui o original.
+ *
+ * ═══ NÃO RODE JUNTO COM A LIMPEZA DIÁRIA ═══
+ *
+ * Se a retenção expurgar um anexo entre a leitura e a troca, o `rename`
+ * recriaria o documento. A troca confere antes que o original ainda está lá,
+ * mas sobra uma janela de microssegundos (revisão de segurança do #215, S4).
  */
 
-import { readdir, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { ArmazenamentoEmDisco } from '../src/adapters/armazenamento-disco'
 import { ambiente } from '../src/servidor/ambiente'
-import { SUFIXO_TEMPORARIO, encontrarSobras, limparSobras, recifrarUm } from './recifrar-um'
+import { chavesDeAnexo, encontrarSobras, limparSobras, recifrarUm } from './recifrar-um'
 
 const CABECALHO_MAGICO = Buffer.from('SBP_ENC_v1!!')
 
-/** Todas as chaves de anexo sob a raiz: `xx/arquivo.ext`, dois níveis. */
-async function chavesDeAnexo(raiz: string): Promise<string[]> {
-  const pastas = await readdir(raiz, { withFileTypes: true })
-  const chaves: string[] = []
-  for (const pasta of pastas) {
-    if (!pasta.isDirectory()) continue
-    for (const arquivo of await readdir(join(raiz, pasta.name))) {
-      // Temporário de recifragem não é anexo: é sobra, e `limparSobras` cuida.
-      if (arquivo.endsWith(SUFIXO_TEMPORARIO)) continue
-      chaves.push(`${pasta.name}/${arquivo}`)
-    }
-  }
-  return chaves
-}
+/** Avisos individuais de entrada ignorada; o resto vira uma linha com o total. */
+const AVISOS_DE_IGNORADAS = 20
 
 async function estaEmTextoPuro(caminho: string): Promise<boolean> {
   const inicio = await readFile(caminho)
@@ -65,10 +59,10 @@ async function principal(): Promise<void> {
   //
   // Pasta INEXISTENTE é resposta legítima (instalação nova, nenhum anexo
   // recebido ainda) e continua valendo zero. Qualquer outra falha sobe.
-  const chaves = await chavesDeAnexo(raiz).catch((erro: unknown) => {
+  const { chaves, ignoradas } = await chavesDeAnexo(raiz).catch((erro: unknown) => {
     if (erro !== null && typeof erro === 'object' && (erro as { code?: unknown }).code === 'ENOENT') {
       process.stdout.write(`A pasta de anexos ainda não existe: ${raiz}\n`)
-      return [] as string[]
+      return { chaves: [] as string[], ignoradas: [] as string[] }
     }
     throw new Error(
       `Não foi possível ler a pasta de anexos (${raiz}): ` +
@@ -76,6 +70,16 @@ async function principal(): Promise<void> {
         `Nada foi conferido — e "nada conferido" não é o mesmo que "nada a corrigir".`,
     )
   })
+  // Link, pasta ou nome fora da forma não são anexo que `guardar` cria: não são
+  // recifrados, mas são ditos — sumir da contagem seria esconder (S3 do #215, S1 do #219).
+  // Com teto, como o `listar` do adapter: quem enche a pasta de lixo não enche
+  // a saída (revisão técnica do #219, rodada 2, N3).
+  for (const ignorada of ignoradas.slice(0, AVISOS_DE_IGNORADAS)) {
+    process.stdout.write(`Não é anexo do sistema, não foi conferido nem recifrado: ${JSON.stringify(ignorada)}\n`)
+  }
+  if (ignoradas.length > AVISOS_DE_IGNORADAS) {
+    process.stdout.write(`${ignoradas.length} entrada(s) que não são anexo do sistema, contando as avisadas.\n`)
+  }
   const emTextoPuro: string[] = []
   for (const chave of chaves) {
     if (await estaEmTextoPuro(join(raiz, chave))) emTextoPuro.push(chave)
