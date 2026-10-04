@@ -21,11 +21,12 @@
  * volta pelo próprio adapter, e só então substitui o original.
  */
 
-import { readdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { ArmazenamentoEmDisco } from '../src/adapters/armazenamento-disco'
 import { ambiente } from '../src/servidor/ambiente'
+import { SUFIXO_TEMPORARIO, limparSobras, recifrarUm } from './recifrar-um'
 
 const CABECALHO_MAGICO = Buffer.from('SBP_ENC_v1!!')
 
@@ -36,6 +37,8 @@ async function chavesDeAnexo(raiz: string): Promise<string[]> {
   for (const pasta of pastas) {
     if (!pasta.isDirectory()) continue
     for (const arquivo of await readdir(join(raiz, pasta.name))) {
+      // Temporário de recifragem não é anexo: é sobra, e `limparSobras` cuida.
+      if (arquivo.endsWith(SUFIXO_TEMPORARIO)) continue
       chaves.push(`${pasta.name}/${arquivo}`)
     }
   }
@@ -82,24 +85,21 @@ async function principal(): Promise<void> {
     `${chaves.length} anexo(s) no disco; ${emTextoPuro.length} ainda em texto puro.\n`,
   )
 
-  if (somenteConferir || emTextoPuro.length === 0) return
+  if (somenteConferir) return
 
+  // Antes de tudo, o que uma execução interrompida deixou (revisão do #211, N7).
+  for (const sobra of await limparSobras(raiz)) {
+    process.stdout.write(`Sobra de execução interrompida apagada: ${sobra}\n`)
+  }
+  if (emTextoPuro.length === 0) return
+
+  const deps = {
+    cifrar: (bytes: Buffer) => cifrarComOAdapter(armazenamento, bytes),
+    lerDeVolta: (chaveTemporaria: string) => new ArmazenamentoEmDisco(raiz).ler(chaveTemporaria),
+  }
   let recifrados = 0
   for (const chave of emTextoPuro) {
-    const caminho = join(raiz, chave)
-    const temporario = `${caminho}.recifrando`
-    const bytes = await readFile(caminho)
-
-    // Grava ao lado, confere lendo de volta, e só então troca. O original só
-    // desaparece depois de existir uma cópia cifrada que o adapter consegue ler.
-    await writeFile(temporario, cifrarComOAdapter(armazenamento, bytes))
-    const conferencia = await new ArmazenamentoEmDisco(raiz).ler(`${chave}.recifrando`)
-    if (!conferencia || Buffer.compare(Buffer.from(conferencia), bytes) !== 0) {
-      await unlink(temporario)
-      throw new Error(`Recusado: a releitura de "${chave}" não devolveu os bytes originais.`)
-    }
-
-    await rename(temporario, caminho)
+    await recifrarUm(raiz, chave, deps)
     recifrados += 1
   }
 
