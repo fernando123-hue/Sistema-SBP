@@ -367,6 +367,7 @@ describe('o predicado de anexo do sistema', () => {
     expect(ehAnexoDoSistema('ab', arquivo(nome))).toBe(true)
     expect(ehAnexoDoSistema('', arquivo(nome))).toBe(false)
     expect(ehAnexoDoSistema('a', arquivo(nome))).toBe(false)
-    expect(ehAnexoDoSistema('AB', arquivo(`AB${'c'.repeat(30)}.pdf`))).toBe(false)
+    // Nome e prefixo válidos; só a subpasta tem três letras.
+    expect(ehAnexoDoSistema('abc', arquivo(`abc${'c'.repeat(29)}.pdf`))).toBe(false)
   })
 })
