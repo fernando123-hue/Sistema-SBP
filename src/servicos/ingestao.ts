@@ -742,7 +742,13 @@ async function processarUm(
       return { ...anexo, tamanho, veredicto, chaveArmazenamento }
     }),
   )
-  const anexosAvaliados = await todosOuNenhum(tentativasDosAnexos, deps.armazenamento, correlacaoId)
+  const desfazimento: Desfazimento = {
+    banco: deps.banco,
+    armazenamento: deps.armazenamento,
+    correlacaoId,
+    messageId: email.messageId,
+  }
+  const anexosAvaliados = await todosOuNenhum(tentativasDosAnexos, desfazimento)
   const anexosRejeitados = anexosAvaliados.filter((anexo) => !anexo.veredicto.aceito).length
 
   // ═══ BYTES NO DISCO ANTES DA TRANSAÇÃO PRECISAM DE VOLTA ATRÁS ═══
@@ -778,7 +784,7 @@ async function processarUm(
     .filter((chave): chave is string => chave !== null)
 
   /** Apaga o que esta tentativa escreveu. Nunca substitui o erro original. */
-  const desfazerArquivos = (): Promise<void> => removerSemEsconder(chavesGravadas, deps.armazenamento, correlacaoId)
+  const desfazerArquivos = (): Promise<void> => removerSemEsconder(chavesGravadas, desfazimento)
 
   try {
     const gravado = await deps.banco.$transaction(async (tx) => {
@@ -892,18 +898,47 @@ async function processarUm(
   }
 }
 
+interface Desfazimento {
+  banco: Banco
+  armazenamento: ArmazenamentoPort | undefined
+  correlacaoId: string
+  messageId: string
+}
+
 /**
  * Apaga as chaves que uma tentativa gravou e que não viraram linha. Nunca
  * lança: quem chama está desfazendo por causa de OUTRO erro, ou de uma corrida,
  * e uma falha aqui não pode esconder isso.
+ *
+ * Confere no banco ANTES de apagar (revisão de segurança do #213, S1). O erro
+ * que trouxe até aqui pode ter chegado DEPOIS de o commit valer — a conexão cai
+ * entre o COMMIT e a resposta —, e aí as linhas existem e apontam para estas
+ * chaves. Apagar por crença levaria os documentos que o banco acabou de
+ * registrar. Se a própria conferência falhar, nada sai: um arquivo a mais fica
+ * para a limpeza diária (`A78`); um a menos não tem volta.
  */
-async function removerSemEsconder(
-  chaves: readonly string[],
-  armazenamento: ArmazenamentoPort | undefined,
-  correlacaoId: string,
-): Promise<void> {
-  if (!armazenamento) return
-  for (const chave of chaves) {
+async function removerSemEsconder(chaves: readonly string[], contexto: Desfazimento): Promise<void> {
+  const { armazenamento, correlacaoId, messageId } = contexto
+  if (!armazenamento || chaves.length === 0) return
+
+  let comLinha: Set<string>
+  try {
+    const linhas = await contexto.banco.anexo.findMany({
+      where: { chaveArmazenamento: { in: [...chaves] } },
+      select: { chaveArmazenamento: true },
+    })
+    comLinha = new Set(linhas.map((linha) => linha.chaveArmazenamento!))
+  } catch (aoConferir) {
+    registrarLog('erro', 'desfazer de anexos suspenso: não deu para conferir as linhas; a limpeza diária decide', {
+      correlacaoId,
+      messageId,
+      chaves: [...chaves],
+      erro: mensagemDoErro(aoConferir),
+    })
+    return
+  }
+
+  for (const chave of chaves.filter((gravada) => !comLinha.has(gravada))) {
     try {
       await armazenamento.remover(chave)
     } catch (aoRemover) {
@@ -911,6 +946,7 @@ async function removerSemEsconder(
       // existe uma linha dizendo qual é. A limpeza diária o alcança depois.
       registrarLog('erro', 'anexo órfão no armazenamento após tentativa desfeita', {
         correlacaoId,
+        messageId,
         chave,
         erro: mensagemDoErro(aoRemover),
       })
@@ -924,8 +960,7 @@ async function removerSemEsconder(
  */
 async function todosOuNenhum<T extends { chaveArmazenamento: string | null }>(
   tentativas: readonly PromiseSettledResult<T>[],
-  armazenamento: ArmazenamentoPort | undefined,
-  correlacaoId: string,
+  contexto: Desfazimento,
 ): Promise<T[]> {
   const avaliados = tentativas.flatMap((tentativa) => (tentativa.status === 'fulfilled' ? [tentativa.value] : []))
   const falhas = tentativas.filter((tentativa): tentativa is PromiseRejectedResult => tentativa.status === 'rejected')
@@ -933,11 +968,12 @@ async function todosOuNenhum<T extends { chaveArmazenamento: string | null }>(
   if (primeira === undefined) return avaliados
 
   const gravadas = avaliados.map((anexo) => anexo.chaveArmazenamento).filter((chave): chave is string => chave !== null)
-  await removerSemEsconder(gravadas, armazenamento, correlacaoId)
+  await removerSemEsconder(gravadas, contexto)
   // Sobe a primeira; as outras não somem caladas.
   for (const outra of demais) {
     registrarLog('erro', 'outro anexo do mesmo e-mail também falhou', {
-      correlacaoId,
+      correlacaoId: contexto.correlacaoId,
+      messageId: contexto.messageId,
       erro: mensagemDoErro(outra.reason),
     })
   }

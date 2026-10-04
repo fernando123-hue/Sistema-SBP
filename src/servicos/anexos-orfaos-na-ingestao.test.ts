@@ -84,6 +84,37 @@ describe('a ingestão não deixa arquivo sem linha com o processo vivo', () => {
     expect(await banco.email.count({ where: { messageId: '<enche@exemplo.test>' } })).toBe(0)
   })
 
+  it('commit efetivado e resposta perdida: o desfazer não apaga arquivo que tem linha', async () => {
+    // O banco gravou, mas o erro chegou mesmo assim (conexão caiu depois do
+    // COMMIT). O `catch` desfaz por crença; sem conferir as linhas, apagaria
+    // os documentos que o banco acabou de registrar. Revisão de segurança do
+    // #213, S1.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const armazenamento = new ArmazenamentoEmMemoria()
+    const ia: AiPort = { nome: 'duble', interpretar: async () => INTERPRETACAO }
+    const bancoQuePerdeAResposta = new Proxy(banco, {
+      get(alvo, propriedade) {
+        if (propriedade !== '$transaction') return Reflect.get(alvo, propriedade)
+        return async (...argumentos: unknown[]) => {
+          const resultado = await (alvo.$transaction as (...a: unknown[]) => Promise<unknown>)(...argumentos)
+          if (typeof argumentos[0] === 'function') throw new Error('conexão caiu depois do commit (simulado)')
+          return resultado
+        }
+      },
+    })
+
+    await sincronizar(
+      { banco: bancoQuePerdeAResposta, ingestao: comDoisAnexos('<perdida@exemplo.test>'), ia, armazenamento },
+      base.operador,
+    )
+
+    const linhas = await banco.anexo.findMany({ select: { chaveArmazenamento: true } })
+    expect(linhas).toHaveLength(2)
+    expect((await armazenamento.listar()).map((arquivo) => arquivo.chave).sort()).toEqual(
+      linhas.map((linha) => linha.chaveArmazenamento).sort(),
+    )
+  })
+
   it('outra sincronização gravou o mesmo e-mail primeiro: os arquivos desta tentativa saem', async () => {
     // A corrida entre duas sincronizações: a checagem de fora passa, e a de
     // dentro da transação acha o e-mail já processado pela outra. Simulada
