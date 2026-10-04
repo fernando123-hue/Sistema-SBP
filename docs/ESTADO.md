@@ -1,8 +1,61 @@
 # Estado do projeto — retomada
 
-Última atualização: **03/10/2026, fim da noite.** `main` depois do #211. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **04/10/2026, manhã.** `main` depois do #216. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
+>
+> ### 04/10/2026, manhã — a fila do agente esvaziou (este bloco vence os de baixo onde conflitar)
+>
+> **Mesclado** (cada PR com revisão técnica e, no nível 3, de segurança publicadas; todas as rodadas 1 acharam coisa real):
+> - **#213:** a ingestão desfaz, com o processo vivo, os arquivos que não viraram linha.
+>   - Um `guardar` que falha no meio leva os dos outros anexos (`Promise.allSettled` e `todosOuNenhum`).
+>   - A tentativa que perde a corrida entre duas sincronizações apaga os seus.
+>   - Antes de apagar, confere no banco: só sai a chave que nenhuma linha usa. Isso cobre o commit que valeu com a resposta perdida.
+>   - O contrato de `guardar` diz que cada chamada devolve chave nova.
+> - **#214:** pendência 46 resolvida. O CI sobe `next start` e confere o nonce da CSP em cada `<script>` de `/entrar`, e que ele muda a cada pedido.
+>   - O passo roda com `NODE_ENV=production` e segredos sorteados.
+>   - `scripts/conferir-nonce.ts` só roda com base `_teste` e pasta de anexos dadas no comando, porque a partida roda a limpeza diária.
+> - **#215:** a recifragem (`npm run anexos:recifrar`) não deixa cópia do documento para trás.
+>   - O temporário sai quando a gravação ou a releitura falham.
+>   - A sobra de uma execução interrompida sai na próxima, mas **só com o original ao lado**. Sem ele, fica e é avisada.
+>   - `--conferir` conta as sobras.
+> - **#216:** o teste "o acerto não paga o piso" deixou de medir relógio. Ficava vermelho com a suíte inteira carregando a máquina; agora confere quem chama a espera.
+>
+> Suíte: 182 arquivos, **2334 testes**.
+>
+> **Para o dono (precisa de resposta; nada mudou desde o bloco de baixo):**
+> - **Os 16 anexos sintéticos sem registro** em `./armazenamento` deste checkout: pode deixar a limpeza apagar? Até a resposta, não subir o servidor local com a base `sbp`.
+> - **A V1:** o teste de tela, o ok para apagar `sbp_restaurada` e `backup.sql`, o modelo maior e a V2, como no bloco de 02/10. Atualizar a V1 agora traz o #211 a #216; rode `npm run db:expurgar -- --listar-orfaos` antes de subir.
+>
+> **Esperando de fora:** o primeiro PR do Dependabot depois do #203. Se o Node dele for menor que 22.12, o `engine-strict` o derruba; decidir então.
+>
+> **Achados baixos registrados, sem PR próprio** (nenhum apaga dado nem esconde falha; cada um com o link da revisão no PR):
+> - **#211:**
+>   - `--aceitar-orfaos` fora da trava de execução única pode duplicar linha na trilha.
+>   - Remoção que passa de 30 s faz o log dizer "continua" com o arquivo já fora.
+>   - O `stat` sequencial do `listar` não foi medido com 20 mil arquivos.
+> - **#213:**
+>   - `Email` com `processadoEm` nulo cai no `update` do `upsert` sem gravar linha de anexo (nada cria isso hoje).
+>   - O desfazer dos irmãos precisa do banco: com banco e disco caindo juntos, os arquivos esperam a varredura.
+>   - `Anexo.chaveArmazenamento` não tem índice; só pesa em falha ou corrida.
+>   - O laço "outra falha do mesmo e-mail" não tem teste.
+> - **#214:**
+>   - A guarda confere o nome da base, não o host.
+>   - No uso local, as outras variáveis vêm do `.env`.
+>   - O `setTimeout` de 5 s não é cancelado.
+>   - A regex é quadrática com `<script` sem fechamento.
+>   - O SIGKILL não alcança processos netos.
+> - **#215:**
+>   - Um link simbólico dentro de `xx/` é trocado por cópia cifrada.
+>   - Um anexo expurgado no meio da recifragem pode ser recriado pelo `rename`.
+>   - `*.recifrando` fora da forma não é avisado.
+>   - Uma falha num arquivo aborta o lote.
+>   - `chavesDeAnexo` e `--conferir` não têm teste.
+>
+> **Armadilhas vistas hoje:**
+> - **`next start` em produção roda a limpeza diária na partida.** Qualquer teste local com `next start` vai em base `_teste` e pasta temporária, nunca na `sbp` com `./armazenamento`.
+> - **O heredoc e o `node -e` em linha comem `\\`** e transformam `\n` em quebra real. Para texto com barra invertida, use a ferramenta de edição.
+> - **Revisor e suíte disputam o mesmo MySQL e o mesmo checkout.** Com dois revisores ao mesmo tempo, só um roda `vitest`, e não se edita arquivo enquanto um revisor pode estar trocando de branch.
 >
 > ### 03/10/2026, fim da noite — `A78` FEITO no #211 (este bloco vence os de baixo onde conflitar)
 >
