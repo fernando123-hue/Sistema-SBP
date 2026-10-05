@@ -795,6 +795,16 @@ async function processarUm(
         select: { processadoEm: true },
       })
       if (jaProcessado?.processadoEm) return null
+      // Linha de `Email` SEM `processadoEm` é estado que nada no sistema cria:
+      // esta função é a única criadora e sempre o preenche. Seguir cairia no
+      // ramo `update` do `upsert`, que não grava conteúdo nem `Anexo` — o
+      // e-mail viraria "processado" com os arquivos sem dono. Falha alto, e o
+      // `catch` desfaz os arquivos (revisão de segurança do #213, S2).
+      if (jaProcessado) {
+        throw new Error(
+          `o e-mail ${JSON.stringify(email.messageId)} já existe sem processadoEm, estado que a ingestão nunca cria: investigar a linha antes de reprocessar`,
+        )
+      }
 
       // Sem interpretação (desistiu), o suspeito vem só da análise local; com
       // interpretação, o sinal duplo de sempre (regex OU modelo).
