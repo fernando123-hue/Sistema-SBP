@@ -417,10 +417,11 @@ export async function sincronizar(
       const tentativasDoEmail = tentativas.get(email.messageId) ?? 0
       const resultado = await processarUm(deps, email, correlacaoId, usuario, tentativasDoEmail, segundaOpiniao)
 
-      // A checagem de existência acima é só economia de chamada de IA. Duas
+      // Para duplicados, a checagem de existência acima é economia de chamada
+      // de IA (para a linha sem `processadoEm`, é a recusa). Duas
       // sincronizações concorrentes podem passar por ela antes de qualquer uma
-      // gravar; quem chega depois descobre dentro da transação e conta como
-      // duplicado — não como falha.
+      // gravar; quem chega depois descobre dentro da transação, ou na
+      // unicidade do `create`, e conta como duplicado — não como falha.
       if (resultado === null) {
         resumo.duplicados += 1
         continue

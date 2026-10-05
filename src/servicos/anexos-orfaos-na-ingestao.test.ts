@@ -228,6 +228,49 @@ describe('a ingestão não deixa arquivo sem linha com o processo vivo', () => {
     expect(evento.mensagem).not.toContain('sem-processado@exemplo.test')
   })
 
+  it('a outra sincronização grava entre a checagem da transação e o create: a unicidade conta duplicado e os arquivos desta saem (revisões do #224)', async () => {
+    // A checagem de dentro da transação não vê a linha (simulado: ela devolve
+    // nada), como quando a outra comita depois dessa leitura. O `INSERT` real
+    // viola a unicidade de `messageId`.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const armazenamento = new ArmazenamentoEmMemoria()
+    let daOutra = ''
+    const ia: AiPort = {
+      nome: 'duble',
+      interpretar: async () => {
+        daOutra = await armazenamento.guardar(PDF, '.pdf')
+        await banco.email.create({
+          data: {
+            messageId: '<no-insert@exemplo.test>',
+            recebidoEm: new Date(),
+            processadoEm: new Date(),
+            anexos: {
+              create: {
+                nomeSeguro: 'primeiro.pdf',
+                tipoDeclarado: 'application/pdf',
+                tamanho: PDF.byteLength,
+                aceito: true,
+                chaveArmazenamento: daOutra,
+                armazenadoEm: new Date(),
+              },
+            },
+          },
+        })
+        return INTERPRETACAO
+      },
+    }
+
+    const resumo = await sincronizar(
+      { banco: comChecagemCega(banco), ingestao: comDoisAnexos('<no-insert@exemplo.test>'), ia, armazenamento },
+      base.operador,
+    )
+
+    expect(resumo.duplicados).toBe(1)
+    expect(resumo.falhas).toBe(0)
+    expect((await armazenamento.listar()).map((arquivo) => arquivo.chave)).toEqual([daOutra])
+    expect(await banco.anexo.count()).toBe(1)
+  })
+
   it('a linha sem processadoEm aparece DURANTE a leitura da IA: a transação recusa e desfaz os arquivos (revisão de segurança do #213, S2)', async () => {
     const base = await semearBase(banco, { totalDeDias: 1 })
     const armazenamento = new ArmazenamentoEmMemoria()
@@ -271,6 +314,44 @@ describe('a ingestão não deixa arquivo sem linha com o processo vivo', () => {
     expect(outra[0]).toContain('duas-falhas@exemplo.test')
   })
 })
+
+/**
+ * O banco de verdade, mas dentro da transação `email.findUnique` não acha nada:
+ * a outra sincronização comitou depois dessa leitura. Métodos ligados ao alvo,
+ * para os delegados do Prisma não perderem o `this`.
+ */
+function comChecagemCega(original: typeof banco): typeof banco {
+  const ligado = <T extends object>(alvo: T, propriedade: string | symbol): unknown => {
+    const valor = Reflect.get(alvo, propriedade)
+    return typeof valor === 'function' ? valor.bind(alvo) : valor
+  }
+  return new Proxy(original, {
+    get(alvo, propriedade) {
+      if (propriedade !== '$transaction') return ligado(alvo, propriedade)
+      return (operacao: unknown, ...resto: unknown[]) => {
+        const transacao = alvo.$transaction.bind(alvo) as (...argumentos: unknown[]) => Promise<unknown>
+        if (typeof operacao !== 'function') return transacao(operacao, ...resto)
+        return transacao(
+          (tx: object) =>
+            operacao(
+              new Proxy(tx, {
+                get(t, nome) {
+                  if (nome !== 'email') return ligado(t, nome)
+                  const email = Reflect.get(t, nome) as object
+                  return new Proxy(email, {
+                    get(e, metodo) {
+                      return metodo === 'findUnique' ? async () => null : ligado(e, metodo)
+                    },
+                  })
+                },
+              }),
+            ),
+          ...resto,
+        )
+      }
+    },
+  })
+}
 
 /** As linhas de erro que o código escreve no stderr, sem sujar a saída do teste. */
 function capturarErros(): string[] {
