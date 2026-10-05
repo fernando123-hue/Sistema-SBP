@@ -19,18 +19,18 @@
 > **Saíram da lista de baixos:** os quatro do #219 (`ENOENT` de subpasta, `ehDaForma`, sobra sem extensão sem teste — o de código de saída das ignoradas fica, hipotético), o teste de tempo intermitente, os do #214 (guarda por nome, temporizador; regex e netos viraram limite aceito na pendência 46), e os do #213 (`processadoEm` nulo, laço sem teste; o índice em `chaveArmazenamento` ficou de fora por escolha registrada na `AT-74`).
 >
 > **Baixos que ficam, sem PR próprio:**
-> - **#211:** `--aceitar-orfaos` fora da trava de execução única pode duplicar linha na trilha; remoção que passa de 30 s faz o log dizer "continua"; o `stat` sequencial do `listar` nunca foi medido com 20 mil arquivos.
+> - **#211:** `--aceitar-orfaos` fora da trava de execução única pode duplicar linha na trilha; remoção que passa de 30 s faz o log dizer "continua". **O `stat` sequencial do `listar` foi medido (04/10): ~19 mil arquivos em 2,4 a 2,8 s, nesta máquina lenta; não pesa numa rotina diária.**
 > - **#215:** uma falha num arquivo aborta o lote da recifragem (coerente com falhar alto); `--conferir` sem teste.
 > - **#219:** entrada ignorada não muda o código de saída (hipotético).
 > - **#224, informativo:** `$transaction` da ingestão sem `timeout` próprio; com a vencedora demorando, a perdedora pode estourar os 5 s padrão e contar uma falha em vez de duplicado (anterior ao PR).
 >
 > **Armadilhas vistas hoje:**
-> - **Esta máquina ficou lenta para a suíte:** de 5 min para 10 a 19 min, e uma vez 7 arquivos não abriram processo (`0xC0000142`, falha do Windows ao iniciar processo). O antivírus (`QHActiveDefense`) é o suspeito; também segurou o `rm` recursivo do `afterEach` de `expurgo-anexos-orfaos.test.ts` por mais de 60 s uma vez (as asserções passaram; sozinho, 3 de 3). Rodar de novo resolveu as duas vezes. Prazo do comando de fundo: 50 min.
+> - **Esta máquina ficou lenta para a suíte:** de 5 min para 10 a 19 min, e uma vez 7 arquivos não abriram processo (`0xC0000142`, falha do Windows ao iniciar processo). O antivírus (`QHActiveDefense`) é o suspeito; também segurou o `rm` recursivo do `afterEach` de `expurgo-anexos-orfaos.test.ts` por mais de 60 s uma vez (as asserções passaram; sozinho, 3 de 3). Rodar de novo resolveu as duas vezes. Prazo do comando de fundo: 50 min. Criar 20 mil arquivos levou mais de 40 min.
 > - **Não encadear commit com a leitura do resultado da suíte.** Aconteceu duas vezes hoje; o commit saiu com a suíte vermelha (era a máquina, mas só se soube depois).
 > - **Título do PR antes de mesclar:** o squash usa o título; se a abordagem mudou nas revisões, trocar o título antes.
 > - **`node -e` e `sed` comem barra invertida** em regex; para mutação com `\.`, usar a ferramenta de edição.
 >
-> **Próximo do agente:** os baixos do #211, um PR (a trava do aceite manual e a medição do `stat` com 20 mil arquivos). Antes, o Dependabot se chegar e as respostas do dono sobre a V1.
+> **Próximo do agente:** os baixos do #211, um PR (a trava do aceite manual contra a limpeza do dia; o log da remoção que passa de 30 s). Antes, o Dependabot se chegar e as respostas do dono sobre a V1.
 >
 > ### 04/10/2026, tarde — #219, a recifragem não cria arquivo que não estava lá
 >
