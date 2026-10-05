@@ -12,7 +12,20 @@
  * nada (o mesmo arranjo de `proxy-no-manifesto.ts`).
  */
 
+import { tmpdir } from 'node:os'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
+
 const NONCE_NA_CSP = /'nonce-([^']+)'/
+
+/**
+ * O host desta máquina, como `new URL` o devolve. Com o esquema `mysql:` o host
+ * NÃO é normalizado — só o IPv6 (que vem entre colchetes) —, então `LOCALHOST`,
+ * `127.1` e afins são recusados: falha do lado seguro (revisão técnica do
+ * #223, achado 2). E host local não prova base local: um túnel ou uma porta
+ * mapeada levam `127.0.0.1` a outra máquina; a barreira que sobra ali é o nome
+ * `_teste` (revisão de segurança do #223, S2).
+ */
+const HOSTS_DESTA_MAQUINA = new Set(['127.0.0.1', 'localhost', '[::1]'])
 
 /** A abertura do script inteira: `>` dentro de um valor entre aspas não a corta. */
 const ABERTURA_DE_SCRIPT = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi
@@ -68,16 +81,56 @@ export function recusaDoAmbiente(ambiente: Readonly<Record<string, string | unde
     return 'DATABASE_URL precisa vir no ambiente do comando, apontando para uma base de teste (o .env não serve).'
   }
   let base: string
+  let host: string
+  let parametros: string
   try {
-    base = new URL(url).pathname.replace(/^\//, '')
+    const endereco = new URL(url)
+    base = endereco.pathname.replace(/^\//, '')
+    host = endereco.hostname
+    parametros = endereco.search
   } catch {
     return 'DATABASE_URL não é uma URL válida.'
+  }
+  // O driver aplica cada `?chave=valor` POR CIMA do host, da porta e da base do
+  // caminho: `.../sbp_teste?host=banco-real` passava pela guarda e conectava em
+  // `banco-real` (revisões do #223, técnica 1 e segurança S1). A URL do CI não
+  // tem parâmetro nenhum.
+  if (parametros !== '') {
+    return 'DATABASE_URL não pode ter parâmetros (?...): o driver os aplica por cima de host e base.'
+  }
+  // O nome `_teste` sozinho não prova nada: `servidor-de-verdade/qualquer_teste`
+  // passaria (revisão de segurança do #214, N1). A base efêmera do CI e a de
+  // teste local estão nesta máquina.
+  if (!HOSTS_DESTA_MAQUINA.has(host)) {
+    return `A base está em "${host}", fora desta máquina: a conferência só roda contra base de teste local.`
   }
   if (!base.endsWith('_teste')) {
     return `A base "${base}" não termina em _teste: a limpeza diária da partida rodaria nela.`
   }
-  if ((ambiente['ARMAZENAMENTO_DIR'] ?? '') === '') {
+  return recusaDaPasta(ambiente)
+}
+
+/**
+ * A pasta de anexos tem de estar DENTRO de uma pasta temporária: a limpeza da
+ * partida apaga anexos nela, e só ser "não vazia" aceitava a pasta real
+ * (revisão de segurança do #223, S3). No CI é `$RUNNER_TEMP/anexos`.
+ */
+function recusaDaPasta(ambiente: Readonly<Record<string, string | undefined>>): string | null {
+  const pasta = ambiente['ARMAZENAMENTO_DIR'] ?? ''
+  if (pasta === '') {
     return 'ARMAZENAMENTO_DIR precisa vir no ambiente do comando, numa pasta temporária (o .env não serve).'
+  }
+  const temporarias = [ambiente['RUNNER_TEMP'], ambiente['TMPDIR'], ambiente['TEMP'], ambiente['TMP'], tmpdir()]
+  const dentroDeUma = temporarias.some((temporaria) => {
+    if (temporaria === undefined || temporaria === '') return false
+    const caminho = relative(resolve(temporaria), resolve(pasta))
+    // `..` sozinho ou seguido de separador é subir; `..anexos` é uma pasta
+    // legítima e era recusada à toa (revisões do #223, rodada 2).
+    const sobe = caminho === '..' || caminho.startsWith(`..${sep}`)
+    return caminho !== '' && !sobe && !isAbsolute(caminho)
+  })
+  if (!dentroDeUma) {
+    return `ARMAZENAMENTO_DIR (${JSON.stringify(pasta)}) não está dentro de uma pasta temporária: a limpeza da partida apagaria anexos dela.`
   }
   return null
 }

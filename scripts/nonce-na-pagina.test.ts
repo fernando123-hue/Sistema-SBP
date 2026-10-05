@@ -83,10 +83,51 @@ describe('nonce do cabeçalho', () => {
 describe('onde a conferência aceita rodar (revisão técnica do #214, M2)', () => {
   // `next start` roda a limpeza diária na partida. Contra a base real, ela
   // apagaria anexos; a conferência só roda contra base de teste e pasta dada.
-  const TESTE = { DATABASE_URL: 'mysql://root@127.0.0.1:3306/sbp_teste', ARMAZENAMENTO_DIR: '/tmp/anexos' }
+  const TESTE = {
+    DATABASE_URL: 'mysql://root@127.0.0.1:3306/sbp_teste',
+    ARMAZENAMENTO_DIR: '/tmp/anexos',
+    TMPDIR: '/tmp',
+  }
 
   it('base _teste e pasta de anexos explícita: roda', () => {
     expect(recusaDoAmbiente(TESTE)).toBeNull()
+  })
+
+  // Prova a GUARDA: com `[::1]`, o adapter de hoje reescreve o host e a
+  // conexão IPv6 nem sobe — falha do lado seguro (segurança do #223, rodada 2).
+  it.each(['localhost', '[::1]'])('base _teste em %s também roda', (host) => {
+    expect(recusaDoAmbiente({ ...TESTE, DATABASE_URL: `mysql://root@${host}:3306/sbp_teste` })).toBeNull()
+  })
+
+  it.each(['banco.exemplo.test', '10.0.0.5', '127.0.0.1.exemplo.test', 'meulocalhost', '127.0.0.1@banco.exemplo.test'])(
+    'base _teste FORA desta máquina (%s): recusa — o nome sozinho não prova que é de teste (revisão de segurança do #214)',
+    (host) => {
+      expect(recusaDoAmbiente({ ...TESTE, DATABASE_URL: `mysql://root@${host}:3306/sbp_teste` })).toMatch(/desta máquina/)
+    },
+  )
+
+  it.each(['host=banco.exemplo.test', 'database=sbp', 'socketPath=/tmp/m.sock', 'port=3307'])(
+    'URL com parâmetro (?%s): recusa — o driver aplica a query por cima de host e base (revisões do #223, técnica 1 e segurança S1)',
+    (parametro) => {
+      expect(recusaDoAmbiente({ ...TESTE, DATABASE_URL: `${TESTE.DATABASE_URL}?${parametro}` })).toMatch(/parâmetro/)
+    },
+  )
+
+  it.each(['/srv/sbp/armazenamento', '/tmp/../srv/anexos', '/tmp'])(
+    'pasta de anexos fora de uma pasta temporária (%s): recusa — a limpeza da partida apagaria anexos dela (revisão de segurança do #223, S3)',
+    (pasta) => {
+      expect(recusaDoAmbiente({ ...TESTE, ARMAZENAMENTO_DIR: pasta })).toMatch(/não está dentro de uma pasta temporária/)
+    },
+  )
+
+  it('pasta de nome começado por dois pontos, dentro do temporário: roda', () => {
+    expect(recusaDoAmbiente({ ...TESTE, ARMAZENAMENTO_DIR: '/tmp/..anexos' })).toBeNull()
+  })
+
+  it('pasta de anexos dentro de RUNNER_TEMP (o CI): roda', () => {
+    expect(
+      recusaDoAmbiente({ DATABASE_URL: TESTE.DATABASE_URL, RUNNER_TEMP: '/runner/temp', ARMAZENAMENTO_DIR: '/runner/temp/anexos' }),
+    ).toBeNull()
   })
 
   it('base que não termina em _teste: recusa', () => {
