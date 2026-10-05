@@ -13,7 +13,7 @@
  */
 
 import { tmpdir } from 'node:os'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 
 const NONCE_NA_CSP = /'nonce-([^']+)'/
 
@@ -124,7 +124,10 @@ function recusaDaPasta(ambiente: Readonly<Record<string, string | undefined>>): 
   const dentroDeUma = temporarias.some((temporaria) => {
     if (temporaria === undefined || temporaria === '') return false
     const caminho = relative(resolve(temporaria), resolve(pasta))
-    return caminho !== '' && !caminho.startsWith('..') && !isAbsolute(caminho)
+    // `..` sozinho ou seguido de separador é subir; `..anexos` é uma pasta
+    // legítima e era recusada à toa (revisões do #223, rodada 2).
+    const sobe = caminho === '..' || caminho.startsWith(`..${sep}`)
+    return caminho !== '' && !sobe && !isAbsolute(caminho)
   })
   if (!dentroDeUma) {
     return `ARMAZENAMENTO_DIR (${JSON.stringify(pasta)}) não está dentro de uma pasta temporária: a limpeza da partida apagaria anexos dela.`

@@ -93,6 +93,8 @@ describe('onde a conferência aceita rodar (revisão técnica do #214, M2)', () 
     expect(recusaDoAmbiente(TESTE)).toBeNull()
   })
 
+  // Prova a GUARDA: com `[::1]`, o adapter de hoje reescreve o host e a
+  // conexão IPv6 nem sobe — falha do lado seguro (segurança do #223, rodada 2).
   it.each(['localhost', '[::1]'])('base _teste em %s também roda', (host) => {
     expect(recusaDoAmbiente({ ...TESTE, DATABASE_URL: `mysql://root@${host}:3306/sbp_teste` })).toBeNull()
   })
@@ -114,9 +116,13 @@ describe('onde a conferência aceita rodar (revisão técnica do #214, M2)', () 
   it.each(['/srv/sbp/armazenamento', '/tmp/../srv/anexos', '/tmp'])(
     'pasta de anexos fora de uma pasta temporária (%s): recusa — a limpeza da partida apagaria anexos dela (revisão de segurança do #223, S3)',
     (pasta) => {
-      expect(recusaDoAmbiente({ ...TESTE, ARMAZENAMENTO_DIR: pasta })).toMatch(/temporária/)
+      expect(recusaDoAmbiente({ ...TESTE, ARMAZENAMENTO_DIR: pasta })).toMatch(/não está dentro de uma pasta temporária/)
     },
   )
+
+  it('pasta de nome começado por dois pontos, dentro do temporário: roda', () => {
+    expect(recusaDoAmbiente({ ...TESTE, ARMAZENAMENTO_DIR: '/tmp/..anexos' })).toBeNull()
+  })
 
   it('pasta de anexos dentro de RUNNER_TEMP (o CI): roda', () => {
     expect(
