@@ -1,10 +1,23 @@
 # Estado do projeto — retomada
 
-Última atualização: **04/10/2026, noite.** `main` depois do #224. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **05/10/2026, madrugada.** `main` depois do #226. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 04/10/2026, noite — #221 a #224, e a resposta do dono sobre os anexos locais (este bloco vence os de baixo onde conflitar)
+> ### 05/10/2026, madrugada — #226, e a fila do agente esvaziou de novo (este bloco vence os de baixo onde conflitar)
+>
+> **Mesclado: #226** (técnica e segurança em 2 rodadas cada; as duas rodadas 1 acharam coisa real). O aceite manual de órfãos (`--aceitar-orfaos`) recusa enquanto uma limpeza diária estiver em curso e não abandonada, de qualquer dia (`limpezaEmCurso`); o cabeçalho do script manda rodá-lo com o servidor parado e sem `db:expurgar` agendado, ou com as tentativas do dia esgotadas, longe da meia-noite. **O N3 do #211 não vale no Prisma 7.10:** o `$transaction` espera o callback antes do commit (conferido no cliente), então o log da remoção já dizia a verdade; a mudança que a primeira versão fazia foi desfeita (`AT-74`).
+>
+> **Fila do agente:** vazia. O que resta da lista de baixos fica aceito, cada um com o motivo:
+> - **#215:** uma falha num arquivo aborta o lote da recifragem — é falhar alto, e rodar de novo segue; `--conferir` sem teste — o script roda ao ser carregado, e as funções que ele usa têm teste.
+> - **#219:** entrada ignorada não muda o código de saída — hipotético, o formato de anexo é o mesmo em todas as versões.
+> - **#224, informativo:** `$transaction` da ingestão sem `timeout` próprio — no pior caso conta uma falha em vez de duplicado, uma vez; a sincronização seguinte vê o e-mail processado.
+>
+> **Esperando de fora:** o primeiro PR do Dependabot depois do #203; o dono, sobre a V1 (teste de tela, apagar `sbp_restaurada` e `backup.sql`, modelo maior, V2). Atualizar a V1 agora traz o #211 a #226.
+>
+> Suíte: 182 arquivos, **2371 testes** (CI, 0 pulados).
+>
+> ### 04/10/2026, noite — #221 a #224, e a resposta do dono sobre os anexos locais
 >
 > **Resposta do dono (04/10):** os 16 anexos sintéticos sem registro, só de teste, podiam ser apagados. Foram, só eles: `npm run db:expurgar -- --aceitar-orfaos=16 --por=Fernando`, depois de o `--listar-orfaos` mostrar os mesmos 16 de 08/09. A trilha tem 16 linhas `anexo_orfao_removido` com `aceitoPor: Fernando`. Restam 6 arquivos, todos com registro. **O servidor local pode voltar a subir com a base `sbp`** (a partida roda a limpeza diária, que agora não tem órfão para apagar).
 >
@@ -19,7 +32,7 @@
 > **Saíram da lista de baixos:** os quatro do #219 (`ENOENT` de subpasta, `ehDaForma`, sobra sem extensão sem teste — o de código de saída das ignoradas fica, hipotético), o teste de tempo intermitente, os do #214 (guarda por nome, temporizador; regex e netos viraram limite aceito na pendência 46), e os do #213 (`processadoEm` nulo, laço sem teste; o índice em `chaveArmazenamento` ficou de fora por escolha registrada na `AT-74`).
 >
 > **Baixos que ficam, sem PR próprio:**
-> - **#211:** `--aceitar-orfaos` fora da trava de execução única pode duplicar linha na trilha; remoção que passa de 30 s faz o log dizer "continua". **O `stat` sequencial do `listar` foi medido (04/10): ~19 mil arquivos em 2,4 a 2,8 s, nesta máquina lenta; não pesa numa rotina diária.**
+> - ~~**#211:** aceite fora da trava; log da remoção acima de 30 s~~: feitos ou desfeitos com motivo no #226. O `stat` sequencial do `listar` foi medido (04/10): ~19 mil arquivos em 2,4 a 2,8 s.
 > - **#215:** uma falha num arquivo aborta o lote da recifragem (coerente com falhar alto); `--conferir` sem teste.
 > - **#219:** entrada ignorada não muda o código de saída (hipotético).
 > - **#224, informativo:** `$transaction` da ingestão sem `timeout` próprio; com a vencedora demorando, a perdedora pode estourar os 5 s padrão e contar uma falha em vez de duplicado (anterior ao PR).
@@ -30,7 +43,7 @@
 > - **Título do PR antes de mesclar:** o squash usa o título; se a abordagem mudou nas revisões, trocar o título antes.
 > - **`node -e` e `sed` comem barra invertida** em regex; para mutação com `\.`, usar a ferramenta de edição.
 >
-> **Próximo do agente:** os baixos do #211, um PR (a trava do aceite manual contra a limpeza do dia; o log da remoção que passa de 30 s). Antes, o Dependabot se chegar e as respostas do dono sobre a V1.
+> **Próximo do agente:** ver o bloco de 05/10.
 >
 > ### 04/10/2026, tarde — #219, a recifragem não cria arquivo que não estava lá
 >
