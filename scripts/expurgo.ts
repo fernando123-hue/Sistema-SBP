@@ -18,8 +18,9 @@
  * uma tentativa automática começar no meio do aceite — não é barrado, e não há
  * hora fixa: o servidor tenta ao subir e a cada 15 minutos até a limpeza do dia
  * dar certo ou esgotar as tentativas. Como o aceite só é preciso quando a
- * limpeza recusa (e aí ela segue tentando), rode-o com o servidor PARADO, ou
- * depois que as tentativas do dia se esgotarem. Junto, o pior que acontece é a
+ * limpeza recusa (e aí ela segue tentando), rode-o com o servidor PARADO e sem
+ * `db:expurgar` agendado, ou depois que as tentativas do dia se esgotarem — e
+ * longe da meia-noite, quando as tentativas recomeçam. Junto, o pior que acontece é a
  * trilha ganhar linha dobrada; nada além do aceito é apagado (revisões do #226).
  *
  * Os prazos NÃO vêm de variável de ambiente. Eles são editados pelo gestor, na
@@ -84,7 +85,8 @@ async function apagarOrfaosAceitos(
   // a trilha ganharia linha dobrada (revisão técnica do #211, rodada 2, N2).
   if (await limpezaEmCurso(banco)) {
     throw new LimpezaDeOrfaosRecusadaError(
-      'A limpeza diária está rodando agora. Nada foi apagado; espere ela terminar e liste de novo.',
+      'Há uma limpeza diária em curso (ou que parou há menos de 30 minutos). Nada foi apagado; ' +
+        'espere e liste de novo.',
     )
   }
   const resultado = await expurgarAnexosOrfaos(banco, {
