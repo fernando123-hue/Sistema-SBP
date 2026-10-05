@@ -1,10 +1,38 @@
 # Estado do projeto — retomada
 
-Última atualização: **04/10/2026, tarde.** `main` depois do #219. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **04/10/2026, noite.** `main` depois do #224. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 04/10/2026, tarde — #219, a recifragem não cria arquivo que não estava lá (este bloco vence os de baixo onde conflitar)
+> ### 04/10/2026, noite — #221 a #224, e a resposta do dono sobre os anexos locais (este bloco vence os de baixo onde conflitar)
+>
+> **Resposta do dono (04/10):** os 16 anexos sintéticos sem registro, só de teste, podiam ser apagados. Foram, só eles: `npm run db:expurgar -- --aceitar-orfaos=16 --por=Fernando`, depois de o `--listar-orfaos` mostrar os mesmos 16 de 08/09. A trilha tem 16 linhas `anexo_orfao_removido` com `aceitoPor: Fernando`. Restam 6 arquivos, todos com registro. **O servidor local pode voltar a subir com a base `sbp`** (a partida roda a limpeza diária, que agora não tem órfão para apagar).
+>
+> **Mesclado** (técnica, e no nível 3 também segurança, publicadas em cada um; todas as rodadas 1 acharam coisa real):
+> - **#221:** os testes de tempo de `conferencia-da-extracao.test.ts` medem a menor de até três tentativas, cada uma com estado novo, com os mesmos tetos; e um teste novo prova por contagem que, sem orçamento, o valor longo nem é dobrado. **O título do commit na `main` ficou errado** ("por contagem e por CPU"): a primeira versão media CPU, a revisão mostrou que isso afrouxava a guarda, e a versão final voltou ao relógio com amostra maior. O título do PR foi corrigido depois da mescla; o histórico não se reescreve.
+> - **#222:** a recifragem usa a regra de anexo do próprio adapter (`ehAnexoDoSistema`, que agora confere a subpasta por conta própria) e não confunde subpasta sumida com pasta vazia.
+> - **#223:** a conferência do nonce no CI só roda contra base desta máquina, sem parâmetros na URL (o driver aplicava `?host=` e `?database=` por cima do caminho — isso furava também a checagem `_teste` antiga) e com a pasta de anexos dentro de uma pasta temporária. O passo caiu de 7 s para 2 s: o temporizador do encerramento ficava pendurado.
+> - **#224:** e-mail que já existe sem `processadoEm` (estado que a ingestão nunca cria) é recusado antes da IA, com a orientação na trilha; a gravação passou de `upsert` para `create`. Um teste mostra que, com o `upsert`, uma corrida no `INSERT` promovia a linha da outra sincronização sem gravar os anexos desta.
+>
+> Suíte: 182 arquivos, **2367 testes** (CI, 0 pulados).
+>
+> **Saíram da lista de baixos:** os quatro do #219 (`ENOENT` de subpasta, `ehDaForma`, sobra sem extensão sem teste — o de código de saída das ignoradas fica, hipotético), o teste de tempo intermitente, os do #214 (guarda por nome, temporizador; regex e netos viraram limite aceito na pendência 46), e os do #213 (`processadoEm` nulo, laço sem teste; o índice em `chaveArmazenamento` ficou de fora por escolha registrada na `AT-74`).
+>
+> **Baixos que ficam, sem PR próprio:**
+> - **#211:** `--aceitar-orfaos` fora da trava de execução única pode duplicar linha na trilha; remoção que passa de 30 s faz o log dizer "continua". **O `stat` sequencial do `listar` foi medido (04/10): ~19 mil arquivos em 2,4 a 2,8 s, nesta máquina lenta; não pesa numa rotina diária.**
+> - **#215:** uma falha num arquivo aborta o lote da recifragem (coerente com falhar alto); `--conferir` sem teste.
+> - **#219:** entrada ignorada não muda o código de saída (hipotético).
+> - **#224, informativo:** `$transaction` da ingestão sem `timeout` próprio; com a vencedora demorando, a perdedora pode estourar os 5 s padrão e contar uma falha em vez de duplicado (anterior ao PR).
+>
+> **Armadilhas vistas hoje:**
+> - **Esta máquina ficou lenta para a suíte:** de 5 min para 10 a 19 min, e uma vez 7 arquivos não abriram processo (`0xC0000142`, falha do Windows ao iniciar processo). O antivírus (`QHActiveDefense`) é o suspeito; também segurou o `rm` recursivo do `afterEach` de `expurgo-anexos-orfaos.test.ts` por mais de 60 s uma vez (as asserções passaram; sozinho, 3 de 3). Rodar de novo resolveu as duas vezes. Prazo do comando de fundo: 50 min. Criar 20 mil arquivos levou mais de 40 min.
+> - **Não encadear commit com a leitura do resultado da suíte.** Aconteceu duas vezes hoje; o commit saiu com a suíte vermelha (era a máquina, mas só se soube depois).
+> - **Título do PR antes de mesclar:** o squash usa o título; se a abordagem mudou nas revisões, trocar o título antes.
+> - **`node -e` e `sed` comem barra invertida** em regex; para mutação com `\.`, usar a ferramenta de edição.
+>
+> **Próximo do agente:** os baixos do #211, um PR (a trava do aceite manual contra a limpeza do dia; o log da remoção que passa de 30 s). Antes, o Dependabot se chegar e as respostas do dono sobre a V1.
+>
+> ### 04/10/2026, tarde — #219, a recifragem não cria arquivo que não estava lá
 >
 > **Mesclado: #219** (técnica e segurança em 3 rodadas cada; as rodadas 1 e 2 acharam coisa real, a 3 aprovou sem achado). Detalhes e limites aceitos em `DECISOES.md`, `AT-74`.
 > - Um anexo expurgado no meio da recifragem não volta: antes de ler e logo antes do `rename`, confere que o original ainda é arquivo comum; se sumiu, diz "sumiu" e não recria.
