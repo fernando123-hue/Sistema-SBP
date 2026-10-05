@@ -14,9 +14,13 @@
  *   npm run db:expurgar -- --listar-orfaos
  *   npm run db:expurgar -- --aceitar-orfaos=<o número> --por=<seu nome>
  *
- * O aceite recusa enquanto a limpeza do dia estiver rodando. O contrário — a
- * limpeza começar no meio de um aceite — não é barrado: não rode o aceite perto
- * da hora da limpeza automática.
+ * O aceite recusa enquanto uma limpeza diária estiver rodando. O contrário —
+ * uma tentativa automática começar no meio do aceite — não é barrado, e não há
+ * hora fixa: o servidor tenta ao subir e a cada 15 minutos até a limpeza do dia
+ * dar certo ou esgotar as tentativas. Como o aceite só é preciso quando a
+ * limpeza recusa (e aí ela segue tentando), rode-o com o servidor PARADO, ou
+ * depois que as tentativas do dia se esgotarem. Junto, o pior que acontece é a
+ * trilha ganhar linha dobrada; nada além do aceito é apagado (revisões do #226).
  *
  * Os prazos NÃO vêm de variável de ambiente. Eles são editados pelo gestor, na
  * tela, com a mudança na trilha (`A17`, `A20`); uma variável aqui seria uma
@@ -26,9 +30,13 @@
 
 import { criarArmazenamentoPort } from '../src/adapters/fabrica'
 import type { ArmazenamentoPort } from '../src/ports/armazenamento'
-import { expurgarAnexosOrfaos, levantarAnexosOrfaos } from '../src/servicos/expurgo-anexos-orfaos'
+import {
+  LimpezaDeOrfaosRecusadaError,
+  expurgarAnexosOrfaos,
+  levantarAnexosOrfaos,
+} from '../src/servicos/expurgo-anexos-orfaos'
 import { prazoEmVigor } from '../src/servicos/retencao'
-import { limpezaDoDiaEmCurso, rodarLimpezaDiaria } from '../src/servicos/rotinas'
+import { limpezaEmCurso, rodarLimpezaDiaria } from '../src/servicos/rotinas'
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
 import { lerOpcoesDeOrfaos } from './opcoes-de-orfaos'
 
@@ -74,8 +82,10 @@ async function apagarOrfaosAceitos(
   const banco = obterPrisma()
   // Rodando junto com a limpeza do dia, os dois listariam os mesmos arquivos e
   // a trilha ganharia linha dobrada (revisão técnica do #211, rodada 2, N2).
-  if (await limpezaDoDiaEmCurso(banco)) {
-    throw new Error('A limpeza de hoje está rodando agora. Nada foi apagado; espere ela terminar e liste de novo.')
+  if (await limpezaEmCurso(banco)) {
+    throw new LimpezaDeOrfaosRecusadaError(
+      'A limpeza diária está rodando agora. Nada foi apagado; espere ela terminar e liste de novo.',
+    )
   }
   const resultado = await expurgarAnexosOrfaos(banco, {
     diasDeRetencao: await prazoEmVigor(banco, 'conteudo_do_email'),

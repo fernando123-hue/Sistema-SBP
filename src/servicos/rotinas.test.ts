@@ -7,7 +7,7 @@ import { atorDeTeste, DATA_BASE, limparTudo, semearBase, type BaseSemeada } from
 import { ArmazenamentoEmMemoria } from '../testes/armazenamento-em-memoria'
 import { registrar } from './afastamentos'
 import { alterarPrazo } from './retencao'
-import { MINUTOS_PARA_DAR_COMO_ABANDONADA, TENTATIVAS_POR_DIA, limpezaDoDiaEmCurso, rodarLimpezaDiaria } from './rotinas'
+import { MINUTOS_PARA_DAR_COMO_ABANDONADA, TENTATIVAS_POR_DIA, limpezaEmCurso, rodarLimpezaDiaria } from './rotinas'
 
 const banco = obterPrisma()
 
@@ -257,35 +257,43 @@ describe('execução de outro processo', () => {
   })
 })
 
-describe('a limpeza do dia está em curso? (revisão técnica do #211, rodada 2, N2)', () => {
+describe('alguma limpeza está em curso? (revisão técnica do #211, rodada 2, N2)', () => {
   // O aceite manual de órfãos consulta isto antes de apagar: rodando junto com
-  // a limpeza do dia, os dois listariam os mesmos arquivos e a trilha ganharia
-  // linha dobrada.
-  async function execucao(situacao: string, minutosAtras: number): Promise<void> {
+  // a limpeza, os dois listariam os mesmos arquivos e a trilha ganharia linha
+  // dobrada.
+  const AGORA = new Date('2026-10-05T00:05:00-03:00')
+
+  async function execucao(situacao: string, minutosAntes: number, data = DATA_BASE): Promise<void> {
     await banco.execucaoDeRotina.create({
       data: {
         rotina: 'limpeza_diaria',
-        data: DATA_BASE,
+        data,
         situacao,
-        correlacaoId: 'outro-processo',
-        iniciadaEm: new Date(Date.now() - minutosAtras * 60_000),
+        correlacaoId: `outro-processo-${data}`,
+        iniciadaEm: new Date(AGORA.getTime() - minutosAntes * 60_000),
       },
     })
   }
 
-  it('em curso, iniciada agora: sim', async () => {
+  it('em curso, iniciada há pouco: sim', async () => {
     await execucao('em_curso', 1)
-    expect(await limpezaDoDiaEmCurso(banco, { hoje: DATA_BASE })).toBe(true)
+    expect(await limpezaEmCurso(banco, { agora: AGORA })).toBe(true)
   })
 
-  it('em curso, mas abandonada: não', async () => {
-    await execucao('em_curso', MINUTOS_PARA_DAR_COMO_ABANDONADA + 1)
-    expect(await limpezaDoDiaEmCurso(banco, { hoje: DATA_BASE })).toBe(false)
+  it('em curso desde ANTES da meia-noite, com a linha do dia anterior: sim (revisões do #226)', async () => {
+    await execucao('em_curso', 15, deslocarDias(DATA_BASE, -1))
+    expect(await limpezaEmCurso(banco, { agora: AGORA })).toBe(true)
   })
 
-  it('concluída, com falha, ou sem execução no dia: não', async () => {
-    expect(await limpezaDoDiaEmCurso(banco, { hoje: DATA_BASE })).toBe(false)
+  it('em curso há exatamente o prazo de abandono: não — o mesmo corte que a retoma', async () => {
+    await execucao('em_curso', MINUTOS_PARA_DAR_COMO_ABANDONADA)
+    expect(await limpezaEmCurso(banco, { agora: AGORA })).toBe(false)
+  })
+
+  it('sem execução, concluída ou com falha: não', async () => {
+    expect(await limpezaEmCurso(banco, { agora: AGORA })).toBe(false)
     await execucao('sucesso', 1)
-    expect(await limpezaDoDiaEmCurso(banco, { hoje: DATA_BASE })).toBe(false)
+    await execucao('falha', 1, deslocarDias(DATA_BASE, -1))
+    expect(await limpezaEmCurso(banco, { agora: AGORA })).toBe(false)
   })
 })

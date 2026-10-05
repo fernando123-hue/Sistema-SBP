@@ -111,26 +111,29 @@ async function reivindicar(
 }
 
 /**
- * A limpeza de `hoje` está rodando agora, num processo vivo? Abandonada (mais
- * de `MINUTOS_PARA_DAR_COMO_ABANDONADA`) não conta: a próxima tentativa a
- * retoma. O aceite manual de órfãos (`npm run db:expurgar -- --aceitar-orfaos`)
+ * Alguma limpeza diária está rodando agora, num processo vivo? Abandonada (há
+ * `MINUTOS_PARA_DAR_COMO_ABANDONADA` ou mais, o mesmo corte de `reivindicar`)
+ * não conta: a próxima tentativa a retoma. De QUALQUER dia: a limpeza que
+ * começou às 23:50 ainda pode estar rodando depois da meia-noite (revisões do
+ * #226).
+ *
+ * O aceite manual de órfãos (`npm run db:expurgar -- --aceitar-orfaos`)
  * pergunta isto antes de apagar — rodando junto, os dois listariam os mesmos
  * arquivos e a trilha ganharia linha dobrada (revisão técnica do #211, rodada
- * 2, N2). O contrário (a limpeza começar no meio do aceite) fica como limite:
- * o aceite é manual e raro.
+ * 2, N2). O contrário (uma tentativa automática começar no meio do aceite) não
+ * é barrado; o cabeçalho do script diz como evitar.
  */
-export async function limpezaDoDiaEmCurso(
-  banco: Banco,
-  opcoes: { hoje?: string; agora?: Date } = {},
-): Promise<boolean> {
-  const hoje = opcoes.hoje ?? hojeIso()
+export async function limpezaEmCurso(banco: Banco, opcoes: { agora?: Date } = {}): Promise<boolean> {
   const agora = opcoes.agora ?? new Date()
-  const linha = await banco.execucaoDeRotina.findUnique({
-    where: { rotina_data: { rotina: 'limpeza_diaria', data: hoje } },
-    select: { situacao: true, iniciadaEm: true },
+  const emCurso = await banco.execucaoDeRotina.findFirst({
+    where: {
+      rotina: 'limpeza_diaria',
+      situacao: 'em_curso',
+      iniciadaEm: { gt: new Date(agora.getTime() - MINUTOS_PARA_DAR_COMO_ABANDONADA * 60_000) },
+    },
+    select: { id: true },
   })
-  if (linha === null || linha.situacao !== 'em_curso') return false
-  return agora.getTime() - linha.iniciadaEm.getTime() < MINUTOS_PARA_DAR_COMO_ABANDONADA * 60_000
+  return emCurso !== null
 }
 
 export async function rodarLimpezaDiaria(
