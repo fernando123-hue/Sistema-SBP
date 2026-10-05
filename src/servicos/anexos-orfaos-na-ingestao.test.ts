@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { EmailBrutoSchema, type EmailBruto, type Interpretacao } from '../core/esquemas'
 import { FalhaDeArmazenamento } from '../ports/armazenamento'
@@ -20,6 +20,10 @@ const PDF = new TextEncoder().encode('%PDF-1.4\nconteudo sintetico\n%%EOF')
 
 beforeEach(async () => {
   await limparTudo(banco)
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 const INTERPRETACAO: Interpretacao = {
@@ -184,4 +188,177 @@ describe('a ingestão não deixa arquivo sem linha com o processo vivo', () => {
     expect((await armazenamento.listar()).map((arquivo) => arquivo.chave)).toEqual([daOutra])
     expect(await banco.anexo.count()).toBe(1)
   })
+
+  it('e-mail que já existe SEM processadoEm: recusa alto antes da IA, e a trilha diz o que fazer (revisões do #213, S2, e do #224)', async () => {
+    // Nada no sistema cria esse estado: a ingestão é a única criadora e sempre
+    // preenche `processadoEm`. Antes, o `upsert` caía no ramo `update`, que não
+    // cria linha de `Anexo`: o e-mail virava "processado", e os arquivos
+    // ficavam sem dono até a varredura.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const armazenamento = new ArmazenamentoEmMemoria()
+    let leituras = 0
+    const ia: AiPort = {
+      nome: 'duble',
+      interpretar: async () => {
+        leituras += 1
+        return INTERPRETACAO
+      },
+    }
+    await banco.email.create({ data: { messageId: '<sem-processado@exemplo.test>', recebidoEm: new Date() } })
+    capturarErros()
+
+    const resumo = await sincronizar(
+      { banco, ingestao: comDoisAnexos('<sem-processado@exemplo.test>'), ia, armazenamento },
+      base.operador,
+    )
+
+    expect(resumo.falhas).toBe(1)
+    expect(resumo.duplicados).toBe(0)
+    // Recusado antes da IA e antes de gravar qualquer arquivo.
+    expect(leituras).toBe(0)
+    expect(await armazenamento.listar()).toEqual([])
+    expect(await banco.anexo.count()).toBe(0)
+    const email = await banco.email.findUniqueOrThrow({ where: { messageId: '<sem-processado@exemplo.test>' } })
+    expect(email.processadoEm).toBeNull()
+    const evento = await banco.eventoProcessamento.findFirstOrThrow({
+      where: { etapa: 'ingestao', referencia: '<sem-processado@exemplo.test>' },
+    })
+    expect(evento.situacao).toBe('reprocessavel')
+    expect(evento.mensagem).toMatch(/investigar a linha/)
+    expect(evento.mensagem).not.toContain('sem-processado@exemplo.test')
+  })
+
+  it('a outra sincronização grava entre a checagem da transação e o create: a unicidade conta duplicado e os arquivos desta saem (revisões do #224)', async () => {
+    // A checagem de dentro da transação não vê a linha (simulado: ela devolve
+    // nada), como quando a outra comita depois dessa leitura. O `INSERT` real
+    // viola a unicidade de `messageId`.
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const armazenamento = new ArmazenamentoEmMemoria()
+    let daOutra = ''
+    const ia: AiPort = {
+      nome: 'duble',
+      interpretar: async () => {
+        daOutra = await armazenamento.guardar(PDF, '.pdf')
+        await banco.email.create({
+          data: {
+            messageId: '<no-insert@exemplo.test>',
+            recebidoEm: new Date(),
+            processadoEm: new Date(),
+            anexos: {
+              create: {
+                nomeSeguro: 'primeiro.pdf',
+                tipoDeclarado: 'application/pdf',
+                tamanho: PDF.byteLength,
+                aceito: true,
+                chaveArmazenamento: daOutra,
+                armazenadoEm: new Date(),
+              },
+            },
+          },
+        })
+        return INTERPRETACAO
+      },
+    }
+
+    const resumo = await sincronizar(
+      { banco: comChecagemCega(banco), ingestao: comDoisAnexos('<no-insert@exemplo.test>'), ia, armazenamento },
+      base.operador,
+    )
+
+    expect(resumo.duplicados).toBe(1)
+    expect(resumo.falhas).toBe(0)
+    expect((await armazenamento.listar()).map((arquivo) => arquivo.chave)).toEqual([daOutra])
+    expect(await banco.anexo.count()).toBe(1)
+  })
+
+  it('a linha sem processadoEm aparece DURANTE a leitura da IA: a transação recusa e desfaz os arquivos (revisão de segurança do #213, S2)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const armazenamento = new ArmazenamentoEmMemoria()
+    const ia: AiPort = {
+      nome: 'duble',
+      interpretar: async () => {
+        await banco.email.create({ data: { messageId: '<no-meio@exemplo.test>', recebidoEm: new Date() } })
+        return INTERPRETACAO
+      },
+    }
+    capturarErros()
+
+    const resumo = await sincronizar(
+      { banco, ingestao: comDoisAnexos('<no-meio@exemplo.test>'), ia, armazenamento },
+      base.operador,
+    )
+
+    expect(resumo.falhas).toBe(1)
+    expect(await armazenamento.listar()).toEqual([])
+    expect(await banco.anexo.count()).toBe(0)
+  })
+
+  it('dois anexos falham: sobe a primeira falha e a segunda é dita no log, com o messageId (revisão técnica do #213)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const ia: AiPort = { nome: 'duble', interpretar: async () => INTERPRETACAO }
+    const armazenamento = new (class extends ArmazenamentoEmMemoria {
+      override async guardar(): Promise<string> {
+        throw new FalhaDeArmazenamento('guardar', 'disco cheio (simulado)')
+      }
+    })()
+    const erros = capturarErros()
+
+    const resumo = await sincronizar(
+      { banco, ingestao: comDoisAnexos('<duas-falhas@exemplo.test>'), ia, armazenamento },
+      base.operador,
+    )
+
+    expect(resumo.falhas).toBe(1)
+    const outra = erros.filter((linha) => linha.includes('outro anexo do mesmo e-mail também falhou'))
+    expect(outra).toHaveLength(1)
+    expect(outra[0]).toContain('duas-falhas@exemplo.test')
+  })
 })
+
+/**
+ * O banco de verdade, mas dentro da transação `email.findUnique` não acha nada:
+ * a outra sincronização comitou depois dessa leitura. Métodos ligados ao alvo,
+ * para os delegados do Prisma não perderem o `this`.
+ */
+function comChecagemCega(original: typeof banco): typeof banco {
+  const ligado = <T extends object>(alvo: T, propriedade: string | symbol): unknown => {
+    const valor = Reflect.get(alvo, propriedade)
+    return typeof valor === 'function' ? valor.bind(alvo) : valor
+  }
+  return new Proxy(original, {
+    get(alvo, propriedade) {
+      if (propriedade !== '$transaction') return ligado(alvo, propriedade)
+      return (operacao: unknown, ...resto: unknown[]) => {
+        const transacao = alvo.$transaction.bind(alvo) as (...argumentos: unknown[]) => Promise<unknown>
+        if (typeof operacao !== 'function') return transacao(operacao, ...resto)
+        return transacao(
+          (tx: object) =>
+            operacao(
+              new Proxy(tx, {
+                get(t, nome) {
+                  if (nome !== 'email') return ligado(t, nome)
+                  const email = Reflect.get(t, nome) as object
+                  return new Proxy(email, {
+                    get(e, metodo) {
+                      return metodo === 'findUnique' ? async () => null : ligado(e, metodo)
+                    },
+                  })
+                },
+              }),
+            ),
+          ...resto,
+        )
+      }
+    },
+  })
+}
+
+/** As linhas de erro que o código escreve no stderr, sem sujar a saída do teste. */
+function capturarErros(): string[] {
+  const linhas: string[] = []
+  vi.spyOn(process.stderr, 'write').mockImplementation((linha) => {
+    linhas.push(String(linha))
+    return true
+  })
+  return linhas
+}
