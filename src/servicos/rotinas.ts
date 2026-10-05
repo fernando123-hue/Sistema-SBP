@@ -110,6 +110,32 @@ async function reivindicar(
   return count === 1 ? { id: linha.id } : { motivo: 'em_curso' }
 }
 
+/**
+ * Alguma limpeza diária está rodando agora, num processo vivo? Abandonada (há
+ * `MINUTOS_PARA_DAR_COMO_ABANDONADA` ou mais, o mesmo corte de `reivindicar`)
+ * não conta: a próxima tentativa a retoma. De QUALQUER dia: a limpeza que
+ * começou às 23:50 ainda pode estar rodando depois da meia-noite (revisões do
+ * #226).
+ *
+ * O aceite manual de órfãos (`npm run db:expurgar -- --aceitar-orfaos`)
+ * pergunta isto antes de apagar — rodando junto, os dois listariam os mesmos
+ * arquivos e a trilha ganharia linha dobrada (revisão técnica do #211, rodada
+ * 2, N2). O contrário (uma tentativa automática começar no meio do aceite) não
+ * é barrado; o cabeçalho do script diz como evitar.
+ */
+export async function limpezaEmCurso(banco: Banco, opcoes: { agora?: Date } = {}): Promise<boolean> {
+  const agora = opcoes.agora ?? new Date()
+  const emCurso = await banco.execucaoDeRotina.findFirst({
+    where: {
+      rotina: 'limpeza_diaria',
+      situacao: 'em_curso',
+      iniciadaEm: { gt: new Date(agora.getTime() - MINUTOS_PARA_DAR_COMO_ABANDONADA * 60_000) },
+    },
+    select: { id: true },
+  })
+  return emCurso !== null
+}
+
 export async function rodarLimpezaDiaria(
   banco: Banco,
   opcoes: {
