@@ -8,7 +8,7 @@ import {
   type MotivoRevisao,
 } from '../core/esquemas'
 import { aceitaAgradecimento } from '../core/config'
-import { CategoriaDesconhecidaError, ErroOperacional } from '../core/erros'
+import { CategoriaDesconhecidaError, ErroDeNegocio, ErroOperacional } from '../core/erros'
 import { dadoDeTrabalhoSemItem, type DadoDeTrabalho } from '../core/sem-item-com-dado'
 import { chaveDaLiga } from '../core/ligas'
 import { conferirAssinatura } from '../core/seguranca/assinatura-de-arquivo'
@@ -408,6 +408,11 @@ export async function sincronizar(
         }
         continue
       }
+      // Recusa já aqui, antes da IA e de gravar arquivo: a recusa se repete a
+      // cada sincronização até alguém olhar a linha, e cada volta refazia a
+      // interpretação e gravava e apagava os anexos (revisões do #224, técnica
+      // B1 e segurança S2). A guarda da transação continua, para a corrida.
+      if (jaExiste) throw emailSemProcessadoEm()
 
       const tentativasDoEmail = tentativas.get(email.messageId) ?? 0
       const resultado = await processarUm(deps, email, correlacaoId, usuario, tentativasDoEmail, segundaOpiniao)
@@ -796,15 +801,11 @@ async function processarUm(
       })
       if (jaProcessado?.processadoEm) return null
       // Linha de `Email` SEM `processadoEm` é estado que nada no sistema cria:
-      // esta função é a única criadora e sempre o preenche. Seguir cairia no
-      // ramo `update` do `upsert`, que não grava conteúdo nem `Anexo` — o
-      // e-mail viraria "processado" com os arquivos sem dono. Falha alto, e o
-      // `catch` desfaz os arquivos (revisão de segurança do #213, S2).
-      if (jaProcessado) {
-        throw new Error(
-          `o e-mail ${JSON.stringify(email.messageId)} já existe sem processadoEm, estado que a ingestão nunca cria: investigar a linha antes de reprocessar`,
-        )
-      }
+      // esta função é a única criadora e sempre o preenche. Antes, o `upsert`
+      // caía no ramo `update`, que não grava conteúdo nem `Anexo` — o e-mail
+      // virava "processado" com os arquivos sem dono. Falha alto, e o `catch`
+      // desfaz os arquivos (revisão de segurança do #213, S2).
+      if (jaProcessado) throw emailSemProcessadoEm()
 
       // Sem interpretação (desistiu), o suspeito vem só da análise local; com
       // interpretação, o sinal duplo de sempre (regex OU modelo).
@@ -823,9 +824,13 @@ async function processarUm(
       // Metadado e conteúdo nascem juntos, mas em linhas separadas: é o que
       // permite, depois, expurgar o conteúdo pela retenção sem levar junto o
       // histórico operacional que sustenta métrica, auditoria e conservação.
-      const registro = await tx.email.upsert({
-        where: { messageId: email.messageId },
-        create: {
+      // `create`, e não `upsert`: o ramo `update` não gravava conteúdo nem
+      // `Anexo`, e só ficava inalcançável por causa do isolamento do banco. Com
+      // `create`, uma sincronização que grave o mesmo e-mail entre a checagem
+      // acima e esta linha faz o `INSERT` violar a unicidade (`P2002`), que o
+      // laço conta como duplicado e o `catch` desfaz (revisão técnica do #224, M1).
+      const registro = await tx.email.create({
+        data: {
           messageId: email.messageId,
           origem: email.origem,
           recebidoEm: email.recebidoEm,
@@ -854,7 +859,6 @@ async function processarUm(
             })),
           },
         },
-        update: { processadoEm: new Date(), conteudoSuspeito, dadoSemItem },
       })
 
       // Na MESMA transação do e-mail (invariante 14): se ela abortar — e é em
@@ -906,6 +910,20 @@ async function processarUm(
     await desfazerArquivos()
     throw erro
   }
+}
+
+/**
+ * `ErroDeNegocio`, e não `Error`: a mensagem chega à trilha (`EventoProcessamento`)
+ * e diz o que fazer; com `Error` puro, a trilha guardava só "Error" (revisões do
+ * #224, técnica M2 e segurança S1). Sem o `messageId` no texto, que é conteúdo
+ * externo e já vai em `referencia`.
+ */
+function emailSemProcessadoEm(): ErroDeNegocio {
+  return new ErroDeNegocio(
+    'O e-mail já existe sem data de processamento, estado que a ingestão nunca cria. ' +
+      'Alguém precisa investigar a linha antes de ele ser processado.',
+    'EMAIL_SEM_PROCESSAMENTO',
+  )
 }
 
 interface Desfazimento {

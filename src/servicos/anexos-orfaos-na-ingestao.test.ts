@@ -189,16 +189,23 @@ describe('a ingestão não deixa arquivo sem linha com o processo vivo', () => {
     expect(await banco.anexo.count()).toBe(1)
   })
 
-  it('e-mail que já existe SEM processadoEm: recusa alto e desfaz os arquivos (revisão de segurança do #213, S2)', async () => {
+  it('e-mail que já existe SEM processadoEm: recusa alto antes da IA, e a trilha diz o que fazer (revisões do #213, S2, e do #224)', async () => {
     // Nada no sistema cria esse estado: a ingestão é a única criadora e sempre
     // preenche `processadoEm`. Antes, o `upsert` caía no ramo `update`, que não
     // cria linha de `Anexo`: o e-mail virava "processado", e os arquivos
     // ficavam sem dono até a varredura.
     const base = await semearBase(banco, { totalDeDias: 1 })
     const armazenamento = new ArmazenamentoEmMemoria()
-    const ia: AiPort = { nome: 'duble', interpretar: async () => INTERPRETACAO }
+    let leituras = 0
+    const ia: AiPort = {
+      nome: 'duble',
+      interpretar: async () => {
+        leituras += 1
+        return INTERPRETACAO
+      },
+    }
     await banco.email.create({ data: { messageId: '<sem-processado@exemplo.test>', recebidoEm: new Date() } })
-    const erros = capturarErros()
+    capturarErros()
 
     const resumo = await sincronizar(
       { banco, ingestao: comDoisAnexos('<sem-processado@exemplo.test>'), ia, armazenamento },
@@ -206,11 +213,41 @@ describe('a ingestão não deixa arquivo sem linha com o processo vivo', () => {
     )
 
     expect(resumo.falhas).toBe(1)
+    expect(resumo.duplicados).toBe(0)
+    // Recusado antes da IA e antes de gravar qualquer arquivo.
+    expect(leituras).toBe(0)
     expect(await armazenamento.listar()).toEqual([])
     expect(await banco.anexo.count()).toBe(0)
     const email = await banco.email.findUniqueOrThrow({ where: { messageId: '<sem-processado@exemplo.test>' } })
     expect(email.processadoEm).toBeNull()
-    expect(erros.some((linha) => linha.includes('sem processadoEm'))).toBe(true)
+    const evento = await banco.eventoProcessamento.findFirstOrThrow({
+      where: { etapa: 'ingestao', referencia: '<sem-processado@exemplo.test>' },
+    })
+    expect(evento.situacao).toBe('reprocessavel')
+    expect(evento.mensagem).toMatch(/investigar a linha/)
+    expect(evento.mensagem).not.toContain('sem-processado@exemplo.test')
+  })
+
+  it('a linha sem processadoEm aparece DURANTE a leitura da IA: a transação recusa e desfaz os arquivos (revisão de segurança do #213, S2)', async () => {
+    const base = await semearBase(banco, { totalDeDias: 1 })
+    const armazenamento = new ArmazenamentoEmMemoria()
+    const ia: AiPort = {
+      nome: 'duble',
+      interpretar: async () => {
+        await banco.email.create({ data: { messageId: '<no-meio@exemplo.test>', recebidoEm: new Date() } })
+        return INTERPRETACAO
+      },
+    }
+    capturarErros()
+
+    const resumo = await sincronizar(
+      { banco, ingestao: comDoisAnexos('<no-meio@exemplo.test>'), ia, armazenamento },
+      base.operador,
+    )
+
+    expect(resumo.falhas).toBe(1)
+    expect(await armazenamento.listar()).toEqual([])
+    expect(await banco.anexo.count()).toBe(0)
   })
 
   it('dois anexos falham: sobe a primeira falha e a segunda é dita no log, com o messageId (revisão técnica do #213)', async () => {
