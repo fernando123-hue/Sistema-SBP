@@ -181,13 +181,11 @@ export async function expurgarAnexosOrfaos(
       // O disco não volta atrás com a transação. Se o arquivo já saiu, dizer
       // "continua guardado" seria o log mentindo no único caso em que a trilha
       // também não tem a linha (revisão técnica do #211, M3).
-      registrarLog(
-        'erro',
-        tentativa.removido
-          ? 'arquivo de anexo sem registro foi apagado sem linha na trilha: a transação abortou depois da remoção'
-          : 'arquivo de anexo sem registro não pôde ser apagado; continua no armazenamento',
-        { correlacaoId, chave: arquivo.chave, erro: mensagemDoErro(erro) },
-      )
+      registrarLog('erro', mensagemDaFalhaDeRemocao(tentativa.removido, erro), {
+        correlacaoId,
+        chave: arquivo.chave,
+        erro: mensagemDoErro(erro),
+      })
     }
   }
 
@@ -199,6 +197,29 @@ export async function expurgarAnexosOrfaos(
   }
 
   return { avaliados, semRegistro, removidos }
+}
+
+/** `P2028`: o Prisma encerrou a transação no prazo, sem esperar o callback. */
+const PRAZO_DA_TRANSACAO_VENCIDO = 'P2028'
+
+/**
+ * O que o log pode afirmar sobre o arquivo. Com o prazo vencido, o Prisma
+ * rejeita sem esperar a remoção, que pode terminar depois: "continua no
+ * armazenamento" seria afirmar o que ninguém conferiu (revisão técnica do #211,
+ * rodada 2, N3).
+ */
+function mensagemDaFalhaDeRemocao(removido: boolean, erro: unknown): string {
+  if (removido) {
+    return 'arquivo de anexo sem registro foi apagado sem linha na trilha: a transação abortou depois da remoção'
+  }
+  const codigo = erro !== null && typeof erro === 'object' ? (erro as { code?: unknown }).code : undefined
+  if (codigo === PRAZO_DA_TRANSACAO_VENCIDO) {
+    return (
+      'a transação venceu o prazo com a remoção em andamento: o arquivo de anexo sem registro pode já ter saído, ' +
+      'sem linha na trilha; confira com npm run db:expurgar -- --listar-orfaos'
+    )
+  }
+  return 'arquivo de anexo sem registro não pôde ser apagado; continua no armazenamento'
 }
 
 function exigirArmazenamento(armazenamento: ArmazenamentoPort | null): ArmazenamentoPort {

@@ -229,6 +229,36 @@ describe('uma pessoa aceita o número que viu (revisão técnica do #211, M2)', 
     expect(await expurgar()).toEqual({ avaliados: 2, semRegistro: 1, removidos: 1 })
   })
 
+  it('transação que vence o prazo com a remoção em andamento: o log diz que o arquivo PODE ter saído (revisão técnica do #211, rodada 2, N3)', async () => {
+    // O Prisma rejeita no prazo (`P2028`) sem esperar o callback: a remoção
+    // pode terminar depois, e "continua no armazenamento" seria afirmar o que
+    // ninguém conferiu.
+    const orfao = await arquivoGravadoHa(8)
+    await anexoNoBanco(await arquivoGravadoHa(400))
+    const bancoQueVence = new Proxy(banco, {
+      get(alvo, propriedade) {
+        if (propriedade !== '$transaction') return Reflect.get(alvo, propriedade)
+        return async () => {
+          throw Object.assign(new Error('Transaction already closed (simulado)'), { code: 'P2028' })
+        }
+      },
+    })
+    const linhas: string[] = []
+    vi.spyOn(process.stderr, 'write').mockImplementation((linha) => {
+      linhas.push(String(linha))
+      return true
+    })
+
+    await recusada(
+      expurgarAnexosOrfaos(bancoQueVence, { diasDeRetencao: 7, armazenamento }),
+      FalhaDeArmazenamento,
+    )
+
+    const registro = linhas.find((linha) => linha.includes(orfao))
+    expect(registro).toMatch(/pode já ter saído/)
+    expect(registro).not.toMatch(/continua no armazenamento/)
+  })
+
   it('remoção feita e transação que aborta depois: o log diz que o arquivo SAIU sem trilha', async () => {
     // A trilha e a remoção correm juntas, mas o disco não volta atrás. Se o
     // commit falha depois de o arquivo sair, o log não pode dizer "continua

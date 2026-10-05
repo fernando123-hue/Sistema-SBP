@@ -110,6 +110,29 @@ async function reivindicar(
   return count === 1 ? { id: linha.id } : { motivo: 'em_curso' }
 }
 
+/**
+ * A limpeza de `hoje` está rodando agora, num processo vivo? Abandonada (mais
+ * de `MINUTOS_PARA_DAR_COMO_ABANDONADA`) não conta: a próxima tentativa a
+ * retoma. O aceite manual de órfãos (`npm run db:expurgar -- --aceitar-orfaos`)
+ * pergunta isto antes de apagar — rodando junto, os dois listariam os mesmos
+ * arquivos e a trilha ganharia linha dobrada (revisão técnica do #211, rodada
+ * 2, N2). O contrário (a limpeza começar no meio do aceite) fica como limite:
+ * o aceite é manual e raro.
+ */
+export async function limpezaDoDiaEmCurso(
+  banco: Banco,
+  opcoes: { hoje?: string; agora?: Date } = {},
+): Promise<boolean> {
+  const hoje = opcoes.hoje ?? hojeIso()
+  const agora = opcoes.agora ?? new Date()
+  const linha = await banco.execucaoDeRotina.findUnique({
+    where: { rotina_data: { rotina: 'limpeza_diaria', data: hoje } },
+    select: { situacao: true, iniciadaEm: true },
+  })
+  if (linha === null || linha.situacao !== 'em_curso') return false
+  return agora.getTime() - linha.iniciadaEm.getTime() < MINUTOS_PARA_DAR_COMO_ABANDONADA * 60_000
+}
+
 export async function rodarLimpezaDiaria(
   banco: Banco,
   opcoes: {

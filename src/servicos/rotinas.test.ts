@@ -7,7 +7,7 @@ import { atorDeTeste, DATA_BASE, limparTudo, semearBase, type BaseSemeada } from
 import { ArmazenamentoEmMemoria } from '../testes/armazenamento-em-memoria'
 import { registrar } from './afastamentos'
 import { alterarPrazo } from './retencao'
-import { MINUTOS_PARA_DAR_COMO_ABANDONADA, TENTATIVAS_POR_DIA, rodarLimpezaDiaria } from './rotinas'
+import { MINUTOS_PARA_DAR_COMO_ABANDONADA, TENTATIVAS_POR_DIA, limpezaDoDiaEmCurso, rodarLimpezaDiaria } from './rotinas'
 
 const banco = obterPrisma()
 
@@ -254,5 +254,38 @@ describe('execução de outro processo', () => {
     const retomada = await rodarLimpezaDiaria(banco, { armazenamento: new ArmazenamentoEmMemoria(), hoje: DATA_BASE, agora: muitoDepois })
 
     expect(retomada.executou && retomada.situacao).toBe('sucesso')
+  })
+})
+
+describe('a limpeza do dia está em curso? (revisão técnica do #211, rodada 2, N2)', () => {
+  // O aceite manual de órfãos consulta isto antes de apagar: rodando junto com
+  // a limpeza do dia, os dois listariam os mesmos arquivos e a trilha ganharia
+  // linha dobrada.
+  async function execucao(situacao: string, minutosAtras: number): Promise<void> {
+    await banco.execucaoDeRotina.create({
+      data: {
+        rotina: 'limpeza_diaria',
+        data: DATA_BASE,
+        situacao,
+        correlacaoId: 'outro-processo',
+        iniciadaEm: new Date(Date.now() - minutosAtras * 60_000),
+      },
+    })
+  }
+
+  it('em curso, iniciada agora: sim', async () => {
+    await execucao('em_curso', 1)
+    expect(await limpezaDoDiaEmCurso(banco, { hoje: DATA_BASE })).toBe(true)
+  })
+
+  it('em curso, mas abandonada: não', async () => {
+    await execucao('em_curso', MINUTOS_PARA_DAR_COMO_ABANDONADA + 1)
+    expect(await limpezaDoDiaEmCurso(banco, { hoje: DATA_BASE })).toBe(false)
+  })
+
+  it('concluída, com falha, ou sem execução no dia: não', async () => {
+    expect(await limpezaDoDiaEmCurso(banco, { hoje: DATA_BASE })).toBe(false)
+    await execucao('sucesso', 1)
+    expect(await limpezaDoDiaEmCurso(banco, { hoje: DATA_BASE })).toBe(false)
   })
 })

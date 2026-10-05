@@ -14,6 +14,10 @@
  *   npm run db:expurgar -- --listar-orfaos
  *   npm run db:expurgar -- --aceitar-orfaos=<o número> --por=<seu nome>
  *
+ * O aceite recusa enquanto a limpeza do dia estiver rodando. O contrário — a
+ * limpeza começar no meio de um aceite — não é barrado: não rode o aceite perto
+ * da hora da limpeza automática.
+ *
  * Os prazos NÃO vêm de variável de ambiente. Eles são editados pelo gestor, na
  * tela, com a mudança na trilha (`A17`, `A20`); uma variável aqui seria uma
  * segunda porta para mudar quanto tempo dado pessoal fica guardado, sem trilha e
@@ -24,7 +28,7 @@ import { criarArmazenamentoPort } from '../src/adapters/fabrica'
 import type { ArmazenamentoPort } from '../src/ports/armazenamento'
 import { expurgarAnexosOrfaos, levantarAnexosOrfaos } from '../src/servicos/expurgo-anexos-orfaos'
 import { prazoEmVigor } from '../src/servicos/retencao'
-import { rodarLimpezaDiaria } from '../src/servicos/rotinas'
+import { limpezaDoDiaEmCurso, rodarLimpezaDiaria } from '../src/servicos/rotinas'
 import { encerrarBanco, obterPrisma } from '../src/servidor/prisma'
 import { lerOpcoesDeOrfaos } from './opcoes-de-orfaos'
 
@@ -68,6 +72,11 @@ async function apagarOrfaosAceitos(
   aceite: { quantidade: number; por: string },
 ): Promise<void> {
   const banco = obterPrisma()
+  // Rodando junto com a limpeza do dia, os dois listariam os mesmos arquivos e
+  // a trilha ganharia linha dobrada (revisão técnica do #211, rodada 2, N2).
+  if (await limpezaDoDiaEmCurso(banco)) {
+    throw new Error('A limpeza de hoje está rodando agora. Nada foi apagado; espere ela terminar e liste de novo.')
+  }
   const resultado = await expurgarAnexosOrfaos(banco, {
     diasDeRetencao: await prazoEmVigor(banco, 'conteudo_do_email'),
     armazenamento,
