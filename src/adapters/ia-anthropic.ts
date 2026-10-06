@@ -111,7 +111,8 @@ export function clienteAnthropic(
   // o pedido e a resposta inteiros no console (`formatRequestDetails`), por
   // fora de `registrarLog`, `redigir` e `resumoDeTransporte`. Nas três, a opção
   // passada aqui vence a variável — conferido na fonte do SDK 0.125, e de novo
-  // na 0.129 (`log.js` e a ordem dos cabeçalhos sem mudança). Para onde
+  // na 0.129 e na 0.131 (`log.js`, `env.js` e a ordem dos cabeçalhos sem
+  // mudança). Para onde
   // o texto vai e o que sai no log é decisão do código, nunca de uma variável
   // esquecida na máquina.
   //
