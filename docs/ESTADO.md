@@ -1,10 +1,25 @@
 # Estado do projeto — retomada
 
-Última atualização: **05/10/2026, madrugada.** `main` depois do #226. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
+Última atualização: **06/10/2026.** `main` depois do #231. **O repositório está PÚBLICO de propósito, por decisão do dono** (pendência 20).
 
 > ## ▶ Próxima sessão: comece aqui
 >
-> ### 05/10/2026, madrugada — #226, e a fila do agente esvaziou de novo (este bloco vence os de baixo onde conflitar)
+> ### 06/10/2026 — #231, os três PRs do Dependabot num só (este bloco vence os de baixo onde conflitar)
+>
+> **Mesclado: #231**, substituindo o #228, o #229 e o #230 do Dependabot (fechados com o link), pelo caminho do #162 e do #193. Técnica e segurança publicadas; as duas aprovaram e acharam texto a corrigir no corpo.
+> - `next` 16.3.6 → 16.3.8 (**lançamento de segurança**: 1 alto, SSRF na otimização de imagem; 5 médios de cache e metadata; nada disso é usado aqui), `vitest` e `@vitest/coverage-v8` 5.0.3, `@types/node` 26.6.4, SDK da Anthropic 0.131.0, SDK do Google 2.26.0.
+> - **`source-map-js` 1.2.1 → 1.2.2:** aviso alto novo (GHSA-68fv-2mgg-jv7q, 30/09) que já estava na `main`. Sem trocar, o `npm audit --audit-level=high` do CI reprovaria todo PR. `npm audit`: 0.
+> - O lockfile é exatamente o dos três PRs do Dependabot mais as 3 linhas do `source-map-js`; um `npm install` comum subia outras dependências de teste de carona, e isso foi descartado.
+> - O SDK da Anthropic 0.131 avisa no console se o modelo for `claude-sonnet-4-5` (fim de vida em 30/11/2026). O padrão é `claude-sonnet-5`; não dispara.
+> - A tela foi conferida com o Next novo, como pede o `next.config.ts`: `/entrar` abre, CSP com nonce, `git status` limpo.
+>
+> Suíte: 182 arquivos, **2371 testes** (CI, 0 pulados).
+>
+> **Armadilha vista hoje:** a máquina tinha reiniciado e o MySQL local não estava de pé (a suíte falha no `globalSetup` com `ECONNREFUSED 127.0.0.1:3307`). Ligar com o comando do bloco "No ar nesta máquina", sempre com `--mysqlx=OFF`. A V1 (`C:\sbp-validacao`) também parou com o reinício e não foi religada.
+>
+> **Fila do agente:** vazia de novo. **Esperando de fora:** o dono, sobre a V1 (teste de tela, apagar `sbp_restaurada` e `backup.sql`, modelo maior, V2); o próximo PR do Dependabot.
+>
+> ### 05/10/2026, madrugada — #226, e a fila do agente esvaziou de novo
 >
 > **Mesclado: #226** (técnica e segurança em 2 rodadas cada; as duas rodadas 1 acharam coisa real). O aceite manual de órfãos (`--aceitar-orfaos`) recusa enquanto uma limpeza diária estiver em curso e não abandonada, de qualquer dia (`limpezaEmCurso`); o cabeçalho do script manda rodá-lo com o servidor parado e sem `db:expurgar` agendado, ou com as tentativas do dia esgotadas, longe da meia-noite. **O N3 do #211 não vale no Prisma 7.10:** o `$transaction` espera o callback antes do commit (conferido no cliente), então o log da remoção já dizia a verdade; a mudança que a primeira versão fazia foi desfeita (`AT-74`).
 >
@@ -13,7 +28,7 @@
 > - **#219:** entrada ignorada não muda o código de saída — hipotético, o formato de anexo é o mesmo em todas as versões.
 > - **#224, informativo:** `$transaction` da ingestão sem `timeout` próprio — no pior caso conta uma falha em vez de duplicado, uma vez; a sincronização seguinte vê o e-mail processado.
 >
-> **Esperando de fora:** o primeiro PR do Dependabot depois do #203; o dono, sobre a V1 (teste de tela, apagar `sbp_restaurada` e `backup.sql`, modelo maior, V2). Atualizar a V1 agora traz o #211 a #226.
+> **Esperando de fora:** ~~o primeiro PR do Dependabot depois do #203~~ (chegaram três; ver o bloco de 06/10); o dono, sobre a V1 (teste de tela, apagar `sbp_restaurada` e `backup.sql`, modelo maior, V2). Atualizar a V1 agora traz o #211 a #226.
 >
 > Suíte: 182 arquivos, **2371 testes** (CI, 0 pulados).
 >
